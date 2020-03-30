@@ -29,20 +29,10 @@ namespace gcs {
 
 /// \class StoreClient
 /// Abstract interface of the storage client.
-///
-/// To read and write from the storage, `Connect()` must be called and return Status::OK.
-/// Before exit, `Disconnect()` must be called.
+template <typename Key, typename Data, typename SecondaryKey>
 class StoreClient {
  public:
   virtual ~StoreClient() {}
-
-  /// Connect to storage. Non-thread safe.
-  ///
-  /// \return Status
-  virtual Status Connect(std::shared_ptr<IOServicePool> io_service_pool) = 0;
-
-  /// Disconnect with storage. Non-thread safe.
-  virtual void Disconnect() = 0;
 
   /// Write data to the given table asynchronously.
   ///
@@ -51,8 +41,8 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPut(const std::string &table_name, const std::string &key,
-                          const google::protobuf::Message &data,
+  virtual Status AsyncPut(const std::string &table_name, const Key &key,
+                          const Data &data,
                           const StatusCallback &callback) = 0;
 
   /// Write data to the given table asynchronously.
@@ -63,9 +53,9 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                                   const std::string &index_key,
-                                   const google::protobuf::Message &data,
+  virtual Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
+                                   const SecondaryKey &index_key,
+                                   const Data &data,
                                    const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
@@ -74,8 +64,8 @@ class StoreClient {
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  virtual Status AsyncGet(const std::string &table_name, const std::string &key,
-                          const OptionalItemCallback<std::string> &callback) = 0;
+  virtual Status AsyncGet(const std::string &table_name, const Key &key,
+                          const OptionalItemCallback<Data> &callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -85,7 +75,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGetAll(
       const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, std::string>> &callback) = 0;
+      const SegmentedCallback<std::pair<Key, Data>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///
@@ -93,7 +83,7 @@ class StoreClient {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncDelete(const std::string &table_name, const std::string &key,
+  virtual Status AsyncDelete(const std::string &table_name, const Key &key,
                              const StatusCallback &callback) = 0;
 
   /// Delete by index from the given table asynchronously.
@@ -104,7 +94,7 @@ class StoreClient {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status AsyncDeleteByIndex(const std::string &table_name,
-                                    const std::string &index_key,
+                                    const SecondaryKey &index_key,
                                     const StatusCallback &callback) = 0;
 
  protected:

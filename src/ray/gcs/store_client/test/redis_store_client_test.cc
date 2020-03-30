@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
 namespace ray {
@@ -27,12 +28,16 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
   void InitStoreClient() override {
     RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-    store_client_ = std::make_shared<RedisStoreClient>(options);
-    Status status = store_client_->Connect(io_service_pool_);
-    RAY_CHECK_OK(status);
+    redis_client_ = std::make_shared<RedisClient>(options);
+    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
+
+    store_client_ = std::make_shared<RedisStoreClient<ActorID, rpc::ActorTableData, JobID>>(redis_client_);
   }
 
-  void DisconnectStoreClient() override { store_client_->Disconnect(); }
+  void DisconnectStoreClient() override { redis_client_->Disconnect(); }
+
+ protected:
+  std::shared_ptr<RedisClient> redis_client_;
 };
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
@@ -43,19 +48,17 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(table_name_, elem.first.Binary(), elem.second,
+    Status status = store_client_->AsyncPut(table_name_, elem.first, elem.second,
                                             put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
 
   // AsyncGet
-  auto get_callback = [this](Status status, const boost::optional<std::string> &result) {
+  auto get_callback = [this](Status status, const boost::optional<rpc::ActorTableData> &result) {
     RAY_CHECK_OK(status);
     RAY_CHECK(result);
-    rpc::ActorTableData actor_data;
-    RAY_CHECK(actor_data.ParseFromString(result.value()));
-    ActorID actor_id = ActorID::FromBinary(actor_data.actor_id());
+    ActorID actor_id = ActorID::FromBinary(result->actor_id());
     auto it = key_to_value_.find(actor_id);
     RAY_CHECK(it != key_to_value_.end());
     --pending_count_;
@@ -63,7 +66,7 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
     Status status =
-        store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback);
+        store_client_->AsyncGet(table_name_, elem.first, get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -74,7 +77,7 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   auto put_calllback = [this](Status status) { --pending_count_; };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(table_name_, elem.first.Binary(), elem.second,
+    Status status = store_client_->AsyncPut(table_name_, elem.first, elem.second,
                                             put_calllback);
     RAY_CHECK_OK(status);
   }
@@ -88,13 +91,13 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
     Status status =
-        store_client_->AsyncDelete(table_name_, elem.first.Binary(), delete_calllback);
+        store_client_->AsyncDelete(table_name_, elem.first, delete_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
 
   // AsyncGet
-  auto get_callback = [this](Status status, const boost::optional<std::string> &result) {
+  auto get_callback = [this](Status status, const boost::optional<rpc::ActorTableData> &result) {
     RAY_CHECK_OK(status);
     RAY_CHECK(!result);
     --pending_count_;
@@ -102,7 +105,7 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
     Status status =
-        store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback);
+        store_client_->AsyncGet(table_name_, elem.first, get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -117,7 +120,7 @@ TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
     auto it = key_to_index_.find(elem.first);
     const JobID &index = it->second;
     Status status = store_client_->AsyncPutWithIndex(
-        table_name_, elem.first.Binary(), index.Binary(), elem.second, put_calllback);
+        table_name_, elem.first, index, elem.second, put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -125,11 +128,11 @@ TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
   // AsyncGetAll
   auto get_all_callback =
       [this](Status status, bool has_more,
-             const std::vector<std::pair<std::string, std::string>> &result) {
+             const std::vector<std::pair<ActorID, rpc::ActorTableData>> &result) {
         RAY_CHECK_OK(status);
         static std::unordered_set<ActorID> received_keys;
         for (const auto &item : result) {
-          ActorID actor_id = ActorID::FromBinary(item.first);
+          const ActorID &actor_id = item.first;
           auto it = received_keys.find(actor_id);
           RAY_CHECK(it == received_keys.end());
           received_keys.emplace(actor_id);

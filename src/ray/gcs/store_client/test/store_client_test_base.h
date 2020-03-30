@@ -94,7 +94,7 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
   size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
-  std::shared_ptr<StoreClient> store_client_;
+  std::shared_ptr<StoreClient<ActorID, rpc::ActorTableData, JobID>> store_client_;
 
   std::string table_name_{"test_table"};
   size_t key_count_{5000};
