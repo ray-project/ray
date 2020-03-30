@@ -30,7 +30,7 @@ namespace gcs {
 
 /// \class StoreClient
 /// Abstract interface of the storage client.
-template <typename Key, typename Data, typename SecondaryKey>
+template <typename Key, typename Data, typename IndexKey>
 class StoreClient {
  public:
   virtual ~StoreClient() {}
@@ -54,7 +54,7 @@ class StoreClient {
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                                   const SecondaryKey &index_key, const Data &data,
+                                   const IndexKey &index_key, const Data &data,
                                    const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
@@ -92,7 +92,7 @@ class StoreClient {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status AsyncDeleteByIndex(const std::string &table_name,
-                                    const SecondaryKey &index_key,
+                                    const IndexKey &index_key,
                                     const StatusCallback &callback) = 0;
 
  protected:

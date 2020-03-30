@@ -23,19 +23,19 @@ namespace ray {
 
 namespace gcs {
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPut(
-    const std::string &table_name, const Key &key, const Data &data,
-    const StatusCallback &callback) {
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncPut(const std::string &table_name,
+                                                       const Key &key, const Data &data,
+                                                       const StatusCallback &callback) {
   std::string full_key = table_name + key.Binary();
   std::string data_str = data.SerializeAsString();
   RAY_CHECK(!data_str.empty());
   return DoPut(full_key, data_str, callback);
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPutWithIndex(
-    const std::string &table_name, const Key &key, const SecondaryKey &index_key,
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncPutWithIndex(
+    const std::string &table_name, const Key &key, const IndexKey &index_key,
     const Data &data, const StatusCallback &callback) {
   std::string data_str = data.SerializeAsString();
   RAY_CHECK(!data_str.empty());
@@ -66,10 +66,10 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPutWithIndex(
   return DoPut(index_table_key, key.Binary(), write_callback);
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::DoPut(const std::string &key,
-                                                        const std::string &data,
-                                                        const StatusCallback &callback) {
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::DoPut(const std::string &key,
+                                                    const std::string &data,
+                                                    const StatusCallback &callback) {
   std::vector<std::string> args = {"SET", key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
@@ -83,8 +83,8 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::DoPut(const std::string &key,
   return shard_context->RunArgvAsync(args, write_callback);
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGet(
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncGet(
     const std::string &table_name, const Key &key,
     const OptionalItemCallback<Data> &callback) {
   RAY_CHECK(callback != nullptr);
@@ -109,16 +109,16 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGet(
   return shard_context->RunArgvAsync(args, redis_callback);
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGetAll(
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncGetAll(
     const std::string &table_name,
     const SegmentedCallback<std::pair<Key, Data>> &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDelete(
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncDelete(
     const std::string &table_name, const Key &key, const StatusCallback &callback) {
   RedisCallback delete_callback = nullptr;
   if (callback) {
@@ -136,9 +136,9 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDelete(
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
-template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDeleteByIndex(
-    const std::string &table_name, const SecondaryKey &index_key,
+template <typename Key, typename Data, typename IndexKey>
+Status RedisStoreClient<Key, Data, IndexKey>::AsyncDeleteByIndex(
+    const std::string &table_name, const IndexKey &index_key,
     const StatusCallback &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();

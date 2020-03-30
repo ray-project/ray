@@ -26,8 +26,8 @@ namespace ray {
 
 namespace gcs {
 
-template <typename Key, typename Data, typename SecondaryKey>
-class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
+template <typename Key, typename Data, typename IndexKey>
+class RedisStoreClient : public StoreClient<Key, Data, IndexKey> {
  public:
   RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
@@ -38,7 +38,7 @@ class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
                   const StatusCallback &callback) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                           const SecondaryKey &index_key, const Data &data,
+                           const IndexKey &index_key, const Data &data,
                            const StatusCallback &callback) override;
 
   Status AsyncGet(const std::string &table_name, const Key &key,
@@ -50,7 +50,7 @@ class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
   Status AsyncDelete(const std::string &table_name, const Key &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const SecondaryKey &index_key,
+  Status AsyncDeleteByIndex(const std::string &table_name, const IndexKey &index_key,
                             const StatusCallback &callback) override;
 
  private:
