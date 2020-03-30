@@ -10,10 +10,14 @@ TESTED_LIBRARIES = ["pyarrow"]
 
 def test_imports():
     for library in TESTED_LIBRARIES:
-        subprocess.check_output(
-            ["python", "-c", "import {}; import {}".format(library, "ray")])
-        subprocess.check_output(
-            ["python", "-c", "import {}; import {}".format("ray", library)])
+        try:
+            subprocess.check_output(
+                ["python", "-c", "import {}; import {}".format(library, "ray")])
+            subprocess.check_output(
+                ["python", "-c", "import {}; import {}".format("ray", library)])
+        except Exception as e:
+            print(subprocess.run(["python","-c","import {0}; print('{0}',{0}.__version__)".format(library)]))
+            raise e
 
 
 if __name__ == "__main__":
