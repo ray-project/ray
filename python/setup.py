@@ -76,9 +76,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 extras = {
     "debug": [],  # These are kept empty for backward compatibility.
     "dashboard": [],
-    "serve": [
-        "uvicorn", "flask", "blist", "hdrhistogram", "prometheus_client"
-    ],
+    "serve": ["uvicorn", "flask", "blist", "tdigest", "prometheus_client"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 

@@ -1,7 +1,7 @@
 import time
 from collections import Counter
 
-from hdrh.histogram import HdrHistogram
+from tdigest import TDigest
 from prometheus_client import CollectorRegistry
 
 import ray
