@@ -67,7 +67,7 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
       actor.set_state(rpc::ActorTableData::ALIVE);
       ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
       actor.set_actor_id(actor_id.Binary());
-      
+
       key_to_value_[actor_id] = actor;
 
       key_to_index_[actor_id] = job_id;

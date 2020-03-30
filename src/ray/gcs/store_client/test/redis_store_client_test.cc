@@ -33,7 +33,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
   }
 
   void DisconnectStoreClient() override { store_client_->Disconnect(); }
-
 };
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
@@ -44,8 +43,8 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(
-        table_name_, elem.first.Binary(), elem.second, put_calllback);
+    Status status = store_client_->AsyncPut(table_name_, elem.first.Binary(), elem.second,
+                                            put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -63,7 +62,8 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback);
+    Status status =
+        store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -74,8 +74,8 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   auto put_calllback = [this](Status status) { --pending_count_; };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(
-        table_name_, elem.first.Binary(), elem.second, put_calllback);
+    Status status = store_client_->AsyncPut(table_name_, elem.first.Binary(), elem.second,
+                                            put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -87,8 +87,8 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncDelete(
-        table_name_, elem.first.Binary(), delete_calllback);
+    Status status =
+        store_client_->AsyncDelete(table_name_, elem.first.Binary(), delete_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -101,8 +101,8 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncGet(
-        table_name_, elem.first.Binary(), get_callback);
+    Status status =
+        store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -144,8 +144,7 @@ TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
       };
 
   pending_count_ += key_to_value_.size();
-  Status status = store_client_->AsyncGetAll(
-      table_name_, get_all_callback);
+  Status status = store_client_->AsyncGetAll(table_name_, get_all_callback);
   RAY_CHECK_OK(status);
   WaitPendingDone();
 }

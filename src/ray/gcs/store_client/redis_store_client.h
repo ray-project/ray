@@ -37,18 +37,21 @@ class RedisStoreClient : public StoreClient {
 
   void Disconnect() override;
 
-  Status AsyncPut(const std::string &table_name, const std::string &key, const google::protobuf::Message &data,
+  Status AsyncPut(const std::string &table_name, const std::string &key,
+                  const google::protobuf::Message &data,
                   const StatusCallback &callback) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const google::protobuf::Message &data,
+                           const std::string &index_key,
+                           const google::protobuf::Message &data,
                            const StatusCallback &callback) override;
 
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
