@@ -36,7 +36,7 @@ so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL
-    CDLL(so_path, ctypes.RTLD_LOCAL)
+    CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 import ray._raylet  # noqa: E402
 
