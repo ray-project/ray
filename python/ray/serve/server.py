@@ -146,13 +146,8 @@ class HTTPProxy:
             await error_sender(str(e), 400)
             return
 
-        # create objects necessary for enqueue
-        # enclosing http_body_bytes to list due to
-        # https://github.com/ray-project/ray/issues/6944
-        # TODO(alind):  remove list enclosing after issue is fixed
-        args = (scope, [http_body_bytes])
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        request_in_object = RequestMetadata(
+        request_metadata = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
@@ -161,7 +156,8 @@ class HTTPProxy:
 
         try:
             result = await (self.serve_global_state.init_or_get_router()
-                            .enqueue_request.remote(request_in_object, *args))
+                            .enqueue_request.remote(request_metadata, scope,
+                                                    http_body_bytes))
             await Response(result).send(scope, receive, send)
         except Exception as e:
             error_message = "Internal Error. Traceback: {}.".format(e)

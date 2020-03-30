@@ -17,6 +17,7 @@ from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.queues import Query
+from ray.serve.request_params import RequestMetadata
 
 global_state = None
 
@@ -124,6 +125,9 @@ def init(
     # Register serialization context once
     ray.register_custom_serializer(Query, Query.ray_serialize,
                                    Query.ray_deserialize)
+    ray.register_custom_serializer(RequestMetadata,
+                                   RequestMetadata.ray_serialize,
+                                   RequestMetadata.ray_deserialize)
 
     if kv_store_path is None:
         _, kv_store_path = mkstemp()
