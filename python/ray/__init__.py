@@ -2,7 +2,6 @@ import os
 import logging
 from os.path import dirname
 import sys
-
 logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
@@ -37,7 +36,7 @@ so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL
-    CDLL(so_path, ctypes.RTLD_GLOBAL)
+    CDLL(so_path, ctypes.RTLD_LOCAL)
 
 import ray._raylet  # noqa: E402
 
