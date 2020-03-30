@@ -11,6 +11,7 @@ opencv-python-headless
 pandas
 pickle5
 pillow
+pyarrow
 pygments
 pyyaml
 recommonmark

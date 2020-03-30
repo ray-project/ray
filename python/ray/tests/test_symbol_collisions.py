@@ -9,18 +9,11 @@ TESTED_LIBRARIES = ["pyarrow"]
 
 
 def test_imports():
-    def try_imports(library1, library2):
-        return_info = subprocess.run([
-            "python", "-c", "import {}; import {}".format(library1, library2)
-        ])
-        if return_info.returncode != 0:
-            return "Importing {} before {} caused an error".format(
-                library1, library2)
-        return ""
-
     for library in TESTED_LIBRARIES:
-        assert try_imports("ray", library) == ""
-        assert try_imports(library, "ray") == ""
+        subprocess.check_output(
+            ["python", "-c", "import {}; import {}".format(library, "ray")])
+        subprocess.check_output(
+            ["python", "-c", "import {}; import {}".format("ray", library)])
 
 
 if __name__ == "__main__":
