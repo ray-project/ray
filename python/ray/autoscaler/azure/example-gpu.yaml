@@ -73,18 +73,13 @@ auth:
 # Note: the Azure Python SDK expects all parameter keys to be in slug_style
 #       the styles of parameter values are not changed
 head_node:
-    hardware_profile:
-        vm_size: Standard_NC6
-    storage_profile:
-        os_disk:
-            create_option: FromImage
-            caching: ReadWrite
-        image_reference:
-            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-            publisher: microsoft-dsvm
-            offer: ubuntu-1804
-            sku: 1804
-            version: 20.02.01
+    azure_arm_parameters:
+        vmSize: Standard_NC6
+        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+        imagePublisher: microsoft-dsvm
+        imageOffer: ubuntu-1804
+        imageSku: 1804
+        imageVersion: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields
@@ -93,21 +88,13 @@ head_node:
 # Note: the Azure Python SDK expects all parameter keys to be in slug_style
 #       the styles of parameter values are not changed
 worker_nodes:
-    hardware_profile:
-        vm_size: Standard_NC6
-    storage_profile:
-        os_disk:
-            create_option: FromImage
-            caching: ReadWrite
-        image_reference:
-            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-            publisher: microsoft-dsvm
-            offer: ubuntu-1804
-            sku: 1804
-            version: 20.02.01
-        # You can provision additional disk space as follows
-        # data_disks:
-        #    - disk_size_gb: 1024
+    azure_arm_parameters:
+        vmSize: Standard_NC6
+        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+        imagePublisher: microsoft-dsvm
+        imageOffer: ubuntu-1804
+        imageSku: 1804
+        imageVersion: 20.02.01
     # run workers on spot instances by default
     priority: Spot
     eviction_policy: Deallocate
@@ -135,7 +122,7 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U https://sdgraystorage.blob.core.windows.net/ray-wheels/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
