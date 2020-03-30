@@ -27,6 +27,12 @@ class SampleBatch:
     DONES = "dones"
     INFOS = "infos"
 
+    # Extra action fetches keys.
+    ACTION_DIST_CLASS = "action_dist_class"
+    ACTION_DIST_INPUTS = "action_dist_inputs"
+    ACTION_PROB = "action_prob"
+    ACTION_LOGP = "action_logp"
+
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
 

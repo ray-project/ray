@@ -198,7 +198,7 @@ class ParameterNoise(Exploration):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -206,8 +206,8 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
-            action_dist = softmax(distribution.inputs)
+        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
 
@@ -216,7 +216,7 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -224,8 +224,8 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
-            action_dist = softmax(distribution.inputs)
+        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
         if not self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
@@ -233,7 +233,7 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
+        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).

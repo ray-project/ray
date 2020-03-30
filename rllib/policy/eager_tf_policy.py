@@ -9,8 +9,7 @@ import numpy as np
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
-    ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
@@ -336,15 +335,13 @@ def build_eager_tf_policy(name,
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
+                    dist_class = dist_inputs = None
                     state_out = []
-                    action, logp = action_sampler_fn(
+                    actions, logp = self.action_sampler_fn(
                         self,
                         self.model,
-                        input_dict,
-                        self.observation_space,
-                        self.action_space,
-                        explore,
-                        self.config,
+                        input_dict[SampleBatch.CUR_OBS],
+                        explore=explore,
                         timestep=timestep)
                 else:
                     # Exploration hook before each forward pass.
@@ -366,24 +363,29 @@ def build_eager_tf_policy(name,
                     action_dist = dist_class(dist_inputs, self.model)
 
                     # Get the exploration action from the forward results.
-                    action, logp = self.exploration.get_exploration_action(
+                    actions, logp = self.exploration.get_exploration_action(
                         action_distribution=action_dist,
                         timestep=timestep,
                         explore=explore)
 
+            # Add default and custom fetches.
             extra_fetches = {}
+            # Action-logp and action-prob.
             if logp is not None:
-                extra_fetches.update({
-                    ACTION_PROB: tf.exp(logp),
-                    ACTION_LOGP: logp,
-                })
+                extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            # Action-dist inputs.
+            if dist_inputs is not None:
+                extra_fetches[SampleBatch.ACTION_DIST_CLASS] = dist_class
+                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+            # Custom extra fetches.
             if extra_action_fetches_fn:
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Increase our global sampling timestep counter by 1.
             self.global_timestep += 1
 
-            return action, state_out, extra_fetches
+            return actions, state_out, extra_fetches
 
         @override(Policy)
         def compute_log_likelihoods(self,
@@ -409,6 +411,9 @@ def build_eager_tf_policy(name,
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         prev_reward_batch),
                 })
+
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:

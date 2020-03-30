@@ -10,9 +10,6 @@ from ray.rllib.utils.from_config import from_config
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
 
-ACTION_PROB = "action_prob"
-ACTION_LOGP = "action_logp"
-
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
@@ -165,37 +162,6 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
-
-    @DeveloperAPI
-    def compute_action_distribution(self,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=True,
-                                    timestep=None,
-                                    is_training=True):
-        """Computes inputs to action distribution for a given observation.
-
-        Args:
-            obs_batch (Union[List,np.ndarray]): Batch of observations.
-            state_batches (Optional[list]): List of RNN state input batches,
-                if any.
-            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
-                action values.
-            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
-                rewards.
-            explore (bool): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep (int): The current (sampling) time step.
-
-        Returns:
-            Tuple:
-            - action_distribution (ActionDistribution): The parameterized and
-                instantiated action distribution object.
-            - states_out (List[np.ndarray]): List internal states outputs.
-        """
-        raise NotImplementedError
 
     @DeveloperAPI
     def compute_log_likelihoods(self,

@@ -6,8 +6,7 @@ import os
 import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
-    ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
@@ -416,13 +415,19 @@ class TFPolicy(Policy):
     def extra_compute_action_fetches(self):
         """Extra values to fetch and return from compute_actions().
 
-        By default we only return action probability info (if present).
+        By default we return action probability/log-likelihood info
+        and action distribution inputs (if present).
         """
-        ret = {}
+        extra_fetches = {}
+        # Action-logp and action-prob.
         if self._sampled_action_logp is not None:
-            ret[ACTION_PROB] = self._sampled_action_prob
-            ret[ACTION_LOGP] = self._sampled_action_logp
-        return ret
+            extra_fetches[SampleBatch.ACTION_PROB] = self._sampled_action_prob
+            extra_fetches[SampleBatch.ACTION_LOGP] = self._sampled_action_logp
+        # Action-dist inputs.
+        if self._distr_inputs is not None:
+            extra_fetches[SampleBatch.ACTION_DIST_CLASS] = self.dist_class
+            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._distr_inputs
+        return extra_fetches
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):

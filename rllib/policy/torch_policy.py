@@ -1,8 +1,7 @@
 import numpy as np
 import time
 
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
-    ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -108,7 +107,14 @@ class TorchPolicy(Policy):
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
             if self.action_sampler_fn:
-                actions, logp = self.action_sampler_fn()
+                dist_class = dist_inputs = None
+                state_out = []
+                actions, logp = self.action_sampler_fn(
+                    self,
+                    self.model,
+                    input_dict[SampleBatch.CUR_OBS],
+                    explore=explore,
+                    timestep=timestep)
             else:
                 # Call the exploration before_compute_actions hook.
                 self.exploration.before_compute_actions(timestep=timestep)
@@ -119,9 +125,9 @@ class TorchPolicy(Policy):
                             explore=explore, timestep=timestep)
                 else:
                     dist_class = self.dist_class
-                    model_out = self.model(input_dict, state_batches,
-                                           self._convert_to_tensor([1]))
-                    dist_inputs, state_out = model_out
+                    dist_inputs, state_out = self.model(
+                        input_dict, state_batches,
+                        self._convert_to_tensor([1]))
                 action_dist = dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.
@@ -132,16 +138,21 @@ class TorchPolicy(Policy):
                         explore=explore)
 
             input_dict[SampleBatch.ACTIONS] = actions
-            extra_action_out = self.extra_action_out(input_dict, state_batches,
-                                                     self.model, action_dist)
+
+            # Add default and custom fetches.
+            extra_fetches = self.extra_action_out(input_dict, state_batches,
+                                                  self.model, action_dist)
+            # Action-logp and action-prob.
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
-                extra_action_out.update({
-                    ACTION_PROB: np.exp(logp),
-                    ACTION_LOGP: logp
-                })
+                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            # Action-dist inputs.
+            if dist_inputs is not None:
+                extra_fetches[SampleBatch.ACTION_DIST_CLASS] = dist_class
+                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
             return convert_to_non_torch_type((actions, state_out,
-                                              extra_action_out))
+                                              extra_fetches))
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -166,6 +177,9 @@ class TorchPolicy(Policy):
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
         with torch.no_grad():
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
+
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
