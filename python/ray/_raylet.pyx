@@ -417,25 +417,27 @@ cdef execute_task(
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
-                metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                object_ids = VectorToObjectIDs(c_arg_reference_ids)
-
-                if core_worker.current_actor_is_asyncio():
-                    # We deserialize objects in event loop thread to prevent
-                    # segfaults. See #7799
-                    def deserialize_args():
-                        return ray.worker.global_worker.deserialize_objects(
-                            metadata_pairs, object_ids)
-                    args = core_worker.run_function_in_event_loop(
-                        deserialize_args)
                 else:
-                    args = ray.worker.global_worker.deserialize_objects(
-                        metadata_pairs, object_ids)
+                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                    object_ids = VectorToObjectIDs(c_arg_reference_ids)
 
-                for arg in args:
-                    if isinstance(arg, RayError):
-                        raise arg
-                args, kwargs = ray.signature.recover_args(args)
+                    if core_worker.current_actor_is_asyncio():
+                        # We deserialize objects in event loop thread to
+                        # prevent segfaults. See #7799
+                        def deserialize_args():
+                            return (ray.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_ids))
+                        args = core_worker.run_function_in_event_loop(
+                            deserialize_args)
+                    else:
+                        args = ray.worker.global_worker.deserialize_objects(
+                            metadata_pairs, object_ids)
+
+                    for arg in args:
+                        if isinstance(arg, RayError):
+                            raise arg
+                    args, kwargs = ray.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
