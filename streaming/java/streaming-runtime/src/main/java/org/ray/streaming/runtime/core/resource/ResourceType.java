@@ -3,7 +3,7 @@ package org.ray.streaming.runtime.core.resource;
 /**
  * Key for different type of resources.
  */
-public enum ResourceKey {
+public enum ResourceType {
 
   /**
    *Cpu resource key.
@@ -22,7 +22,7 @@ public enum ResourceKey {
 
   private String value;
 
-  ResourceKey(String value) {
+  ResourceType(String value) {
     this.value = value;
   }
 
