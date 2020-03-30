@@ -29,7 +29,7 @@ class DurableTrainable(Trainable):
     >>> tune.run(MyDurableTrainable, sync_to_driver=False)
     """
 
-    def __init__(self, remote_checkpoint_dir=None, *args, **kwargs):
+    def __init__(self, *args, remote_checkpoint_dir=None, **kwargs):
         """Initializes a DurableTrainable.
 
         Args:
