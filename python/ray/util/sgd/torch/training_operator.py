@@ -1,6 +1,4 @@
 import collections
-
-from tqdm import tqdm
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -18,6 +16,11 @@ except ImportError:
     # where amp is initialized.
     pass
 
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
+    pass
 
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
@@ -76,6 +79,8 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        if tqdm is None and use_tqdm:
+            raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
 
