@@ -67,7 +67,8 @@ extensions = [
 
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples", "tune/guides"],  # path to example scripts
-    "gallery_dirs": ["auto_examples", "tune/generated_guides"],  # path where to save generated examples
+    # path where to save generated examples
+    "gallery_dirs": ["auto_examples", "tune/generated_guides"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
@@ -138,7 +139,6 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
 exclude_patterns += sphinx_gallery_conf['examples_dirs']
-exclude_patterns += ["*/README.rst"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.

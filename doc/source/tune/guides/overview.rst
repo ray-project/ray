@@ -3,6 +3,7 @@ Tune Guides and Tutorials
 
 .. customgalleryitem::
    :tooltip: Getting started with Tune.
+   :figure: /images/tune.png
    :description: :doc:`plot_tune-tutorial`
 
 .. customgalleryitem::

@@ -56,7 +56,7 @@ Local Cluster Setup
 
 If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
 
-.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+.. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
 
 ``ray up`` starts Ray on the cluster of nodes.
@@ -107,7 +107,7 @@ Launching a cloud cluster
 
 Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
 
-.. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
+.. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
    :name: tune-default.yaml
 
@@ -180,14 +180,14 @@ Spot instances may be removed suddenly while trials are still running. Often tim
 
 The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in the example below:
 
-.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch_trainable.py
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_trainable.py
    :language: python
    :start-after: __trainable_example_begin__
    :end-before: __trainable_example_end__
 
 This can then be used similarly to the Function API as before:
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
     :language: python
     :start-after: __trainable_run_begin__
     :end-before: __trainable_run_end__
@@ -198,13 +198,13 @@ Example for using spot instances (AWS)
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
-1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
+1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py </../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
 
 .. code-block:: bash
 
     $ pip install ray torch torchvision filelock
 
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
+2. Download an example cluster yaml here: :download:`tune-default.yaml </../../python/ray/tune/examples/tune-default.yaml>`
 3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
 
 .. code-block:: bash

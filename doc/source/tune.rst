@@ -34,14 +34,10 @@ For more information, check out:
 Quick Start
 -----------
 
-To run this example, you will need to install the following:
-
-.. code-block:: bash
-
-    $ pip install 'ray[tune]' torch torchvision
+To run this example, install the following: ``pip install 'ray[tune]' torch torchvision``.
 
 
-This example runs a small grid search to train a CNN using PyTorch and Tune.
+This example runs a small grid search to train a convolutional neural network using PyTorch and Tune.
 
 .. literalinclude:: ../../python/ray/tune/tests/example.py
    :language: python

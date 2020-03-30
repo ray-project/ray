@@ -18,7 +18,7 @@ This tutorial will walk you through the following process to setup a Tune experi
 
 We first run some imports:
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __tutorial_imports_begin__
    :end-before: __tutorial_imports_end__
@@ -26,7 +26,7 @@ We first run some imports:
 
 Below, we have some boiler plate code for a PyTorch training function.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
@@ -48,14 +48,14 @@ Notice that there's a couple helper functions in the above training script. You 
 
 Let's run 1 trial, randomly sampling from a uniform distribution for learning rate and momentum.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
 We can then plot the performance of this trial.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __plot_begin__
    :end-before: __plot_end__
@@ -73,14 +73,14 @@ allocates more time and resources to more promising trials. See `this blog post 
 
 We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __run_scheduler_begin__
    :end-before: __run_scheduler_end__
 
 You can run the below in a Jupyter notebook to visualize trial progress.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __plot_scheduler_begin__
    :end-before: __plot_scheduler_end__
@@ -101,7 +101,7 @@ Search Algorithms in Tune
 
 With Tune you can combine powerful hyperparameter search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_ and `Ax <https://ax.dev>`_ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See the `Search Algorithm section <tune-searchalg.html>`__ for more details of available algorithms and library integrations.
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __run_searchalg_begin__
    :end-before: __run_searchalg_end__
@@ -112,7 +112,7 @@ Evaluate your model
 
 You can evaluate best trained model using the Analysis object to retrieve the best model:
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __run_analysis_begin__
    :end-before: __run_analysis_end__
