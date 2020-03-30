@@ -22,7 +22,7 @@ def echo_v2(_):
 serve.init(blocking=True, queueing_policy=serve.RoutePolicy.RoundRobin)
 
 # create a service
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
+serve.create_endpoint("my_endpoint", "/echo")
 
 # create first backend
 serve.create_backend(echo_v1, "echo:v1")

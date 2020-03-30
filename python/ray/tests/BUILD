@@ -221,7 +221,7 @@ py_test(
 
 py_test(
     name = "test_global_gc",
-    size = "small",
+    size = "medium",
     srcs = ["test_global_gc.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -404,6 +404,14 @@ py_test(
     name = "test_numba",
     size = "small",
     srcs = ["test_numba.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_symbol_collisions",
+    size = "small",
+    srcs = ["test_symbol_collisions.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

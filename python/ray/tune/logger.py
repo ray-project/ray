@@ -239,9 +239,10 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
+                flat_result = flatten_dict(self.last_result, delimiter="/")
                 scrubbed_result = {
                     k: value
-                    for k, value in self.last_result.items()
+                    for k, value in flat_result.items()
                     if type(value) in VALID_SUMMARY_TYPES
                 }
                 self._try_log_hparams(scrubbed_result)
@@ -249,9 +250,10 @@ class TBXLogger(Logger):
 
     def _try_log_hparams(self, result):
         # TBX currently errors if the hparams value is None.
+        flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in self.trial.evaluated_params.items() if v is not None
+            for k, v in flat_params.items() if v is not None
         }
         from tensorboardX.summary import hparams
         experiment_tag, session_start_tag, session_end_tag = hparams(

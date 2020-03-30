@@ -8,7 +8,7 @@ import tempfile
 import torch
 
 import ray
-from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP
+from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP, NUM_STEPS
 from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd import utils
 
@@ -49,6 +49,7 @@ class TorchRunner:
                  training_operator_cls=None,
                  config=None,
                  use_fp16=False,
+                 use_tqdm=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         self.model_creator = model_creator
@@ -68,6 +69,7 @@ class TorchRunner:
         self.train_loader = None
         self.validation_loader = None
         self.use_fp16 = use_fp16
+        self.use_tqdm = use_tqdm
         self.apex_args = apex_args or {}
         if use_fp16 and not amp:
             raise ImportError(
@@ -156,8 +158,12 @@ class TorchRunner:
             models=self.models,
             optimizers=self.optimizers,
             criterion=self.criterion,
+            train_loader=self.train_loader,
+            validation_loader=self.validation_loader,
+            world_rank=0,
             schedulers=self.schedulers,
-            use_fp16=self.use_fp16)
+            use_fp16=self.use_fp16,
+            use_tqdm=self.use_tqdm)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -174,6 +180,7 @@ class TorchRunner:
         self._toggle_profiling(profile=profile)
 
         info.update({
+            NUM_STEPS: num_steps,
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })

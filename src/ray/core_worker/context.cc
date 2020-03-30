@@ -103,13 +103,13 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
-    current_task_is_direct_call_ = task_spec.IsDirectCall();
+    current_task_is_direct_call_ = true;
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_is_direct_call_ = task_spec.IsDirectActorCreationCall();
+    current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
   } else if (task_spec.IsActorTask()) {

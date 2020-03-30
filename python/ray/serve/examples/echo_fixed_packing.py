@@ -29,7 +29,7 @@ serve.init(
     policy_kwargs={"packing_num": 5})
 
 # create a service
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
+serve.create_endpoint("my_endpoint", "/echo")
 
 # create first backend
 serve.create_backend(echo_v1, "echo:v1")
