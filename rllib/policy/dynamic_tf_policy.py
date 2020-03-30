@@ -71,9 +71,10 @@ class DynamicTFPolicy(TFPolicy):
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (Optional[callable]): A callable returning a
-                sampled action and its log-likelihood given some (obs and
-                state) inputs.
+            action_sampler_fn (Optional[callable]): An optional callable
+                 returning a tuple of action and action prob tensors given
+                 (policy, model, input_dict, obs_space, action_space, config).
+                 If None, a default action distribution will be used.
             action_distribution_fn (Optional[callable]): A callable returning
                 distribution inputs (parameters), a dist-class to generate an
                 action distribution object from, and internal-state outputs
@@ -189,8 +190,7 @@ class DynamicTFPolicy(TFPolicy):
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
-            # Only the distribution generation is customized,
-            # sampling will happen through our exploration object.
+            # Distribution generation is customized.
             if action_distribution_fn:
                 dist_inputs, dist_class, self._state_out = \
                     action_distribution_fn(
@@ -204,11 +204,13 @@ class DynamicTFPolicy(TFPolicy):
                             SampleBatch.PREV_REWARDS],
                         explore=explore,
                         is_training=self._input_dict["is_training"])
-            # Default behavior. Pass through model, then sample.
+            # Default distribution generation behavior: Pass through model.
             else:
                 dist_inputs, self._state_out = self.model(
                     self._input_dict, self._state_in, self._seq_lens)
+
             action_dist = dist_class(dist_inputs, self.model)
+
             # Using exploration to get final action (e.g. via sampling).
             sampled_action, sampled_action_logp = \
                 self.exploration.get_exploration_action(
