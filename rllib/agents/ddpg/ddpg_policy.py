@@ -126,8 +126,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs.
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                action_distribution=Deterministic(
-                    self._distribution_inputs, self.model),
+                action_distribution=Deterministic(self._distribution_inputs,
+                                                  self.model),
                 timestep=timestep,
                 explore=explore)
 

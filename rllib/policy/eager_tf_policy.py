@@ -250,8 +250,8 @@ def build_eager_tf_policy(name,
                 dist_inputs, self.dist_class, _ = action_distribution_fn(
                     self, self.model, input_dict[SampleBatch.CUR_OBS])
             else:
-                self.model(
-                    input_dict, self._state_in, tf.convert_to_tensor([1]))
+                self.model(input_dict, self._state_in,
+                           tf.convert_to_tensor([1]))
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -410,22 +410,16 @@ def build_eager_tf_policy(name,
                         prev_reward_batch),
                 })
 
+            # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:
                 dist_inputs, dist_class, _ = action_distribution_fn(
-                    # TODO
-                )
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
                 action_dist = dist_class(dist_inputs, self.model)
                 log_likelihoods = action_dist.logp(actions)
-            # Custom log_likelihood function given.
-            elif action_sampler_fn and isinstance(self.action_space, Discrete):
-                actions, logp = action_sampler_fn(
-                    self, self.model, actions, input_dict,
-                    self.observation_space, self.action_space, self.config)
-                log_likelihoods = logp
             # Default log-likelihood calculation.
             else:
-                dist_inputs, _ = self.model(
-                    input_dict, state_batches, seq_lens)
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            seq_lens)
                 action_dist = self.dist_class(dist_inputs, self.model)
                 log_likelihoods = action_dist.logp(actions)
 

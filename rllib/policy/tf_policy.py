@@ -550,8 +550,7 @@ class TFPolicy(Policy):
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore,
-            tf_sess=self.get_session())
+            timestep=timestep, explore=explore, tf_sess=self.get_session())
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):

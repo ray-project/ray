@@ -49,11 +49,11 @@ class Random(Exploration):
                                explore: bool = True):
         # Instantiate the distribution object.
         if self.framework == "tf":
-            return self.get_tf_exploration_action_op(
-                action_distribution, explore)
+            return self.get_tf_exploration_action_op(action_distribution,
+                                                     explore)
         else:
-            return self.get_torch_exploration_action(
-                action_distribution, explore)
+            return self.get_torch_exploration_action(action_distribution,
+                                                     explore)
 
     def get_tf_exploration_action_op(self, action_dist, explore):
         def true_fn():

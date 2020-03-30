@@ -79,14 +79,14 @@ def build_torch_policy(name,
                 before_init(self, obs_space, action_space, config)
 
             if make_model_and_action_dist:
-                self.model, self.dist_class = make_model_and_action_dist(
+                self.model, dist_class = make_model_and_action_dist(
                     self, obs_space, action_space, config)
                 # Make sure, we passed in a correct Model factory.
                 assert isinstance(self.model, TorchModelV2), \
                     "ERROR: TorchPolicy::make_model_and_action_dist must " \
                     "return a TorchModelV2 object!"
             else:
-                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
                     obs_space,
@@ -95,8 +95,16 @@ def build_torch_policy(name,
                     self.config["model"],
                     framework="torch")
 
-            TorchPolicy.__init__(self, obs_space, action_space, config,
-                                 self.model, loss_fn, self.dist_class)
+            TorchPolicy.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                model=self.model,
+                loss=loss_fn,
+                action_distribution_class=dist_class,
+                action_sampler_fn=action_sampler_fn,
+                action_distribution_fn=action_distribution_fn)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

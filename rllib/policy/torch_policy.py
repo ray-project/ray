@@ -26,8 +26,16 @@ class TorchPolicy(Policy):
         dist_class (type): Torch action distribution class.
     """
 
-    def __init__(self, observation_space, action_space, config, model, loss,
-                 action_distribution_class):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 *,
+                 model,
+                 loss,
+                 action_distribution_class,
+                 action_sampler_fn=None,
+                 action_distribution_fn=None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -44,6 +52,18 @@ class TorchPolicy(Policy):
                 train_batch) and returns a single scalar loss.
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
+            action_sampler_fn (Optional[callable]): A callable returning a
+                sampled action and its log-likelihood given some (obs and
+                state) inputs.
+            action_distribution_fn (Optional[callable]): A callable returning
+                distribution inputs (parameters), a dist-class to generate an
+                action distribution object from, and internal-state outputs
+                (or an empty list if not applicable).
+                Note: No Exploration hooks have to be called from within
+                `action_distribution_fn`. It's should only perform a simple
+                forward pass through some model.
+                If None, pass inputs through `self.model()` to get the
+                distribution inputs.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
@@ -54,7 +74,10 @@ class TorchPolicy(Policy):
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizer = self.optimizer()
+
         self.dist_class = action_distribution_class
+        self.action_sampler_fn = action_sampler_fn
+        self.action_distribution_fn = action_distribution_fn
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -84,32 +107,33 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
-            #action_dist, state_out = \
-            #    self.compute_action_distribution(
-            #        obs_batch=obs_batch,
-            #        state_batches=state_batches,
-            #        prev_action_batch=prev_action_batch,
-            #        prev_reward_batch=prev_reward_batch,
-            #        timestep=timestep,
-            #        explore=explore,
-            #        is_training=False
-            #    )
+            if self.action_sampler_fn:
+                actions, logp = self.action_sampler_fn()
+            else:
+                # Call the exploration before_compute_actions hook.
+                self.exploration.before_compute_actions(timestep=timestep)
+                if self.action_distribution_fn:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self, self.model, input_dict[SampleBatch.CUR_OBS],
+                            explore=explore, timestep=timestep)
+                else:
+                    dist_class = self.dist_class
+                    model_out = self.model(input_dict, state_batches,
+                                           self._convert_to_tensor([1]))
+                    dist_inputs, state_out = model_out
+                action_dist = dist_class(dist_inputs, self.model)
 
-            # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(timestep=timestep)
+                # Get the exploration action from the forward results.
+                actions, logp = \
+                    self.exploration.get_exploration_action(
+                        action_distribution=action_dist,
+                        timestep=timestep,
+                        explore=explore)
 
-            model_out = self.model(input_dict, state_batches,
-                                   self._convert_to_tensor([1]))
-            logits, state_out = model_out
-            action_dist = self.dist_class(logits, self.model)
-            actions, logp = \
-                self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore)
             input_dict[SampleBatch.ACTIONS] = actions
-            extra_action_out = self.extra_action_out(
-                input_dict, state_batches, self.model, action_dist)
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model, action_dist)
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
@@ -119,32 +143,6 @@ class TorchPolicy(Policy):
             return convert_to_non_torch_type((actions, state_out,
                                               extra_action_out))
 
-    def compute_action_distribution(self,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=True,
-                                    timestep=None,
-                                    is_training=True):
-        input_dict = self._lazy_tensor_dict({
-            SampleBatch.CUR_OBS: obs_batch,
-        })
-        if prev_action_batch:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-        if prev_reward_batch:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-
-        with torch.no_grad():
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(
-                timestep=timestep, explore=explore)
-
-            dist_inputs, state_out = self.model(input_dict, state_batches, [1])
-            action_dist = self.dist_class(dist_inputs, self.model)
-
-            return action_dist, state_out
-
     @override(Policy)
     def compute_log_likelihoods(self,
                                 actions,
@@ -152,20 +150,40 @@ class TorchPolicy(Policy):
                                 state_batches=None,
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
+
+        if self.action_sampler_fn and self.action_distribution_fn is None:
+            raise ValueError("Cannot compute log-prob/likelihood w/o an "
+                             "`action_distribution_fn` and a provided "
+                             "`action_sampler_fn`!")
+
+        input_dict = self._lazy_tensor_dict({
+            SampleBatch.CUR_OBS: obs_batch,
+            SampleBatch.ACTIONS: actions
+        })
+        if prev_action_batch:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+        if prev_reward_batch:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+
         with torch.no_grad():
-            action_dist = \
-                self.compute_action_distribution(
-                    obs_batch=obs_batch,
-                    state_batches=state_batches,
-                    prev_action_batch=prev_action_batch,
-                    prev_reward_batch=prev_reward_batch,
-                    is_training=False
-                )
+            # Action dist class and inputs are generated via custom function.
+            if self.action_distribution_fn:
+                dist_inputs, dist_class, _ = self.action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+            # Default action-dist inputs calculation.
+            else:
+                dist_class = self.dist_class
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            self._convert_to_tensor([1]))
+
+            action_dist = dist_class(dist_inputs, self.model)
+
             action_tensor = self._lazy_tensor_dict({
                 SampleBatch.ACTIONS: actions
             })
             log_likelihoods = action_dist.logp(
                 action_tensor[SampleBatch.ACTIONS])
+
             return log_likelihoods
 
     @override(Policy)

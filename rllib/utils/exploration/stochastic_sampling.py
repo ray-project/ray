@@ -67,11 +67,11 @@ class StochasticSampling(Exploration):
         #        kwargs[k] = v(timestep)
 
         if self.framework == "torch":
-            return self._get_torch_exploration_action(
-                action_distribution, explore)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore)
         else:
-            return self._get_tf_exploration_action_op(
-                action_distribution, explore)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore)
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
         sample = action_dist.sample()
