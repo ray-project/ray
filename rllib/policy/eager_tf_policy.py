@@ -238,7 +238,6 @@ def build_eager_tf_policy(name,
                 tf.convert_to_tensor(np.array([s]))
                 for s in self.model.get_initial_state()
             ]
-
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
@@ -246,7 +245,13 @@ def build_eager_tf_policy(name,
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
-            self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
+
+            if action_distribution_fn:
+                dist_inputs, self.dist_class, _ = action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+            else:
+                self.model(
+                    input_dict, self._state_in, tf.convert_to_tensor([1]))
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -346,9 +351,20 @@ def build_eager_tf_policy(name,
                     self.exploration.before_compute_actions(
                         timestep=timestep, explore=explore)
 
-                    model_out, state_out = self.model(
-                        input_dict, state_batches, tf.convert_to_tensor([1]))
-                    action_dist = self.dist_class(model_out, self.model)
+                    if action_distribution_fn:
+                        dist_inputs, dist_class, state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore, timestep=timestep)
+                    else:
+                        dist_class = self.dist_class
+                        dist_inputs, state_out = self.model(
+                            input_dict, state_batches,
+                            tf.convert_to_tensor([1]))
+
+                    action_dist = dist_class(dist_inputs, self.model)
+
                     # Get the exploration action from the forward results.
                     action, logp = self.exploration.get_exploration_action(
                         action_distribution=action_dist,

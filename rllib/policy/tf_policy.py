@@ -61,9 +61,8 @@ class TFPolicy(Policy):
                  sampled_action_logp=None,
                  action_input=None,
                  log_likelihood=None,
-                 action_distribution=None,
-                 #distribution_inputs=None,
-                 #dist_class=None,
+                 dist_inputs=None,
+                 dist_class=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -100,11 +99,10 @@ class TFPolicy(Policy):
                 logp/log-likelihood calculations.
             log_likelihood (Optional[Tensor]): Tensor to calculate the
                 log_likelihood (given action_input and obs_input).
-            action_distribution (Optional[ActionDistribution): An optional
-                action distribution object to use for default action sampling
-                behavior (through the Exploration object).
-            #distribution_inputs (Optional[Tensor]): Tensor to calculate
-            #    only the distribution inputs.
+            dist_class (Optional[type): An optional ActionDistribution class
+                to use for generating a dist object from distribution inputs.
+            dist_inputs (Optional[Tensor]): Tensor to calculate the
+                distribution inputs/parameters.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -140,7 +138,8 @@ class TFPolicy(Policy):
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
-        self._action_distribution = action_distribution
+        self._distr_inputs = dist_inputs
+        self.dist_class = dist_class
         self._log_likelihood = log_likelihood
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
@@ -174,10 +173,9 @@ class TFPolicy(Policy):
 
         # The log-likelihood calculator op.
         self._log_likelihood = None
-        if self._action_distribution is not None and \
-                self._action_input is not None:
-            self._log_likelihood = self._action_distribution.logp(
-                self._action_input)
+        if self._distr_inputs is not None and self.dist_class is not None:
+            self._log_likelihood = self.dist_class(
+                self._distr_inputs, self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -277,13 +275,12 @@ class TFPolicy(Policy):
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             explore=explore,
-            timestep=timestep,
-            fetch_dist_inputs=True)
+            timestep=timestep)
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
 
-        return fetched[:-1]
+        return fetched
 
     @override(Policy)
     def compute_log_likelihoods(self,

@@ -192,7 +192,7 @@ class DynamicTFPolicy(TFPolicy):
             # Only the distribution generation is customized,
             # sampling will happen through our exploration object.
             if action_distribution_fn:
-                dist_inputs, self._state_out = \
+                dist_inputs, dist_class, self._state_out = \
                     action_distribution_fn(
                         self, self.model,
                         obs_batch=self._input_dict[SampleBatch.CUR_OBS],
