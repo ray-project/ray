@@ -417,11 +417,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
 }
 
-CoreWorker::~CoreWorker() {
-  io_service_.stop();
-  io_thread_.join();
-}
-
 void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {

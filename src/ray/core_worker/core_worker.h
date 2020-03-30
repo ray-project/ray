@@ -225,8 +225,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] worker_id ID of this worker.
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
-  virtual ~CoreWorker();
-
   CoreWorker(CoreWorker const &) = delete;
   void operator=(CoreWorker const &other) = delete;
 
