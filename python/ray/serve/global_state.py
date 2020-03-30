@@ -133,7 +133,7 @@ class GlobalState:
     """
 
     def __init__(self, master_actor=None):
-        # Get actor nursery handle
+        # Get actor nursery handle.
         if master_actor is None:
             master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
         self.master_actor = master_actor
