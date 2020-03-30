@@ -400,8 +400,7 @@ class MetricsExportHandler:
 def setup_metrics_export_routes(app: aiohttp.web.Application,
                                 handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
-    app.router.add_get("/api/metrics/enable",
-                       handler.enable_export_metrics)
+    app.router.add_get("/api/metrics/enable", handler.enable_export_metrics)
     app.router.add_get("/api/metrics/url", handler.get_dashboard_address)
     app.router.add_get("/metrics/redirect", handler.redirect_to_dashboard)
 
@@ -1139,8 +1138,7 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             redis_password=args.redis_password,
-            metrics_export_address=metrics_export_address
-        )
+            metrics_export_address=metrics_export_address)
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
