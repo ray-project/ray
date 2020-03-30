@@ -31,7 +31,7 @@ public class ExecutionEdge implements Serializable {
   }
 
   private String generateExecutionEdgeIndex() {
-    return sourceVertex.getVertexId() + "—" + targetVertex.getVertexId();
+    return sourceVertex.getId() + "—" + targetVertex.getId();
   }
 
   public ExecutionVertex getSourceVertex() {
@@ -43,11 +43,11 @@ public class ExecutionEdge implements Serializable {
   }
 
   public int getSourceVertexId() {
-    return sourceVertex.getVertexId();
+    return sourceVertex.getId();
   }
 
   public int getTargetVertexId() {
-    return targetVertex.getVertexId();
+    return targetVertex.getId();
   }
 
   public String getExecutionEdgeIndex() {

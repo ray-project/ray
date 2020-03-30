@@ -38,7 +38,7 @@ public class ExecutionJobEdge {
   }
 
   private String generateExecutionJobEdgeIndex() {
-    return sourceVertex.getJobVertexId() + "—" + targetVertex.getJobVertexId();
+    return sourceVertex.getOperatorId() + "—" + targetVertex.getOperatorId();
   }
 
   public ExecutionJobVertex getSourceVertex() {

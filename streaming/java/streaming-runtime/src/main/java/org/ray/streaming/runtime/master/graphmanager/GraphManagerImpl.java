@@ -44,14 +44,14 @@ public class GraphManagerImpl implements GraphManager {
 
   private ExecutionGraph setupStructure(JobGraph jobGraph) {
     ExecutionGraph executionGraph = new ExecutionGraph(jobGraph.getJobName());
+    Map<String, String> jobConfig = jobGraph.getJobConfig();
 
     // create vertex
     Map<Integer, ExecutionJobVertex> exeJobVertexMap = new LinkedHashMap<>();
     long buildTime = executionGraph.getBuildTime();
     for (JobVertex jobVertex : jobGraph.getJobVertexList()) {
       int jobVertexId = jobVertex.getVertexId();
-      exeJobVertexMap.put(jobVertexId,
-          new ExecutionJobVertex(jobVertex, runtimeContext));
+      exeJobVertexMap.put(jobVertexId, new ExecutionJobVertex(jobVertex, jobConfig, executionGraph.getLastExecutionVertexIndex()));
     }
 
     // connect vertex
