@@ -55,22 +55,22 @@ const styles = (theme: Theme) =>
       fontSize: "0.875rem",
     },
     inlineHTML: {
-      fontSize: "0.875rem",
       display: "inline",
+      fontSize: "0.875rem",
     },
     warningTooManyPendingTask: {
-      fontWeight: "bold",
       color: theme.palette.error.main,
       "&:not(:first-child)": {
         marginLeft: theme.spacing(2),
       },
+      fontWeight: "bold",
     },
     actorTitle: {
       fontWeight: "bold",
     },
     secondaryFields: {
-      fontSize: "0.875rem",
       color: theme.palette.text.secondary,
+      fontSize: "0.875rem",
     },
   });
 
@@ -91,7 +91,8 @@ type State = {
 
 type ActorInformation = {
   label: string;
-  value: string;
+  value: string | null;
+  priority: "primary" | "secondary";
 };
 
 const ActorStateHumanNames = {
@@ -160,11 +161,14 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "ActorTitle",
               value: actor.actorTitle,
+              priority: "primary",
             },
             {
               label: "State",
               // If the state is alive, there's no need to propogate that to user.
-              value: actor.state === 0 ? "" : ActorStateHumanNames[actor.state],
+              value:
+                actor.state === 0 ? null : ActorStateHumanNames[actor.state],
+              priority: "primary",
             },
             {
               label: "Resources",
@@ -174,33 +178,40 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : "",
+                  : null,
+              priority: "primary",
             },
             {
               label: "Pending",
               value: actor.taskQueueLength.toLocaleString(),
+              priority: "primary",
             },
             {
               label: "Executed",
               value: actor.numExecutedTasks.toLocaleString(),
+              priority: "primary",
             },
             {
               label: "NumObjectIdsInScope",
               value: actor.numObjectIdsInScope.toLocaleString(),
+              priority: "secondary",
             },
             {
               label: "NumLocalObjects",
               value: actor.numLocalObjects.toLocaleString(),
+              priority: "secondary",
             },
             {
               label: "UsedLocalObjectMemory",
               value: actor.usedObjectStoreMemory.toLocaleString(),
+              priority: "secondary",
             },
           ]
         : [
             {
               label: "ID",
               value: actor.actorId,
+              priority: "primary",
             },
             {
               label: "Required resources",
@@ -210,27 +221,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : "",
+                  : null,
+              priority: "primary",
             },
           ];
-
-    // Move some fields to the back and de-prioritize them.
-    const secondaryFields = [
-      "NumObjectIdsInScope",
-      "NumLocalObjects",
-      "UsedLocalObjectMemory",
-    ];
-    const secondaryRawInformation: ActorInformation[] = [];
-    secondaryFields.forEach((fieldName) => {
-      const foundIdx = rawInformation.findIndex(
-        (info) => info.label === fieldName,
-      );
-      if (foundIdx !== -1) {
-        const foundValue = rawInformation[foundIdx];
-        rawInformation.splice(foundIdx, 1);
-        secondaryRawInformation.push(foundValue);
-      }
-    });
 
     // Apply transformation to add styling for information field
     const transforms: Record<string, (info: ActorInformation) => ReactNode> = {
@@ -254,7 +248,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </span>
       ),
       Identity: (info: ActorInformation) =>
-        info.value.length === 0 ? null : (
+        info.value === null ? null : (
           <span className={classes.datum} key={info.label}>
             {info.label}: {info.value}
           </span>
@@ -270,10 +264,15 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         return transforms["Identity"](val);
       }
     };
-    const information = rawInformation.map(transformInformation);
-    const secondaryInformation = secondaryRawInformation.map(
-      transformInformation,
-    );
+
+    const informationElements = {
+      primary: rawInformation
+        .filter((i) => i.priority === "primary")
+        .map(transformInformation),
+      secondary: rawInformation
+        .filter((i) => i.priority === "secondary")
+        .map(transformInformation),
+    };
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
@@ -386,10 +385,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </span>
           )}
         </Typography>
-        <Typography className={classes.information}>{information}</Typography>
-        {secondaryInformation.length >= 0 && (
+        <Typography className={classes.information}>
+          {informationElements.primary}
+        </Typography>
+        {informationElements.secondary.length >= 0 && (
           <Typography className={classes.secondaryFields}>
-            {secondaryInformation}
+            {informationElements.secondary}
           </Typography>
         )}
         {actor.state !== -1 && (
