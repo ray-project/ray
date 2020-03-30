@@ -25,8 +25,9 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
   std::regex re_dq_escape(R"(\\([\\"]))"), re_escape(R"(\\(.))");
   bool was_space = true;
   std::string arg;
-  for (std::sregex_iterator i(s.begin(), s.end(), re_cmdline), end; i != end; ++i) {
-    const std::smatch &groups = *i;
+  std::smatch groups;
+  size_t i = 0;
+  while (std::regex_search(s.begin() + i, s.end(), groups, re_cmdline)) {
     bool space = false;
     if (groups[1].matched) {
       // single_quoted: No escaping: '\x\\y' is just \x\\y verbatim
@@ -47,6 +48,11 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
       space = true;
     }
     was_space = space;
+    size_t delta = groups.position() + groups.length();
+    if (!delta) {
+      break;
+    }
+    i += delta;
   }
   return result;
 }
@@ -66,8 +72,9 @@ static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   std::regex re_dq_escape(R"((\\*)\1(?:\\(")|$))"), re_escape(R"((\\*)\1\\("))");
   bool was_space = false;
   std::string arg;
-  for (std::sregex_iterator i(s.begin(), s.end(), re_cmdline), end; i != end; ++i) {
-    const std::smatch &groups = *i;
+  std::smatch groups;
+  size_t i = 0;
+  while (std::regex_search(s.begin() + i, s.end(), groups, re_cmdline)) {
     bool space = false;
     if (groups[1].matched) {
       // double_quoted: Backslashes are escapes only if they precede a double-quote
@@ -85,6 +92,11 @@ static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
       space = true;
     }
     was_space = space;
+    size_t delta = groups.position() + groups.length();
+    if (!delta) {
+      break;
+    }
+    i += delta;
   }
   return result;
 }
