@@ -12,7 +12,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.global_state import GlobalState, ServeMaster
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.serve.utils import block_until_http_ready, get_random_letters, expand
+from ray.serve.utils import block_until_http_ready, expand
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
@@ -315,65 +315,6 @@ def create_backend(func_or_class,
     _scale(backend_tag, backend_config_dict["num_replicas"])
 
 
-def _start_replica(backend_tag):
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-
-    replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
-
-    # get the info which starts the replicas
-    creator = global_state.backend_table.get_backend_creator(backend_tag)
-    backend_config_dict = global_state.backend_table.get_info(backend_tag)
-    backend_config = BackendConfig(**backend_config_dict)
-    init_args = global_state.backend_table.get_init_args(backend_tag)
-
-    # get actor creation kwargs
-    actor_kwargs = backend_config.get_actor_creation_args(init_args)
-
-    # Create the runner in the master actor
-    [runner_handle] = ray.get(
-        global_state.master_actor.start_actor_with_creator.remote(
-            creator, actor_kwargs, replica_tag))
-
-    # Setup the worker
-    ray.get(
-        runner_handle._ray_serve_setup.remote(backend_tag,
-                                              global_state.get_router(),
-                                              runner_handle))
-    runner_handle._ray_serve_fetch.remote()
-
-    # Register the worker in config tables as well as metric monitor
-    global_state.backend_table.add_replica(backend_tag, replica_tag)
-    monitor = global_state.get_metric_monitor()
-    monitor.add_target.remote(runner_handle)
-
-
-def _remove_replica(backend_tag):
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert (
-        len(global_state.backend_table.list_replicas(backend_tag)) >
-        0), "Backend {} does not have enough replicas to be removed.".format(
-            backend_tag)
-
-    replica_tag = global_state.backend_table.remove_replica(backend_tag)
-    [replica_handle] = ray.get(
-        global_state.master_actor.get_handle.remote(replica_tag))
-
-    # Remove the replica from metric monitor.
-    monitor = global_state.get_metric_monitor()
-    ray.get(monitor.remove_target.remote(replica_handle))
-
-    # Remove the replica from master actor.
-    ray.get(global_state.master_actor.remove_handle.remote(replica_tag))
-
-    # Remove the replica from router.
-    # This will also destroy the actor handle.
-    router = global_state.get_router()
-    ray.get(
-        router.remove_and_destory_replica.remote(backend_tag, replica_handle))
-
-
 @_ensure_connected
 def _scale(backend_tag, num_replicas):
     """Set the number of replicas for backend_tag.
@@ -393,10 +334,14 @@ def _scale(backend_tag, num_replicas):
 
     if delta_num_replicas > 0:
         for _ in range(delta_num_replicas):
-            _start_replica(backend_tag)
+            ray.get(
+                global_state.master_actor.start_backend_replica.remote(
+                    backend_tag))
     elif delta_num_replicas < 0:
         for _ in range(-delta_num_replicas):
-            _remove_replica(backend_tag)
+            ray.get(
+                global_state.master_actor.remove_backend_replica.remote(
+                    backend_tag))
 
 
 @_ensure_connected

@@ -1,10 +1,11 @@
 import ray
+from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import (SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
+from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
-
-from ray.serve.http_proxy import HTTPProxyActor
+from ray.serve.utils import get_random_letters
 
 
 @ray.remote
@@ -19,6 +20,9 @@ class ServeMaster:
 
     def __init__(self, kv_store_connector):
         self.kv_store_connector = kv_store_connector
+        self.route_table = RoutingTable(kv_store_connector)
+        self.backend_table = BackendTable(kv_store_connector)
+        self.policy_table = TrafficPolicyTable(kv_store_connector)
         self.tag_to_actor_handles = dict()
 
         self.router = None
@@ -62,26 +66,62 @@ class ServeMaster:
             "Metric monitor not started yet.")
         return [self.metric_monitor]
 
-    def start_actor_with_creator(self, creator, kwargs, tag):
-        """
-        Args:
-            creator (Callable[Dict]): a closure that should return
-                a newly created actor handle when called with kwargs.
-                The kwargs input is passed to `ActorCls_remote` method.
-        """
-        handle = creator(kwargs)
-        self.tag_to_actor_handles[tag] = handle
-        return [handle]
+    def start_backend_replica(self, backend_tag):
+        assert (backend_tag in self.backend_table.list_backends()
+                ), "Backend {} is not registered.".format(backend_tag)
+
+        replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
+
+        # Fetch the info to start the replica from the backend table.
+        creator = self.backend_table.get_backend_creator(backend_tag)
+        backend_config_dict = self.backend_table.get_info(backend_tag)
+        backend_config = BackendConfig(**backend_config_dict)
+        init_args = self.backend_table.get_init_args(backend_tag)
+        kwargs = backend_config.get_actor_creation_args(init_args)
+
+        runner_handle = creator(kwargs)
+        self.tag_to_actor_handles[replica_tag] = runner_handle
+
+        # Set up the worker.
+        # TODO(edoakes): this should probably be a blocking call, but that
+        # currently causes deadlock because setting up the actor requires
+        # initializing GlobalState within it, which calls into the master
+        # actor to get the KV store connector. We should avoid having any
+        # calls from children actors into the master actor for this reason.
+        runner_handle._ray_serve_setup.remote(backend_tag,
+                                              self.get_router()[0],
+                                              runner_handle)
+        runner_handle._ray_serve_fetch.remote()
+
+        # Register the worker in config tables and metric monitor.
+        self.backend_table.add_replica(backend_tag, replica_tag)
+        self.get_metric_monitor()[0].add_target.remote(runner_handle)
+
+    def remove_backend_replica(self, backend_tag):
+        assert (backend_tag in self.backend_table.list_backends()
+                ), "Backend {} is not registered.".format(backend_tag)
+        assert (
+            len(self.backend_table.list_replicas(backend_tag)) > 0
+        ), "Backend {} does not have enough replicas to be removed.".format(
+            backend_tag)
+
+        replica_tag = self.backend_table.remove_replica(backend_tag)
+        assert replica_tag in self.tag_to_actor_handles
+        replica_handle = self.tag_to_actor_handles.pop(replica_tag)
+
+        # Remove the replica from metric monitor.
+        [monitor] = self.get_metric_monitor()
+        ray.get(monitor.remove_target.remote(replica_handle))
+
+        # Remove the replica from router.
+        # This will also destroy the actor handle.
+        [router] = self.get_router()
+        ray.get(
+            router.remove_and_destory_replica.remote(backend_tag,
+                                                     replica_handle))
 
     def get_all_handles(self):
         return self.tag_to_actor_handles
-
-    def get_handle(self, actor_tag):
-        return [self.tag_to_actor_handles[actor_tag]]
-
-    def remove_handle(self, actor_tag):
-        if actor_tag in self.tag_to_actor_handles.keys():
-            self.tag_to_actor_handles.pop(actor_tag)
 
 
 class GlobalState:
