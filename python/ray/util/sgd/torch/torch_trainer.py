@@ -490,7 +490,12 @@ class TorchTrainer:
 
     def get_model(self):
         """Returns the learned model(s)."""
-        return self.local_worker.given_models
+        unwrapped = []
+        for model in self.local_worker.models:
+            unwrapped += [model.module if hasattr(model, "module") else model]
+        if len(unwrapped) == 1:
+            return unwrapped[0]
+        return unwrapped
 
     def state_dict(self):
         return self.local_worker.state_dict()

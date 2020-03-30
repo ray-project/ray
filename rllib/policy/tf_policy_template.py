@@ -151,10 +151,10 @@ def build_tf_policy(name,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
-            if not postprocess_fn:
-                return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
+            if postprocess_fn:
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
+            return sample_batch
 
         @override(TFPolicy)
         def optimizer(self):
