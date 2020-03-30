@@ -53,7 +53,7 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
 
-/// This callback is used to receive scan result from storage.
+/// This callback is used to receive a large amount of results.
 /// \param status Status indicates whether the scan was successful.
 /// \param has_more Whether more data will be called back.
 /// If the callback returns `has_more == true`, means the scan is not complete,
