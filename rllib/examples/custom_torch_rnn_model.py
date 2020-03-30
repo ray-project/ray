@@ -1,7 +1,9 @@
 import argparse
 
 import ray
+import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.cartpole_lstm import CartPoleStatelessEnv
+from ray.rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,9 +16,10 @@ torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument("--env", type=str, default="repeat_initial")
 parser.add_argument("--stop", type=int, default=90)
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--lstm-cell-size", type=int, default=256)
+parser.add_argument("--lstm-cell-size", type=int, default=32)
 
 
 class RNNModel(RecurrentTorchModel):
@@ -75,21 +78,33 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", RNNModel)
+    tune.register_env("repeat_initial", lambda c: RepeatInitialEnv())
+    tune.register_env("cartpole_stateless", lambda c: CartPoleStatelessEnv())
+
+    config = {
+        "num_workers": 0,
+        "num_envs_per_worker": 20,
+        "gamma": 0.9,
+        "entropy_coeff": 0.001,
+        "use_pytorch": True,
+        "model": {
+            "custom_model": "rnn",
+            "lstm_use_prev_action_reward": "store_true",
+            "lstm_cell_size": args.lstm_cell_size,
+            "custom_options": {}
+        },
+        "lr": 0.0003,
+        "num_sgd_iter": 5,
+        "vf_loss_coeff": 1e-5,
+        "env": args.env,
+    }
+
+    #trainer = ppo.PPOTrainer(config)
+    #for _ in range(100):
+    #    trainer.train()
 
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
-        config={
-            "num_workers": 0,
-            "use_pytorch": True,
-            "model": {
-                "custom_model": "rnn",
-                "lstm_use_prev_action_reward": "store_true",
-                "lstm_cell_size": args.lstm_cell_size,
-                "custom_options": {}
-            },
-            "num_sgd_iter": 5,
-            "vf_share_layers": True,
-            "vf_loss_coeff": 0.0001,
-            "env": CartPoleStatelessEnv,
-        })
+        config=config,
+    )

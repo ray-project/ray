@@ -1,7 +1,8 @@
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
+tf = try_import_tf()
 torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
@@ -125,7 +126,12 @@ def fc(x, weights, biases=None):
     """
     # Torch stores matrices in transpose (faster for backprop).
     if torch and isinstance(weights, torch.Tensor):
-        weights = np.transpose(weights.numpy())
+        x = x.detach().numpy() if isinstance(x, torch.Tensor) else x
+        weights = np.transpose(weights.detach().numpy())
+        biases = biases.detach().numpy()
+    elif tf and isinstance(weights, tf.Variable):
+        weights = weights.numpy()
+        biases = biases.numpy()
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 

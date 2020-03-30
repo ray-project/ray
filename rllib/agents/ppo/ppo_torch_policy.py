@@ -68,9 +68,10 @@ class PPOLoss:
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
         if valid_mask is not None:
+            num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.mean(t * valid_mask)
+                return torch.sum(t * valid_mask) / num_valid
 
         else:
 

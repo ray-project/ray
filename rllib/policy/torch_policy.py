@@ -88,6 +88,7 @@ class TorchPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
+        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -102,8 +103,7 @@ class TorchPolicy(Policy):
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(timestep=timestep)
 
-            model_out = self.model(input_dict, state_batches,
-                                   self._convert_to_tensor([1]))
+            model_out = self.model(input_dict, state_batches, seq_lens)
             logits, state = model_out
             action_dist = None
             actions, logp = \
@@ -131,6 +131,7 @@ class TorchPolicy(Policy):
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
         with torch.no_grad():
+            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
                 SampleBatch.ACTIONS: actions
@@ -140,7 +141,7 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
-            parameters, _ = self.model(input_dict, state_batches, [1])
+            parameters, _ = self.model(input_dict, state_batches, seq_lens)
             action_dist = self.dist_class(parameters, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
             return log_likelihoods

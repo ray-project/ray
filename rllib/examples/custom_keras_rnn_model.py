@@ -8,6 +8,7 @@ import random
 
 import ray
 from ray import tune
+import ray.rllib.agents.ppo as ppo
 from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -19,7 +20,7 @@ tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
+parser.add_argument("--env", type=str, default="RepeatInitialEnv")
 parser.add_argument("--stop", type=int, default=90)
 parser.add_argument("--num-cpus", type=int, default=0)
 
@@ -90,7 +91,10 @@ class MyKerasRNN(RecurrentTFModelV2):
 
 class RepeatInitialEnv(gym.Env):
     """Simple env in which the policy learns to repeat the initial observation
-    seen at timestep 0."""
+    seen at timestep 0.
+    Runs for 100 steps. r=1 if action correct, -1 otherwise.
+    Max. R=100
+    """
 
     def __init__(self):
         self.observation_space = Discrete(2)
@@ -148,22 +152,28 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())
-    tune.run(
-        args.run,
-        stop={"episode_reward_mean": args.stop},
-        config={
-            "env": args.env,
-            "env_config": {
-                "repeat_delay": 2,
-            },
-            "gamma": 0.9,
-            "num_workers": 0,
-            "num_envs_per_worker": 20,
-            "entropy_coeff": 0.001,
-            "num_sgd_iter": 5,
-            "vf_loss_coeff": 1e-5,
-            "model": {
-                "custom_model": "rnn",
-                "max_seq_len": 20,
-            },
-        })
+    config = {
+        "env": args.env,
+        "eager": True,
+        "env_config": {
+            "repeat_delay": 2,
+        },
+        "gamma": 0.9,
+        "num_workers": 0,
+        "num_envs_per_worker": 20,
+        "entropy_coeff": 0.001,
+        "num_sgd_iter": 5,
+        "vf_loss_coeff": 1e-5,
+        "model": {
+            "custom_model": "rnn",
+            "max_seq_len": 20,
+        },
+    }
+    trainer = ppo.PPOTrainer(config)
+    for _ in range(100):
+        trainer.train()
+
+    #tune.run(
+    #    args.run,
+    #    stop={"episode_reward_mean": args.stop},
+    #)
