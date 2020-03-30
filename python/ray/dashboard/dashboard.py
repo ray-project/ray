@@ -5,6 +5,7 @@ except ImportError:
     import sys
     sys.exit(1)
 
+import argparse
 import copy
 import datetime
 import errno
@@ -26,6 +27,7 @@ from typing import Dict
 import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
+import ray.ray_constants as ray_constants
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -398,10 +400,10 @@ class MetricsExportHandler:
 def setup_metrics_export_routes(app: aiohttp.web.Application,
                                 handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
-    app.router.add_get("/api/enable_metrics_export",
+    app.router.add_get("/api/metrics/enable",
                        handler.enable_export_metrics)
-    app.router.add_get("/api/dashboard_url", handler.get_dashboard_address)
-    app.router.add_get("/dashboard", handler.redirect_to_dashboard)
+    app.router.add_get("/api/metrics/url", handler.get_dashboard_address)
+    app.router.add_get("/metrics/redirect", handler.redirect_to_dashboard)
 
 
 def setup_static_dir(app):
@@ -549,7 +551,7 @@ class Dashboard:
         if not result and error:
             url = ray.services.get_webui_url_from_redis(self.redis_client)
             error += (" Please reenable the metrics export by going to "
-                      "the url: {}/api/enable_metrics_export".format(url))
+                      "the url: {}/api/metrics/enable".format(url))
             ray.utils.push_error_to_driver_through_redis(
                 self.redis_client, "metrics export failed", error)
 
@@ -1079,3 +1081,77 @@ class TuneCollector(threading.Thread):
             details["job_id"] = job_name
 
         return trial_details
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=("Parse Redis server for the "
+                     "dashboard to connect to."))
+    parser.add_argument(
+        "--host",
+        required=True,
+        type=str,
+        help="The host to use for the HTTP server.")
+    parser.add_argument(
+        "--port",
+        required=True,
+        type=int,
+        help="The port to use for the HTTP server.")
+    parser.add_argument(
+        "--redis-address",
+        required=True,
+        type=str,
+        help="The address to use for Redis.")
+    parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="the password to use for Redis")
+    parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--temp-dir",
+        required=False,
+        type=str,
+        default=None,
+        help="Specify the path of the temporary directory use by Ray process.")
+    args = parser.parse_args()
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
+
+    try:
+        dashboard = Dashboard(
+            args.host,
+            args.port,
+            args.redis_address,
+            args.temp_dir,
+            redis_password=args.redis_password,
+            metrics_export_address=metrics_export_address
+        )
+        dashboard.run()
+    except Exception as e:
+        # Something went wrong, so push an error to all drivers.
+        redis_client = ray.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        message = ("The dashboard on node {} failed with the following "
+                   "error:\n{}".format(os.uname()[1], traceback_str))
+        ray.utils.push_error_to_driver_through_redis(
+            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
+        if isinstance(e, OSError) and e.errno == errno.ENOENT:
+            logger.warning(message)
+        else:
+            raise e
