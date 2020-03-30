@@ -1,11 +1,14 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import {
+  createStyles,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
+import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import React from "react";
-import Typography from "@material-ui/core/Typography";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -13,21 +16,21 @@ const styles = (theme: Theme) =>
       backgroundColor: theme.palette.background.paper,
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(4)
-      }
+        marginTop: theme.spacing(4),
+      },
     },
     board: {
       width: "100%",
       height: "1000px",
-      border: "none"
+      border: "none",
     },
     warning: {
-      fontSize: "0.8125rem"
-    }
+      fontSize: "0.8125rem",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  error: state.dashboard.error
+  error: state.dashboard.error,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -60,5 +63,5 @@ class TuneTensorBoard extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneTensorBoard));

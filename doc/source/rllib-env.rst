@@ -80,6 +80,10 @@ RLlib uses Gym as its environment interface for single-agent training. For more 
 Performance
 ~~~~~~~~~~~
 
+.. tip::
+
+    Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
+
 There are two ways to scale experience collection with Gym environments:
 
     1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
@@ -165,7 +169,7 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
 
 .. code-block:: bash
    :emphasize-lines: 6,14,22
@@ -223,7 +227,7 @@ RLlib will create each policy's model in a separate ``tf.variable_scope``. Howev
                 auxiliary_name_scope=False):
             <create the shared layers here>
 
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__.
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__.
 
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -256,7 +260,7 @@ Alternatively, the env itself can be modified to share observations between agen
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as :ref:`Q-Mix <qmix>` that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
 .. literalinclude:: ../../rllib/env/multi_agent_env.py
    :language: python
