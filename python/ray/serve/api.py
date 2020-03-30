@@ -150,9 +150,7 @@ def init(
     global_state = GlobalState(master)
     ray.get(master.start_metric_monitor.remote(gc_window_seconds))
     if start_server:
-        print("start http proxy")
         ray.get(master.start_http_proxy.remote(http_host, http_port))
-        print("start http proxy done")
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -332,7 +330,7 @@ def _start_replica(backend_tag):
 
     # Create the runner in the master actor
     [runner_handle] = ray.get(
-        global_state.master_actor_handle.start_actor_with_creator.remote(
+        global_state.master_actor.start_actor_with_creator.remote(
             creator, actor_kwargs, replica_tag))
 
     # Setup the worker
@@ -357,14 +355,14 @@ def _remove_replica(backend_tag):
 
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
     [replica_handle] = ray.get(
-        global_state.master_actor_handle.get_handle.remote(replica_tag))
+        global_state.master_actor.get_handle.remote(replica_tag))
 
     # Remove the replica from metric monitor.
     ray.get(
         global_state.get_metric_monitor().remove_target.remote(replica_handle))
 
     # Remove the replica from master actor.
-    ray.get(global_state.master_actor_handle.remove_handle.remote(replica_tag))
+    ray.get(global_state.master_actor.remove_handle.remote(replica_tag))
 
     # Remove the replica from router.
     # This will also destroy the actor handle.
