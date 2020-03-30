@@ -104,6 +104,7 @@ class TrialRunner:
         resume (str|False): see `tune.py:run`.
         sync_to_cloud (func|str): See `tune.py:run`.
         server_port (int): Port number for launching TuneServer.
+        fail_fast (bool): Finishes as soon as a trial fails if True.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -124,6 +125,7 @@ class TrialRunner:
                  stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
+                 fail_fast=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
@@ -137,6 +139,8 @@ class TrialRunner:
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
         self._iteration = 0
+        self._has_errored = False
+        self._fail_fast = fail_fast
         self._verbose = verbose
 
         self._server = None
@@ -392,12 +396,15 @@ class TrialRunner:
         return self.trial_executor.has_resources(resources)
 
     def _stop_experiment_if_needed(self):
-        """Stops all trials if the user condition is satisfied."""
-
-        if self._stopper.stop_all() or self._should_stop_experiment:
+        """Stops all trials."""
+        fail_fast = self._fail_fast and self._has_errored
+        if (self._stopper.stop_all() or fail_fast
+                or self._should_stop_experiment):
             self._search_alg.set_finished()
-            [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("All trials stopped due to ``stopper.stop_all``.")
+            [
+                self.trial_executor.stop_trial(t) for t in self._trials
+                if t.status is not Trial.ERROR
+            ]
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -571,6 +578,7 @@ class TrialRunner:
             trial (Trial): Failed trial.
             error_msg (str): Error message prior to invoking this method.
         """
+        self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
                 self._try_recover(trial, error_msg)
