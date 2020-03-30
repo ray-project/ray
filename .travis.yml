@@ -98,6 +98,9 @@ matrix:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
+        # readthedocs has an antiquated build env.
+        # This is a best effort to reproduce it locally to avoid doc build failures
+        # and hidden errors.
         - pip install -r requirements-rtd.txt
         - pip install -r requirements-doc.txt
         - pip install yapf==0.23.0
