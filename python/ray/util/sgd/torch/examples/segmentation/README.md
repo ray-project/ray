@@ -4,6 +4,11 @@ Original scripts are taken from: https://github.com/pytorch/vision/tree/master/r
 
 On a single node, you can leverage Distributed Data Parallelism (DDP) by simply using the `-n` parameter. This will automatically parallelize your training across `n` GPUs. As listed from the original repository, below are standard hyperparameters.
 
+```bash
+pip install tqdm pycocotools
+```
+
+
 ## fcn_resnet101
 ```
 python train_segmentation.py  -n 4 --lr 0.02 --dataset coco -b 4 --model fcn_resnet101 --aux-loss

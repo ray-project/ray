@@ -163,11 +163,13 @@ def optimizer_creator(model, config):
 
 def model_creator(config):
     args = config["args"]
-    device = torch.device(args.device)
     model = torchvision.models.segmentation.__dict__[args.model](
         num_classes=config["num_classes"],
         aux_loss=args.aux_loss,
         pretrained=args.pretrained)
+    # We usually don't need to do this, but we're enabling batch norm
+    # so we want to convert everything to GPU tensors first.
+    device = torch.device(args.device)
     model.to(device)
     if config["num_workers"] > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
