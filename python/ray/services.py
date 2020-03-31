@@ -633,9 +633,10 @@ def start_reaper(fate_share=None):
     # up other ray processes without killing the process group of the
     # process that started us.
     try:
-        os.setpgrp()
-    except (AttributeError, OSError) as e:
-        errcode = e.errno if isinstance(e, OSError) else None
+        if sys.platform != "win32":
+            os.setpgrp()
+    except OSError as e:
+        errcode = e.errno
         if errcode == errno.EPERM and os.getpgrp() == os.getpid():
             # Nothing to do; we're already a session leader.
             pass
