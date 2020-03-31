@@ -163,7 +163,7 @@ filegroup(
     ],
 )
 
-# Generates the depedencies needed by maven.
+# Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [

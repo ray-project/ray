@@ -18,7 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
