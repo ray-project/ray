@@ -32,6 +32,7 @@ if [[ "$platform" == "linux" ]]; then
           "3.8.2")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   bash miniconda3.sh -b -p "$HOME/miniconda3"
+  export PATH="$HOME/miniconda3/bin:$PATH"
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
