@@ -13,17 +13,17 @@ all_modules = [
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_" + module + ".jar"
+        "libio_ray_ray_" + module + ".jar"
         for module in all_modules
     ] + [
-        "liborg_ray_ray_" + module + "-src.jar"
+        "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules
     ] + [
         "all_streaming_tests_deploy.jar",
         "all_streaming_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_" + module
+        ":io_ray_ray_" + module
         for module in all_modules
     ] + [
         ":all_streaming_tests",
@@ -34,8 +34,8 @@ define_java_module(
     name = "streaming-api",
     define_test_lib = True,
     test_deps = [
-        "//java:org_ray_ray_api",
-        ":org_ray_ray_streaming-api",
+        "//java:io_ray_ray_api",
+        ":op_ray_ray_streaming-api",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",

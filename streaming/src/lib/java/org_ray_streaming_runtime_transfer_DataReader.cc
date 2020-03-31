@@ -1,4 +1,4 @@
-#include "org_ray_streaming_runtime_transfer_DataReader.h"
+#include "io_ray_streaming_runtime_transfer_DataReader.h"
 #include <cstdlib>
 #include "data_reader.h"
 #include "runtime_context.h"
@@ -8,7 +8,7 @@ using namespace ray;
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
+Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
     JNIEnv *env, jclass, jobjectArray input_channels, jobjectArray input_actor_ids,
     jlongArray seq_id_array, jlongArray msg_id_array, jlong timer_interval,
     jboolean isRecreate, jbyteArray config_bytes, jboolean is_mock) {
@@ -34,7 +34,7 @@ Java_org_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
   return reinterpret_cast<jlong>(reader);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_getBundleNative(
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative(
     JNIEnv *env, jobject, jlong reader_ptr, jlong timeout_millis, jlong out,
     jlong meta_addr) {
   std::shared_ptr<ray::streaming::DataBundle> bundle;
@@ -73,7 +73,7 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_getBun
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataReader_stopReaderNative(JNIEnv *env,
+Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(JNIEnv *env,
                                                                     jobject thisObj,
                                                                     jlong ptr) {
   auto reader = reinterpret_cast<DataReader *>(ptr);
@@ -81,7 +81,7 @@ Java_org_ray_streaming_runtime_transfer_DataReader_stopReaderNative(JNIEnv *env,
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
+Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
                                                                      jobject thisObj,
                                                                      jlong ptr) {
   delete reinterpret_cast<DataReader *>(ptr);

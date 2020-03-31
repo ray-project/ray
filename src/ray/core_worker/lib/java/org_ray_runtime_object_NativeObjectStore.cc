@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/org_ray_runtime_object_NativeObjectStore.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_object_NativeObjectStore.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2(
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__JLio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject obj) {
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
@@ -36,7 +36,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2(
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__J_3BLio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId,
     jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
@@ -47,7 +47,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_ob
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGet(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
@@ -62,7 +62,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGe
       env, results, NativeRayObjectToJavaNativeRayObject);
 }
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWait(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject objectIds,
     jint numObjects, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
@@ -79,7 +79,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
   });
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
+JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject objectIds,
     jboolean localOnly, jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;

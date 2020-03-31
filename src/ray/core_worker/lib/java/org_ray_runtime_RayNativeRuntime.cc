@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/org_ray_runtime_RayNativeRuntime.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_RayNativeRuntime.h"
 #include <jni.h>
 #include <sstream>
 #include "ray/common/id.h"
@@ -36,7 +36,7 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
+JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
     jstring nodeIpAddress, jint nodeManagerPort, jbyteArray jobId,
     jobject gcsClientOptions) {
@@ -113,7 +113,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   }
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   local_env = env;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
@@ -121,14 +121,14 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
   local_env = nullptr;
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   core_worker->Disconnect();
   delete core_worker;
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetup(
     JNIEnv *env, jclass, jstring logDir, jobject rayletConfigParameters) {
   std::string log_dir = JavaStringToNativeString(env, logDir);
   ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
@@ -147,12 +147,12 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(
   RayConfig::instance().initialize(raylet_config);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
                                                                                 jclass) {
   ray::RayLog::ShutDownRayLog();
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jstring resourceName,
     jdouble capacity, jbyteArray nodeId) {
   const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
@@ -165,7 +165,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray actorId,
     jboolean noReconstruction) {
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/org_ray_runtime_task_NativeTaskExecutor.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskExecutor.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -27,7 +27,7 @@ extern "C" {
 using ray::ClientID;
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
+Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   auto &core_worker = *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
@@ -43,7 +43,7 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
+Java_io_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray checkpointId) {
   auto &core_worker = *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();

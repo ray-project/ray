@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/org_ray_runtime_actor_NativeRayActor.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_actor_NativeRayActor.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -27,7 +27,7 @@ inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
 extern "C" {
 #endif
 
-JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
+JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
@@ -38,7 +38,7 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
 }
 
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
+Java_io_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
@@ -49,7 +49,7 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }
 
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeSerialize(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
@@ -62,7 +62,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSer
   return bytes;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeRayActor_nativeDeserialize(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);

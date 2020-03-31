@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/org_ray_runtime_task_NativeTaskSubmitter.h"
+#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -126,7 +126,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject args, jint numReturns, jobject callOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
@@ -145,7 +145,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject args, jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
@@ -162,7 +162,7 @@ Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
 }
 
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jbyteArray actorId,
     jobject functionDescriptor, jobject args, jint numReturns, jobject callOptions) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
