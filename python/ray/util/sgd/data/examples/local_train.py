@@ -47,11 +47,10 @@ def make_data_creator(train_set, valid_set):
 
 
 if __name__ == "__main__":
-    ray.init("auto")
+    ray.init()
     print("Connected to cluster")
     print("Cluster resources:", ray.cluster_resources())
     prefix = "/media/imagenet/"
-    # prefix = "/users/alex/anyscale/data/"
     train_loc = prefix + "ILSVRC/Data/CLS-LOC/train"
     valid_loc = prefix + "ILSVRC/Data/CLS-LOC/val"
     val_sol_path = prefix + "LOC_val_solution.csv"
@@ -61,13 +60,13 @@ if __name__ == "__main__":
     transform = transforms_factory.create_transform(MODEL_IN_DIMS)
 
     train_dataset = ImageNetDataset(
-        train_loc, "train", max_paths=10000, transform=transform)
+        train_loc, "train", max_paths=100, transform=transform)
     print("Done loading training dataset: ", len(train_dataset))
     valid_dataset = ImageNetDataset(
         valid_loc,
         "validate",
         val_sol_path=val_sol_path,
-        max_paths=10000,
+        max_paths=100,
         transform=transform)
     print("Done loading validation dataset: ", len(valid_dataset))
     data_creator = make_data_creator(train_dataset, valid_dataset)
@@ -93,6 +92,6 @@ if __name__ == "__main__":
         stats = trainer1.train(max_retries=0)
         print(stats)
 
-    # print(trainer1.validate())
-    # trainer1.shutdown()
-    # print("success!")
+    print(trainer1.validate())
+    trainer1.shutdown()
+    print("success!")
