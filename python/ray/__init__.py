@@ -22,7 +22,7 @@ if "OMP_NUM_THREADS" not in os.environ:
 
 if sys.platform == "darwin" and not gethostname().endswith(".local"):
     logger.warning(
-        "The Ray Control Service may not correctly resolve your hostname."
+        "The Ray Control Service may not correctly resolve your hostname. "
         "To fix, look at https://github.com/ray-project/ray/issues/7837")
 
 # Add the directory containing pickle5 to the Python path so that we find the
