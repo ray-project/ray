@@ -437,7 +437,7 @@ def get_gpu_ids():
     # TODO(ilr) Handle inserting resources in local mode
     if _mode() == LOCAL_MODE:
         logger.info("ray.get_gpu_ids() currently does not work in LOCAL "
-                       "MODE.")
+                    "MODE.")
 
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
@@ -1141,7 +1141,7 @@ def connect(node,
         # the correct driver.
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
-    
+
     if mode is not SCRIPT_MODE and setproctitle:
         setproctitle.setproctitle("ray::IDLE")
 

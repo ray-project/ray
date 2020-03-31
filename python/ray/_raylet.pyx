@@ -642,9 +642,9 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, local_mode):
-    
+        use_driver = is_driver or local_mode
         self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver or local_mode else WORKER_TYPE_WORKER,
+            WORKER_TYPE_DRIVER if use_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
@@ -749,12 +749,13 @@ cdef class CoreWorker:
             if self.is_local_mode:
                 c_object_id_vector.push_back(c_object_id)
                 check_status(self.core_worker.get().Put(
-                        CRayObject(data, metadata, c_object_id_vector), 
+                        CRayObject(data, metadata, c_object_id_vector),
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
                     # Using custom object IDs is not supported because we can't
-                    # track their lifecycle, so don't pin the object in that case.
+                    # track their lifecycle, so we don't pin the object in this
+                    # case.
                     check_status(self.core_worker.get().Seal(
                                     c_object_id,
                                     pin_object and object_id is None))
@@ -1095,9 +1096,9 @@ cdef class CoreWorker:
                     return_ids_vector.push_back(return_ids[i])
                     check_status(
                         self.core_worker.get().Put(
-                            CRayObject(returns[0][i].get().GetData(), 
+                            CRayObject(returns[0][i].get().GetData(),
                                        returns[0][i].get().GetMetadata(),
-                                       return_ids_vector), 
+                                       return_ids_vector),
                             return_ids_vector, return_ids[i]))
                     return_ids_vector.clear()
 

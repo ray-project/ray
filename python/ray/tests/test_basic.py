@@ -191,7 +191,6 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
-
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -318,6 +317,7 @@ def test_fair_queueing(shutdown_only):
     ready, _ = ray.wait(
         [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
     assert len(ready) == 1000, len(ready)
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -678,6 +678,7 @@ def test_ray_recursive_objects(ray_start_regular):
     for obj in recursive_objects:
         ray.put(obj)
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -720,6 +721,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     del obj
     assert new_obj() is None
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -734,6 +736,7 @@ def test_deserialized_from_buffer_immutable(ray_start_regular):
     with pytest.raises(
             ValueError, match="assignment destination is read-only"):
         y[0, 0] = 9.
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -772,6 +775,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     # Make sure that we can put and get a custom type. Note that the result
     # won't be "equal" to Foo.
     ray.get(ray.put(Foo))
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -822,6 +826,7 @@ def test_put_get(shutdown_only):
         value_after = ray.get(objectid)
         assert value_before == value_after
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -857,6 +862,7 @@ def test_custom_serializers(ray_start_regular):
         return Bar()
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -1231,6 +1237,7 @@ def test_args_stars_after(ray_start_regular):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
+
 @pytest.mark.parametrize(
     "shutdown_only", [{
         "local_mode": True
@@ -1281,6 +1288,7 @@ def test_variable_number_of_args(shutdown_only):
         self.ray_start()
 
         ray.get(no_op.remote())
+
 
 @pytest.mark.parametrize(
     "shutdown_only", [{
@@ -1335,6 +1343,7 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k.remote(1)) == 2
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
+
 
 @pytest.mark.parametrize(
     "shutdown_only", [{
@@ -1398,6 +1407,7 @@ def test_redefining_remote_functions(shutdown_only):
     for i in range(20):
         assert ray.get(ray.get(h.remote(i))) == i
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1415,6 +1425,7 @@ def test_get_multiple(ray_start_regular):
     results = ray.get([object_ids[i] for i in indices])
     assert results == indices
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1430,6 +1441,7 @@ def test_get_multiple_experimental(ray_start_regular):
 
     object_ids_nparray = np.array(object_ids)
     assert ray.experimental.get(object_ids_nparray) == list(range(10))
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -1466,6 +1478,7 @@ def test_get_with_timeout(ray_start_regular):
     start = time.time()
     ray.get(result_id, timeout=30)
     assert time.time() - start < 30
+
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
