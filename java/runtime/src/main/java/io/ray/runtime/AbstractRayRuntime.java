@@ -1,0 +1,235 @@
+package io.ray.runtime;
+
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import io.ray.api.BaseActor;
+import io.ray.api.RayActor;
+import io.ray.api.RayObject;
+import io.ray.api.RayPyActor;
+import io.ray.api.WaitResult;
+import io.ray.api.exception.RayException;
+import io.ray.api.function.PyActorClass;
+import io.ray.api.function.PyActorMethod;
+import io.ray.api.function.PyRemoteFunction;
+import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncVoid;
+import io.ray.api.id.ObjectId;
+import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.options.CallOptions;
+import io.ray.api.runtime.RayRuntime;
+import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.context.RuntimeContextImpl;
+import io.ray.runtime.functionmanager.FunctionDescriptor;
+import io.ray.runtime.functionmanager.FunctionManager;
+import io.ray.runtime.functionmanager.PyFunctionDescriptor;
+import io.ray.runtime.gcs.GcsClient;
+import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.object.ObjectStore;
+import io.ray.runtime.object.RayObjectImpl;
+import io.ray.runtime.task.ArgumentsBuilder;
+import io.ray.runtime.task.FunctionArg;
+import io.ray.runtime.task.TaskExecutor;
+import io.ray.runtime.task.TaskSubmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Core functionality to implement Ray APIs.
+ */
+public abstract class AbstractRayRuntime implements RayRuntime {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+  public static final String PYTHON_INIT_METHOD_NAME = "__init__";
+  protected RayConfig rayConfig;
+  protected TaskExecutor taskExecutor;
+  protected FunctionManager functionManager;
+  protected RuntimeContext runtimeContext;
+  protected GcsClient gcsClient;
+
+  protected ObjectStore objectStore;
+  protected TaskSubmitter taskSubmitter;
+  protected WorkerContext workerContext;
+
+  public AbstractRayRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+    this.rayConfig = rayConfig;
+    this.functionManager = functionManager;
+    runtimeContext = new RuntimeContextImpl(this);
+  }
+
+  @Override
+  public abstract void shutdown();
+
+  @Override
+  public <T> RayObject<T> put(T obj) {
+    ObjectId objectId = objectStore.put(obj);
+    return new RayObjectImpl<>(objectId);
+  }
+
+  @Override
+  public <T> T get(ObjectId objectId) throws RayException {
+    List<T> ret = get(ImmutableList.of(objectId));
+    return ret.get(0);
+  }
+
+  @Override
+  public <T> List<T> get(List<ObjectId> objectIds) {
+    return objectStore.get(objectIds);
+  }
+
+  @Override
+  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    objectStore.delete(objectIds, localOnly, deleteCreatingTasks);
+  }
+
+  @Override
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
+    return objectStore.wait(waitList, numReturns, timeoutMs);
+  }
+
+  @Override
+  public RayObject call(RayFunc func, Object[] args, CallOptions options) {
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(workerContext.getCurrentJobId(), func)
+            .functionDescriptor;
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callNormalFunction(functionDescriptor, args, numReturns, options);
+  }
+
+  @Override
+  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
+                        CallOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyRemoteFunction.moduleName,
+        "",
+        pyRemoteFunction.functionName);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
+  }
+
+  @Override
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(workerContext.getCurrentJobId(), func)
+            .functionDescriptor;
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callActorFunction(actor, functionDescriptor, args, numReturns);
+  }
+
+  @Override
+  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
+        pyActor.getClassName(), pyActorMethod.methodName);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
+  }
+
+  @Override
+  @SuppressWarnings("unchecked")
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
+      Object[] args, ActorCreationOptions options) {
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
+            .functionDescriptor;
+    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
+  }
+
+  @Override
+  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                                ActorCreationOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyActorClass.moduleName,
+        pyActorClass.className,
+        PYTHON_INIT_METHOD_NAME);
+    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+  }
+
+  private void checkPyArguments(Object[] args) {
+    for (Object arg : args) {
+      Preconditions.checkArgument(
+          (arg instanceof RayPyActor) || (arg instanceof byte[]),
+          "Python argument can only be a RayPyActor or a byte array, not {}.",
+          arg.getClass().getName());
+    }
+  }
+
+  @Override
+  public Runnable wrapRunnable(Runnable runnable) {
+    return runnable;
+  }
+
+  @Override
+  public Callable wrapCallable(Callable callable) {
+    return callable;
+  }
+
+  private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
+      Object[] args, int numReturns, CallOptions options) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder
+        .wrap(args, functionDescriptor.getLanguage());
+    List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
+        functionArgs, numReturns, options);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
+  }
+
+  private RayObject callActorFunction(BaseActor rayActor,
+      FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder
+        .wrap(args, functionDescriptor.getLanguage());
+    List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
+        functionDescriptor, functionArgs, numReturns, null);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
+  }
+
+  private BaseActor createActorImpl(FunctionDescriptor functionDescriptor,
+      Object[] args, ActorCreationOptions options) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder
+        .wrap(args, functionDescriptor.getLanguage());
+    if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
+      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
+    }
+    BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
+    return actor;
+  }
+
+  public WorkerContext getWorkerContext() {
+    return workerContext;
+  }
+
+  public ObjectStore getObjectStore() {
+    return objectStore;
+  }
+
+  public FunctionManager getFunctionManager() {
+    return functionManager;
+  }
+
+  public RayConfig getRayConfig() {
+    return rayConfig;
+  }
+
+  public RuntimeContext getRuntimeContext() {
+    return runtimeContext;
+  }
+
+  public GcsClient getGcsClient() {
+    return gcsClient;
+  }
+}

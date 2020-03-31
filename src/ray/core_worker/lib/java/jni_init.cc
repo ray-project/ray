@@ -137,46 +137,46 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_map_entry_get_value =
       env->GetMethodID(java_map_entry_class, "getValue", "()Ljava/lang/Object;");
 
-  java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
+  java_ray_exception_class = LoadClass(env, "io/ray/api/exception/RayException");
 
-  java_jni_exception_util_class = LoadClass(env, "org/ray/runtime/util/JniExceptionUtil");
+  java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
       java_jni_exception_util_class, "getStackTrace",
       "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Throwable;)Ljava/lang/String;");
 
-  java_base_id_class = LoadClass(env, "org/ray/api/id/BaseId");
+  java_base_id_class = LoadClass(env, "io/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
   java_function_descriptor_class =
-      LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
+      LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   java_function_descriptor_get_language =
       env->GetMethodID(java_function_descriptor_class, "getLanguage",
-                       "()Lorg/ray/runtime/generated/Common$Language;");
+                       "()Lio/ray/runtime/generated/Common$Language;");
   java_function_descriptor_to_list =
       env->GetMethodID(java_function_descriptor_class, "toList", "()Ljava/util/List;");
 
-  java_language_class = LoadClass(env, "org/ray/runtime/generated/Common$Language");
+  java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   java_language_get_number = env->GetMethodID(java_language_class, "getNumber", "()I");
 
-  java_function_arg_class = LoadClass(env, "org/ray/runtime/task/FunctionArg");
+  java_function_arg_class = LoadClass(env, "io/ray/runtime/task/FunctionArg");
   java_function_arg_id =
-      env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
+      env->GetFieldID(java_function_arg_class, "id", "Lio/ray/api/id/ObjectId;");
   java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
-                                            "Lorg/ray/runtime/object/NativeRayObject;");
+                                            "Lio/ray/runtime/object/NativeRayObject;");
 
-  java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
+  java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
 
   java_actor_creation_options_class =
-      LoadClass(env, "org/ray/api/options/ActorCreationOptions");
+      LoadClass(env, "io/ray/api/options/ActorCreationOptions");
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
   java_actor_creation_options_max_concurrency =
       env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
-  java_gcs_client_options_class = LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
+  java_gcs_client_options_class = LoadClass(env, "io/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
   java_gcs_client_options_port =
@@ -184,7 +184,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_gcs_client_options_password =
       env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
 
-  java_native_ray_object_class = LoadClass(env, "org/ray/runtime/object/NativeRayObject");
+  java_native_ray_object_class = LoadClass(env, "io/ray/runtime/object/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
   java_native_ray_object_data =
@@ -192,13 +192,13 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
-  java_task_executor_class = LoadClass(env, "org/ray/runtime/task/TaskExecutor");
+  java_task_executor_class = LoadClass(env, "io/ray/runtime/task/TaskExecutor");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class, "get", "([B)Lorg/ray/runtime/task/TaskExecutor;");
+      java_task_executor_class, "get", "([B)Lio/ray/runtime/task/TaskExecutor;");
 
   return CURRENT_JNI_VERSION;
 }
