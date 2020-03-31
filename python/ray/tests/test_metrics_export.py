@@ -250,5 +250,4 @@ def test_handle_actions_only_wrong_type(mock_controller):
 
 if __name__ == "__main__":
     import sys
-    import os
     sys.exit(pytest.main(["-v", __file__]))
