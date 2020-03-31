@@ -331,15 +331,15 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                prev_batches["prev_action_batch"] = \
+                input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
-                prev_batches["prev_reward_batch"] = \
+                input_dict[SampleBatch.PREV_REWARDS] = \
                     tf.convert_to_tensor(prev_reward_batch)
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
-                    dist_class = dist_inputs = None
+                    dist_inputs = None
                     state_out = []
                     actions, logp = self.action_sampler_fn(
                         self,
@@ -388,57 +388,6 @@ def build_eager_tf_policy(name,
             self.global_timestep += 1
 
             return actions, state_out, extra_fetches
-
-        @override(Policy)
-        def compute_distribution_inputs(self,
-                                        obs_batch,
-                                        state_batches=None,
-                                        prev_action_batch=None,
-                                        prev_reward_batch=None,
-                                        explore=True,
-                                        timestep=None,
-                                        is_training=True):
-            if tf.executing_eagerly():
-                n = len(obs_batch)
-            else:
-                n = obs_batch.shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
-
-            self.exploration.before_forward_pass(
-                obs_batch=obs_batch,
-                state_batches=state_batches,
-                seq_lens=seq_lens,
-                timestep=timestep,
-                explore=explore)
-
-            # Custom forward pass to get the action dist inputs.
-            if forward_fn:
-                dist_inputs, dist_class, state_out = forward_fn(
-                    self,
-                    self.model,
-                    obs_batch,
-                    state_batches=state_batches,
-                    seq_lens=seq_lens,
-                    prev_action_batch=prev_action_batch,
-                    prev_reward_batch=prev_reward_batch,
-                    explore=explore,
-                    is_training=is_training)
-            # Forward pass through our exploration object.
-            else:
-                dist_inputs, state_out = self.model({
-                    SampleBatch.CUR_OBS: obs_batch,
-                    SampleBatch.PREV_ACTIONS: prev_action_batch,
-                    SampleBatch.PREV_REWARDS: prev_reward_batch,
-                }, state_batches, seq_lens)
-                dist_class = self.dist_class
-
-            self.exploration.after_forward_pass(
-                distribution_inputs=dist_inputs,
-                action_dist_class=dist_class,
-                timestep=timestep,
-                explore=explore)
-
-            return dist_inputs, dist_class, state_out
 
         @override(Policy)
         def compute_log_likelihoods(self,

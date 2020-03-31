@@ -164,38 +164,6 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
-    def compute_distribution_inputs(self,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=True,
-                                    timestep=None,
-                                    is_training=True):
-        """Computes inputs to action distribution for a given observation.
-
-        Args:
-            obs_batch (Union[List,np.ndarray]): Batch of observations.
-            state_batches (Optional[list]): List of RNN state input batches,
-                if any.
-            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
-                action values.
-            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
-                rewards.
-            explore (bool): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep (int): The current (sampling) time step.
-
-        Returns:
-            Tuple:
-            - distribution_inputs (np.ndarray): Batch of distribution
-                inputs.
-            - distribution_class (type): The distirbution class to instantiate.
-            - states_out (List[np.ndarray]): List internal states outputs.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
     def compute_log_likelihoods(self,
                                 actions,
                                 obs_batch,
