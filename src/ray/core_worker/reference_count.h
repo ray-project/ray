@@ -364,13 +364,13 @@ class ReferenceCounter {
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
 
-      bool has_downstream_tasks = false;
+      bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
-        has_downstream_tasks = lineage_ref_count > 0;
+        has_lineage_references = lineage_ref_count > 0;
       }
 
       return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
-               was_stored_in_objects || has_downstream_tasks);
+               was_stored_in_objects || has_lineage_references);
     }
 
     /// Whether the Reference can be deleted. A Reference can only be deleted
