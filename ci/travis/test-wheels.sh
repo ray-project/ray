@@ -25,10 +25,11 @@ TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
-PY_WHEEL_VERSIONS=("35" "36" "37" "38")
+
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
+  PY_WHEEL_VERSIONS=("36" "37" "38")
   PY_MMS=("3.6.9"
           "3.7.6"
           "3.8.2")
@@ -78,6 +79,7 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
+  PY_WHEEL_VERSIONS=("35" "36" "37" "38")
   PY_MMS=("3.5"
           "3.6"
           "3.7"
