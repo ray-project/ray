@@ -3,7 +3,6 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -17,7 +16,6 @@ import org.ray.api.function.PyActorClass;
 import org.ray.api.function.PyActorMethod;
 import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
-import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
@@ -70,11 +68,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> RayObject<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    try {
-      return new RayObjectImpl<T>(objectId, (Class<T>)obj.getClass());
-    } catch (Exception e) {
-      return new RayObjectImpl<T>(objectId, null);
-    }
+    return new RayObjectImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
@@ -102,12 +96,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Optional<Class<?>> returnType;
-    if (func instanceof RayFuncVoid) {
-      returnType = Optional.empty();
-    } else {
-      returnType = Optional.of(((Method) rayFunction.executable).getReturnType());
-    }
+    Optional<Class<?>> returnType = rayFunction.getReturnType();
     return callNormalFunction(functionDescriptor, args, returnType, options);
   }
 
@@ -127,12 +116,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Optional<Class<?>> returnType;
-    if (func instanceof RayFuncVoid) {
-      returnType = Optional.empty();
-    } else {
-      returnType = Optional.of(((Method) rayFunction.executable).getReturnType());
-    }
+    Optional<Class<?>> returnType = rayFunction.getReturnType();
     return callActorFunction(actor, functionDescriptor, args, returnType);
   }
 
