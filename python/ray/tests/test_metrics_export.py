@@ -222,7 +222,7 @@ def test_handle_actions_many_kill_actor(mock_controller):
     actions = [_get_mock_kill_action() for _ in range(10)]
 
     action_handler.handle_actions(actions)
-    mock_controller.kill_actor.call_count == 10
+    assert mock_controller.kill_actor.call_count == 10
 
 
 @patch("ray.dashboard.dashboard.DashboardController")
@@ -235,7 +235,7 @@ def test_handle_actions_kill_actor_and_mixed_type(mock_controller):
     ]
 
     action_handler.handle_actions(actions)
-    mock_controller.kill_actor.call_count == 2
+    assert mock_controller.kill_actor.call_count == 2
 
 
 @patch("ray.dashboard.dashboard.DashboardController")
@@ -245,12 +245,10 @@ def test_handle_actions_only_wrong_type(mock_controller):
     actions = [wrong_type_action for _ in range(10)]
 
     action_handler.handle_actions(actions)
-    mock_controller.kill_actor.call_count == 0
+    assert mock_controller.kill_actor.call_count == 0
 
 
 if __name__ == "__main__":
     import sys
     import os
-    os.environ["LC_ALL"] = "en_US.UTF-8"
-    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-v", __file__]))
