@@ -29,8 +29,7 @@ PY_WHEEL_VERSIONS=("35" "36" "37" "38")
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_MMS=("3.5.6"
-          "3.6.9"
+  PY_MMS=("3.6.9"
           "3.7.6"
           "3.8.2")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
