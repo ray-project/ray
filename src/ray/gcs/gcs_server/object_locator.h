@@ -85,7 +85,7 @@ class ObjectLocator {
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
   void AddObjectsLocation(const ClientID &node_id,
-                   const std::unordered_set<ObjectID> &object_ids);
+                          const std::unordered_set<ObjectID> &object_ids);
 
   /// Add location of an object.
   ///
