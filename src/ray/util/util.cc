@@ -20,95 +20,67 @@ std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
 }
 
 static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
+  RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
   // See the unit-tests for examples. To compare against the platform's behavior, try:
-  //  $ python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y" '\x\\y'
+  // $ python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y" '\x\\y'
   std::vector<std::string> result;
-  const std::string
-      // Single-quoted strings lack single-quotes
-      single_quoted = "'([^']*)'",
-      // Double-quoted strings lack double-quotes, except after unescaped backslashes
-      double_quoted = R"(\"((?:[^"\\]|\\.)*)\")",
-      // Unquoted tokens lack spaces & quotes, except after unescaped backslashes
-      unquoted = R"(((?:\\(?:.|$)|[^"'\s\\])+))",
-      // Whitespace & EOF are delimiters
-      boundary = R"(\s+|$)";
-  std::regex re_cmdline(single_quoted + "|" + double_quoted + "|" + unquoted + "|" +
-                        boundary);
-  std::regex re_dq_escape(R"(\\([\\"]))"), re_escape(R"(\\(.))");
-  bool was_space = true;
-  std::string arg;
-  std::smatch groups;
-  size_t i = 0;
-  while (std::regex_search(s.begin() + i, s.end(), groups, re_cmdline)) {
-    bool space = false;
-    if (groups[1].matched) {
-      // single_quoted: No escaping: '\x\\y' is just \x\\y verbatim
-      arg += groups[1];
-    } else if (groups[2].matched) {
-      // double_quoted: Backslashes stay if they don't escape anything: "\x\\y" == '\x\y'
-      arg += std::regex_replace(groups[2].str(), re_dq_escape, std::string("$1"));
-    } else if (groups[3].matched) {
-      // unquoted: Backslashes get removed if they don't escape anything: \x\\y == 'x\y'
-      arg += std::regex_replace(groups[3].str(), re_escape, std::string("$1"));
-    } else {
-      // boundary
-      if (!was_space) {
-        // The previous token was an argument we just finished, not a contiguous delimiter
+  std::string arg, c_str = s + '\0';
+  std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
+  for (bool stop = false; !stop;) {
+    if (i >= j || *i == ' ' || *i == '\t') {
+      if (i > c_str.begin()) {
         result.push_back(arg);
-        arg.clear();
       }
-      space = true;
+      arg.clear();
+      ScanToken(i, "%*[ \t]");  // skip extra whitespace
+      stop |= i >= j;
+    } else if (*i == '\'') {
+      arg += ScanToken(++i, "%*[^\']");
+      ScanToken(i, "%*1[\']");
+    } else if (*i == '\\') {
+      ++i;
+      arg += i < j ? *i++ : *(i - 1);  // remove backslash, but only if it's not at EOF
+    } else if (*i == '\"') {
+      ++i;
+      while (i < j && *i != '\"') {
+        arg += ScanToken(i, "%*[^\\\"]");
+        std::string t = ScanToken(i, "\\%*1c");  // scan escape sequence
+        if (t.size() > 1 && (t.back() == '\\' || t.back() == '\"')) {
+          t.erase(0, 1);  // remove backslash
+        }
+        arg += t;
+      }
+      ScanToken(i, "\"");
+    } else {
+      arg += *i++;
     }
-    was_space = space;
-    size_t delta = groups.position() + groups.length();
-    if (!delta) {
-      break;
-    }
-    i += delta;
   }
   return result;
 }
 
 static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
+  RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
   // See the unit-tests for examples. To compare against the platform's behavior, try:
-  //  > python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y"
+  // > python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y"
   std::vector<std::string> result;
-  const std::string
-      // double-quoted tokens lack double-quotes, except after unescaped backslashes
-      double_quoted = R"(\"((?:[^"\\]|\\.)*)\")",
-      // Unquoted tokens lack spaces & quotes, except after unescaped backslashes
-      unquoted = R"(((?:\\(?:.|$)|[^"\s\\])+))",
-      // Whitespace & EOF are delimiters
-      boundary = R"(\s+|$)";
-  std::regex re_cmdline(double_quoted + "|" + unquoted + "|" + boundary);
-  std::regex re_dq_escape(R"((\\*)\1(?:\\(")|$))"), re_escape(R"((\\*)\1\\("))");
-  bool was_space = false;
-  std::string arg;
-  std::smatch groups;
-  size_t i = 0;
-  while (std::regex_search(s.begin() + i, s.end(), groups, re_cmdline)) {
-    bool space = false;
-    if (groups[1].matched) {
-      // double_quoted: Backslashes are escapes only if they precede a double-quote
-      arg += std::regex_replace(groups[1].str(), re_dq_escape, std::string("$1$2"));
-    } else if (groups[2].matched) {
-      // unquoted: Backslashes are escapes only if they precede a double-quote
-      arg += std::regex_replace(groups[2].str(), re_escape, std::string("$2"));
-    } else {
-      // boundary
-      if (!was_space) {
-        // The previous token was an argument we just finished, not a contiguous delimiter
-        result.push_back(arg);
-        arg.clear();
-      }
-      space = true;
+  std::string arg, c_str = s + '\0';
+  std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
+  for (bool stop = false, in_dquotes = false; !stop;) {
+    if (!in_dquotes && (i >= j || ScanToken(i, "%*[ \t]").size())) {
+      result.push_back(arg);
+      arg.clear();
     }
-    was_space = space;
-    size_t delta = groups.position() + groups.length();
-    if (!delta) {
-      break;
+    stop |= i >= j && !in_dquotes;
+    arg += ScanToken(i, in_dquotes ? "%*[^\\\"]" : "%*[^\\\" \t]");
+    std::string possible_escape = ScanToken(i, "%*[\\]");
+    bool escaping = possible_escape.size() % 2 != 0;
+    if (*i == '\"') {
+      possible_escape.erase(possible_escape.size() / 2);
+      possible_escape.append(escaping ? 1 : 0, *i);
+      in_dquotes ^= !escaping;
+      ++i;
     }
-    i += delta;
+    arg += possible_escape;
   }
   return result;
 }
@@ -138,14 +110,29 @@ std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSynta
 
 std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
   std::string result;
-  std::regex unsafe_chars(R"([^[:alnum:]%_=+\-])"), single_quote("(')");
-  for (size_t i = 0; i != args.size(); ++i) {
-    std::string arg = args[i];
-    if (std::regex_search(arg, unsafe_chars)) {
+  const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
+  const char single_quote = '\'';
+  for (size_t a = 0; a != args.size(); ++a) {
+    std::string arg = args[a], arg_with_null = arg + '\0';
+    std::string::const_iterator i = arg_with_null.begin();
+    if (ScanToken(i, safe_chars) != arg) {
       // Prefer single-quotes. Double-quotes have unpredictable behavior, e.g. for "\!".
-      arg = "'" + std::regex_replace(arg, single_quote, std::string("'\\$1'")) + "'";
+      std::string quoted;
+      quoted += single_quote;
+      for (char ch : arg) {
+        if (ch == single_quote) {
+          quoted += single_quote;
+          quoted += '\\';
+        }
+        quoted += ch;
+        if (ch == single_quote) {
+          quoted += single_quote;
+        }
+      }
+      quoted += single_quote;
+      arg = quoted;
     }
-    if (i > 0) {
+    if (a > 0) {
       result += ' ';
     }
     result += arg;
@@ -155,16 +142,29 @@ std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
 
 static std::string CreateWindowsCommandLine(const std::vector<std::string> &args) {
   std::string result;
-  std::regex unsafe_chars(R"([^[:alnum:]%_=+\-:])"), double_quote(R"((\\*)("))"),
-      end(R"((\\*)$)");
-  for (size_t i = 0; i != args.size(); ++i) {
-    std::string arg = args[i];
-    if (std::regex_search(arg, unsafe_chars)) {
+  const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
+  const char double_quote = '\"';
+  for (size_t a = 0; a != args.size(); ++a) {
+    std::string arg = args[a], arg_with_null = arg + '\0';
+    std::string::const_iterator i = arg_with_null.begin();
+    if (ScanToken(i, safe_chars) != arg) {
       // Escape only backslashes that precede double-quotes
-      arg = std::regex_replace(arg, end, std::string("$1$1"));
-      arg = '"' + std::regex_replace(arg, double_quote, std::string("$1$1\\$2")) + '"';
+      std::string quoted;
+      quoted += double_quote;
+      size_t backslashes = 0;
+      for (char ch : arg) {
+        if (ch == double_quote) {
+          quoted.append(backslashes, '\\');
+          quoted += '\\';
+        }
+        quoted += ch;
+        backslashes = ch == '\\' ? backslashes + 1 : 0;
+      }
+      quoted.append(backslashes, '\\');
+      quoted += double_quote;
+      arg = quoted;
     }
-    if (i > 0) {
+    if (a > 0) {
       result += ' ';
     }
     result += arg;

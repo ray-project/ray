@@ -13,6 +13,9 @@ TEST(UtilTest, ParseCommandLineTest) {
   CommandLineSyntax posix = CommandLineSyntax::POSIX, win32 = CommandLineSyntax::Windows,
                     all[] = {posix, win32};
   for (CommandLineSyntax syn : all) {
+    ASSERT_EQ(ParseCommandLine(R"(aa)", syn), ArgList({R"(aa)"}));
+    ASSERT_EQ(ParseCommandLine(R"(a )", syn), ArgList({R"(a)"}));
+    ASSERT_EQ(ParseCommandLine(R"(\" )", syn), ArgList({R"(")"}));
     ASSERT_EQ(ParseCommandLine(R"(" a")", syn), ArgList({R"( a)"}));
     ASSERT_EQ(ParseCommandLine(R"("\\")", syn), ArgList({R"(\)"}));
     ASSERT_EQ(ParseCommandLine(R"("\"")", syn), ArgList({R"(")"}));
@@ -24,6 +27,16 @@ TEST(UtilTest, ParseCommandLineTest) {
   }
   ASSERT_EQ(ParseCommandLine(R"( a)", posix), ArgList({R"(a)"}));
   ASSERT_EQ(ParseCommandLine(R"( a)", win32), ArgList({R"()", R"(a)"}));
+  ASSERT_EQ(ParseCommandLine(R"(\ a)", posix), ArgList({R"( a)"}));
+  ASSERT_EQ(ParseCommandLine(R"(\ a)", win32), ArgList({R"(\)", R"(a)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\ D)", posix), ArgList({R"(C: D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\ D)", win32), ArgList({R"(C:\)", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\\ D)", posix), ArgList({R"(C:\)", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\\ D)", win32), ArgList({R"(C:\\)", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\  D)", posix), ArgList({R"(C: )", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\  D)", win32), ArgList({R"(C:\)", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\\\  D)", posix), ArgList({R"(C:\ )", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(C:\\\  D)", win32), ArgList({R"(C:\\\)", R"(D)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\a)", posix), ArgList({R"(\a)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\a)", win32), ArgList({R"(\\a)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\\a)", posix), ArgList({R"(\a)"}));
@@ -34,6 +47,8 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"("\\a")", win32), ArgList({R"(\\a)"}));
   ASSERT_EQ(ParseCommandLine(R"("\\\a")", posix), ArgList({R"(\\a)"}));
   ASSERT_EQ(ParseCommandLine(R"("\\\a")", win32), ArgList({R"(\\\a)"}));
+  ASSERT_EQ(ParseCommandLine(R"('a'' b')", posix), ArgList({R"(a b)"}));
+  ASSERT_EQ(ParseCommandLine(R"('a'' b')", win32), ArgList({R"('a'')", R"(b')"}));
   ASSERT_EQ(ParseCommandLine(R"('a')", posix), ArgList({R"(a)"}));
   ASSERT_EQ(ParseCommandLine(R"('a')", win32), ArgList({R"('a')"}));
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", posix), ArgList({R"(x a \b)"}));
@@ -45,6 +60,8 @@ TEST(UtilTest, CreateCommandLineTest) {
   CommandLineSyntax posix = CommandLineSyntax::POSIX, win32 = CommandLineSyntax::Windows,
                     all[] = {posix, win32};
   std::vector<ArgList> test_cases({
+      ArgList({R"(a)"}),
+      ArgList({R"(a b)"}),
       ArgList({R"(")"}),
       ArgList({R"(')"}),
       ArgList({R"(\)"}),
