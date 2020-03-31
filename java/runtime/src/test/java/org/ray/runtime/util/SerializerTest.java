@@ -1,7 +1,9 @@
 package org.ray.runtime.util;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.serializer.Serializer;
 import org.ray.runtime.serializer.CrossTypeManager;
+import org.ray.runtime.serializer.Serializer.Meta;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -58,10 +60,10 @@ public class SerializerTest {
   @Test
   public void testBasicSerialize() {
     {
-      Serializer.Meta meta = new Serializer.Meta();
       Object[] foo = new Object[]{"hello", (byte) 1, 2.0, (short) 3, 4, 5L, new String[]{"hello", "world"}};
-      Object[] bar = Serializer.decode(Serializer.encode(foo, meta), Object[].class);
-      Assert.assertTrue(meta.isCrossLanguage);
+      Pair<byte[], Meta> serialized = Serializer.encode(foo);
+      Object[] bar = Serializer.decode(serialized.getLeft(), Object[].class);
+      Assert.assertTrue(serialized.getRight().isCrossLanguage);
       Assert.assertEquals(foo[0], bar[0]);
       Assert.assertEquals(((Number) foo[1]).byteValue(), ((Number) bar[1]).byteValue());
       Assert.assertEquals(foo[2], bar[2]);
@@ -71,32 +73,32 @@ public class SerializerTest {
 
     }
     {
-      Serializer.Meta meta = new Serializer.Meta();
       Object[][] foo = new Object[][]{{1, 2}, {"3", 4}};
       Assert.expectThrows(RuntimeException.class, () -> {
-        Object[][] bar = Serializer.decode(Serializer.encode(foo, meta), Integer[][].class);
+        Object[][] bar = Serializer.decode(Serializer.encode(foo).getLeft(), Integer[][].class);
       });
-      Object[][] bar = Serializer.decode(Serializer.encode(foo, meta), Object[][].class);
-      Assert.assertTrue(meta.isCrossLanguage);
+      Pair<byte[], Serializer.Meta> serialized = Serializer.encode(foo);
+      Object[][] bar = Serializer.decode(serialized.getLeft(), Object[][].class);
+      Assert.assertTrue(serialized.getRight().isCrossLanguage);
       Assert.assertEquals(((Number) foo[0][1]).intValue(), ((Number) bar[0][1]).intValue());
       Assert.assertEquals(foo[1][0], bar[1][0]);
     }
     {
-      Serializer.Meta meta = new Serializer.Meta();
       ArrayList<String> foo = new ArrayList<>();
       foo.add("1");
       foo.add("2");
-      ArrayList<String> bar = Serializer.decode(Serializer.encode(foo, meta), String[].class);
-      Assert.assertFalse(meta.isCrossLanguage);
+      Pair<byte[], Serializer.Meta> serialized = Serializer.encode(foo);
+      ArrayList<String> bar = Serializer.decode(serialized.getLeft(), String[].class);
+      Assert.assertFalse(serialized.getRight().isCrossLanguage);
       Assert.assertEquals(foo.get(0), bar.get(0));
     }
     {
-      Serializer.Meta meta = new Serializer.Meta();
       CrossTypeManager.register(A.class);
       CrossTypeManager.register(B.class);
       A foo = new A(1, "2");
-      A bar = Serializer.decode(Serializer.encode(foo, meta), Object.class);
-      Assert.assertTrue(meta.isCrossLanguage);
+      Pair<byte[], Serializer.Meta> serialized = Serializer.encode(foo);
+      A bar = Serializer.decode(serialized.getLeft(), Object.class);
+      Assert.assertTrue(serialized.getRight().isCrossLanguage);
       Assert.assertEquals(((B) foo.toCrossData()[0]).toCrossData()[0], ((B) bar.toCrossData()[0]).toCrossData()[0]);
       Assert.assertEquals(foo.toCrossData()[1], bar.toCrossData()[1]);
     }

@@ -1,13 +1,16 @@
 package org.ray.runtime.serializer;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessagePacker;
@@ -17,6 +20,7 @@ import org.msgpack.value.ExtensionValue;
 import org.msgpack.value.IntegerValue;
 import org.msgpack.value.Value;
 import org.msgpack.value.ValueType;
+import org.ray.runtime.serializer.Serializer.Meta;
 
 // We can't pack List / Map by MessagePack, because we don't know the type class when unpacking.
 public class MessagePackSerializer {
@@ -27,332 +31,31 @@ public class MessagePackSerializer {
   // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
   private static final int MESSAGE_PACK_OFFSET = 9;
 
-  private static Map<Class<?>, Type> mapSerializer = new HashMap<>();
-  private static Map<ValueType, Map<Class<?>, Type>> mapDeserializer = new HashMap<>();
-  private static ExtensionType extensionType = new ExtensionType();
+  // Pakcers indexed by its corresponding Java class object.
+  private static Map<Class<?>, TypePacker> packers = new HashMap<>();
+  // Unpackers indexed by its corresponding MessagePack ValueType.
+  private static Map<ValueType, TypeUnpacker> unpackers = new HashMap<>();
+  // Null and array don't have a corresponding class, so define them separately.
+  private static final TypePacker NULL_PACKER;
+  private static final TypePacker ARRAY_PACKER;
+  private static final TypePacker EXTENSION_PACKER;
 
   static {
-    // Register types to mapSerializer and mapDeserializer.
-    new NullType();
-    new BooleanType();
-    new ByteType();
-    new ShortType();
-    new IntType();
-    new LongType();
-    new BigIntegerType();
-    new FloatType();
-    new DoubleType();
-    new StringType();
-    new BinaryType();
-    new ArrayType();
-    new ExtensionType();
+    // ===== Initialize packers =====:
+    // Null packer.
+    NULL_PACKER = (object, packer, javaSerializer) -> packer.packNil();
 
-    // null / Array / Extension always use special type class as key.
-    Preconditions.checkState(
-        mapDeserializer.get(ValueType.BOOLEAN).get(Object.class) instanceof BooleanType);
-    Preconditions.checkState(
-        mapDeserializer.get(ValueType.INTEGER).get(Object.class) instanceof IntType);
-    Preconditions.checkState(
-        mapDeserializer.get(ValueType.FLOAT).get(Object.class) instanceof DoubleType);
-    Preconditions.checkState(
-        mapDeserializer.get(ValueType.STRING).get(Object.class) instanceof StringType);
-    Preconditions.checkState(
-        mapDeserializer.get(ValueType.BINARY).get(Object.class) instanceof BinaryType);
-  }
-
-  interface JavaSerializer {
-
-    void serialize(Object object, MessagePacker packer) throws IOException;
-  }
-
-  interface JavaDeserializer {
-
-    Object deserialize(ExtensionValue v);
-  }
-
-  private interface Type {
-
-    void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException;
-
-    Object unpack(Value v, Class<?> type,
-        JavaDeserializer javaDeserializer);
-  }
-
-  private static class NullType implements Type {
-
-    public NullType() {
-      MessagePackSerializer.mapSerializer.put(NullType.class, this);
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.NIL, ImmutableMap.of(NullType.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packNil();
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return null;
-    }
-  }
-
-  private static class BooleanType implements Type {
-
-    public BooleanType() {
-      MessagePackSerializer.mapSerializer.put(Boolean.class, this);
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.BOOLEAN, ImmutableMap.of(
-              Boolean.class, this,
-              boolean.class, this,
-              Object.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packBoolean((Boolean) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asBooleanValue().getBoolean();
-    }
-  }
-
-  private static class ByteType implements Type {
-
-    public ByteType() {
-      MessagePackSerializer.mapSerializer.put(Byte.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Byte.class, this,
-          byte.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.INTEGER, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.INTEGER).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packByte((Byte) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      IntegerValue iv = v.asIntegerValue();
-      Preconditions.checkState(iv.isInByteRange());
-      return iv.asByte();
-    }
-  }
-
-  private static class ShortType implements Type {
-
-    public ShortType() {
-      MessagePackSerializer.mapSerializer.put(Short.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Short.class, this,
-          short.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.INTEGER, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.INTEGER).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packShort((Short) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      IntegerValue iv = v.asIntegerValue();
-      Preconditions.checkState(iv.isInShortRange());
-      return iv.asShort();
-    }
-  }
-
-  private static class IntType implements Type {
-
-    public IntType() {
-      MessagePackSerializer.mapSerializer.put(Integer.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Integer.class, this,
-          int.class, this,
-          Object.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.INTEGER, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.INTEGER).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packInt((Integer) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      IntegerValue iv = v.asIntegerValue();
-      Preconditions.checkState(iv.isInIntRange());
-      return iv.asInt();
-    }
-  }
-
-  private static class LongType implements Type {
-
-    public LongType() {
-      MessagePackSerializer.mapSerializer.put(Long.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Long.class, this,
-          long.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.INTEGER, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.INTEGER).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packLong((Long) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      IntegerValue iv = v.asIntegerValue();
-      Preconditions.checkState(iv.isInLongRange());
-      return iv.asLong();
-    }
-  }
-
-  private static class BigIntegerType implements Type {
-
-    public BigIntegerType() {
-      MessagePackSerializer.mapSerializer.put(BigInteger.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(BigInteger.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.INTEGER, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.INTEGER).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packBigInteger((BigInteger) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asIntegerValue().asBigInteger();
-    }
-  }
-
-  private static class FloatType implements Type {
-
-    public FloatType() {
-      MessagePackSerializer.mapSerializer.put(Float.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Float.class, this,
-          float.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.FLOAT, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.FLOAT).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packFloat((Float) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asFloatValue().toFloat();
-    }
-  }
-
-  private static class DoubleType implements Type {
-
-    public DoubleType() {
-      MessagePackSerializer.mapSerializer.put(Double.class, this);
-      Map<Class<?>, Type> value = ImmutableMap.of(
-          Double.class, this,
-          double.class, this,
-          Object.class, this);
-      MessagePackSerializer.mapDeserializer.putIfAbsent(ValueType.FLOAT, new HashMap<>());
-      MessagePackSerializer.mapDeserializer.get(ValueType.FLOAT).putAll(value);
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packDouble((Double) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asFloatValue().toDouble();
-    }
-  }
-
-  private static class StringType implements Type {
-
-    public StringType() {
-      MessagePackSerializer.mapSerializer.put(String.class, this);
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.STRING, ImmutableMap.of(
-              String.class, this,
-              Object.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      packer.packString((String) object);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asStringValue().asString();
-    }
-  }
-
-  private static class BinaryType implements Type {
-
-    public BinaryType() {
-      MessagePackSerializer.mapSerializer.put(byte[].class, this);
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.BINARY, ImmutableMap.of(
-              byte[].class, this,
-              Object.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
-      byte[] bytes = (byte[]) object;
-      packer.packBinaryHeader(bytes.length);
-      packer.writePayload(bytes);
-    }
-
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      return v.asBinaryValue().asByteArray();
-    }
-  }
-
-  private static class ArrayType implements Type {
-
-    public ArrayType() {
-      MessagePackSerializer.mapSerializer.put(ArrayType.class, this);
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.ARRAY, ImmutableMap.of(ArrayType.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
+    // Array packer.
+    ARRAY_PACKER = ((object, packer, javaSerializer) -> {
       int length = Array.getLength(object);
       packer.packArrayHeader(length);
       for (int i = 0; i < length; ++i) {
-        MessagePackSerializer.pack(Array.get(object, i), packer, javaSerializer);
+        pack(Array.get(object, i), packer, javaSerializer);
       }
-    }
+    });
 
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      ArrayValue a = v.asArrayValue();
-      Class<?> componentType = type.isArray() ? type.getComponentType() : Object.class;
-      Object array = Array.newInstance(componentType, a.size());
-      for (int i = 0; i < a.size(); ++i) {
-        Value value = a.get(i);
-        Array.set(array, i, MessagePackSerializer.unpack(value, componentType, javaDeserializer));
-      }
-      return array;
-    }
-  }
-
-  private static class ExtensionType implements Type {
-
-    public ExtensionType() {
-      MessagePackSerializer.mapDeserializer
-          .put(ValueType.EXTENSION, ImmutableMap.of(ExtensionType.class, this));
-    }
-
-    public void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException {
+    // Extension packer.
+    EXTENSION_PACKER = ((object, packer, javaSerializer) -> {
       try {
         // Get type id and cross data from object.
         Class<?> cls = object.getClass();
@@ -366,7 +69,7 @@ public class MessagePackSerializer {
             toCrossData.invoke(object),
         };
         MessageBufferPacker crossTypePacker = MessagePack.newDefaultBufferPacker();
-        MessagePackSerializer.pack(data, crossTypePacker, javaSerializer);
+        pack(data, crossTypePacker, javaSerializer);
         // Put the serialized bytes to CROSS_LANGUAGE_TYPE_EXTENSION_ID.
         byte[] payload = crossTypePacker.toByteArray();
         packer.packExtensionTypeHeader(CROSS_LANGUAGE_TYPE_EXTENSION_ID, payload.length);
@@ -374,18 +77,111 @@ public class MessagePackSerializer {
       } catch (Exception e) {
         javaSerializer.serialize(object, packer);
       }
-    }
+    });
 
-    public Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-      ExtensionValue ev = v.asExtensionValue();
+    packers.put(Boolean.class,
+        ((object, packer, javaSerializer) -> packer.packBoolean((Boolean) object)));
+    packers.put(Byte.class,
+        ((object, packer, javaSerializer) -> packer.packByte((Byte) object)));
+    packers.put(Short.class,
+        ((object, packer, javaSerializer) -> packer.packShort((Short) object)));
+    packers.put(Integer.class,
+        ((object, packer, javaSerializer) -> packer.packInt((Integer) object)));
+    packers.put(Long.class,
+        ((object, packer, javaSerializer) -> packer.packLong((Long) object)));
+    packers.put(BigInteger.class,
+        ((object, packer, javaSerializer) -> packer.packBigInteger((BigInteger) object)));
+    packers.put(Float.class,
+        ((object, packer, javaSerializer) -> packer.packFloat((Float) object)));
+    packers.put(Double.class,
+        ((object, packer, javaSerializer) -> packer.packDouble((Double) object)));
+    packers.put(String.class,
+        ((object, packer, javaSerializer) -> packer.packString((String) object)));
+    packers.put(byte[].class,
+        ((object, packer, javaSerializer) -> {
+          byte[] bytes = (byte[]) object;
+          packer.packBinaryHeader(bytes.length);
+          packer.writePayload(bytes);
+        }));
+
+    // ===== Initialize unpackers =====:
+    List<Class<?>> booleanClasses = ImmutableList.of(Boolean.class, boolean.class);
+    List<Class<?>> byteClasses = ImmutableList.of(Byte.class, byte.class);
+    List<Class<?>> shortClasses = ImmutableList.of(Short.class, short.class);
+    List<Class<?>> intClasses = ImmutableList.of(Integer.class, int.class);
+    List<Class<?>> longClasses = ImmutableList.of(Long.class, long.class);
+    List<Class<?>> bigIntClasses = ImmutableList.of(BigInteger.class);
+    List<Class<?>> floatClasses = ImmutableList.of(Float.class, float.class);
+    List<Class<?>> doubleClasses = ImmutableList.of(Double.class, double.class);
+    List<Class<?>> stringClasses = ImmutableList.of(String.class);
+    List<Class<?>> binaryClasses = ImmutableList.of(byte[].class);
+
+    // Null unpacker.
+    unpackers.put(ValueType.NIL, (value, targetClass, javaDeserializer) -> null);
+    // Boolean unpacker.
+    unpackers.put(ValueType.BOOLEAN, (value, targetClass, javaDeserializer) -> {
+      Preconditions.checkArgument(checkTypeCompatible(booleanClasses, targetClass),
+          "Boolean can't be deserialized as {}.", targetClass);
+      return value.asBooleanValue().getBoolean();
+    });
+    // Integer unpacker.
+    unpackers.put(ValueType.INTEGER, ((value, targetClass, javaDeserializer) -> {
+      IntegerValue iv = value.asIntegerValue();
+      if (iv.isInByteRange() && checkTypeCompatible(byteClasses, targetClass)) {
+        return iv.asByte();
+      } else if (iv.isInShortRange() && checkTypeCompatible(shortClasses, targetClass)) {
+        return iv.asShort();
+      } else if (iv.isInIntRange() && checkTypeCompatible(intClasses, targetClass)) {
+        return iv.asInt();
+      } else if (iv.isInLongRange() && checkTypeCompatible(longClasses, targetClass)) {
+        return iv.asLong();
+      } else if (checkTypeCompatible(bigIntClasses, targetClass)) {
+        return iv.asBigInteger();
+      }
+      throw new IllegalArgumentException("Integer can't be deserialized as " + targetClass + ".");
+    }));
+    // Float unpacker.
+    unpackers.put(ValueType.FLOAT, ((value, targetClass, javaDeserializer) -> {
+      if (checkTypeCompatible(doubleClasses, targetClass)) {
+        return value.asFloatValue().toDouble();
+      } else if (checkTypeCompatible(floatClasses, targetClass)) {
+        return value.asFloatValue().toFloat();
+      }
+      throw new IllegalArgumentException("Float can't be deserialized as " + targetClass + ".");
+    }));
+    // String unpacker.
+    unpackers.put(ValueType.STRING, ((value, targetClass, javaDeserializer) -> {
+      Preconditions.checkArgument(checkTypeCompatible(stringClasses, targetClass),
+          "String can't be deserialized as {}.", targetClass);
+      return value.asStringValue().asString();
+    }));
+    // Binary unpacker.
+    unpackers.put(ValueType.BINARY, ((value, targetClass, javaDeserializer) -> {
+      Preconditions.checkArgument(checkTypeCompatible(binaryClasses, targetClass),
+          "Binary can't be deserialized as {}.", targetClass);
+      return value.asBinaryValue().asByteArray();
+    }));
+    // Array unpacker.
+    unpackers.put(ValueType.ARRAY, ((value, targetClass, javaDeserializer) -> {
+      ArrayValue av = value.asArrayValue();
+      Class<?> componentType =
+          targetClass.isArray() ? targetClass.getComponentType() : Object.class;
+      Object array = Array.newInstance(componentType, av.size());
+      for (int i = 0; i < av.size(); ++i) {
+        Array.set(array, i, unpack(av.get(i), componentType, javaDeserializer));
+      }
+      return array;
+    }));
+    // Extension unpacker.
+    unpackers.put(ValueType.EXTENSION, ((value, targetClass, javaDeserializer) -> {
+      ExtensionValue ev = value.asExtensionValue();
       byte extType = ev.getType();
       if (extType == CROSS_LANGUAGE_TYPE_EXTENSION_ID) {
         try {
           MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(ev.getData());
           Value crossValue = unpacker.unpackValue();
           // data is [type id, cross data object]
-          Object[] data = (Object[]) MessagePackSerializer
-              .unpack(crossValue, Object[].class, javaDeserializer);
+          Object[] data = (Object[]) unpack(crossValue, Object[].class, javaDeserializer);
           Preconditions.checkState(data != null && data.length == 2);
           Integer crossTypeId = ((Number) data[0]).intValue();
           Object[] crossData = (Object[]) data[1];
@@ -401,49 +197,65 @@ public class MessagePackSerializer {
       } else if (extType == LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID) {
         return javaDeserializer.deserialize(ev);
       }
-      return null;
+      throw new IllegalArgumentException("Unknown extension type id " + ev.getType() + ".");
+    }));
+  }
+
+  interface JavaSerializer {
+
+    void serialize(Object object, MessagePacker packer) throws IOException;
+  }
+
+  interface JavaDeserializer {
+
+    Object deserialize(ExtensionValue v);
+  }
+
+  interface TypePacker {
+
+    void pack(Object object, MessagePacker packer,
+        JavaSerializer javaSerializer) throws IOException;
+  }
+
+  interface TypeUnpacker {
+
+    Object unpack(Value value, Class<?> targetClass,
+        JavaDeserializer javaDeserializer);
+  }
+
+  private static boolean checkTypeCompatible(List<Class<?>> expected, Class<?> actual) {
+    for (Class<?> expectedClass : expected) {
+      if (actual.isAssignableFrom(expectedClass)) {
+        return true;
+      }
     }
+    return false;
   }
 
   private static void pack(Object object, MessagePacker packer, JavaSerializer javaSerializer)
       throws IOException {
-    Class<?> type;
     if (object == null) {
-      type = NullType.class;
-    } else if (object.getClass().isArray()) {
-      type = ArrayType.class;
+      NULL_PACKER.pack(null, packer, javaSerializer);
     } else {
-      type = object.getClass();
-    }
-    Type t = mapSerializer.get(type);
-    if (t != null) {
-      t.pack(object, packer, javaSerializer);
-    } else {
-      extensionType.pack(object, packer, javaSerializer);
+      Class<?> type = object.getClass();
+      TypePacker pk = packers.get(type);
+      if (pk != null) {
+        pk.pack(object, packer, javaSerializer);
+      } else {
+        if (type.isArray()) {
+          ARRAY_PACKER.pack(object, packer, javaSerializer);
+        } else {
+          EXTENSION_PACKER.pack(object, packer, javaSerializer);
+        }
+      }
     }
   }
 
   private static Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
-    ValueType valueType = v.getValueType();
-    Class<?> typeKey;
-    if (valueType == ValueType.NIL) {
-      typeKey = NullType.class;
-    } else if (valueType == ValueType.ARRAY) {
-      typeKey = ArrayType.class;
-    } else if (valueType == ValueType.EXTENSION) {
-      typeKey = ExtensionType.class;
-    } else {
-      typeKey = type;
-    }
-    try {
-      return mapDeserializer.get(valueType).get(typeKey).unpack(v, type, javaDeserializer);
-    } catch (Exception e) {
-      throw new RuntimeException(
-          String.format("Can't unpack value %s with type %s", v.toString(), type.toString()));
-    }
+    return unpackers.get(v.getValueType()).unpack(v, type, javaDeserializer);
   }
 
-  public static byte[] encode(Object obj, Serializer.Meta meta, ClassLoader classLoader) {
+  public static Pair<byte[], Meta> encode(Object obj, ClassLoader classLoader) {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     try {
       // Reserve MESSAGE_PACK_OFFSET bytes for MessagePack bytes length.
@@ -451,10 +263,10 @@ public class MessagePackSerializer {
       // Serialize input object by MessagePack.
       Serializer.Meta javaEncoderMeta = new Serializer.Meta();
       pack(obj, packer, ((object, packer1) -> {
-        byte[] payload = FstSerializer.encode(object, javaEncoderMeta, classLoader);
+        byte[] payload = FstSerializer.encode(object, classLoader);
         packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
         packer1.addPayload(payload);
-        meta.isCrossLanguage = false;
+        javaEncoderMeta.isCrossLanguage = false;
       }));
       byte[] msgpackBytes = packer.toByteArray();
       // Serialize MessagePack bytes length.
@@ -466,7 +278,7 @@ public class MessagePackSerializer {
       Preconditions.checkState(msgpackBytesLength.length <= MESSAGE_PACK_OFFSET);
       // Write MessagePack bytes length to reserved buffer.
       System.arraycopy(msgpackBytesLength, 0, msgpackBytes, 0, msgpackBytesLength.length);
-      return msgpackBytes;
+      return ImmutablePair.of(msgpackBytes, javaEncoderMeta);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -478,19 +290,19 @@ public class MessagePackSerializer {
     try {
       // Read MessagePack bytes length.
       MessageUnpacker headerUnpacker = MessagePack.newDefaultUnpacker(bs, 0, MESSAGE_PACK_OFFSET);
-      Long msgpackBytesLength = headerUnpacker.unpackLong();
+      long msgpackBytesLength = headerUnpacker.unpackLong();
       headerUnpacker.close();
       // Check MessagePack bytes length is valid.
       Preconditions.checkState(MESSAGE_PACK_OFFSET + msgpackBytesLength <= bs.length);
       // Deserialize MessagePack bytes from MESSAGE_PACK_OFFSET.
       MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bs, MESSAGE_PACK_OFFSET,
-          msgpackBytesLength.intValue());
+          (int) msgpackBytesLength);
       Value v = unpacker.unpackValue();
       if (type == null) {
         type = Object.class;
       }
-      return (T) unpack(v, type, ((ExtensionValue ev) -> FstSerializer.decode(ev.getData(),
-          classLoader)));
+      return (T) unpack(v, type,
+          ((ExtensionValue ev) -> FstSerializer.decode(ev.getData(), classLoader)));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

@@ -54,94 +54,32 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonFunction() {
+    Object[] inputs = new Object[]{
+        true,  // Boolean
+        Byte.MAX_VALUE,  // Byte
+        Short.MAX_VALUE,  // Short
+        Integer.MAX_VALUE,  // Integer
+        Long.MAX_VALUE,  // Long
+        // BigInteger can support max value of 2^64-1, please refer to:
+        // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
+        // If BigInteger larger than 2^64-1, the value can only be transferred among Java workers.
+        BigInteger.valueOf(Long.MAX_VALUE),  // BigInteger
+        "Hello World!",  // String
+        1.234f,  // Float
+        1.234,  // Double
+        "example binary".getBytes()};  // byte[]
+    for (Object o : inputs) {
+      RayObject res = Ray.call(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", o.getClass()),
+          o);
+      Assert.assertEquals(res.get(), o);
+    }
     // null
     {
       Object input = null;
       RayObject<Object> res = Ray.call(
           new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object.class), input);
       Object r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Boolean
-    {
-      boolean input = true;
-      RayObject<Boolean> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Boolean.class), input);
-      boolean r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Byte
-    {
-      byte input = Byte.MAX_VALUE;
-      RayObject<Byte> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Byte.class), input);
-      byte r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Short
-    {
-      short input = Short.MAX_VALUE;
-      RayObject<Short> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Short.class), input);
-      short r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Integer
-    {
-      int input = Integer.MAX_VALUE;
-      RayObject<Integer> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Integer.class), input);
-      int r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Long
-    {
-      long input = Long.MAX_VALUE;
-      RayObject<Long> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Long.class), input);
-      long r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // BigInteger can support max value of 2^64-1, please refer to:
-    // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
-    // If BigInteger larger than 2^64-1, the value can only be transferred among Java workers.
-    {
-      BigInteger input = BigInteger.valueOf(Long.MAX_VALUE);
-      RayObject<BigInteger> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", BigInteger.class), input);
-      BigInteger r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // String
-    {
-      String input = "Hello World!";
-      RayObject<String> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", String.class), input);
-      String r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Float
-    {
-      float input = 1.234f;
-      RayObject<Float> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Float.class), input);
-      float r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // Double
-    {
-      double input = 1.234;
-      RayObject<Double> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Double.class), input);
-      double r = res.get();
-      Assert.assertEquals(r, input);
-    }
-    // binary
-    {
-      byte[] input = "example binary".getBytes();
-      RayObject<byte[]> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", byte[].class), input);
-      byte[] r = res.get();
       Assert.assertEquals(r, input);
     }
     // array
@@ -274,7 +212,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return s;
   }
 
-  public static int[] returnInputIntList(int[] l) {
+  public static int[] returnInputIntArray(int[] l) {
     return l;
   }
 

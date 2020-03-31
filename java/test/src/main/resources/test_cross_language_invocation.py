@@ -35,7 +35,7 @@ def py_func_call_java_function():
         # list (tuple will be packed by pickle,
         # so only list can be transferred across language)
         r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
-                              "returnInputIntList").remote([1, 2, 3])
+                              "returnInputIntArray").remote([1, 2, 3])
         assert ray.get(r) == [1, 2, 3]
         # pack
         f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",

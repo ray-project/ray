@@ -8,6 +8,7 @@ import org.ray.runtime.actor.NativeRayActorSerializer;
  * Java object serialization TODO: use others (e.g. Arrow) for higher performance
  */
 public class FstSerializer {
+
   private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal.withInitial(() -> {
     FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
     conf.registerSerializer(NativeRayActor.class, new NativeRayActorSerializer(), true);
@@ -15,7 +16,7 @@ public class FstSerializer {
   });
 
 
-  public static byte[] encode(Object obj, Serializer.Meta meta, ClassLoader classLoader) {
+  public static byte[] encode(Object obj, ClassLoader classLoader) {
     byte[] result;
     FSTConfiguration current = conf.get();
     if (classLoader != null && classLoader != current.getClassLoader()) {
@@ -26,7 +27,6 @@ public class FstSerializer {
     } else {
       result = current.asByteArray(obj);
     }
-    meta.isCrossLanguage = false;
     return result;
   }
 

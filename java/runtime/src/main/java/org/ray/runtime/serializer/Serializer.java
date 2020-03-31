@@ -1,7 +1,11 @@
 package org.ray.runtime.serializer;
 
+import org.apache.commons.lang3.tuple.Pair;
+
 public class Serializer {
+
   public static class Meta {
+
     public boolean isCrossLanguage = true;
   }
 
@@ -9,12 +13,12 @@ public class Serializer {
     MessagePackSerializer.setClassloader(classLoader);
   }
 
-  public static byte[] encode(Object obj, Meta meta) {
-    return MessagePackSerializer.encode(obj, meta,null);
+  public static Pair<byte[], Meta> encode(Object obj) {
+    return MessagePackSerializer.encode(obj, null);
   }
 
-  public static byte[] encode(Object obj, Meta meta, ClassLoader classLoader) {
-    return MessagePackSerializer.encode(obj, meta, classLoader);
+  public static Pair<byte[], Meta> encode(Object obj, ClassLoader classLoader) {
+    return MessagePackSerializer.encode(obj, classLoader);
   }
 
   @SuppressWarnings("unchecked")

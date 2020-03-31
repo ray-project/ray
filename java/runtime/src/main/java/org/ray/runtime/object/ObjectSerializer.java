@@ -84,11 +84,11 @@ public class ObjectSerializer {
       return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof RayTaskException) {
       Serializer.Meta meta = new Serializer.Meta();
-      byte[] serializedBytes = Serializer.encode(object, meta);
+      byte[] serializedBytes = Serializer.encode(object).getLeft();
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
       Serializer.Meta meta = new Serializer.Meta();
-      byte[] serializedBytes = Serializer.encode(object, meta);
+      byte[] serializedBytes = Serializer.encode(object).getLeft();
       return new NativeRayObject(serializedBytes, meta.isCrossLanguage ?
           OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
     }
