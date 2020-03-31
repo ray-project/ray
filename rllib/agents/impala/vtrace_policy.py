@@ -20,8 +20,6 @@ tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-#BEHAVIOUR_LOGITS = "behaviour_logits"
-
 
 class VTraceLoss:
     def __init__(self,
@@ -253,10 +251,6 @@ def postprocess_trajectory(policy,
     return sample_batch
 
 
-#def add_behaviour_logits(policy):
-#    return {BEHAVIOUR_LOGITS: policy.model.last_output()}
-
-
 def validate_config(policy, obs_space, action_space, config):
     if config["vtrace"] and not config["in_evaluation"]:
         assert config["batch_mode"] == "truncate_episodes", \
@@ -295,7 +289,6 @@ VTraceTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    #extra_action_fetches_fn=add_behaviour_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],

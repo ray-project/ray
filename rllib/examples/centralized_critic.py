@@ -17,7 +17,6 @@ import numpy as np
 from gym.spaces import Discrete
 
 from ray import tune
-#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
     PPOLoss

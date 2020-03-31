@@ -1,7 +1,6 @@
 import logging
 
 import ray
-#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
@@ -160,12 +159,10 @@ def kl_and_loss_stats(policy, train_batch):
     }
 
 
-def vf_preds_fetches(policy, input_dict, state_batches, model,
-                     action_dist):
+def vf_preds_fetches(policy, input_dict, state_batches, model, action_dist):
     """Adds value function outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        #BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 

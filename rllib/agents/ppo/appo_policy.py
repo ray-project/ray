@@ -9,7 +9,6 @@ import gym
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
     clip_gradients, validate_config, choose_optimizer
-        #BEHAVIOUR_LOGITS, clip_gradients, validate_config, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -399,7 +398,7 @@ def postprocess_trajectory(policy,
 
 
 def add_values(policy):
-    out = {}  #BEHAVIOUR_LOGITS: policy.model.last_output()}
+    out = {}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.model.value_function()
     return out
