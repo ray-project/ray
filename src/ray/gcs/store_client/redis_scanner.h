@@ -38,12 +38,12 @@ class ScanRequest {
       std::pair<std::string, std::string> scan_all_rows_callback_{nullptr};
   /// The callback that will be called when ScanPartialRows receving some data from redis.
   /// And the scan may not done.
-  ScanCallback<std::string, std::string> scan_partial_rows_callback_{nullptr};
+  SegmentedCallback<std::string, std::string> scan_partial_rows_callback_{nullptr};
   /// The callback that will be called after the ScanKeys finishes.
   MultiItemCallback < std::pair<std::string> scan_all_keys_callback_{nullptr};
   /// The callback that will be called when ScanPartialKeys receving some data from redis.
   /// And the scan may not done.
-  ScanCallback<std::string> scan_partial_keys_callback_{nullptr};
+  SegmentedCallback<std::string> scan_partial_keys_callback_{nullptr};
 
   /// The scan result in rows.
   /// If the scan type is kScanPartialRows, partial scan result will be saved in this
@@ -66,7 +66,8 @@ class ScanRequest {
 /// Call method `ScanRows` if you want to scan all rows at once.
 /// Call method `ScanPartialRows` if you want to scan partial rows at one time.
 ///
-/// If you called one method, should never call the other methods. 
+/// If you called one method, should never call the other methods.
+/// Otherwise it will disturb the status of the RedisScanner.
 class RedisScanner {
  public:
   /// Constructor of RedisScanner.
@@ -79,7 +80,7 @@ class RedisScanner {
   ~RedisScanner();
 
   /// Start scan keys. Will callback after the scan finishes(receiving all data from
-  /// redis). 
+  /// redis).
   ///
   /// This function is non-thread safe.
   ///
@@ -100,7 +101,7 @@ class RedisScanner {
   ///
   /// \param callback The callback will be called when receiving some data.
   /// \return Status
-  Status ScanPartialKeys(const ScanCallback<std::string> &callback);
+  Status ScanPartialKeys(const SegmentedCallback<std::string> &callback);
 
   /// Start scan rows. Will callback after the scan finishes(receiving all data from
   /// redis).
@@ -124,7 +125,7 @@ class RedisScanner {
   ///
   /// \param callback The callback will be called when receiving some data.
   /// \return Status
-  Status ScanPartialRows(const ScanCallback<std::string, std::string> &callback);
+  Status ScanPartialRows(const SegmentedCallback<std::string, std::string> &callback);
 
  private:
   /// Scan from Redis.

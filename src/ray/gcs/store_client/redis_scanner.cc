@@ -34,7 +34,7 @@ Status RedisScanner::ScanRows(const MultiItemCallback <
 }
 
 Status RedisScanner::ScanPartialRows(
-    const ScanCallback<std::string, std::string> &callback) {
+    const SegmentedCallback<std::string, std::string> &callback) {
   RAY_DCHECK(callback);
 
   RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown ||
@@ -57,7 +57,7 @@ Status RedisScanner::ScanKeys(const MultiItemCallback<std::string> &callback) {
   return Status::OK();
 }
 
-Status RedisScanner::ScanPartialKeys(const ScanCallback<std::string> &callback) {
+Status RedisScanner::ScanPartialKeys(const SegmentedCallback<std::string> &callback) {
   RAY_DCHECK(callback);
 
   RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown ||
