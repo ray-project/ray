@@ -134,8 +134,6 @@ cdef class ObjectID(BaseID):
         self.in_core_worker = False
 
         worker = ray.worker.global_worker
-        # TODO(edoakes): there are dummy object IDs being created in
-        # includes/task.pxi before the core worker is initialized.
         if hasattr(worker, "core_worker"):
             worker.core_worker.add_object_id_reference(self)
             self.in_core_worker = True

@@ -75,7 +75,6 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
-from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 
 import ray
@@ -98,7 +97,6 @@ cimport cpython
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
-include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
