@@ -96,7 +96,12 @@ RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distribu
 
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
-RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
+RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter. Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+
+Application Support
+~~~~~~~~~~~~~~~~~~~
+
+Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__.
 
 Customization
 ~~~~~~~~~~~~~

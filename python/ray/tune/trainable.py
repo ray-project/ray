@@ -125,7 +125,7 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to `self.logdir`.
+    directory of this process to ``self.logdir``.
 
     """
 
@@ -178,24 +178,29 @@ class Trainable:
                         "slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
     def default_resource_request(cls, config):
-        """Returns the resource requirement for the given configuration.
+        """Provides a static resource requirement for the given configuration.
 
         This can be overriden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        Example:
-            >>> def default_resource_request(cls, config):
-            >>>     return Resources(
-            >>>         cpu=0,
-            >>>         gpu=0,
-            >>>         extra_cpu=config["workers"],
-            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
+        .. code-block:: python
+
+            @classmethod
+            def default_resource_request(cls, config):
+                return Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=config["workers"],
+                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+
+        Returns:
+            Resources: A Resources object consumed by Tune for queueing.
         """
         return None
 
@@ -208,7 +213,7 @@ class Trainable:
         """
         return ""
 
-    def current_ip(self):
+    def get_current_ip(self):
         logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
@@ -329,7 +334,7 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path or prefix that may be passed to restore().
+            str: Checkpoint path or prefix that may be passed to restore().
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
@@ -414,8 +419,8 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored on %s from checkpoint: %s", self.current_ip(),
-                    checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s",
+                    self.get_current_ip(), checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
@@ -468,13 +473,16 @@ class Trainable:
         export model to local directory.
 
         Args:
-            export_formats (list): List of formats that should be exported.
+            export_formats (Union[list,str]): Format or list of (str) formats
+                that should be exported.
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
+        if isinstance(export_formats, str):
+            export_formats = [export_formats]
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
@@ -657,6 +665,10 @@ class Trainable:
 
     def _log_result(self, result):
         """Subclasses can optionally override this to customize logging.
+
+        The logging here is done on the worker process rather than
+        the driver. You may want to turn off driver logging via the
+        ``loggers`` parameter in ``tune.run`` when overriding this function.
 
         Args:
             result (dict): Training result returned by _train().

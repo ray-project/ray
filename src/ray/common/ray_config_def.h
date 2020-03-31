@@ -72,7 +72,7 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// cluster and all objects that contain it are also out of scope. If this flag
 /// is off and object_pinning_enabled is turned on, then an object will not be
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
@@ -91,7 +91,7 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_timeout_milliseconds.
-RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -100,6 +100,8 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
 /// is flushed. To disable eager eviction, set free_objects_period_milliseconds
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
+RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
@@ -258,6 +260,9 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 /// Waiting time for each gcs service connection.
 RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
+/// The interval at which the gcs server will check if redis has gone down.
+/// When this happens, gcs server will kill itself.
+RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -268,3 +273,12 @@ RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+
+/// Whether to enable gcs service.
+/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
+/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
+/// otherwise gcs service is enabled.
+/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
+RAY_CONFIG(bool, gcs_service_enabled,
+           getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
+               getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))

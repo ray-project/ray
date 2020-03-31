@@ -11,6 +11,11 @@ class RayError(Exception):
     pass
 
 
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
+    pass
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
@@ -36,10 +41,8 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         if proctitle:
             self.proctitle = proctitle
-        elif setproctitle:
-            self.proctitle = setproctitle.getproctitle()
         else:
-            self.proctitle = "ray_worker"
+            self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name

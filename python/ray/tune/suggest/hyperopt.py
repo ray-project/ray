@@ -52,20 +52,22 @@ class HyperOptSearch(SuggestionAlgorithm):
         use_early_stopped_trials (bool): Whether to use early terminated
             trial results in the optimization process.
 
-    Example:
-        >>> space = {
-        >>>     'width': hp.uniform('width', 0, 20),
-        >>>     'height': hp.uniform('height', -100, 100),
-        >>>     'activation': hp.choice("activation", ["relu", "tanh"])
-        >>> }
-        >>> current_best_params = [{
-        >>>     'width': 10,
-        >>>     'height': 0,
-        >>>     'activation': 0, # The index of "relu"
-        >>> }]
-        >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, metric="mean_loss", mode="min",
-        >>>     points_to_evaluate=current_best_params)
+    .. code-block:: python
+
+        space = {
+            'width': hp.uniform('width', 0, 20),
+            'height': hp.uniform('height', -100, 100),
+            'activation': hp.choice("activation", ["relu", "tanh"])
+        }
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+        algo = HyperOptSearch(
+            space, max_concurrent=4, metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
     """
 
     def __init__(self,

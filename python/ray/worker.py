@@ -42,6 +42,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
+    RayConnectionError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -108,7 +109,6 @@ class Worker:
         self.mode = None
         self.cached_functions_to_run = []
         self.actor_init_error = None
-        self.make_actor = None
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
@@ -422,7 +422,7 @@ class Worker:
             shutdown(True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -494,10 +494,6 @@ per worker process.
 
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
-
-
-class RayConnectionError(Exception):
-    pass
 
 
 def print_failed_task(task_status):
@@ -680,12 +676,6 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
-
-    if setproctitle is None:
-        logger.warning(
-            "WARNING: Not updating worker name since `setproctitle` is not "
-            "installed. Install this with `pip install setproctitle` "
-            "(or ray[debug]) to enable monitoring of worker processes.")
 
     if global_worker.connected:
         if ignore_reinit_error:
@@ -886,12 +876,13 @@ def shutdown(exiting_interpreter=False):
 atexit.register(shutdown, True)
 
 
+# TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
 
 try:
-    signal.signal(signal.SIGTERM, sigterm_handler)
+    ray.utils.set_sigterm_handler(sigterm_handler)
 except ValueError:
     logger.warning("Failed to set SIGTERM handler, processes might"
                    "not be cleaned up properly on exit.")
@@ -1145,8 +1136,7 @@ def connect(node,
         job_id = JobID.nil()
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
-        if setproctitle:
-            setproctitle.setproctitle("ray::IDLE")
+        setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
         if job_id is None:
             job_id = JobID.from_int(random.randint(1, 65535))
@@ -1232,14 +1222,18 @@ def connect(node,
             # Redirect stdout/stderr at the file descriptor level. If we simply
             # set sys.stdout and sys.stderr, then logging from C++ can fail to
             # be redirected.
-            os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            if log_stdout_file is not None:
+                os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
+            if log_stderr_file is not None:
+                os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
             # We also manually set sys.stdout and sys.stderr because that seems
             # to have an affect on the output buffering. Without doing this,
             # stdout and stderr are heavily buffered resulting in seemingly
             # lost logging statements.
-            sys.stdout = log_stdout_file
-            sys.stderr = log_stderr_file
+            if log_stdout_file is not None:
+                sys.stdout = log_stdout_file
+            if log_stderr_file is not None:
+                sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.
@@ -1248,8 +1242,12 @@ def connect(node,
             sys.stdout.flush()
             sys.stderr.flush()
 
-            worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
-            worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
+            worker_dict["stdout_file"] = os.path.abspath(
+                (log_stdout_file
+                 if log_stdout_file is not None else sys.stdout).name)
+            worker_dict["stderr_file"] = os.path.abspath(
+                (log_stderr_file
+                 if log_stderr_file is not None else sys.stderr).name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
         raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
@@ -1372,11 +1370,9 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if setproctitle:
-        setproctitle.setproctitle(title)
+    setproctitle.setproctitle(title)
     yield
-    if setproctitle:
-        setproctitle.setproctitle(next_title)
+    setproctitle.setproctitle(next_title)
 
 
 def register_custom_serializer(cls,
@@ -1403,6 +1399,9 @@ def register_custom_serializer(cls,
         use_dict: Deprecated.
         class_id (str): Unique ID of the class. Autogenerated if None.
     """
+    worker = global_worker
+    worker.check_connected()
+
     if use_pickle:
         raise DeprecationWarning(
             "`use_pickle` is no longer a valid parameter and will be removed "
@@ -1487,10 +1486,10 @@ def get(object_ids, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.warning("Using blocking ray.get inside async actor. "
-                           "This blocks the event loop. Please use `await` "
-                           "on object id with asyncio.gather if you want to "
-                           "yield execution to the event loop instead.")
+            logger.debug("Using blocking ray.get inside async actor. "
+                         "This blocks the event loop. Please use `await` "
+                         "on object id with asyncio.gather if you want to "
+                         "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1598,9 +1597,9 @@ def wait(object_ids, num_returns=1, timeout=None):
                ) and timeout != 0:
         global blocking_wait_inside_async_warned
         if not blocking_wait_inside_async_warned:
-            logger.warning("Using blocking ray.wait inside async method. "
-                           "This blocks the event loop. Please use `await` "
-                           "on object id with asyncio.wait. ")
+            logger.debug("Using blocking ray.wait inside async method. "
+                         "This blocks the event loop. Please use `await` "
+                         "on object id with asyncio.wait. ")
             blocking_wait_inside_async_warned = True
 
     if isinstance(object_ids, ObjectID):
@@ -1675,7 +1674,8 @@ def kill(actor):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
 
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
+    worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, False)
 
 
@@ -1688,10 +1688,6 @@ def _mode(worker=global_worker):
     cannot be serialized.
     """
     return worker.mode
-
-
-def get_global_worker():
-    return global_worker
 
 
 def make_decorator(num_return_vals=None,
@@ -1725,9 +1721,9 @@ def make_decorator(num_return_vals=None,
                 raise TypeError("The keyword 'max_calls' is not "
                                 "allowed for actors.")
 
-            return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     memory, object_store_memory, resources,
-                                     max_reconstructions)
+            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
+                                        memory, object_store_memory, resources,
+                                        max_reconstructions)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1815,7 +1811,7 @@ def remote(*args, **kwargs):
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
     """
-    worker = get_global_worker()
+    worker = global_worker
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.

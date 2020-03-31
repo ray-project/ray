@@ -86,6 +86,22 @@ You can control the degree of parallelism used by setting the ``num_workers`` hy
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
 
+Scaling Guide
+~~~~~~~~~~~~~
+
+Here are some rules of thumb for scaling training with RLlib.
+
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+
+
+2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
+
+
+3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
+
+   
+4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
+
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
@@ -141,6 +157,18 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # an h5-file with weight values in it, e.g.
+    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
+    # (see: https://keras.io/models/about-keras-models/)
+
+    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
@@ -913,15 +941,13 @@ Stack Traces
 
 You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
-REST API
---------
+External Application API
+------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if it were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
 
-.. autoclass:: ray.rllib.utils.policy_client.PolicyClient
+.. autoclass:: ray.rllib.env.policy_client.PolicyClient
     :members:
 
-.. autoclass:: ray.rllib.utils.policy_server.PolicyServer
+.. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
-
-For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

@@ -285,27 +285,6 @@ class Policy(metaclass=ABCMeta):
         return self.exploration.get_info()
 
     @DeveloperAPI
-    def get_exploration_state(self):
-        """Returns the current exploration state of this policy.
-
-        This state depends on the policy's Exploration object.
-
-        Returns:
-            any: Serializable copy or view of the current exploration state.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def set_exploration_state(self, exploration_state):
-        """Sets the current exploration state of this Policy.
-
-        Arguments:
-            exploration_state (any): Serializable copy or view of the new
-                exploration state.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
     def is_recurrent(self):
         """Whether this Policy holds a recurrent Model.
 
@@ -372,6 +351,15 @@ class Policy(metaclass=ABCMeta):
 
         Argument:
             export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def import_model_from_h5(self, import_file):
+        """Imports Policy from local file.
+
+        Arguments:
+            import_file (str): Local readable file.
         """
         raise NotImplementedError
 

@@ -1,5 +1,6 @@
 import time
 import traceback
+import inspect
 
 import ray
 from ray.serve import context as serve_context
@@ -7,6 +8,7 @@ from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.serve.utils import parse_request_item
 from ray.serve.exceptions import RayServeException
+from ray.async_compat import sync_to_async
 
 
 class TaskRunner:
@@ -18,6 +20,9 @@ class TaskRunner:
 
     def __init__(self, func_to_run):
         self.func = func_to_run
+
+        # This parameter let argument inspection work with inner function.
+        self.__wrapped__ = func_to_run
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -31,6 +36,13 @@ def wrap_to_ray_error(exception):
     except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
+
+
+def ensure_async(func):
+    if inspect.iscoroutinefunction(func):
+        return func
+    else:
+        return sync_to_async(func)
 
 
 class RayServeMixin:
@@ -94,13 +106,42 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
-    def invoke_single(self, request_item):
+    def _ray_serve_get_runner_method(self, request_item):
+        method_name = request_item.call_method
+        if not hasattr(self, method_name):
+            raise RayServeException("Backend doesn't have method {} "
+                                    "which is specified in the request. "
+                                    "The avaiable methods are {}".format(
+                                        method_name, dir(self)))
+        return getattr(self, method_name)
+
+    def _ray_serve_count_num_positional(self, f):
+        # NOTE:
+        # In the case of simple functions, not actors, the f will be
+        # a TaskRunner.__call__. What we really want here is the wrapped
+        # functionso inspect.signature will figure out the underlying f.
+        if hasattr(self, "__wrapped__"):
+            f = self.__wrapped__
+
+        signature = inspect.signature(f)
+        counter = 0
+        for param in signature.parameters.values():
+            if (param.kind == param.POSITIONAL_OR_KEYWORD
+                    and param.default is param.empty):
+                counter += 1
+        return counter
+
+    async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
         start_timestamp = time.time()
 
+        method_to_call = self._ray_serve_get_runner_method(request_item)
+        args = args if self._ray_serve_count_num_positional(
+            method_to_call) else []
+        method_to_call = ensure_async(method_to_call)
         try:
-            result = self.__call__(*args, **kwargs)
+            result = await method_to_call(*args, **kwargs)
         except Exception as e:
             result = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
@@ -108,7 +149,7 @@ class RayServeMixin:
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
         return result
 
-    def invoke_batch(self, request_item_list):
+    async def invoke_batch(self, request_item_list):
         # TODO(alind) : create no-http services. The enqueues
         # from such services will always be TaskContext.Python.
 
@@ -127,10 +168,14 @@ class RayServeMixin:
         kwargs_list = defaultdict(list)
         context_flags = set()
         batch_size = len(request_item_list)
+        call_methods = set()
 
         for item in request_item_list:
             args, kwargs, is_web_context = parse_request_item(item)
             context_flags.add(is_web_context)
+
+            call_method = self._ray_serve_get_runner_method(item)
+            call_methods.add(call_method)
 
             if is_web_context:
                 # Python context only have kwargs
@@ -144,7 +189,8 @@ class RayServeMixin:
                 # Set the flask request as a list to conform
                 # with batching semantics: when in batching
                 # mode, each argument it turned into list.
-                arg_list.append(FakeFlaskRequest())
+                if self._ray_serve_count_num_positional(call_method):
+                    arg_list.append(FakeFlaskRequest())
 
         try:
             # check mixing of query context
@@ -153,14 +199,20 @@ class RayServeMixin:
                 raise RayServeException(
                     "Batched queries contain mixed context. Please only send "
                     "the same type of requests in batching mode.")
-
             serve_context.web = context_flags.pop()
+
+            if len(call_methods) != 1:
+                raise RayServeException(
+                    "Queries contain mixed calling methods. Please only send "
+                    "the same type of requests in batching mode.")
+            call_method = ensure_async(call_methods.pop())
+
             serve_context.batch_size = batch_size
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
 
             start_timestamp = time.time()
-            result_list = self.__call__(*arg_list, **kwargs_list)
+            result_list = await call_method(*arg_list, **kwargs_list)
 
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
@@ -177,13 +229,13 @@ class RayServeMixin:
             self._serve_metric_error_counter += batch_size
             return [wrapped_exception for _ in range(batch_size)]
 
-    def _ray_serve_call(self, request):
+    async def _ray_serve_call(self, request):
         # check if work_item is a list or not
         # if it is list: then batching supported
         if not isinstance(request, list):
-            result = self.invoke_single(request)
+            result = await self.invoke_single(request)
         else:
-            result = self.invoke_batch(request)
+            result = await self.invoke_batch(request)
 
         # re-assign to default values
         serve_context.web = False

@@ -238,6 +238,7 @@ Getting Involved
    walkthrough.rst
    using-ray.rst
    configure.rst
+   ray-dashboard.rst
    cluster-index.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
@@ -253,9 +254,8 @@ Getting Involved
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-design.rst
    tune-examples.rst
-   tune-package-ref.rst
+   tune/api_docs/overview.rst
    tune-contrib.rst
 
 .. toctree::

@@ -221,7 +221,7 @@ py_test(
 
 py_test(
     name = "test_global_gc",
-    size = "small",
+    size = "medium",
     srcs = ["test_global_gc.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -255,6 +255,14 @@ py_test(
     name = "test_metrics",
     size = "small",
     srcs = ["test_metrics.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_metrics_export",
+    size = "small",
+    srcs = ["test_metrics_export.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

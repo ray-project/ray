@@ -6,9 +6,9 @@ import os
 import logging
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 import ray
@@ -89,6 +89,7 @@ class Node:
                 "workers/default_worker.py"))
 
         self._resource_spec = None
+        self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         self._config = ray_params._internal_config
@@ -184,7 +185,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -396,15 +397,21 @@ class Node:
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if socket_path is not None:
-            if os.path.exists(socket_path):
-                raise RuntimeError(
-                    "Socket file {} exists!".format(socket_path))
-            socket_dir = os.path.dirname(socket_path)
-            try_to_create_directory(socket_dir)
-            return socket_path
-        return self._make_inc_temp(
-            prefix=default_prefix, directory_name=self._sockets_dir)
+        result = socket_path
+        if sys.platform == "win32":
+            if socket_path is None:
+                result = "tcp://{}:{}".format(self._localhost,
+                                              self._get_unused_port())
+        else:
+            if socket_path is None:
+                result = self._make_inc_temp(
+                    prefix=default_prefix, directory_name=self._sockets_dir)
+            else:
+                if os.path.exists(socket_path):
+                    raise RuntimeError(
+                        "Socket file {} exists!".format(socket_path))
+                try_to_create_directory(os.path.dirname(socket_path))
+        return result
 
     def start_reaper_process(self):
         """
@@ -619,7 +626,7 @@ class Node:
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
 
-        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        if ray_constants.GCS_SERVICE_ENABLED:
             self.start_gcs_server()
         else:
             self.start_raylet_monitor()
@@ -711,25 +718,21 @@ class Node:
                 time.sleep(0.1)
 
             if allow_graceful:
-                # Allow the process one second to exit gracefully.
                 process.terminate()
-                timer = threading.Timer(1, lambda process: process.kill(),
-                                        [process])
+                # Allow the process one second to exit gracefully.
+                timeout_seconds = 1
                 try:
-                    timer.start()
+                    process.wait(timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
+
+            # If the process did not exit, force kill it.
+            if process.poll() is None:
+                process.kill()
+                # The reason we usually don't call process.wait() here is that
+                # there's some chance we'd end up waiting a really long time.
+                if wait:
                     process.wait()
-                finally:
-                    timer.cancel()
-
-                if process.poll() is not None:
-                    continue
-
-            # If the process did not exit within one second, force kill it.
-            process.kill()
-            # The reason we usually don't call process.wait() here is that
-            # there's some chance we'd end up waiting a really long time.
-            if wait:
-                process.wait()
 
         del self.all_processes[process_type]
 

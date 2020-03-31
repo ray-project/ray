@@ -1,8 +1,6 @@
 # This file is used by CrossLanguageInvocationTest.java to test cross-language
 # invocation.
 
-import six
-
 import ray
 
 
@@ -63,4 +61,4 @@ class Counter(object):
 
     def increase(self, delta):
         self.value += int(delta)
-        return str(self.value).encode("utf-8") if six.PY3 else str(self.value)
+        return str(self.value).encode("utf-8")

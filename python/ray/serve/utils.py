@@ -11,6 +11,12 @@ from pygments import formatters, highlight, lexers
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
 import itertools
+import numpy as np
+
+try:
+    import pydantic
+except ImportError:
+    pydantic = None
 
 
 def expand(l):
@@ -32,11 +38,7 @@ def parse_request_item(request_item):
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
 
-        # http_body_bytes enclosed in list due to
-        # https://github.com/ray-project/ray/issues/6944
-        # TODO(alind):  remove list enclosing after issue is fixed
-        flask_request = build_flask_request(asgi_scope,
-                                            io.BytesIO(body_bytes[0]))
+        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
         args = (flask_request, )
         kwargs = {}
     else:
@@ -60,19 +62,23 @@ def _get_logger():
 logger = _get_logger()
 
 
-class BytesEncoder(json.JSONEncoder):
-    """Allow bytes to be part of the JSON document.
-
-    BytesEncoder will walk the JSON tree and decode bytes with utf-8 codec.
-
-    Example:
-    >>> json.dumps({b'a': b'c'}, cls=BytesEncoder)
-    '{"a":"c"}'
+class ServeEncoder(json.JSONEncoder):
+    """Ray.Serve's utility JSON encoder. Adds support for:
+        - bytes
+        - Pydantic types
+        - Exceptions
+        - numpy.ndarray
     """
 
     def default(self, o):  # pylint: disable=E0202
         if isinstance(o, bytes):
             return o.decode("utf-8")
+        if pydantic is not None and isinstance(o, pydantic.BaseModel):
+            return o.dict()
+        if isinstance(o, Exception):
+            return str(o)
+        if isinstance(o, np.ndarray):
+            return o.tolist()
         return super().default(o)
 
 
@@ -105,7 +111,7 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
         retries -= 1
         if retries == 0:
             raise Exception(
-                "HTTP server not ready after {} retries.".format(num_retries))
+                "HTTP proxy not ready after {} retries.".format(num_retries))
 
 
 def get_random_letters(length=6):

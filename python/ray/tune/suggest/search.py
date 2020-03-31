@@ -10,6 +10,7 @@ class SearchAlgorithm:
 
     See also: `ray.tune.suggest.BasicVariantGenerator`.
     """
+    _finished = False
 
     def add_configurations(self, experiments):
         """Tracks given experiment specifications.
@@ -62,4 +63,8 @@ class SearchAlgorithm:
 
         Can return True before all trials have finished executing.
         """
-        raise NotImplementedError
+        return self._finished
+
+    def set_finished(self):
+        """Marks the search algorithm as finished."""
+        self._finished = True

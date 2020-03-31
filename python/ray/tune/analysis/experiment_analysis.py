@@ -17,7 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class Analysis:
-    """Analyze all results from a directory of experiments."""
+    """Analyze all results from a directory of experiments.
+
+    To use this class, the experiment must be executed with the JsonLogger.
+    """
 
     def __init__(self, experiment_dir):
         experiment_dir = os.path.expanduser(experiment_dir)
@@ -42,6 +45,9 @@ class Analysis:
             metric (str): Key for trial info to order on.
                 If None, uses last result.
             mode (str): One of [min, max].
+
+        Returns:
+            pd.DataFrame: Constructed from a result dict of each trial.
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -97,6 +103,9 @@ class Analysis:
         Args:
             prefix (bool): If True, flattens the config dict
                 and prepends `config/`.
+
+        Returns:
+            List[dict]: List of all configurations of trials,
         """
         fail_count = 0
         for path in self._get_trial_paths():
@@ -124,8 +133,7 @@ class Analysis:
                 "training_iteration" is used by default.
 
         Returns:
-            A list of [path, metric] lists for all persistent checkpoints of
-                the trial.
+            List of [path, metric] for all persistent checkpoints of the trial.
         """
         if isinstance(trial, str):
             trial_dir = os.path.expanduser(trial)
@@ -177,10 +185,14 @@ class Analysis:
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 
+    To use this class, the experiment must be executed with the JsonLogger.
+
     Parameters:
         experiment_checkpoint_path (str): Path to a json file
             representing an experiment state. Corresponds to
             Experiment.local_dir/Experiment.name/experiment_state.json
+        trials (list|None): List of trials that can be accessed via
+            `analysis.trials`.
 
     Example:
         >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
@@ -189,14 +201,6 @@ class ExperimentAnalysis(Analysis):
     """
 
     def __init__(self, experiment_checkpoint_path, trials=None):
-        """Initializer.
-
-        Args:
-            experiment_checkpoint_path (str): Path to where experiment is
-                located.
-            trials (list|None): List of trials that can be accessed via
-                `analysis.trials`.
-        """
         with open(experiment_checkpoint_path) as f:
             _experiment_state = json.load(f)
             self._experiment_state = _experiment_state
