@@ -124,7 +124,7 @@ if __name__ == "__main__":
         use_tqdm=True)
     pbar = trange(args.num_epochs, unit="epoch")
     for i in pbar:
-        info = {"num_steps": 1} if args.test_mode else {}
+        info = {"num_steps": 1} if args.smoke_test else {}
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
