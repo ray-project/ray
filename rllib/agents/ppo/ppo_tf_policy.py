@@ -1,7 +1,6 @@
 import logging
 
 import ray
-#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -161,7 +160,6 @@ def vf_preds_fetches(policy):
     """Adds value function outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        #BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 

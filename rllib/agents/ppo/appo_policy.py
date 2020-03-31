@@ -398,7 +398,7 @@ def postprocess_trajectory(policy,
 
 
 def add_values(policy):
-    out = {}  #BEHAVIOUR_LOGITS: policy.model.last_output()}
+    out = {}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.model.value_function()
     return out

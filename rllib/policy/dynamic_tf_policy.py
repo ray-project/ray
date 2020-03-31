@@ -204,7 +204,8 @@ class DynamicTFPolicy(TFPolicy):
                             SampleBatch.PREV_REWARDS],
                         explore=explore,
                         is_training=self._input_dict["is_training"])
-            # Default distribution generation behavior: Pass through model. E.g., PG, PPO.
+            # Default distribution generation behavior:
+            # Pass through model. E.g., PG, PPO.
             else:
                 dist_inputs, self._state_out = self.model(
                     self._input_dict, self._state_in, self._seq_lens)

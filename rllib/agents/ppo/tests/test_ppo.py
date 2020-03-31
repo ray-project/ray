@@ -2,7 +2,6 @@ import numpy as np
 import unittest
 
 import ray
-#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
     postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
