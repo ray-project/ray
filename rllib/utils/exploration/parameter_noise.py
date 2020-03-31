@@ -117,6 +117,8 @@ class ParameterNoise(Exploration):
             sub_exploration,
             framework=self.framework,
             action_space=self.action_space,
+            policy_config=self.policy_config,
+            model=self.model,
             **kwargs)
 
         # Store the default setting for `explore`.
@@ -148,15 +150,13 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs,
-                               action_dist_class,
+                               action_distribution,
                                timestep,
                                explore=True):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            distribution_inputs=distribution_inputs,
-            action_dist_class=action_dist_class,
+            action_distribution=action_distribution,
             timestep=timestep,
             explore=explore)
 
@@ -227,7 +227,7 @@ class ParameterNoise(Exploration):
         if policy.dist_class is Categorical:
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
-        if not self.weights_are_currently_noisy:
+        if noisy_action_dist is None:
             noisy_action_dist = action_dist
         else:
             noise_free_action_dist = action_dist

@@ -31,7 +31,6 @@ class Random(Exploration):
             action_space=action_space,
             model=model,
             framework=framework,
-           model=model,
             **kwargs)
 
         # Determine py_func types, depending on our action-space.

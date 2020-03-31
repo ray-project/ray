@@ -19,24 +19,25 @@ class DistributionalQModel(TFModelV2):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 q_hiddens=(256, ),
-                 dueling=False,
-                 num_atoms=1,
-                 use_noisy=False,
-                 v_min=-10.0,
-                 v_max=10.0,
-                 sigma0=0.5,
-                 # TODO(sven): Move `add_layer_norm` into ModelCatalog as
-                 #  generic option, then error if we use ParameterNoise as
-                 #  Exploration type and do not have any LayerNorm layers in
-                 #  the net.
-                 add_layer_norm=False):
+    def __init__(
+            self,
+            obs_space,
+            action_space,
+            num_outputs,
+            model_config,
+            name,
+            q_hiddens=(256, ),
+            dueling=False,
+            num_atoms=1,
+            use_noisy=False,
+            v_min=-10.0,
+            v_max=10.0,
+            sigma0=0.5,
+            # TODO(sven): Move `add_layer_norm` into ModelCatalog as
+            #  generic option, then error if we use ParameterNoise as
+            #  Exploration type and do not have any LayerNorm layers in
+            #  the net.
+            add_layer_norm=False):
         """Initialize variables of this model.
 
         Extra model kwargs:

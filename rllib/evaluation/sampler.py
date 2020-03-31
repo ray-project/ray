@@ -589,8 +589,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 state_batches=state_batches,
                 prev_action_batch=prev_action_batch,
                 prev_reward_batch=prev_reward_batch,
-                timestep=policy.global_timestep,
-                fetch_dist_inputs=True)
+                timestep=policy.global_timestep)
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
@@ -608,12 +607,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     if builder:
         for pid, v in pending_fetches.items():
             eval_results[pid] = builder.get(v)
-            policy = _get_or_raise(policies, pid)
-            policy.exploration.after_forward_pass(
-                distribution_inputs=eval_results[pid][3],
-                action_dist_class=policy.dist_class,
-                timestep=policy.global_timestep,
-                tf_sess=policy.get_session())
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(

@@ -186,8 +186,8 @@ class TestPPO(unittest.TestCase):
         """
         # Calculate expected PPO loss results.
         dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], policy.model)
+        dist_prev = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                               policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -
