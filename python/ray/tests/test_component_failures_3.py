@@ -82,7 +82,7 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
-    if ray_constants.GCS_SERVICE_ENABLED:
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
         ray.worker._global_node.kill_gcs_server()
     else:
         ray.worker._global_node.kill_raylet_monitor()
@@ -96,7 +96,7 @@ def test_driver_lives_sequential(ray_start_regular):
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
 
-    if ray_constants.GCS_SERVICE_ENABLED:
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
         process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
                          + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
                          + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +

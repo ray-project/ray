@@ -145,7 +145,7 @@ def test_raylet_tempfiles(shutdown_only):
         "raylet.err"
     }
 
-    if ray_constants.GCS_SERVICE_ENABLED:
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
         log_files_expected.update({"gcs_server.out", "gcs_server.err"})
     else:
         log_files_expected.update({"raylet_monitor.out", "raylet_monitor.err"})
