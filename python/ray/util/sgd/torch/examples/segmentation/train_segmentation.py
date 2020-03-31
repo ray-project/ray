@@ -208,7 +208,7 @@ def main(args):
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(
-        description="PyTorch Segmentation Training")
+        description="PyTorch Segmentation Training with RaySGD")
     parser.add_argument(
         "--address",
         required=False,
