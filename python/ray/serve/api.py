@@ -10,7 +10,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.global_state import GlobalState, ServeMaster
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.serve.utils import block_until_http_ready, expand
+from ray.serve.utils import block_until_http_ready
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
@@ -168,13 +168,9 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
             registered before returning
     """
     methods = [m.upper() for m in methods]
-    global_state.route_table.register_service(
-        route, endpoint_name, methods=methods)
-    http_proxy = global_state.get_http_proxy()
     ray.get(
-        http_proxy.set_route_table.remote(
-            global_state.route_table.list_service(
-                include_methods=True, include_headless=False)))
+        global_state.master_actor.create_endpoint.remote(
+            route, endpoint_name, methods))
 
 
 @_ensure_connected
@@ -398,9 +394,7 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in expand(
-            global_state.route_table.list_service(
-                include_headless=True).values())
+        assert endpoint_name in global_state.get_all_endpoints()
 
     # Delay import due to it's dependency on global_state
     from ray.serve.handle import RayServeHandle
