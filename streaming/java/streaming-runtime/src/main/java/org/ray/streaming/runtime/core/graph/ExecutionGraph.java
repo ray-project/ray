@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.graph;
+package io.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -6,13 +6,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.ray.api.BaseActor;
+import io.ray.api.BaseActor;
 
 /**
  * Physical execution graph.
  *
  * <p>Notice: Temporary implementation for now to keep functional. This will be changed to
- * {@link org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph} later when
+ * {@link io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph} later when
  * new stream task implementation is ready.
  */
 public class ExecutionGraph implements Serializable {

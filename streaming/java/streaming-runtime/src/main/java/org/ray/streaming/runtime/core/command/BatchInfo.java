@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.command;
+package io.ray.streaming.runtime.core.command;
 
 import java.io.Serializable;
 

@@ -1,7 +1,7 @@
-package org.ray.streaming.runtime.master.scheduler.strategy;
+package io.ray.streaming.runtime.master.scheduler.strategy;
 
-import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
-import org.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
+import io.ray.streaming.runtime.config.types.SlotAssignStrategyType;
+import io.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

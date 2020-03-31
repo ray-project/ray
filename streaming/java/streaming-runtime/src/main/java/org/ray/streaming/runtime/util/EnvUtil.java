@@ -1,8 +1,8 @@
-package org.ray.streaming.runtime.util;
+package io.ray.streaming.runtime.util;
 
 import java.lang.management.ManagementFactory;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.runtime.util.JniUtils;
+import io.ray.runtime.RayNativeRuntime;
+import io.ray.runtime.util.JniUtils;
 
 public class EnvUtil {
 

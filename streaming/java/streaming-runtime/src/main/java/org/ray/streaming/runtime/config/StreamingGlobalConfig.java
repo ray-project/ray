@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.config;
+package io.ray.streaming.runtime.config;
 
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
@@ -8,7 +8,7 @@ import java.util.Map;
 import org.aeonbits.owner.Config.DefaultValue;
 import org.aeonbits.owner.Config.Key;
 import org.aeonbits.owner.ConfigFactory;
-import org.ray.streaming.runtime.config.global.CommonConfig;
+import io.ray.streaming.runtime.config.global.CommonConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

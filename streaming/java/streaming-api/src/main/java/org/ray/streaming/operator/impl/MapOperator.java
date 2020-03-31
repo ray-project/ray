@@ -1,9 +1,9 @@
-package org.ray.streaming.operator.impl;
+package io.ray.streaming.operator.impl;
 
-import org.ray.streaming.api.function.impl.MapFunction;
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.OneInputOperator;
-import org.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.api.function.impl.MapFunction;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.OneInputOperator;
+import io.ray.streaming.operator.StreamOperator;
 
 
 public class MapOperator<T, R> extends StreamOperator<MapFunction<T, R>> implements

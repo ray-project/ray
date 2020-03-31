@@ -1,6 +1,6 @@
-package org.ray.streaming.api.partition.impl;
+package io.ray.streaming.api.partition.impl;
 
-import org.ray.streaming.api.partition.Partition;
+import io.ray.streaming.api.partition.Partition;
 
 /**
  * Partition record to downstream tasks in a round-robin matter.

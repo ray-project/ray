@@ -1,10 +1,10 @@
-package org.ray.streaming.runtime.worker.tasks;
+package io.ray.streaming.runtime.worker.tasks;
 
-import org.ray.runtime.util.Serializer;
-import org.ray.streaming.runtime.core.processor.Processor;
-import org.ray.streaming.runtime.transfer.Message;
-import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.util.Config;
+import io.ray.runtime.util.Serializer;
+import io.ray.streaming.runtime.core.processor.Processor;
+import io.ray.streaming.runtime.transfer.Message;
+import io.ray.streaming.runtime.worker.JobWorker;
+import io.ray.streaming.util.Config;
 
 public abstract class InputStreamTask extends StreamTask {
   private volatile boolean running = true;

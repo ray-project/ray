@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.schedule.strategy;
+package io.ray.streaming.runtime.schedule.strategy;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,23 +8,23 @@ import java.util.Map.Entry;
 
 
 import org.aeonbits.owner.ConfigFactory;
-import org.ray.api.id.UniqueId;
-import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.runtime.BaseUnitTest;
-import org.ray.streaming.runtime.config.StreamingConfig;
-import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.resource.ResourceType;
-import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import org.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.ContainerID;
-import org.ray.streaming.runtime.core.resource.Resources;
-import org.ray.streaming.runtime.core.resource.Slot;
-import org.ray.streaming.runtime.graph.ExecutionGraphTest;
-import org.ray.streaming.runtime.master.JobRuntimeContext;
-import org.ray.streaming.runtime.master.graphmanager.GraphManager;
-import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
+import io.ray.api.id.UniqueId;
+import io.ray.streaming.jobgraph.JobGraph;
+import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.runtime.config.StreamingConfig;
+import io.ray.streaming.runtime.config.master.ResourceConfig;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.core.resource.ResourceType;
+import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import io.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.Resources;
+import io.ray.streaming.runtime.core.resource.Slot;
+import io.ray.streaming.runtime.graph.ExecutionGraphTest;
+import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.graphmanager.GraphManager;
+import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

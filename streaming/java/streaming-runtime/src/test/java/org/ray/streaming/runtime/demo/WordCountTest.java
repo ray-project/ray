@@ -1,13 +1,13 @@
-package org.ray.streaming.runtime.demo;
+package io.ray.streaming.runtime.demo;
 
 import com.google.common.collect.ImmutableMap;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.function.impl.FlatMapFunction;
-import org.ray.streaming.api.function.impl.ReduceFunction;
-import org.ray.streaming.api.function.impl.SinkFunction;
-import org.ray.streaming.api.stream.DataStreamSource;
-import org.ray.streaming.runtime.BaseUnitTest;
-import org.ray.streaming.util.Config;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.function.impl.FlatMapFunction;
+import io.ray.streaming.api.function.impl.ReduceFunction;
+import io.ray.streaming.api.function.impl.SinkFunction;
+import io.ray.streaming.api.stream.DataStreamSource;
+import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;

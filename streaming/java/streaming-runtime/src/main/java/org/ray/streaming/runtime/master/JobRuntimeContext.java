@@ -1,10 +1,10 @@
-package org.ray.streaming.runtime.master;
+package io.ray.streaming.runtime.master;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
-import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.runtime.config.StreamingConfig;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.jobgraph.JobGraph;
+import io.ray.streaming.runtime.config.StreamingConfig;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Runtime context for job master.

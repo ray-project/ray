@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.resource;
+package io.ray.streaming.runtime.core.resource;
 
 /**
  * Key for different type of resources.

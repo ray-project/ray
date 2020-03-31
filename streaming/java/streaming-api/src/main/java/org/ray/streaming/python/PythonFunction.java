@@ -1,6 +1,6 @@
-package org.ray.streaming.python;
+package io.ray.streaming.python;
 
-import org.ray.streaming.api.function.Function;
+import io.ray.streaming.api.function.Function;
 
 /**
  * Represents a user defined python function.

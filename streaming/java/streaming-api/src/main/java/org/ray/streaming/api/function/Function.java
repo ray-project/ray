@@ -1,4 +1,4 @@
-package org.ray.streaming.api.function;
+package io.ray.streaming.api.function;
 
 import java.io.Serializable;
 

@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.config.types;
+package io.ray.streaming.runtime.config.types;
 
 public enum SlotAssignStrategyType {
 

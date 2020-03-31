@@ -1,13 +1,13 @@
-package org.ray.streaming.operator.impl;
+package io.ray.streaming.operator.impl;
 
 import java.util.List;
-import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
-import org.ray.streaming.api.function.impl.SourceFunction;
-import org.ray.streaming.api.function.impl.SourceFunction.SourceContext;
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.OperatorType;
-import org.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.api.collector.Collector;
+import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.api.function.impl.SourceFunction;
+import io.ray.streaming.api.function.impl.SourceFunction.SourceContext;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.OperatorType;
+import io.ray.streaming.operator.StreamOperator;
 
 public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
 

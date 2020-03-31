@@ -1,8 +1,8 @@
-package org.ray.streaming.runtime.core.graph.executiongraph;
+package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
-import org.ray.streaming.api.partition.Partition;
-import org.ray.streaming.jobgraph.JobEdge;
+import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.jobgraph.JobEdge;
 
 /**
  * An edge that connects two execution job vertices.

@@ -1,10 +1,10 @@
-package org.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import org.ray.runtime.util.JniUtils;
+import io.ray.runtime.RayNativeRuntime;
+import io.ray.runtime.functionmanager.FunctionDescriptor;
+import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import io.ray.runtime.util.JniUtils;
 
 /**
  * TransferHandler is used for handle direct call based data transfer between workers.

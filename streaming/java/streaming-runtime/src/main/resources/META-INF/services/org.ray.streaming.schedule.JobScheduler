@@ -1,1 +1,1 @@
-org.ray.streaming.runtime.schedule.JobSchedulerImpl
+io.ray.streaming.runtime.schedule.JobSchedulerImpl

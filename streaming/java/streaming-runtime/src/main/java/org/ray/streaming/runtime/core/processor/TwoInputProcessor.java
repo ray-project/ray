@@ -1,7 +1,7 @@
-package org.ray.streaming.runtime.core.processor;
+package io.ray.streaming.runtime.core.processor;
 
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.TwoInputOperator;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.TwoInputOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

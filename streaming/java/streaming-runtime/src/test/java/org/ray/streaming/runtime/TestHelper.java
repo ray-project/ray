@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime;
+package io.ray.streaming.runtime;
 
 public class TestHelper {
 

@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;

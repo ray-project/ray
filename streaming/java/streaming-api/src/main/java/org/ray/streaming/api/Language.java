@@ -1,4 +1,4 @@
-package org.ray.streaming.api;
+package io.ray.streaming.api;
 
 public enum Language {
   JAVA,

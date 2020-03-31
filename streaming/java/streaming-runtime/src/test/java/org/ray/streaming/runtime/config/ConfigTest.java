@@ -1,11 +1,11 @@
-package org.ray.streaming.runtime.config;
+package io.ray.streaming.runtime.config;
 
 import java.util.HashMap;
 import java.util.Map;
 import org.aeonbits.owner.ConfigFactory;
 import org.nustaq.serialization.FSTConfiguration;
-import org.ray.streaming.runtime.BaseUnitTest;
-import org.ray.streaming.runtime.config.global.CommonConfig;
+import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.runtime.config.global.CommonConfig;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

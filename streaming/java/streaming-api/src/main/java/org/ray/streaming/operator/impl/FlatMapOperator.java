@@ -1,13 +1,13 @@
-package org.ray.streaming.operator.impl;
+package io.ray.streaming.operator.impl;
 
 import java.util.List;
-import org.ray.streaming.api.collector.CollectionCollector;
-import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
-import org.ray.streaming.api.function.impl.FlatMapFunction;
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.OneInputOperator;
-import org.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.api.collector.CollectionCollector;
+import io.ray.streaming.api.collector.Collector;
+import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.api.function.impl.FlatMapFunction;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.OneInputOperator;
+import io.ray.streaming.operator.StreamOperator;
 
 public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>> implements
     OneInputOperator<T> {

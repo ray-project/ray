@@ -1,6 +1,6 @@
-package org.ray.streaming.api.function.impl;
+package io.ray.streaming.api.function.impl;
 
-import org.ray.streaming.api.function.Function;
+import io.ray.streaming.api.function.Function;
 
 /**
  * A filter function is a predicate applied individually to each record.

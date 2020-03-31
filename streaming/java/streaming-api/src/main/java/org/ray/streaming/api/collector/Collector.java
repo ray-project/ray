@@ -1,4 +1,4 @@
-package org.ray.streaming.api.collector;
+package io.ray.streaming.api.collector;
 
 /**
  * The collector that collects data from an upstream operator, and emits data to downstream

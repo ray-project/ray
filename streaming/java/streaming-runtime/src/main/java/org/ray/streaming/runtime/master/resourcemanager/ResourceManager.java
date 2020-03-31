@@ -1,10 +1,10 @@
-package org.ray.streaming.runtime.master.resourcemanager;
+package io.ray.streaming.runtime.master.resourcemanager;
 
 import java.util.List;
 import java.util.Map;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.Resources;
-import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.Resources;
+import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
 
 /**
  * The resource manager is responsible for resource de-/allocation and monitoring ray cluster.

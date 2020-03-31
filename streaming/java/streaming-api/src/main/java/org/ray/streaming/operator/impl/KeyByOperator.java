@@ -1,10 +1,10 @@
-package org.ray.streaming.operator.impl;
+package io.ray.streaming.operator.impl;
 
-import org.ray.streaming.api.function.impl.KeyFunction;
-import org.ray.streaming.message.KeyRecord;
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.OneInputOperator;
-import org.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.api.function.impl.KeyFunction;
+import io.ray.streaming.message.KeyRecord;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.OneInputOperator;
+import io.ray.streaming.operator.StreamOperator;
 
 public class KeyByOperator<T, K> extends StreamOperator<KeyFunction<T, K>> implements
     OneInputOperator<T> {

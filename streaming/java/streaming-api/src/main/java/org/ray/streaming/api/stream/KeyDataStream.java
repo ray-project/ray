@@ -1,10 +1,10 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
-import org.ray.streaming.api.function.impl.AggregateFunction;
-import org.ray.streaming.api.function.impl.ReduceFunction;
-import org.ray.streaming.api.partition.impl.KeyPartition;
-import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.operator.impl.ReduceOperator;
+import io.ray.streaming.api.function.impl.AggregateFunction;
+import io.ray.streaming.api.function.impl.ReduceFunction;
+import io.ray.streaming.api.partition.impl.KeyPartition;
+import io.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.operator.impl.ReduceOperator;
 
 /**
  * Represents a DataStream returned by a key-by operation.

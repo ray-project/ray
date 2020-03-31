@@ -1,6 +1,6 @@
-package org.ray.streaming.python;
+package io.ray.streaming.python;
 
-import org.ray.streaming.api.partition.Partition;
+import io.ray.streaming.api.partition.Partition;
 
 /**
  * Represents a python partition function.

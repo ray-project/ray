@@ -1,4 +1,4 @@
-package org.ray.streaming.operator;
+package io.ray.streaming.operator;
 
 public enum OperatorType {
   SOURCE,

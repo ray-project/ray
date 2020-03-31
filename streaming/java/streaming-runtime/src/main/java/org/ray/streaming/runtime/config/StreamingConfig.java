@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.config;
+package io.ray.streaming.runtime.config;
 
 import java.io.Serializable;
 import java.util.Map;

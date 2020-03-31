@@ -1,4 +1,4 @@
-package org.ray.streaming.jobgraph;
+package io.ray.streaming.jobgraph;
 
 /**
  * Different roles for a node.

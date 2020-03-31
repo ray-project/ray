@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.resource;
+package io.ray.streaming.runtime.core.resource;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.id.UniqueId;
+import io.ray.api.id.UniqueId;
 
 /**
  * Resource manager unit abstraction.

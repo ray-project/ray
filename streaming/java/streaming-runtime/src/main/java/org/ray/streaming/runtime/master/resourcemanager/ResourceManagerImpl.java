@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.master.resourcemanager;
+package io.ray.streaming.runtime.master.resourcemanager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,16 +8,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.ray.api.Ray;
-import org.ray.api.runtimecontext.NodeInfo;
-import org.ray.streaming.runtime.config.StreamingMasterConfig;
-import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.Resources;
-import org.ray.streaming.runtime.master.JobRuntimeContext;
-import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategyFactory;
+import io.ray.api.Ray;
+import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.streaming.runtime.config.StreamingMasterConfig;
+import io.ray.streaming.runtime.config.master.ResourceConfig;
+import io.ray.streaming.runtime.config.types.SlotAssignStrategyType;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.Resources;
+import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

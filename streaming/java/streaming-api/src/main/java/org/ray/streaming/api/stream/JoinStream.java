@@ -1,8 +1,8 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
 import java.io.Serializable;
-import org.ray.streaming.api.function.impl.JoinFunction;
-import org.ray.streaming.api.function.impl.KeyFunction;
+import io.ray.streaming.api.function.impl.JoinFunction;
+import io.ray.streaming.api.function.impl.KeyFunction;
 
 /**
  * Represents a DataStream of two joined DataStream.

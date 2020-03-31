@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
@@ -6,9 +6,9 @@ import java.nio.ByteOrder;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.ray.api.id.ActorId;
-import org.ray.streaming.runtime.util.Platform;
-import org.ray.streaming.util.Config;
+import io.ray.api.id.ActorId;
+import io.ray.streaming.runtime.util.Platform;
+import io.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

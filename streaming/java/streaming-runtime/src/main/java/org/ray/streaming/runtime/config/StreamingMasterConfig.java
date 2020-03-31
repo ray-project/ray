@@ -1,8 +1,8 @@
-package org.ray.streaming.runtime.config;
+package io.ray.streaming.runtime.config;
 
 import java.util.Map;
 import org.aeonbits.owner.ConfigFactory;
-import org.ray.streaming.runtime.config.master.ResourceConfig;
+import io.ray.streaming.runtime.config.master.ResourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

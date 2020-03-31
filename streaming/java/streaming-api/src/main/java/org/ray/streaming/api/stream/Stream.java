@@ -1,13 +1,13 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
 import java.io.Serializable;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.partition.Partition;
-import org.ray.streaming.api.partition.impl.RoundRobinPartition;
-import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.python.PythonOperator;
-import org.ray.streaming.python.PythonPartition;
-import org.ray.streaming.python.stream.PythonStream;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.api.partition.impl.RoundRobinPartition;
+import io.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.python.PythonOperator;
+import io.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.stream.PythonStream;
 
 /**
  * Abstract base class of all stream types.

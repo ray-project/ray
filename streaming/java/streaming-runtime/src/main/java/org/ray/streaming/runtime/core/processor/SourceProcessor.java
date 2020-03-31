@@ -1,7 +1,7 @@
-package org.ray.streaming.runtime.core.processor;
+package io.ray.streaming.runtime.core.processor;
 
-import org.ray.streaming.message.Record;
-import org.ray.streaming.operator.impl.SourceOperator;
+import io.ray.streaming.message.Record;
+import io.ray.streaming.operator.impl.SourceOperator;
 
 /**
  * The processor for the stream sources, containing a SourceOperator.

@@ -1,7 +1,7 @@
-package org.ray.streaming.python.stream;
+package io.ray.streaming.python.stream;
 
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.python.PythonOperator;
+import io.ray.streaming.api.stream.StreamSink;
+import io.ray.streaming.python.PythonOperator;
 
 /**
  * Represents a sink of the PythonStream.

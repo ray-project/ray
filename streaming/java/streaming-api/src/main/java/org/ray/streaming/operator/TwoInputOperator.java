@@ -1,6 +1,6 @@
-package org.ray.streaming.operator;
+package io.ray.streaming.operator;
 
-import org.ray.streaming.message.Record;
+import io.ray.streaming.message.Record;
 
 
 public interface TwoInputOperator<T, O> extends Operator {

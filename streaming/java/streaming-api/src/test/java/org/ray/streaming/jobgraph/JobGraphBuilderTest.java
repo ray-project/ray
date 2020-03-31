@@ -1,13 +1,13 @@
-package org.ray.streaming.jobgraph;
+package io.ray.streaming.jobgraph;
 
 import com.google.common.collect.Lists;
 import java.util.List;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.partition.impl.KeyPartition;
-import org.ray.streaming.api.partition.impl.RoundRobinPartition;
-import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.DataStreamSource;
-import org.ray.streaming.api.stream.StreamSink;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.partition.impl.KeyPartition;
+import io.ray.streaming.api.partition.impl.RoundRobinPartition;
+import io.ray.streaming.api.stream.DataStream;
+import io.ray.streaming.api.stream.DataStreamSource;
+import io.ray.streaming.api.stream.StreamSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

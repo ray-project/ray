@@ -1,11 +1,11 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
 import java.util.Collection;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.function.impl.SourceFunction;
-import org.ray.streaming.api.function.internal.CollectionSourceFunction;
-import org.ray.streaming.api.partition.impl.RoundRobinPartition;
-import org.ray.streaming.operator.impl.SourceOperator;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.function.impl.SourceFunction;
+import io.ray.streaming.api.function.internal.CollectionSourceFunction;
+import io.ray.streaming.api.partition.impl.RoundRobinPartition;
+import io.ray.streaming.operator.impl.SourceOperator;
 
 /**
  * Represents a source of the DataStream.

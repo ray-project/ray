@@ -1,4 +1,4 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
 /**
  * A mark interface that represents a source of the Stream.

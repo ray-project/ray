@@ -1,6 +1,6 @@
-package org.ray.streaming.runtime.config.global;
+package io.ray.streaming.runtime.config.global;
 
-import org.ray.streaming.runtime.config.Config;
+import io.ray.streaming.runtime.config.Config;
 
 /**
  * Job common config.

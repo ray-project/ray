@@ -1,6 +1,6 @@
-package org.ray.streaming.runtime.config.master;
+package io.ray.streaming.runtime.config.master;
 
-import org.ray.streaming.runtime.config.Config;
+import io.ray.streaming.runtime.config.Config;
 
 /**
  * Job resource management config.

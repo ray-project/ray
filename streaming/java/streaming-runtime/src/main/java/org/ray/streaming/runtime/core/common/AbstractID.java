@@ -1,11 +1,11 @@
-package org.ray.streaming.runtime.core.common;
+package io.ray.streaming.runtime.core.common;
 
 import java.io.Serializable;
 import java.util.Random;
 
 /**
  * Streaming system unique identity base class.
- * For example, ${@link org.ray.streaming.runtime.core.resource.ContainerID }
+ * For example, ${@link io.ray.streaming.runtime.core.resource.ContainerID }
  */
 public class AbstractID implements Comparable<AbstractID>, Serializable {
 

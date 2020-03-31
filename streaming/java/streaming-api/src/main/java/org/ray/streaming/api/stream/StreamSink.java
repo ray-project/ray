@@ -1,6 +1,6 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
-import org.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.operator.StreamOperator;
 
 /**
  * Represents a sink of the Stream.

@@ -1,6 +1,6 @@
-package org.ray.streaming.api.partition;
+package io.ray.streaming.api.partition;
 
-import org.ray.streaming.api.function.Function;
+import io.ray.streaming.api.function.Function;
 
 /**
  * Interface of the partitioning strategy.

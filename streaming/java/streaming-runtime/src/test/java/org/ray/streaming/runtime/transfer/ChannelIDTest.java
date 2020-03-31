@@ -1,9 +1,9 @@
-package org.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer;
 
 import static org.testng.Assert.assertEquals;
 
-import org.ray.streaming.runtime.BaseUnitTest;
-import org.ray.streaming.runtime.util.EnvUtil;
+import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.runtime.util.EnvUtil;
 import org.testng.annotations.Test;
 
 public class ChannelIDTest extends BaseUnitTest {

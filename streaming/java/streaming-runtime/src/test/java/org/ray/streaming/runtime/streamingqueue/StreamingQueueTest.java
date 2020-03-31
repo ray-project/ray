@@ -146,7 +146,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   public void testWordCount() {
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
         System.getProperty("ray.run-mode"));
-    String resultFile = "/tmp/org.ray.streaming.runtime.streamingqueue.testWordCount.txt";
+    String resultFile = "/tmp/io.ray.streaming.runtime.streamingqueue.testWordCount.txt";
     deleteResultFile(resultFile);
 
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();

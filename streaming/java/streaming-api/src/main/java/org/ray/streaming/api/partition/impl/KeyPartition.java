@@ -1,7 +1,7 @@
-package org.ray.streaming.api.partition.impl;
+package io.ray.streaming.api.partition.impl;
 
-import org.ray.streaming.api.partition.Partition;
-import org.ray.streaming.message.KeyRecord;
+import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.message.KeyRecord;
 
 /**
  * Partition the record by the key.

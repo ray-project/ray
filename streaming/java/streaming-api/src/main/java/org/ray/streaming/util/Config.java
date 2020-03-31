@@ -1,4 +1,4 @@
-package org.ray.streaming.util;
+package io.ray.streaming.util;
 
 public class Config {
 

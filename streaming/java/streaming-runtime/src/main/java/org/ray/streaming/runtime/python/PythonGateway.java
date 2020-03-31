@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.python;
+package io.ray.streaming.runtime.python;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -6,11 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.msgpack.core.Preconditions;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.python.PythonFunction;
-import org.ray.streaming.python.PythonPartition;
-import org.ray.streaming.python.stream.PythonStreamSource;
-import org.ray.streaming.runtime.util.ReflectionUtils;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.python.PythonFunction;
+import io.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.stream.PythonStreamSource;
+import io.ray.streaming.runtime.util.ReflectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,20 +1,20 @@
-package org.ray.streaming.api.stream;
+package io.ray.streaming.api.stream;
 
 
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.function.impl.FilterFunction;
-import org.ray.streaming.api.function.impl.FlatMapFunction;
-import org.ray.streaming.api.function.impl.KeyFunction;
-import org.ray.streaming.api.function.impl.MapFunction;
-import org.ray.streaming.api.function.impl.SinkFunction;
-import org.ray.streaming.api.partition.Partition;
-import org.ray.streaming.api.partition.impl.BroadcastPartition;
-import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.operator.impl.FilterOperator;
-import org.ray.streaming.operator.impl.FlatMapOperator;
-import org.ray.streaming.operator.impl.KeyByOperator;
-import org.ray.streaming.operator.impl.MapOperator;
-import org.ray.streaming.operator.impl.SinkOperator;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.api.function.impl.FilterFunction;
+import io.ray.streaming.api.function.impl.FlatMapFunction;
+import io.ray.streaming.api.function.impl.KeyFunction;
+import io.ray.streaming.api.function.impl.MapFunction;
+import io.ray.streaming.api.function.impl.SinkFunction;
+import io.ray.streaming.api.partition.Partition;
+import io.ray.streaming.api.partition.impl.BroadcastPartition;
+import io.ray.streaming.operator.StreamOperator;
+import io.ray.streaming.operator.impl.FilterOperator;
+import io.ray.streaming.operator.impl.FlatMapOperator;
+import io.ray.streaming.operator.impl.KeyByOperator;
+import io.ray.streaming.operator.impl.MapOperator;
+import io.ray.streaming.operator.impl.SinkOperator;
 
 /**
  * Represents a stream of data.

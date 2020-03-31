@@ -1,12 +1,12 @@
-package org.ray.streaming.operator;
+package io.ray.streaming.operator;
 
 import java.util.List;
-import org.ray.streaming.api.Language;
-import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
-import org.ray.streaming.api.function.Function;
-import org.ray.streaming.message.KeyRecord;
-import org.ray.streaming.message.Record;
+import io.ray.streaming.api.Language;
+import io.ray.streaming.api.collector.Collector;
+import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.api.function.Function;
+import io.ray.streaming.message.KeyRecord;
+import io.ray.streaming.message.Record;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
   protected String name;

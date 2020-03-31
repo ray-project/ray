@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.python;
+package io.ray.streaming.runtime.python;
 
 import com.google.common.io.BaseEncoding;
 import java.util.ArrayList;

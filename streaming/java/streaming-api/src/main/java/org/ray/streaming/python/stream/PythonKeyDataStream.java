@@ -1,9 +1,9 @@
-package org.ray.streaming.python.stream;
+package io.ray.streaming.python.stream;
 
-import org.ray.streaming.python.PythonFunction;
-import org.ray.streaming.python.PythonFunction.FunctionInterface;
-import org.ray.streaming.python.PythonOperator;
-import org.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.PythonFunction;
+import io.ray.streaming.python.PythonFunction.FunctionInterface;
+import io.ray.streaming.python.PythonOperator;
+import io.ray.streaming.python.PythonPartition;
 
 /**
  * Represents a python DataStream returned by a key-by operation.

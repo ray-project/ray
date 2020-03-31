@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.config;
+package io.ray.streaming.runtime.config;
 
 import java.util.Map;
 import org.slf4j.Logger;

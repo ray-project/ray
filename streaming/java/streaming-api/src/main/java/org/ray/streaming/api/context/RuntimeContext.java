@@ -1,4 +1,4 @@
-package org.ray.streaming.api.context;
+package io.ray.streaming.api.context;
 
 /**
  * Encapsulate the runtime information of a streaming task.
