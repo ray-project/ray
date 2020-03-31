@@ -620,7 +620,8 @@ class TFPolicy(Policy):
         ]
         for k in state_keys:
             feed_dict[self._loss_input_dict[k]] = batch[k]
-        feed_dict[self._seq_lens] = batch["seq_lens"]
+        if state_keys:
+            feed_dict[self._seq_lens] = batch["seq_lens"]
 
         return feed_dict
 
