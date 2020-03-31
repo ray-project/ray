@@ -131,27 +131,23 @@ cdef class ObjectID(BaseID):
     def __init__(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
-        self.in_core_worker = False
 
         worker = ray.worker.global_worker
-        if hasattr(worker, "core_worker"):
-            worker.core_worker.add_object_id_reference(self)
-            self.in_core_worker = True
+        worker.core_worker.add_object_id_reference(self)
 
     def __dealloc__(self):
-        if self.in_core_worker:
-            try:
-                worker = ray.worker.global_worker
-                worker.core_worker.remove_object_id_reference(self)
-            except Exception as e:
-                # There is a strange error in rllib that causes the above to
-                # fail. Somehow the global 'ray' variable corresponding to the
-                # imported package is None when this gets called. Unfortunately
-                # this is hard to debug because __dealloc__ is called during
-                # garbage collection so we can't get a good stack trace. In any
-                # case, there's not much we can do besides ignore it
-                # (re-importing ray won't help).
-                pass
+        try:
+            worker = ray.worker.global_worker
+            worker.core_worker.remove_object_id_reference(self)
+        except Exception as e:
+            # There is a strange error in rllib that causes the above to
+            # fail. Somehow the global 'ray' variable corresponding to the
+            # imported package is None when this gets called. Unfortunately
+            # this is hard to debug because __dealloc__ is called during
+            # garbage collection so we can't get a good stack trace. In any
+            # case, there's not much we can do besides ignore it
+            # (re-importing ray won't help).
+            pass
 
     cdef CObjectID native(self):
         return <CObjectID>self.data
