@@ -21,9 +21,9 @@ def test_imports():
             print(
                 subprocess.run([
                     "python", "-c",
-                    "import {0}; print(Error with importing: '{0}',"
-                    "{0}.__version__)".format(library)
-                ]))
+                    "import {0}; print('Error with importing: {0}',
+                    {0}.__version__)".format(library)
+                ])
             raise e
 
 
