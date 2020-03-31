@@ -14,9 +14,12 @@ from gym.spaces import Discrete
 from ray import tune
 from ray.rllib.agents.pg.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.policy.tests.test_policy import TestPolicy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stop", type=int, default=1000)
 
 tf = try_import_tf()
 
@@ -76,8 +79,12 @@ class RockPaperScissorsEnv(MultiAgentEnv):
         return obs, rew, done, {}
 
 
-class AlwaysSameHeuristic(TestPolicy):
+class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
 
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
@@ -92,9 +99,22 @@ class AlwaysSameHeuristic(TestPolicy):
                         **kwargs):
         return list(state_batches[0]), state_batches, {}
 
+    def learn_on_batch(self, samples):
+        pass
 
-class BeatLastHeuristic(TestPolicy):
+    def get_weights(self):
+        pass
+
+    def set_weights(self, weights):
+        pass
+
+
+class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
 
     def compute_actions(self,
                         obs_batch,
@@ -113,6 +133,15 @@ class BeatLastHeuristic(TestPolicy):
                 return ROCK
 
         return [successor(x) for x in obs_batch], [], {}
+
+    def learn_on_batch(self, samples):
+        pass
+
+    def get_weights(self):
+        pass
+
+    def set_weights(self, weights):
+        pass
 
 
 def run_same_policy(args):
@@ -187,10 +216,12 @@ def run_with_custom_entropy_loss(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stop", type=int, default=1000)
     args = parser.parse_args()
     run_same_policy(args)
+    print("run_same_policy: ok.")
     run_heuristic_vs_learned(args, use_lstm=True)
+    print("run_heuristic_vs_learned(w/ lstm): ok.")
     run_heuristic_vs_learned(args, use_lstm=False)
+    print("run_heuristic_vs_learned (w/o lstm): ok.")
     run_with_custom_entropy_loss(args)
+    print("run_with_custom_entropy_loss: ok.")

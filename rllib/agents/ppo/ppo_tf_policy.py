@@ -1,7 +1,7 @@
 import logging
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
+#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -124,7 +124,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[SampleBatch.ACTION_DIST_INPUTS],
         train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
@@ -157,11 +157,11 @@ def kl_and_loss_stats(policy, train_batch):
     }
 
 
-def vf_preds_and_logits_fetches(policy):
-    """Adds value function and logits outputs to experience train_batches."""
+def vf_preds_fetches(policy):
+    """Adds value function outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output(),
+        #BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 
@@ -269,7 +269,7 @@ PPOTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
-    extra_action_fetches_fn=vf_preds_and_logits_fetches,
+    extra_action_fetches_fn=vf_preds_fetches,
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
     before_init=setup_config,
