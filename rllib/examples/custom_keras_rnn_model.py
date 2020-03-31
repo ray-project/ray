@@ -95,10 +95,11 @@ class RepeatInitialEnv(gym.Env):
     r=1 if action correct, -1 otherwise (max. R=100).
     """
 
-    def __init__(self):
+    def __init__(self, episode_len=100):
         self.observation_space = Discrete(2)
         self.action_space = Discrete(2)
         self.token = None
+        self.episode_len = episode_len
         self.num_steps = 0
 
     def reset(self):
@@ -112,7 +113,7 @@ class RepeatInitialEnv(gym.Env):
         else:
             reward = -1
         self.num_steps += 1
-        done = self.num_steps > 100
+        done = self.num_steps >= self.episode_len
         return 0, reward, done, {}
 
 
@@ -171,5 +172,6 @@ if __name__ == "__main__":
 
     tune.run(
         args.run,
+        config=config,
         stop={"episode_reward_mean": args.stop},
     )

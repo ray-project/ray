@@ -11,13 +11,102 @@ meaningfully affect the loss function. This happens to be true for all the
 current algorithms: https://github.com/ray-project/ray/issues/2992
 """
 
+import logging
 import numpy as np
 
+from ray.util import log_once
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+def pad_batch_to_sequences_of_same_size(batch,
+                                        max_seq_len,
+                                        shuffle=False,
+                                        batch_divisibility_req=1,
+                                        feature_keys=None):
+    """Applies padding to `batch` so it's choppable into same-size sequences.
+
+    Shuffles `batch` (if desired), makes sure divisibility requirement is met,
+    then pads the batch ([B, ...]) into same-size chunks ([B, ...]) w/o
+    adding a time dimension (yet).
+    Padding depends on episodes found in batch and `max_seq_len`.
+
+    Args:
+        batch (SampleBatch): The SampleBatch object. All values in here have
+            the shape [B, ...].
+        max_seq_len (int): The max. sequence length to use for chopping.
+        shuffle (bool): Whether to shuffle batch sequences. Shuffle may
+            be done in-place. This only makes sense if you're further
+            applying minibatch SGD after getting the outputs.
+        batch_divisibility_req (int): The int by which the batch dimension
+            must be dividable.
+        feature_keys (Optional[List[str]]): An optional list of keys to apply
+            sequence-chopping to. If None, use all keys in batch that are not
+            "state_in/out_"-type keys.
+    """
+    if batch_divisibility_req > 1:
+        meets_divisibility_reqs = (
+                len(batch[SampleBatch.CUR_OBS]) %
+                batch_divisibility_req == 0
+                # not multiagent
+                and max(batch[SampleBatch.AGENT_INDEX]) == 0)
+    else:
+        meets_divisibility_reqs = True
+
+    # RNN-case.
+    if "state_in_0" in batch:
+        dynamic_max = True
+    # Multi-agent case.
+    elif not meets_divisibility_reqs:
+        max_seq_len = batch_divisibility_req
+        dynamic_max = False
+    # Simple case: not RNN nor do we need to pad.
+    else:
+        if shuffle:
+            batch.shuffle()
+        return
+
+    # RNN or multi-agent case.
+    state_keys = []
+    feature_keys_ = feature_keys or []
+    for k in batch.keys():
+        if "state_in_" in k:
+            state_keys.append(k)
+        elif not feature_keys and "state_out_" not in k and k != "infos":
+            feature_keys_.append(k)
+    
+    feature_sequences, initial_states, seq_lens = \
+        chop_into_sequences(
+            batch[SampleBatch.EPS_ID],
+            batch[SampleBatch.UNROLL_ID],
+            batch[SampleBatch.AGENT_INDEX],
+            [batch[k] for k in feature_keys_],
+            [batch[k] for k in state_keys],
+            max_seq_len,
+            dynamic_max=dynamic_max,
+            shuffle=shuffle)
+    for i, k in enumerate(feature_keys_):
+        batch[k] = feature_sequences[i]
+    for i, k in enumerate(state_keys):
+        batch[k] = initial_states[i]
+    batch["seq_lens"] = seq_lens
+
+    if log_once("rnn_ma_feed_dict"):
+        logger.info("Padded input for RNN:\n\n{}\n".format(
+            summarize({
+                "features": feature_sequences,
+                "initial_states": initial_states,
+                "seq_lens": seq_lens,
+                "max_seq_len": max_seq_len,
+            })))
 
 
 @DeveloperAPI

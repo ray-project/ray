@@ -83,11 +83,12 @@ def build_torch_policy(name,
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
-                    obs_space,
-                    action_space,
-                    logit_dim,
-                    self.config["model"],
-                    framework="torch")
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=logit_dim,
+                    model_config=self.config["model"],
+                    framework="torch",
+                    **self.config["model"].get("custom_options", {}))
 
             TorchPolicy.__init__(
                 self,
