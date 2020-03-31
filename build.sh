@@ -141,7 +141,7 @@ if [ "$RAY_BUILD_JAVA" == "YES" ]; then
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures --cxxopt=-std=gnu++0x
 fi
 
 popd
