@@ -244,10 +244,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                                   std::to_string(free_ports_->front()));
     free_ports_->pop();
   }
-  RAY_LOG(INFO) << "WORKER ARGS:";
-  for (const auto &arg : worker_command_args) {
-    RAY_LOG(INFO) << "\t" << arg;
-  }
 
   // Currently only Java worker process supports multi-worker.
   if (language == Language::JAVA) {
@@ -314,7 +310,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid) {
   const auto port = worker->Port();
-  RAY_LOG(INFO) << "Registering worker with pid " << pid << ", port: " << port;
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {

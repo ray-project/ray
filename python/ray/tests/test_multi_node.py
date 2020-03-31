@@ -343,6 +343,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     subprocess.check_output(["ray", "stop"])
 
+    # Test starting Ray with the worker port range specified.
+    subprocess.check_output([
+        "ray", "start", "--head", "--min-worker-port", "12345",
+        "--max-worker-port", "12346"
+    ])
+    subprocess.check_output(["ray", "stop"])
+
     # Test starting Ray with the number of CPUs specified.
     subprocess.check_output(["ray", "start", "--head", "--num-cpus", "2"])
     subprocess.check_output(["ray", "stop"])
