@@ -2,65 +2,19 @@ package org.ray.runtime.util;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.serializer.Serializer;
-import org.ray.runtime.serializer.CrossTypeManager;
 import org.ray.runtime.serializer.Serializer.Meta;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 
-class B {
-  private int i;
-
-  public B(int i) {
-    this.i = i;
-  }
-
-  public static int crossTypeId() {
-    return 2;
-  }
-
-  public Object[] toCrossData() {
-    return new Object[]{this.i};
-  }
-
-  public static B fromCrossData(Object[] data) {
-    return new B(((Number) data[0]).intValue());
-  }
-}
-
-class A {
-  private B b;
-  private String s;
-
-  public A(int i, String s) {
-    this.b = new B(i);
-    this.s = s;
-  }
-
-  private A(B b, String s) {
-    this.b = b;
-    this.s = s;
-  }
-
-  public static int crossTypeId() {
-    return 1;
-  }
-
-  public Object[] toCrossData() {
-    return new Object[]{this.b, this.s};
-  }
-
-  public static A fromCrossData(Object[] data) {
-    return new A((B) data[0], (String) data[1]);
-  }
-}
-
 public class SerializerTest {
+
   @Test
   public void testBasicSerialize() {
     {
-      Object[] foo = new Object[]{"hello", (byte) 1, 2.0, (short) 3, 4, 5L, new String[]{"hello", "world"}};
+      Object[] foo = new Object[]{"hello", (byte) 1, 2.0, (short) 3, 4, 5L,
+          new String[]{"hello", "world"}};
       Pair<byte[], Meta> serialized = Serializer.encode(foo);
       Object[] bar = Serializer.decode(serialized.getLeft(), Object[].class);
       Assert.assertTrue(serialized.getRight().isCrossLanguage);
@@ -91,16 +45,6 @@ public class SerializerTest {
       ArrayList<String> bar = Serializer.decode(serialized.getLeft(), String[].class);
       Assert.assertFalse(serialized.getRight().isCrossLanguage);
       Assert.assertEquals(foo.get(0), bar.get(0));
-    }
-    {
-      CrossTypeManager.register(A.class);
-      CrossTypeManager.register(B.class);
-      A foo = new A(1, "2");
-      Pair<byte[], Serializer.Meta> serialized = Serializer.encode(foo);
-      A bar = Serializer.decode(serialized.getLeft(), Object.class);
-      Assert.assertTrue(serialized.getRight().isCrossLanguage);
-      Assert.assertEquals(((B) foo.toCrossData()[0]).toCrossData()[0], ((B) bar.toCrossData()[0]).toCrossData()[0]);
-      Assert.assertEquals(foo.toCrossData()[1], bar.toCrossData()[1]);
     }
   }
 }

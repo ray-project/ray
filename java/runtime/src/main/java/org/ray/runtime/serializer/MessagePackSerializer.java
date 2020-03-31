@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.lang.reflect.Array;
-import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.List;
@@ -25,7 +24,6 @@ import org.ray.runtime.serializer.Serializer.Meta;
 // We can't pack List / Map by MessagePack, because we don't know the type class when unpacking.
 public class MessagePackSerializer {
 
-  private static final byte CROSS_LANGUAGE_TYPE_EXTENSION_ID = 100;
   private static final byte LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID = 101;
   // MessagePack length is an int takes up to 9 bytes.
   // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
@@ -56,27 +54,7 @@ public class MessagePackSerializer {
 
     // Extension packer.
     EXTENSION_PACKER = ((object, packer, javaSerializer) -> {
-      try {
-        // Get type id and cross data from object.
-        Class<?> cls = object.getClass();
-        Method crossTypeId = cls.getDeclaredMethod(CrossTypeManager.KEY_CROSS_TYPE_ID);
-        crossTypeId.setAccessible(true);
-        Method toCrossData = cls.getDeclaredMethod(CrossTypeManager.KEY_TO_CROSS_DATA);
-        toCrossData.setAccessible(true);
-        // Serialize [type id, cross data] by MessagePack.
-        Object data = new Object[]{
-            crossTypeId.invoke(null),
-            toCrossData.invoke(object),
-        };
-        MessageBufferPacker crossTypePacker = MessagePack.newDefaultBufferPacker();
-        pack(data, crossTypePacker, javaSerializer);
-        // Put the serialized bytes to CROSS_LANGUAGE_TYPE_EXTENSION_ID.
-        byte[] payload = crossTypePacker.toByteArray();
-        packer.packExtensionTypeHeader(CROSS_LANGUAGE_TYPE_EXTENSION_ID, payload.length);
-        packer.addPayload(payload);
-      } catch (Exception e) {
-        javaSerializer.serialize(object, packer);
-      }
+      javaSerializer.serialize(object, packer);
     });
 
     packers.put(Boolean.class,
@@ -176,25 +154,7 @@ public class MessagePackSerializer {
     unpackers.put(ValueType.EXTENSION, ((value, targetClass, javaDeserializer) -> {
       ExtensionValue ev = value.asExtensionValue();
       byte extType = ev.getType();
-      if (extType == CROSS_LANGUAGE_TYPE_EXTENSION_ID) {
-        try {
-          MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(ev.getData());
-          Value crossValue = unpacker.unpackValue();
-          // data is [type id, cross data object]
-          Object[] data = (Object[]) unpack(crossValue, Object[].class, javaDeserializer);
-          Preconditions.checkState(data != null && data.length == 2);
-          Integer crossTypeId = ((Number) data[0]).intValue();
-          Object[] crossData = (Object[]) data[1];
-          // Get type by type id and call KEY_FROM_CROSS_DATA method with cross data.
-          Class<?> crossType = CrossTypeManager.get(crossTypeId);
-          Method fromCrossData = crossType.getDeclaredMethod(
-              CrossTypeManager.KEY_FROM_CROSS_DATA, Object[].class);
-          fromCrossData.setAccessible(true);
-          return fromCrossData.invoke(null, new Object[]{crossData});
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      } else if (extType == LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID) {
+      if (extType == LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID) {
         return javaDeserializer.deserialize(ev);
       }
       throw new IllegalArgumentException("Unknown extension type id " + ev.getType() + ".");

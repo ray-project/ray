@@ -9,7 +9,6 @@ DEF kMajorBufferAlign = 64
 DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
-DEF kCrossLanguageTypeExtensionId = 100
 DEF kLanguageSpecificTypeExtensionId = 101
 DEF kMessagePackOffset = 9
 
@@ -145,24 +144,9 @@ cdef class SubBuffer:
         return self.size
 
 cdef class MessagePackSerializer(object):
-    _cross_type_tables = {}
-
-    @classmethod
-    def register_cross_type(cls, cross_type):
-        cross_typeid = cross_type.__cross_typeid__
-        assert hasattr(cross_type, '__to_cross_data__')
-        assert hasattr(cross_type, '__from_cross_data__')
-        cls._cross_type_tables[cross_typeid] = cross_type
-
     @staticmethod
     def dumps(o, python_serializer=None):
         def _default(obj):
-            cross_typeid = getattr(obj, '__cross_typeid__', None)
-            if cross_typeid is not None:
-                state = msgpack.dumps(obj.__to_cross_data__(),
-                                      use_bin_type=True)
-                return msgpack.ExtType(kCrossLanguageTypeExtensionId,
-                                       [cross_typeid, state])
             if python_serializer is not None:
                 return msgpack.ExtType(kLanguageSpecificTypeExtensionId,
                                        msgpack.dumps(python_serializer(obj)))
@@ -186,13 +170,6 @@ cdef class MessagePackSerializer(object):
                 if python_deserializer is not None:
                     return python_deserializer(msgpack.loads(data))
                 raise Exception('Unrecognized ext type id: {}'.format(code))
-            if code == kCrossLanguageTypeExtensionId:
-                cross_typeid, state = msgpack.loads(data, raw=False)
-                cross_type = cls._cross_type_tables.get(cross_typeid, None)
-                if cross_type is None:
-                    raise Exception('Unrecognized ext type id: {}'
-                                    .format(code))
-                return cross_type.__from_cross_data__(state)
         try:
             gc.disable()  # Performance optimization for msgpack.
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
