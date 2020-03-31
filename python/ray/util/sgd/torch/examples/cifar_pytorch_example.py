@@ -73,7 +73,7 @@ if __name__ == "__main__":
         "--address",
         required=False,
         type=str,
-        help="the address to use for Redis")
+        help="the address to use for connecting to the Ray cluster")
     parser.add_argument(
         "--num-workers",
         "-n",

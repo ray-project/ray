@@ -1,17 +1,29 @@
-# Semantic segmentation reference training scripts
+# Semantic segmentation reference -> RaySGD
 
-This folder contains reference training scripts for semantic segmentation.
-They serve as a log of how to train specific models, as provide baseline
-training and evaluation scripts to quickly bootstrap research.
+Original scripts are taken from: https://github.com/pytorch/vision/tree/master/references/segmentation.
 
-All models have been trained on 8x V100 GPUs.
+On a single node, you can leverage Distributed Data Parallelism (DDP) by simply using the `-n` parameter. This will automatically parallelize your training across `n` GPUs. As listed from the original repository, below are standard hyperparameters.
 
 ## fcn_resnet101
 ```
-python -m torch.distributed.launch --nproc_per_node=8 --use_env train.py --lr 0.02 --dataset coco -b 4 --model fcn_resnet101 --aux-loss
+python train_segmentation.py  -n 4 --lr 0.02 --dataset coco -b 4 --model fcn_resnet101 --aux-loss
 ```
 
 ## deeplabv3_resnet101
 ```
-python -m torch.distributed.launch --nproc_per_node=8 --use_env train.py --lr 0.02 --dataset coco -b 4 --model deeplabv3_resnet101 --aux-loss
+python train_segmentation.py train_segmentation.py --lr 0.02 --dataset coco -b 4 --model deeplabv3_resnet101 --aux-loss
 ```
+
+## Scaling up
+
+This example can be executed on AWS by running
+```
+ray submit cluster.yaml train_segmentation.py -- start --args="--lr 0.02 ..."
+```
+
+To leverage multiple GPUs (beyond a single node), be sure to add an `address` parameter:
+
+```
+ray submit cluster.yaml train_segmentation.py -- start --args="--address='auto' --lr 0.02 ..."
+```
+

@@ -14,7 +14,11 @@ from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd import TorchTrainer
 
 
-def get_dataset(name, image_set, transform, num_classes_only=False, download="auto"):
+def get_dataset(name,
+                image_set,
+                transform,
+                num_classes_only=False,
+                download="auto"):
     def sbd(*args, **kwargs):
         return torchvision.datasets.SBDataset(
             *args, mode="segmentation", **kwargs)
@@ -88,14 +92,15 @@ def criterion(inputs, target):
 
 class SegOperator(TrainingOperator):
     def setup(self, config):
-        args = config["args"]
-
-        # Currently broken due to
+        pass
+        # Currently, this LR scheduler is broken due to
         # https://github.com/pytorch/pytorch/issues/32639. But theoretically,
         # other LR schedulers should work.
+        # datalen = len(self.train_dataloader)
+        # args = config["args"]
         # self.scheduler = torch.optim.lr_scheduler.LambdaLR(
         #     self.optimizer,
-        #     lambda x: (1 - x / (len(self.train_dataloader) * args.epochs))**0.9
+        #     lambda x: (1 - x / (datalen * args.epochs))**0.9
         # )
 
     def train_batch(self, batch, batch_info):
@@ -204,14 +209,19 @@ def parse_args():
     import argparse
     parser = argparse.ArgumentParser(
         description="PyTorch Segmentation Training")
-
+    parser.add_argument(
+        "--address",
+        required=False,
+        type=str,
+        help="the address to use for connecting to a Ray cluster.")
     parser.add_argument("--dataset", default="voc", help="dataset")
     parser.add_argument("--model", default="fcn_resnet101", help="model")
     parser.add_argument(
         "--aux-loss", action="store_true", help="auxiliar loss")
     parser.add_argument("--device", default="cuda", help="device")
     parser.add_argument("-b", "--batch-size", default=8, type=int)
-    parser.add_argument("-n", "--num-workers", default=1, type=int, help="GPU parallelism")
+    parser.add_argument(
+        "-n", "--num-workers", default=1, type=int, help="GPU parallelism")
     parser.add_argument(
         "--epochs",
         default=30,
