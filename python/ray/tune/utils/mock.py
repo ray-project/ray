@@ -50,9 +50,10 @@ class MockDurableTrainer(DurableTrainable, _MockTrainer):
     # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
     #  up once the durable training API converges.
 
-    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
+    def __init__(self, *args, remote_checkpoint_dir=None, **kwargs):
         _MockTrainer.__init__(self, *args, **kwargs)
-        DurableTrainable.__init__(self, remote_checkpoint_dir, *args, **kwargs)
+        DurableTrainable.__init__(
+            self, *args, remote_checkpoint_dir=None, **kwargs)
 
     def _create_storage_client(self):
         return mock_storage_client()
