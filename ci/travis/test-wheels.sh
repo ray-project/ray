@@ -25,10 +25,13 @@ TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
+PY_WHEEL_VERSIONS=("35" "36" "37" "38")
+
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_MMS=("3.6"
-          "3.7"
+  PY_MMS=("3.5.4"
+          "3.6.9"
+          "3.7.6"
           "3.8.2")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   bash miniconda3.sh -b -p "$HOME/miniconda3"
@@ -36,11 +39,7 @@ if [[ "$platform" == "linux" ]]; then
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
-
-    PY_WHEEL_VERSION="${PY_MM}"
-    while [ ! "${PY_WHEEL_VERSION}" = "${PY_WHEEL_VERSION##*.*.*}" ]; then  # reduce to major.minor versions
-      PY_WHEEL_VERSION="${PY_WHEEL_VERSION%.*}"
-    done
+    PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
     conda install -y python="${PY_MM}"
 
@@ -48,8 +47,8 @@ if [[ "$platform" == "linux" ]]; then
     PIP_CMD="$HOME/miniconda3/bin/pip"
 
     # Find the right wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION//./}*" -print)
-
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
+    
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
@@ -88,16 +87,13 @@ elif [[ "$platform" == "macosx" ]]; then
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
 
-    PY_WHEEL_VERSION="${PY_MM}"
-    while [ ! "${PY_WHEEL_VERSION}" = "${PY_WHEEL_VERSION##*.*.*}" ]; then  # reduce to major.minor versions
-      PY_WHEEL_VERSION="${PY_WHEEL_VERSION%.*}"
-    done
+    PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION//./}*" -print)
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
