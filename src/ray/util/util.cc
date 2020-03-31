@@ -1,9 +1,9 @@
 #include "ray/util/util.h"
 
+#include <stdio.h>
 #include <algorithm>
 #include <regex>
 #include <string>
-#include <stdio.h>
 #include <vector>
 
 #include "ray/util/logging.h"
