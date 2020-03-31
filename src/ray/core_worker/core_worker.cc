@@ -872,13 +872,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   Status status;
   if (is_local_mode_) {
-    status =  ExecuteTaskLocalMode(task_spec);
+    status = ExecuteTaskLocalMode(task_spec);
   } else {
-  task_manager_->AddPendingTask(
-      GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
-      std::max(RayConfig::instance().actor_creation_min_retries(),
-               actor_creation_options.max_reconstructions));
-   status = direct_task_submitter_->SubmitTask(task_spec);
+    task_manager_->AddPendingTask(
+        GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
+        std::max(RayConfig::instance().actor_creation_min_retries(),
+                 actor_creation_options.max_reconstructions));
+    status = direct_task_submitter_->SubmitTask(task_spec);
   }
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
@@ -1088,9 +1088,8 @@ Status CoreWorker::AllocateReturnObjects(
       }
 
       // Allocate a buffer for the return object.
-      if (is_local_mode_ ||
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+      if (is_local_mode_ || static_cast<int64_t>(data_sizes[i]) <
+                                RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(
@@ -1174,7 +1173,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   absl::optional<rpc::Address> caller_address(
       is_local_mode_ ? absl::optional<rpc::Address>()
-                          : worker_context_.GetCurrentTask()->CallerAddress());
+                     : worker_context_.GetCurrentTask()->CallerAddress());
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
