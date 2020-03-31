@@ -59,7 +59,9 @@ class BaseModel:
     @classmethod
     def parse_obj(cls, obj):
         # Validation.
-        assert type(obj) == dict, ("It can only parse dict type object.")
+        assert type(obj) == dict, (
+            "It can only parse dict type object, "
+            "but {} type is given.".format(type(obj)))
         for field, schema in cls.__schema__.items():
             required, default, arg_type = schema
             if field not in obj:
@@ -76,8 +78,6 @@ class BaseModel:
 
 class IngestRequest(BaseModel):
     __schema__ = {
-        "cluster_id": Field(required=True, default=None, type=str),
-        "access_token": Field(required=True, default=None, type=str),
         "ray_config": Field(required=True, default=None, type=tuple),
         "node_info": Field(required=True, default=None, type=dict),
         "raylet_info": Field(required=True, default=None, type=dict),
@@ -99,8 +99,8 @@ class AuthRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     __schema__ = {
-        "dashboard_url": Field(required=True, default=None, type=str),
-        "access_token": Field(required=True, default=None, type=str)
+        "access_token_dashboard": Field(required=True, default=None, type=str),
+        "access_token_ingest": Field(required=True, default=None, type=str)
     }
 
 
