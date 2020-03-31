@@ -50,6 +50,15 @@ public class ExecutionGraphTest extends BaseUnitTest {
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(),
         executionGraph.getLastExecutionVertexIndex().get());
 
+    executionGraph.getAllExecutionVertices().forEach(vertex -> {
+        Assert.assertNotNull(vertex.getStreamOperator());
+        Assert.assertNotNull(vertex.getOperatorName());
+        Assert.assertNotNull(vertex.getVertexType());
+        Assert.assertNotNull(vertex.getLanguage());
+        Assert.assertEquals(vertex.getVertexName(),
+          vertex.getOperatorId() + "-" + vertex.getOperatorName() + "-" + vertex.getVertexIndex());
+    });
+
     int startIndex = 0;
     ExecutionJobVertex upStream = executionJobVertices.get(startIndex);
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
@@ -57,7 +66,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
-    upStreamVertices.stream().forEach(vertex -> {
+    upStreamVertices.forEach(vertex -> {
         Assert.assertEquals(vertex.getResources().get(ResourceKey.CPU.name()), 2.0);
         vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
             Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));

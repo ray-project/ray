@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.aeonbits.owner.ConfigFactory;
 import org.ray.api.RayActor;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
@@ -34,6 +35,7 @@ public class ExecutionJobVertex {
   private final String operatorName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
+  private final Language language;
   private final Map<String, String> jobConfig;
 
   /**
@@ -58,6 +60,7 @@ public class ExecutionJobVertex {
     this.operatorName = jobVertex.getStreamOperator().getName();
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
+    this.language = jobVertex.getLanguage();
     this.jobConfig = jobConfig;
     this.parallelism = jobVertex.getParallelism();
     this.executionVertices = createExecutionVertics(globalIndex);
@@ -69,7 +72,7 @@ public class ExecutionJobVertex {
 
     for (int subIndex = 0; subIndex < parallelism; subIndex++) {
       executionVertices.add(new ExecutionVertex(
-        gloabalIndex.getAndIncrement(), subIndex, this, resourceConfig));
+          gloabalIndex.getAndIncrement(), subIndex, this, resourceConfig));
     }
     return executionVertices;
   }
@@ -144,6 +147,10 @@ public class ExecutionJobVertex {
 
   public VertexType getVertexType() {
     return vertexType;
+  }
+
+  public Language getLanguage() {
+    return language;
   }
 
   public boolean isSourceVertex() {

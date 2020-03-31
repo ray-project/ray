@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
+import org.ray.streaming.api.Language;
+import org.ray.streaming.jobgraph.VertexType;
+import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.resource.ResourceKey;
 import org.ray.streaming.runtime.core.resource.Slot;
@@ -22,8 +25,15 @@ public class ExecutionVertex implements Serializable {
    * Unique id for execution vertex.
    */
   private final int id;
+
+  /**
+   * Immutable field inherited from {@link ExecutionJobVertex}.
+   */
   private final int operatorId;
   private final String operatorName;
+  private final StreamOperator streamOperator;
+  private final VertexType vertexType;
+  private final Language language;
 
   /**
    * Resources used by ExecutionVertex.
@@ -50,6 +60,9 @@ public class ExecutionVertex implements Serializable {
     this.id = globalIndex;
     this.operatorId = executionJobVertex.getOperatorId();
     this.operatorName = executionJobVertex.getOperatorName();
+    this.streamOperator = executionJobVertex.getStreamOperator();
+    this.vertexType = executionJobVertex.getVertexType();
+    this.language = executionJobVertex.getLanguage();
     this.vertexIndex = index;
     this.resources = generateResources(resourceConfig);
   }
@@ -64,6 +77,18 @@ public class ExecutionVertex implements Serializable {
 
   public String getOperatorName() {
     return operatorName;
+  }
+
+  public StreamOperator getStreamOperator() {
+    return streamOperator;
+  }
+
+  public VertexType getVertexType() {
+    return vertexType;
+  }
+
+  public Language getLanguage() {
+    return language;
   }
 
   public int getVertexIndex() {
@@ -160,8 +185,8 @@ public class ExecutionVertex implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("vertexId", id)
-        .add("vertexName", getVertexName())
+        .add("id", id)
+        .add("name", getVertexName())
         .add("resources", resources)
         .add("state", state)
         .add("slot", slot)

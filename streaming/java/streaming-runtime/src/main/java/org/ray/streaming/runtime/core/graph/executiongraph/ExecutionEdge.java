@@ -2,6 +2,7 @@ package org.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
+import org.ray.streaming.api.partition.Partition;
 
 /**
  * An edge that connects two execution vertices.
@@ -19,6 +20,11 @@ public class ExecutionEdge implements Serializable {
   private final ExecutionVertex targetVertex;
 
   /**
+   * The partition of current execution edge's execution job edge.
+   */
+  private final Partition partition;
+
+  /**
    * An unique id for execution edge.
    */
   private final String executionEdgeIndex;
@@ -27,6 +33,7 @@ public class ExecutionEdge implements Serializable {
       ExecutionJobEdge executionJobEdge) {
     this.sourceVertex = sourceVertex;
     this.targetVertex = targetVertex;
+    this.partition = executionJobEdge.getPartition();
     this.executionEdgeIndex = generateExecutionEdgeIndex();
   }
 
@@ -50,6 +57,10 @@ public class ExecutionEdge implements Serializable {
     return targetVertex.getId();
   }
 
+  public Partition getPartition() {
+    return partition;
+  }
+
   public String getExecutionEdgeIndex() {
     return executionEdgeIndex;
   }
@@ -57,9 +68,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("srcVertex", sourceVertex)
-        .add("executionEdgeIndex", executionEdgeIndex)
-        .toString();
+      .add("sourceVertex", sourceVertex)
+      .add("targetVertex", targetVertex)
+      .add("partition", partition)
+      .add("executionEdgeIndex", executionEdgeIndex)
+      .toString();
   }
-
 }

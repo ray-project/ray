@@ -62,9 +62,10 @@ public class TaskAssignerImpl implements TaskAssigner {
   private BaseActor createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
       case PYTHON:
-        return (BaseActor) Ray.createPyActor("ray.streaming.runtime.worker", "JobWorker");
+        return Ray.createActor(
+            new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
       case JAVA:
-        return (BaseActor) Ray.createActor(JobWorker::new);
+        return Ray.createActor(JobWorker::new);
       default:
         throw new UnsupportedOperationException(
             "Unsupported language " + jobVertex.getLanguage());
