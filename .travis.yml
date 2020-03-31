@@ -98,9 +98,13 @@ matrix:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
+        # readthedocs has an antiquated build env.
+        # This is a best effort to reproduce it locally to avoid doc build failures
+        # and hidden errors.
+        - pip install -r requirements-rtd.txt
         - pip install -r requirements-doc.txt
         - pip install yapf==0.23.0
-        - sphinx-build -q -W -b html -d _build/doctrees source _build/html
+        - sphinx-build -q -W -E -T -b html source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605

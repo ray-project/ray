@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PROPAGATED_WINDOWS_DEFINES")
+load("//bazel:ray.bzl", "COPTS")
 
 # === Begin of protobuf definitions ===
 
@@ -394,10 +394,6 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    defines = select({
-        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
-        "//conditions:default": [],
-    }),
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
         ],
@@ -800,6 +796,7 @@ cc_library(
         "@bazel_tools//src/conditions:windows": glob([
             "src/shims/windows/**/*.c",
             "src/shims/windows/**/*.cc",
+            "src/shims/windows/**/*.h",
         ]),
         "//conditions:default": [],
     }),
@@ -838,7 +835,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
@@ -1195,7 +1191,8 @@ filegroup(
         "python/ray/core/generated/__init__.py",
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
-        "python/ray/dashboard/dashboard.py",
+        "python/ray/dashboard/*.py",
+        "python/ray/dashboard/metrics_exporter/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
@@ -1288,22 +1285,10 @@ py_library(
 )
 
 genrule(
-    name = "cp_streaming_lib",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    outs = ["cp_streaming_lib.out"],
-    cmd = """
-        set -x &&
-        WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-)
-
-genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
+        "python/ray/streaming/_streaming.so",
         "//:python_sources",
         "//:all_py_proto",
         "//:redis-server",
@@ -1314,10 +1299,7 @@ genrule(
         "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [],  # ignore build streaming for windows
-        "//conditions:default": [":cp_streaming_lib"],
-    }),
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
@@ -1334,6 +1316,7 @@ genrule(
             fi;
         fi &&
         cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&

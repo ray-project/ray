@@ -15,7 +15,7 @@ pygments
 pyyaml
 recommonmark
 redis
-sphinx
+sphinx>2
 sphinx-click
 sphinx-copybutton
 sphinx-gallery

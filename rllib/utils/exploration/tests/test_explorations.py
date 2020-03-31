@@ -30,7 +30,7 @@ def do_test_explorations(run,
         config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in ["torch", "eager", "tf"]:
+    for fw in ["tf", "eager", "torch"]:
         if fw == "torch" and \
                 run in [ddpg.DDPGTrainer, dqn.DQNTrainer, dqn.SimpleQTrainer,
                         impala.ImpalaTrainer, sac.SACTrainer, td3.TD3Trainer]:
@@ -39,8 +39,8 @@ def do_test_explorations(run,
             continue
 
         print("Testing {} in framework={}".format(run, fw))
-        config["eager"] = (fw == "eager")
-        config["use_pytorch"] = (fw == "torch")
+        config["eager"] = fw == "eager"
+        config["use_pytorch"] = fw == "torch"
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
@@ -52,9 +52,10 @@ def do_test_explorations(run,
                 config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
-            eager_mode_ctx = eager_mode()
+            eager_ctx = None
             if fw == "eager":
-                eager_mode_ctx.__enter__()
+                eager_ctx = eager_mode()
+                eager_ctx.__enter__()
                 assert tf.executing_eagerly()
             elif fw == "tf":
                 assert not tf.executing_eagerly()
@@ -64,7 +65,7 @@ def do_test_explorations(run,
             # Make sure all actions drawn are the same, given same
             # observations.
             actions = []
-            for _ in range(100):
+            for _ in range(50):
                 actions.append(
                     trainer.compute_action(
                         observation=dummy_obs,
@@ -91,8 +92,8 @@ def do_test_explorations(run,
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
 
-            if fw == "eager":
-                eager_mode_ctx.__exit__(None, None, None)
+            if eager_ctx:
+                eager_ctx.__exit__(None, None, None)
 
 
 class TestExplorations(unittest.TestCase):
