@@ -12,7 +12,7 @@ import org.ray.streaming.api.Language;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.core.resource.ResourceKey;
+import org.ray.streaming.runtime.core.resource.ResourceType;
 import org.ray.streaming.runtime.core.resource.Slot;
 import org.ray.streaming.runtime.worker.JobWorker;
 
@@ -174,10 +174,10 @@ public class ExecutionVertex implements Serializable {
   private Map<String, Double> generateResources(ResourceConfig resourceConfig) {
     Map<String, Double> resourceMap = new HashMap<>();
     if (resourceConfig.isTaskCpuResourceLimit()) {
-      resourceMap.put(ResourceKey.CPU.name(), resourceConfig.taskCpuResource());
+      resourceMap.put(ResourceType.CPU.name(), resourceConfig.taskCpuResource());
     }
     if (resourceConfig.isTaskMemResourceLimit()) {
-      resourceMap.put(ResourceKey.MEM.name(), resourceConfig.taskMemResource());
+      resourceMap.put(ResourceType.MEM.name(), resourceConfig.taskMemResource());
     }
     return resourceMap;
   }

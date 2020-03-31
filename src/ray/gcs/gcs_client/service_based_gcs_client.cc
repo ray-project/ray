@@ -77,7 +77,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   redisReply *reply = nullptr;
   while (num_attempts < RayConfig::instance().gcs_service_connect_retries()) {
     reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
-    if (reply->type != REDIS_REPLY_NIL) {
+    if (reply && reply->type != REDIS_REPLY_NIL) {
       break;
     }
 
@@ -88,6 +88,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   }
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
       << "No entry found for GcsServerAddress";
+  RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
   RAY_CHECK(reply->type == REDIS_REPLY_STRING)
       << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
   std::string result(reply->str);

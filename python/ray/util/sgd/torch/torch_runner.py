@@ -2,6 +2,7 @@ import collections
 from filelock import FileLock
 import logging
 import inspect
+import io
 import itertools
 import os
 import tempfile
@@ -225,22 +226,14 @@ class TorchRunner:
         self.training_operator._set_timers(self.timers)
 
     def _get_model_state_dicts(self):
-        # This is so that we create a duplicate of weights into CPU rather than
-        # move the model weights entirely out of the GPU, so that we can
-        # resume training while saving intermediate checkpoints.
-        cpu_state_dicts = []
-        for model in self.models:
-            state_dict = model.state_dict()
-            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
-        return cpu_state_dicts
+        return [model.state_dict() for model in self.models]
 
     def _set_model_state_dicts(self, models_state_dicts):
         for model, state_dict in zip(self.models, models_state_dicts):
             model.load_state_dict(state_dict)
 
-    def get_state(self):
+    def state_dict(self):
         """Returns the state of the runner."""
-
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
@@ -258,9 +251,8 @@ class TorchRunner:
             state.update({"amp": amp.state_dict()})
         return state
 
-    def set_state(self, state):
+    def load_state_dict(self, state):
         """Sets the state of the model."""
-        # TODO: restore timer stats
         self._set_model_state_dicts(state["models"])
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
@@ -273,6 +265,19 @@ class TorchRunner:
             amp.load_state_dict(state["amp"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state_dict)
+
+    def state_stream(self):
+        """Returns a bytes object for the state dict."""
+        state_dict = self.state_dict()
+        _buffer = io.BytesIO()
+        torch.save(state_dict, _buffer)
+        return _buffer.getvalue()
+
+    def load_state_stream(self, byte_obj):
+        """Loads a bytes object the training state dict."""
+        _buffer = io.BytesIO(byte_obj)
+        state_dict = torch.load(_buffer)
+        return self.load_state_dict(state_dict)
 
     def apply(self, fn):
         return fn()

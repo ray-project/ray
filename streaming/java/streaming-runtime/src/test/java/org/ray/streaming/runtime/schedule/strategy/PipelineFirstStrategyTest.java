@@ -14,7 +14,7 @@ import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.resource.ResourceKey;
+import org.ray.streaming.runtime.core.resource.ResourceType;
 import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
@@ -49,8 +49,8 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     Resources resources = new Resources(resourceConfig);
 
     Map<String, Double> containerResource = new HashMap<>();
-    containerResource.put(ResourceKey.CPU.name(), 64.0);
-    containerResource.put(ResourceKey.MEM.name(), 128.0);
+    containerResource.put(ResourceType.CPU.name(), 16.0);
+    containerResource.put(ResourceType.MEM.name(), 128.0);
     for (int i = 0; i < 2; ++i) {
       UniqueId uniqueId = UniqueId.randomId();
       Container container = new Container(uniqueId, "1.1.1." + i,  "localhost" + i);

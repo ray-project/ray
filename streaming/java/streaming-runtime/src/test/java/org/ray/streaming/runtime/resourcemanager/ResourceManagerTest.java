@@ -13,7 +13,7 @@ import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.global.CommonConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.resource.ResourceKey;
+import org.ray.streaming.runtime.core.resource.ResourceType;
 import org.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import org.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
@@ -62,8 +62,8 @@ public class ResourceManagerTest extends BaseUnitTest {
     Assert.assertTrue(slotAssignStrategy instanceof PipelineFirstStrategy);
 
     Map<String, Double> containerResource = new HashMap<>();
-    containerResource.put(ResourceKey.CPU.name(), 16.0);
-    containerResource.put(ResourceKey.MEM.name(), 128.0);
+    containerResource.put(ResourceType.CPU.name(), 16.0);
+    containerResource.put(ResourceType.MEM.name(), 128.0);
     Container container1 = new Container(null, "testAddress1", "testHostName1");
     container1.setAvailableResource(containerResource);
     Container container2 = new Container(null, "testAddress2", "testHostName2");
@@ -92,9 +92,9 @@ public class ResourceManagerTest extends BaseUnitTest {
       Map<String, Double> resource = resourceManager.allocateResource(container, vertex.getResources());
       Assert.assertNotNull(resource);
     });
-    Assert.assertEquals(container1.getAvailableResource().get(ResourceKey.CPU.name()), 14.0);
-    Assert.assertEquals(container2.getAvailableResource().get(ResourceKey.CPU.name()), 14.0);
-    Assert.assertEquals(container1.getAvailableResource().get(ResourceKey.MEM.name()), 118.0);
-    Assert.assertEquals(container2.getAvailableResource().get(ResourceKey.MEM.name()), 118.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceType.CPU.name()), 14.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceType.CPU.name()), 14.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceType.MEM.name()), 118.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceType.MEM.name()), 118.0);
   }
 }
