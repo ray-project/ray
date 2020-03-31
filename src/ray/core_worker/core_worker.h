@@ -92,7 +92,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
              std::function<void(std::string *)> get_lang_stack = nullptr,
-             bool ref_counting_enabled = false);
+             bool ref_counting_enabled = false, std::function<void()> kill_main=nullptr);
 
   virtual ~CoreWorker();
 
@@ -695,6 +695,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
+
+  std::function<void()> kill_main_thread_;
 
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise

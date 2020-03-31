@@ -84,12 +84,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        std::function<Status()> check_signals,
                        std::function<void()> gc_collect,
                        std::function<void(std::string *)> get_lang_stack,
-                       bool ref_counting_enabled)
+                       bool ref_counting_enabled, std::function<void()> kill_main)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
       ref_counting_enabled_(ref_counting_enabled),
       check_signals_(check_signals),
+      kill_main_thread_(kill_main),
       gc_collect_(gc_collect),
       get_call_site_(RayConfig::instance().record_ref_creation_sites() ? get_lang_stack
                                                                        : nullptr),
@@ -1416,7 +1417,8 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
                  << " Currently running: " << GetCurrentTaskId()
                  << " And also at main thread: " << main_thread_task_id_;
   if (main_thread_task_id_ == intended_task_id) {
-    RAY_CHECK(false);
+    RAY_LOG(ERROR) << "Attempting to interrupt main";
+    kill_main_thread_();
   }
   // if (GetCurrentTaskId() == request
   // If runnning interrupt main

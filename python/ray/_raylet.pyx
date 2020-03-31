@@ -17,6 +17,7 @@ import logging
 import os
 import pickle
 import sys
+import _thread
 
 from libc.stdint cimport (
     int32_t,
@@ -539,6 +540,13 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
+cdef void kill_main_task() nogil:
+    with gil:
+        print("Going to interrupt main")
+        _thread.interrupt_main()
+        print("Interrupting now")
+
+
 cdef CRayStatus check_signals() nogil:
     with gil:
         try:
@@ -650,7 +658,7 @@ cdef class CoreWorker:
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, gc_collect,
-            get_py_stack, True))
+            get_py_stack, True, kill_main_task))
 
     def run_task_loop(self):
         with nogil:
