@@ -55,8 +55,8 @@ namespace raylet {
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
-                       int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       int maximum_startup_concurrency, int min_worker_port,
+                       int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
@@ -101,6 +101,16 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
+  }
+  // Initialize free ports list with all ports in the specified range.
+  if (min_worker_port != 0) {
+    if (max_worker_port == 0) {
+      max_worker_port = 65535;  // Maximum valid port number.
+    }
+    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    for (int port = min_worker_port; port <= max_worker_port; port++) {
+      free_ports_->push(port);
+    }
   }
   Start(num_workers);
 }
@@ -227,6 +237,18 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     worker_command_args.push_back(token);
   }
 
+  if (free_ports_) {
+    RAY_CHECK(!free_ports_->empty()) << "Tried to start worker process but ran out of "
+                                        "ports. Please specify a wider port range.";
+    worker_command_args.push_back("--worker-port=" +
+                                  std::to_string(free_ports_->front()));
+    free_ports_->pop();
+  }
+  RAY_LOG(INFO) << "WORKER ARGS:";
+  for (const auto &arg : worker_command_args) {
+    RAY_LOG(INFO) << "\t" << arg;
+  }
+
   // Currently only Java worker process supports multi-worker.
   if (language == Language::JAVA) {
     RAY_CHECK(worker_raylet_config_placeholder_found)
@@ -292,7 +314,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid) {
   const auto port = worker->Port();
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
+  RAY_LOG(INFO) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
@@ -423,6 +445,9 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
 
+  if (free_ports_) {
+    free_ports_->push(worker->Port());
+  }
   return RemoveWorker(state.idle, worker);
 }
 
@@ -432,6 +457,9 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
+  if (free_ports_) {
+    free_ports_->push(driver->Port());
+  }
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {

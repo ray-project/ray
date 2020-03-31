@@ -18,6 +18,7 @@
 #include <inttypes.h>
 
 #include <boost/asio/io_service.hpp>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -54,13 +55,18 @@ class WorkerPool {
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
+  /// \param min_worker_port The lowest port number that workers started will bind on.
+  /// If this is set to 0, workers will bind on random ports.
+  /// \param max_worker_port The highest port number that workers started will bind on.
+  /// If this is not set to 0, min_worker_port must also not be set to 0.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
+             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback);
@@ -252,6 +258,9 @@ class WorkerPool {
   boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
+  /// Keeps track of unused ports that newly-created workers can bind on.
+  /// If null, workers will not be passed ports and will choose them randomly.
+  std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The raylet config list of this node.

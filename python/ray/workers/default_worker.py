@@ -22,6 +22,11 @@ parser.add_argument(
     type=int,
     help="the port of the worker's node")
 parser.add_argument(
+    "--worker-port",
+    required=False,
+    type=int,
+    help="the port for this worker's gRPC server to bind on")
+parser.add_argument(
     "--redis-address",
     required=True,
     type=str,
@@ -108,6 +113,10 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
+    print("WORKER_PORT:", args.worker_port)
     ray.worker.connect(
-        node, mode=ray.WORKER_MODE, internal_config=internal_config)
+        node,
+        mode=ray.WORKER_MODE,
+        internal_config=internal_config,
+        worker_port=args.worker_port)
     ray.worker.global_worker.main_loop()

@@ -77,6 +77,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
   /// \param[in] node_manager_port Port of the local raylet.
+  /// \param[in] worker_port Port for this worker's gRPC server to bind on. If 0,
+  //             gRPC will select a random port.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
   /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
@@ -88,7 +90,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
+             int node_manager_port, int worker_port,
+             const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
              std::function<void(std::string *)> get_lang_stack = nullptr,

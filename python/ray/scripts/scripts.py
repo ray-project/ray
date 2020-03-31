@@ -159,6 +159,18 @@ def dashboard(cluster_config_file, cluster_name, port):
     type=int,
     help="the port to use for starting the node manager")
 @click.option(
+    "--min-worker-port",
+    required=False,
+    type=int,
+    help="the lowest port number that workers will bind on. If not set, "
+    "random ports will be chosen.")
+@click.option(
+    "--max-worker-port",
+    required=False,
+    type=int,
+    help="the highest port number that workers will bind on. If set, "
+    "'--min-worker-port' must also be set.")
+@click.option(
     "--memory",
     required=False,
     type=int,
@@ -277,10 +289,11 @@ def dashboard(cluster_config_file, cluster_name, port):
     help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, webui_host, block, plasma_directory, huge_pages,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          redis_shard_ports, object_manager_port, node_manager_port,
+          min_worker_port, max_worker_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          webui_host, block, plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     if redis_address is not None:
@@ -308,6 +321,8 @@ def start(node_ip_address, redis_address, address, redis_port,
     redirect_output = None if not no_redirect_output else True
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
+        min_worker_port=min_worker_port,
+        max_worker_port=max_worker_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
