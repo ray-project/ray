@@ -1,6 +1,4 @@
 import collections
-
-from tqdm import tqdm
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -16,6 +14,12 @@ except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
+    pass
+
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
     pass
 
 
@@ -76,6 +80,8 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        if tqdm is None and use_tqdm:
+            raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
 
@@ -168,8 +174,10 @@ class TrainingOperator:
 
             if self.use_tqdm and self.world_rank == 0:
                 _progress_bar.n = batch_idx + 1
+                postfix = {}
                 if "train_loss" in metrics:
-                    _progress_bar.set_postfix({"loss": metrics["train_loss"]})
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
@@ -259,7 +267,7 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics from the evaluation.
-                By default, returns "mean_accuracy" and "mean_val_loss"
+                By default, returns "val_accuracy" and "val_loss"
                 which is computed by aggregating "loss" and "correct" values
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.

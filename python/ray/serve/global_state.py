@@ -1,27 +1,27 @@
 import ray
 from ray.serve.constants import (BOOTSTRAP_KV_STORE_CONN_KEY,
                                  DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
+                                 SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 
 from ray.serve.policy import RoutePolicy
-from ray.serve.server import HTTPActor
+from ray.serve.http_proxy import HTTPProxyActor
 
 
 def start_initial_state(kv_store_connector):
-    nursery_handle = ActorNursery.remote()
-    ray.util.register_actor(SERVE_NURSERY_NAME, nursery_handle)
+    master_handle = ServeMaster.remote()
+    ray.util.register_actor(SERVE_MASTER_NAME, master_handle)
 
     ray.get(
-        nursery_handle.store_bootstrap_state.remote(
-            BOOTSTRAP_KV_STORE_CONN_KEY, kv_store_connector))
-    return nursery_handle
+        master_handle.store_bootstrap_state.remote(BOOTSTRAP_KV_STORE_CONN_KEY,
+                                                   kv_store_connector))
+    return master_handle
 
 
 @ray.remote
-class ActorNursery:
+class ServeMaster:
     """Initialize and store all actor handles.
 
     Note:
@@ -88,15 +88,15 @@ class GlobalState:
         2. A actor supervisor service
     """
 
-    def __init__(self, actor_nursery_handle=None):
+    def __init__(self, master_actor_handle=None):
         # Get actor nursery handle
-        if actor_nursery_handle is None:
-            actor_nursery_handle = ray.util.get_actor(SERVE_NURSERY_NAME)
-        self.actor_nursery_handle = actor_nursery_handle
+        if master_actor_handle is None:
+            master_actor_handle = ray.util.get_actor(SERVE_MASTER_NAME)
+        self.master_actor_handle = master_actor_handle
 
         # Connect to all the table
         bootstrap_config = ray.get(
-            self.actor_nursery_handle.get_bootstrap_state_dict.remote())
+            self.master_actor_handle.get_bootstrap_state_dict.remote())
         kv_store_connector = bootstrap_config[BOOTSTRAP_KV_STORE_CONN_KEY]
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
@@ -106,25 +106,25 @@ class GlobalState:
 
     def refresh_actor_handle_cache(self):
         self.actor_handle_cache = ray.get(
-            self.actor_nursery_handle.get_all_handles.remote())
+            self.master_actor_handle.get_all_handles.remote())
 
-    def init_or_get_http_server(self,
-                                host=DEFAULT_HTTP_HOST,
-                                port=DEFAULT_HTTP_PORT):
-        if "http_server" not in self.actor_handle_cache:
+    def init_or_get_http_proxy(self,
+                               host=DEFAULT_HTTP_HOST,
+                               port=DEFAULT_HTTP_PORT):
+        if "http_proxy" not in self.actor_handle_cache:
             [handle] = ray.get(
-                self.actor_nursery_handle.start_actor.remote(
-                    HTTPActor, tag="http_server"))
+                self.master_actor_handle.start_actor.remote(
+                    HTTPProxyActor, tag="http_proxy"))
 
             handle.run.remote(host=host, port=port)
             self.refresh_actor_handle_cache()
-        return self.actor_handle_cache["http_server"]
+        return self.actor_handle_cache["http_proxy"]
 
     def _get_queueing_policy(self, default_policy):
         return_policy = default_policy
         # check if there is already a queue_actor running
         # with policy as p.name for the case where
-        # serve nursery exists: ray.util.get_actor(SERVE_NURSERY_NAME)
+        # serve nursery exists: ray.util.get_actor(SERVE_MASTER_NAME)
         for p in RoutePolicy:
             queue_actor_tag = "queue_actor::" + p.name
             if queue_actor_tag in self.actor_handle_cache:
@@ -141,7 +141,7 @@ class GlobalState:
         queue_actor_tag = "queue_actor::" + self.queueing_policy.name
         if queue_actor_tag not in self.actor_handle_cache:
             [handle] = ray.get(
-                self.actor_nursery_handle.start_actor.remote(
+                self.master_actor_handle.start_actor.remote(
                     self.queueing_policy.value,
                     init_kwargs=policy_kwargs,
                     tag=queue_actor_tag,
@@ -154,7 +154,7 @@ class GlobalState:
     def init_or_get_metric_monitor(self, gc_window_seconds=3600):
         if "metric_monitor" not in self.actor_handle_cache:
             [handle] = ray.get(
-                self.actor_nursery_handle.start_actor.remote(
+                self.master_actor_handle.start_actor.remote(
                     MetricMonitor,
                     init_args=(gc_window_seconds, ),
                     tag="metric_monitor"))

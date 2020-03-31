@@ -142,14 +142,7 @@ class DistributedTorchRunner(TorchRunner):
 
         This is needed for PyTorch DistributedDataParallel models.
         """
-        cpu_state_dicts = []
-        for model in self.models:
-            state_dict = model.module.state_dict()
-            # This is so that we create a duplicate of weights into CPU rather
-            # than move the model weights out of the GPU so that we can
-            # resume training while saving intermediate checkpoints.
-            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
-        return cpu_state_dicts
+        return [model.module.state_dict() for model in self.models]
 
     def _set_model_state_dicts(self, model_state_dicts):
         for model, model_state_dict in zip(self.models, model_state_dicts):
@@ -212,3 +205,10 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
+
+
+class DeactivatedRunner:
+    def __getattr__(self, *args, **kwargs):
+        raise RuntimeError(
+            "This TorchTrainer is not active (it is likely shutdown already). "
+            "Create a new TorchTrainer.")

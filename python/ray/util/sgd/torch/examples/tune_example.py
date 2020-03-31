@@ -14,7 +14,8 @@ import torch.nn as nn
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.torch_trainer import TorchTrainable
+from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.utils import BATCH_SIZE
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -48,30 +49,29 @@ def data_creator(config):
     val_dataset = LinearDataset(2, 5, size=400)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=config["batch_size"],
+        batch_size=config[BATCH_SIZE],
     )
     validation_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=config["batch_size"])
+        batch_size=config[BATCH_SIZE])
     return train_loader, validation_loader
 
 
 def tune_example(num_workers=1, use_gpu=False):
-    config = {
-        "model_creator": model_creator,
-        "data_creator": data_creator,
-        "optimizer_creator": optimizer_creator,
-        "loss_creator": nn.MSELoss,
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
-        "config": {"batch_size": 512 // num_workers},
-        "backend": "gloo"
-    }
+    TorchTrainable = TorchTrainer.as_trainable(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.MSELoss,
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        config={BATCH_SIZE: 128}
+    )
 
     analysis = tune.run(
         TorchTrainable,
-        num_samples=12,
-        config=config,
+        num_samples=3,
+        config={"lr": tune.grid_search([1e-4, 1e-3])},
         stop={"training_iteration": 2},
         verbose=1)
 

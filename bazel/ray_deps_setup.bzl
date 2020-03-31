@@ -240,4 +240,7 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
+        patches = [
+            "//thirdparty/patches:msgpack-windows-iovec.patch",
+        ],
     )

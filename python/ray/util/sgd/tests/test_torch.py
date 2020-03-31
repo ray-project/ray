@@ -1,7 +1,6 @@
-import os
-import tempfile
 from unittest.mock import patch
 import numpy as np
+import os
 import pytest
 import time
 import torch
@@ -10,7 +9,7 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.torch import TorchTrainer, TorchTrainable
+from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
                                                   _TestMetricsOperator)
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
@@ -27,6 +26,9 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Ensure that tests don't ALL fail
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
@@ -44,6 +46,19 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
+def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2)
+    trainer.train(num_steps=1)
+    trainer.shutdown()
+    with pytest.raises(RuntimeError):
+        trainer.train()
+
+
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
     trainer = TorchTrainer(
@@ -53,12 +68,12 @@ def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     for i in range(3):
-        train_loss1 = trainer.train()["mean_train_loss"]
-    validation_loss1 = trainer.validate()["mean_val_loss"]
+        train_loss1 = trainer.train()["train_loss"]
+    validation_loss1 = trainer.validate()["val_loss"]
 
     for i in range(3):
-        train_loss2 = trainer.train()["mean_train_loss"]
-    validation_loss2 = trainer.validate()["mean_val_loss"]
+        train_loss2 = trainer.train()["train_loss"]
+    validation_loss2 = trainer.validate()["val_loss"]
 
     assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
     assert validation_loss2 <= validation_loss1, (validation_loss2,
@@ -118,9 +133,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
     trainer1.train()
-
-    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer1.save(filename)
+    state = trainer1.state_dict()
 
     models1 = trainer1.get_model()
 
@@ -134,9 +147,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
-    trainer2.restore(filename)
-
-    os.remove(filename)
+    trainer2.load_state_dict(state)
 
     models2 = trainer2.get_model()
 
@@ -336,20 +347,20 @@ def test_metrics(ray_start_2_cpus, num_workers):
 
     stats = trainer.train(num_steps=num_train_steps)
     # Test that we output mean and last of custom metrics in an epoch
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
 
     assert stats[NUM_SAMPLES] == num_train_steps * batch_size
     expected_score = num_workers * (sum(train_scores) /
                                     (num_train_steps * batch_size))
-    assert np.allclose(stats["mean_score"], expected_score)
+    assert np.allclose(stats["score"], expected_score)
 
     val_stats = trainer.validate()
     # Test that we output mean and last of custom metrics in validation
     assert val_stats["last_score"] == 0
     expected_score = (sum(val_scores) /
                       (num_val_steps * batch_size)) * num_workers
-    assert np.allclose(val_stats["mean_score"], expected_score)
+    assert np.allclose(val_stats["score"], expected_score)
     assert val_stats[BATCH_COUNT] == np.ceil(num_val_steps / num_workers)
     assert val_stats[NUM_SAMPLES] == num_val_steps * batch_size
     assert val_stats[NUM_SAMPLES] == val_size
@@ -384,14 +395,14 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
         training_operator_cls=_TestMetricsOperator)
 
     stats = trainer.train(num_steps=num_train_steps)
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
-    assert np.isnan(stats["mean_score"])
+    assert np.isnan(stats["score"])
 
     stats = trainer.validate()
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
-    assert np.isnan(stats["mean_score"])
+    assert np.isnan(stats["score"])
     trainer.shutdown()
 
 
@@ -415,41 +426,41 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
-
-    config = {
-        "model_creator": model_creator,
-        "data_creator": data_creator,
-        "optimizer_creator": optimizer_creator,
-        "loss_creator": lambda config: nn.MSELoss(),
-        "num_workers": num_workers,
-        "use_gpu": False,
-        "backend": "gloo",
-        "config": {
-            "batch_size": 512,
-            "lr": 0.001
-        }
-    }
+    TorchTrainable = TorchTrainer.as_trainable(
+        **{
+            "model_creator": model_creator,
+            "data_creator": data_creator,
+            "optimizer_creator": optimizer_creator,
+            "loss_creator": lambda config: nn.MSELoss(),
+            "num_workers": num_workers,
+            "use_gpu": False,
+            "backend": "gloo",
+            "config": {
+                "batch_size": 512,
+                "lr": 0.001
+            }
+        })
 
     analysis = tune.run(
         TorchTrainable,
         num_samples=2,
-        config=config,
         stop={"training_iteration": 2},
         verbose=1)
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        mean_train_loss1 = df.loc[0, "mean_train_loss"]
-        mean_train_loss2 = df.loc[1, "mean_train_loss"]
-        mean_val_loss1 = df.loc[0, "mean_val_loss"]
-        mean_val_loss2 = df.loc[1, "mean_val_loss"]
+        mean_train_loss1 = df.loc[0, "train_loss"]
+        mean_train_loss2 = df.loc[1, "train_loss"]
+        mean_val_loss1 = df.loc[0, "val_loss"]
+        mean_val_loss2 = df.loc[1, "val_loss"]
 
         assert mean_train_loss2 <= mean_train_loss1
         assert mean_val_loss2 <= mean_val_loss1
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
+def test_save_and_restore(ray_start_2_cpus, num_workers,
+                          tmp_path):  # noqa: F811
     trainer1 = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
@@ -457,9 +468,8 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer1.train()
-
-    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer1.save(filename)
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    trainer1.save(checkpoint_path)
 
     model1 = trainer1.get_model()
 
@@ -471,9 +481,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
-    trainer2.restore(filename)
-
-    os.remove(filename)
+    trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
 
@@ -619,7 +627,8 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             loss_creator=lambda config: nn.MSELoss(),
             num_workers=2)
 
-        trainer1.train(max_retries=2)
+        # MAX RETRIES SHOULD BE ON BY DEFAULT
+        trainer1.train()
         trainer1.shutdown()
 
 
