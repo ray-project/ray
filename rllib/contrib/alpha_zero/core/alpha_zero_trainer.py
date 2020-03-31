@@ -96,7 +96,9 @@ DEFAULT_CONFIG = with_common_config({
     # === Callbacks ===
     "callbacks": {
         "on_episode_start": on_episode_start,
-    }
+    },
+
+    "use_pytorch": True,
 })
 
 

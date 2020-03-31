@@ -16,8 +16,6 @@ syntax = "proto3";
 
 package ray.rpc;
 
-import "src/ray/protobuf/common.proto";
-
 message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;

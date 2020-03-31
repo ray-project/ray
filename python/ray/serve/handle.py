@@ -85,10 +85,10 @@ class RayServeHandle:
         # If both the slo's are None then then we use a high default
         # value so other queries can be prioritize and put in front of these
         # queries.
-        assert not all(absolute_slo_ms,
-                       relative_slo_ms), ("Can't specify both "
-                                          "relative and absolute "
-                                          "slo's together!")
+        assert not all([absolute_slo_ms, relative_slo_ms
+                        ]), ("Can't specify both "
+                             "relative and absolute "
+                             "slo's together!")
 
         # Don't override existing method
         if method_name is None and self.method_name is not None:

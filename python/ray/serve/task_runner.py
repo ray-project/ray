@@ -113,15 +113,16 @@ class RayServeMixin:
                                     "which is specified in the request. "
                                     "The avaiable methods are {}".format(
                                         method_name, dir(self)))
-
-        if method_name != "__call__":
-            return getattr(self, method_name)
-        else:
-            # For simple callables, we should just return the object so
-            # signature recoding will continue to funciton.
-            return self
+        return getattr(self, method_name)
 
     def _ray_serve_count_num_positional(self, f):
+        # NOTE:
+        # In the case of simple functions, not actors, the f will be
+        # a TaskRunner.__call__. What we really want here is the wrapped
+        # functionso inspect.signature will figure out the underlying f.
+        if hasattr(self, "__wrapped__"):
+            f = self.__wrapped__
+
         signature = inspect.signature(f)
         counter = 0
         for param in signature.parameters.values():
