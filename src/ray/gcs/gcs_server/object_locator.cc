@@ -55,7 +55,7 @@ ObjectLocator::ObjectLocator() {}
 
 ObjectLocator::~ObjectLocator() {}
 
-void ObjectLocator::AddLocation(const ClientID &node_id,
+void ObjectLocator::AddObjectsLocation(const ClientID &node_id,
                                 const std::unordered_set<ObjectID> &object_ids) {
   // TODO(micafan) Optimize the lock when necessary.
   // Maybe use read/write lock. Or reduce the granularity of the lock.
@@ -73,7 +73,7 @@ void ObjectLocator::AddLocation(const ClientID &node_id,
   }
 }
 
-void ObjectLocator::AddLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ObjectLocator::AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto node_hold_info = GetNodeHoldObjectInfo(node_id, /* create_if_not_exist */ true);
@@ -86,7 +86,7 @@ void ObjectLocator::AddLocation(const ObjectID &object_id, const ClientID &node_
   object_location_info->AddLocation(node_id);
 }
 
-std::unordered_set<ClientID> ObjectLocator::GetLocation(const ObjectID &object_id) {
+std::unordered_set<ClientID> ObjectLocator::GetObjectLocations(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto object_location_info = DeleteObjectLocationInfo(object_id);
@@ -137,7 +137,7 @@ void ObjectLocator::RemoveLocation(const ClientID &node_id) {
   }
 }
 
-void ObjectLocator::RemoveLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ObjectLocator::RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto object_location_info = GetObjectLocationInfo(object_id);

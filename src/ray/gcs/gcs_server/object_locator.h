@@ -84,20 +84,20 @@ class ObjectLocator {
   ///
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
-  void AddLocation(const ClientID &node_id,
+  void AddObjectsLocation(const ClientID &node_id,
                    const std::unordered_set<ObjectID> &object_ids);
 
   /// Add location of an object.
   ///
   /// \param object_id The id of object which location will be added.
   /// \param node_id The object location that will be added.
-  void AddLocation(const ObjectID &object_id, const ClientID &node_id);
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id);
 
   /// Get object's locations.
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  std::unordered_set<ClientID> GetLocation(const ObjectID &object_id);
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id);
 
   /// Remove object. This object will not be used again.
   /// This will remove object from the object to location map and also the
@@ -115,7 +115,7 @@ class ObjectLocator {
   ///
   /// \param object_id The id of the object which location will be removed.
   /// \param node_id The location that will be removed.
-  void RemoveLocation(const ObjectID &object_id, const ClientID &node_id);
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id);
 
  private:
   /// Get ObjectLocationInfo by object id from map.
