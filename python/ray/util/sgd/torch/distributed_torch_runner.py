@@ -97,7 +97,7 @@ class DistributedTorchRunner(TorchRunner):
 
         # This needs to happen after apex
         self.models = [
-            DistributedDataParallel(model, device_ids=[0])
+            DistributedDataParallel(model, device_ids=self.device_ids)
             for model in self.models
         ]
 

@@ -34,11 +34,12 @@ class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and
-    coordinate gradient updates to train the provided model.
+    coordinate gradient updates to train the provided model. If Ray is not
+    initialized, TorchTrainer will automatically initialize a local Ray
+    cluster for you. Be sure to run `ray.init(address="auto")` to leverage
+    multi-node training.
 
     .. code-block:: python
-
-        ray.init()
 
         def model_creator(config):
             return nn.Linear(1, 1)
@@ -117,7 +118,8 @@ class TorchTrainer:
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
         add_dist_sampler (bool): Whether to automatically add a
-            DistributedSampler to all created dataloaders.
+            DistributedSampler to all created dataloaders. Only applicable
+            if num_workers > 1.
         use_fp16 (bool): Enables mixed precision training via apex if apex
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.

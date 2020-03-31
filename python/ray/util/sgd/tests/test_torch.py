@@ -6,6 +6,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+from torch.utils.data import DataLoader
 
 import ray
 from ray import tune
@@ -269,7 +270,7 @@ def test_split_batch(ray_start_2_cpus):
     def data_creator(config):
         """Returns training dataloader, validation dataloader."""
         train_dataset = LinearDataset(2, 5, size=config["data_size"])
-        return torch.utils.data.DataLoader(
+        return DataLoader(
             train_dataset,
             batch_size=config[BATCH_SIZE],
         )
@@ -301,7 +302,10 @@ def test_reduce_result(ray_start_2_cpus):
     def data_creator(config):
         """Returns training dataloader, validation dataloader."""
         train_dataset = LinearDataset(2, 5, size=config["data_size"])
-        return torch.utils.data.DataLoader(train_dataset, batch_size=1)
+        test_dataset = LinearDataset(2, 5, size=config["data_size"])
+        return DataLoader(
+            train_dataset, batch_size=1), DataLoader(
+                test_dataset, batch_size=1)
 
     data_size = 600
 
@@ -313,6 +317,10 @@ def test_reduce_result(ray_start_2_cpus):
         num_workers=2,
         config={"data_size": data_size})
     list_stats = trainer.train(reduce_results=False, profile=True)
+    assert len(list_stats) == 2
+    assert [stats[NUM_SAMPLES] == data_size for stats in list_stats]
+    assert [stats[BATCH_COUNT] == (data_size // 2) for stats in list_stats]
+    list_stats = trainer.validate(reduce_results=False, profile=True)
     assert len(list_stats) == 2
     assert [stats[NUM_SAMPLES] == data_size for stats in list_stats]
     assert [stats[BATCH_COUNT] == (data_size // 2) for stats in list_stats]
@@ -501,8 +509,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
     def single_loader(config):
         dataset = LinearDataset(2, 5, size=1000000)
-        return torch.utils.data.DataLoader(
-            dataset, batch_size=config.get("batch_size", 32))
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, **params):
         remote_worker_stats = [
@@ -545,8 +552,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
     def single_loader(config):
         dataset = LinearDataset(2, 5, size=1000000)
-        return torch.utils.data.DataLoader(
-            dataset, batch_size=config.get("batch_size", 32))
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, **params):
         remote_worker_stats = [
@@ -595,8 +601,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
 
     def single_loader(config):
         dataset = LinearDataset(2, 5, size=1000000)
-        return torch.utils.data.DataLoader(
-            dataset, batch_size=config.get("batch_size", 32))
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, **params):
         remote_worker_stats = [

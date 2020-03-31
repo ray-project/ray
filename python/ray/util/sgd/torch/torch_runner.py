@@ -23,8 +23,8 @@ except ImportError:
     pass
 
 
-def _remind_gpu_usage(use_gpu, rank):
-    if rank > 0:
+def _remind_gpu_usage(use_gpu, is_chief):
+    if not is_chief:
         return
     if not use_gpu and torch.cuda.is_available():
         logger.info("GPUs detected but not using them. Set `use_gpu` to "
