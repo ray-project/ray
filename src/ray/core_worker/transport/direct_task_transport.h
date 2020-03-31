@@ -70,6 +70,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] task_spec The task to schedule.
   Status SubmitTask(TaskSpecification task_spec);
 
+  Status KillTask(TaskSpecification task_spec);
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -168,6 +170,8 @@ class CoreWorkerDirectTaskSubmitter {
   // Invariant: if a queue is in this map, it has at least one task.
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
       GUARDED_BY(mu_);
+
+  absl::flat_hash_map<TaskID, rpc::WorkerAddress> sent_tasks_ GUARDED_BY(mu_);
 };
 
 };  // namespace ray

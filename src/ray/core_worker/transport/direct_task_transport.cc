@@ -69,8 +69,10 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     worker_to_lease_client_.erase(addr);
   } else {
     auto &client = *client_cache_[addr];
-    PushNormalTask(addr, client, scheduling_key, queue_entry->second.front(),
+    auto task_spec = queue_entry->second.front();
+    PushNormalTask(addr, client, scheduling_key, task_spec,
                    assigned_resources);
+    sent_tasks_[task_spec.TaskID()] = addr;
     queue_entry->second.pop_front();
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
@@ -189,6 +191,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        {
+          absl::MutexLock lock(&mu_);
+          sent_tasks_.remove(task_id);
+        }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return
           // it to the Raylet since that will kill it early.
@@ -224,4 +230,32 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         &status);
   }
 }
+
+Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
+  const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
+    absl::MutexLock lock(&mu_);
+    auto queue_entry = task_queues_.find(scheduling_key);
+    if (queue_entry != task_queues_.end()) { 
+      auto start = queue_entry->second.begin();
+      while (start != queue_entry->second.end()) {
+        if (*start == task_spec.TaskId()) {
+          queue_entry->second.erase(start);
+          if (queue_entry->second.size() == 0) {
+             task_queues_.erase(scheduling_key);
+            }
+          return Status::OK();
+        }
+      }
+    }
+    auto rpc_client = sent_tasks_.find(task_spec.TaskId());
+    if (rpc_client == sent_tasks_.end()) {
+      RAY_LOG(ERROR) << "Task Cancellation failed for: " <<task_spec.TaskId();
+      return Status::OK();
+    }
+    client = client_cache_[addr];
+  return Status::OK();    
+  }
+
 };  // namespace ray

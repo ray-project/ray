@@ -902,10 +902,16 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id) {
-  auto task_id = object_id.TaskId();
-  auto actor_id = task_id.ActorId();
   RAY_LOG(ERROR) << "Killing Task under actor id: " << actor_id;
-  return Status::OK();
+  if (task_manager_->IsTaskPending(task_id)) {
+    RAY_LOG(ERROR) << "Pending task";
+    auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+    direct_task_submitter_->KillTask(task_spec);
+    return Status::OK();
+  } else {
+    // Already finished :'(
+    return Status::OK();
+  }
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
