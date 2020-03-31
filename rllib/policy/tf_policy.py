@@ -604,7 +604,9 @@ class TFPolicy(Policy):
     def _get_loss_inputs_dict(self, batch, shuffle):
         # Get batch ready for RNNs, if applicable.
         pad_batch_to_sequences_of_same_size(
-            batch, shuffle=shuffle, max_seq_len=self._max_seq_len,
+            batch,
+            shuffle=shuffle,
+            max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
             feature_keys=[k for k, v in self._loss_inputs])
 

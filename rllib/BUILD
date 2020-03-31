@@ -1272,7 +1272,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_torch_rnn_model.py"],
-    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
 )
 
 py_test(

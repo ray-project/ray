@@ -24,8 +24,14 @@ parser.add_argument("--lstm-cell-size", type=int, default=256)
 
 
 class RNNModel(RecurrentTorchModel):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, fc_size=64, lstm_state_size=256):
+    def __init__(self,
+                 obs_space,
+                 action_space,
+                 num_outputs,
+                 model_config,
+                 name,
+                 fc_size=64,
+                 lstm_state_size=256):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
 
@@ -45,8 +51,10 @@ class RNNModel(RecurrentTorchModel):
     @override(ModelV2)
     def get_initial_state(self):
         # make hidden states on same device as model
-        h = [self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),
-             self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0)]
+        h = [
+            self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),
+            self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0)
+        ]
         return h
 
     @override(ModelV2)
@@ -68,12 +76,14 @@ class RNNModel(RecurrentTorchModel):
         """
         x = nn.functional.relu(self.fc1(inputs))
         lstm_out = self.lstm(
-            x, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)])
+            x, [torch.unsqueeze(state[0], 0),
+                torch.unsqueeze(state[1], 0)])
         action_out = self.action_branch(lstm_out[0])
         self._cur_value = torch.reshape(self.value_branch(lstm_out[0]), [-1])
         return action_out, [
             torch.squeeze(lstm_out[1][0], 0),
-            torch.squeeze(lstm_out[1][1], 0)]
+            torch.squeeze(lstm_out[1][1], 0)
+        ]
 
 
 if __name__ == "__main__":
@@ -110,6 +120,9 @@ if __name__ == "__main__":
 
     tune.run(
         args.run,
-        stop={"episode_reward_mean": args.stop, "timesteps_total": 100000},
+        stop={
+            "episode_reward_mean": args.stop,
+            "timesteps_total": 100000
+        },
         config=config,
     )

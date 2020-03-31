@@ -54,10 +54,9 @@ def pad_batch_to_sequences_of_same_size(batch,
     """
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
-                len(batch[SampleBatch.CUR_OBS]) %
-                batch_divisibility_req == 0
-                # not multiagent
-                and max(batch[SampleBatch.AGENT_INDEX]) == 0)
+            len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
+            # not multiagent
+            and max(batch[SampleBatch.AGENT_INDEX]) == 0)
     else:
         meets_divisibility_reqs = True
 
@@ -82,7 +81,7 @@ def pad_batch_to_sequences_of_same_size(batch,
             state_keys.append(k)
         elif not feature_keys and "state_out_" not in k and k != "infos":
             feature_keys_.append(k)
-    
+
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
             batch[SampleBatch.EPS_ID],
