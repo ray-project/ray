@@ -1,6 +1,7 @@
 import os
 import logging
 from os.path import dirname
+from socket import gethostname
 import sys
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,10 @@ if "OMP_NUM_THREADS" not in os.environ:
                  "degradation with many workers (issue #6998). You can "
                  "override this by explicitly setting OMP_NUM_THREADS.")
     os.environ["OMP_NUM_THREADS"] = "1"
+
+if sys.platform == "darwin" and not gethostname().endswith(".local"):
+    logger.warning("The GCS Service may not correctly resolve your hostname."
+                   "To fix this please look at issue #7837")
 
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
