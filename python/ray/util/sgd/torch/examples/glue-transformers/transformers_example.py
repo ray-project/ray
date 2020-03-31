@@ -103,7 +103,7 @@ def model_creator(config):
     return model
 
 
-def create_optimizer(model, cfg):
+def optimizer_creator(model, cfg):
     args = cfg["args"]
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
@@ -345,7 +345,7 @@ def main():
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
-        optimizer_creator=create_optimizer,
+        optimizer_creator=optimizer_creator,
         training_operator_cls=TransformerOperator,
         initialization_hook=init_hook,
         use_fp16=args.fp16,
