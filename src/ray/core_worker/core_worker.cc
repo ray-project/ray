@@ -1608,9 +1608,9 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
       // request?
       RAY_LOG(ERROR)
           << "Killing an actor which is running in a worker process with multiple "
-             "workers is not supported yet. The worker process will fail anyway, but you "
-             "should try to create the Java actor with some dynamic options to make it "
-             "being hosted in a dedicated worker process.";
+             "workers will also kill other actors in this process. To avoid this, "
+             "please create the Java actor with some dynamic options to make it being "
+             "hosted in a dedicated worker process.";
     }
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();

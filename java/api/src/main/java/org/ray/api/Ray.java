@@ -137,7 +137,8 @@ public final class Ray extends RayCall {
     runtime.setAsyncContext(asyncContext);
   }
 
-  // TODO (kfstorm): no rollbackAsyncContext API.
+  // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
+  // the current thread to the one before `setAsyncContext` is called.
 
   // TODO (kfstorm): unify the `wrap*` methods.
 

@@ -670,8 +670,10 @@ cdef class CoreWorker:
     def __dealloc__(self):
         with nogil:
             # If it's a worker, the core worker process should have been
-            # shutdown. So we can't call `CCoreWorkerProcess.GetCoreWorker()`
-            # here.
+            # shutdown. So we can't call
+            # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
+            # Instead, we use the cached `is_driver` flag to test if it's a
+            # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
 

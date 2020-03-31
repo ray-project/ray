@@ -142,12 +142,14 @@ struct CoreWorkerOptions {
 /// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
 /// once in the new thread before calling core worker APIs, to associate the current
 /// thread with a worker. You can ontain the worker ID via
-/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
+/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
+/// starts multiple workers by default, but can be configured to start only 1 worker by
+/// overwriting the internal config `num_workers_per_process_java`.
 ///
 /// If only 1 worker is started (either because the worker type is driver, or the
 /// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
 /// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
-/// your own threads.
+/// your own threads. Currently a Python worker process starts only 1 worker.
 class CoreWorkerProcess {
  public:
   /// Initialize core workers at process level.
