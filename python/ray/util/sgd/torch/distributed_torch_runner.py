@@ -72,7 +72,11 @@ class DistributedTorchRunner(TorchRunner):
         self.device_ids = None
 
         if self.use_gpu and torch.cuda.is_available():
-            self.device_ids = [0]
+            # https://github.com/allenai/allennlp/issues/1090
+            self._set_cuda_device_id()
+
+    def _set_cuda_device_id(self):
+        self.device_ids = [0]
 
     def _setup_training(self):
         logger.debug("Loading data.")
@@ -112,6 +116,7 @@ class DistributedTorchRunner(TorchRunner):
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
             schedulers=self.schedulers,
+            use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm)
 
@@ -206,9 +211,21 @@ class LocalDistributedRunner(DistributedTorchRunner):
                 num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-            head_cuda = ray.get(_dummy_actor.cuda_devices.remote())
-            os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
+            self.local_device = ray.get(_dummy_actor.cuda_devices.remote())
+
+            # This is a pretty annoying workaround. To enable SyncBatchNorm,
+            # we need to signify that we are using only 1 CUDA device (via
+            # the DDP constructor). However, on the local worker,
+            # we set the CUDA_VISIBLE_DEVICES at runtime rather at process
+            # start. This means that we have to make sure that DDP knows which
+            # specific device we are using.
+            os.environ["CUDA_VISIBLE_DEVICES"] = self.local_device
+            if self.local_device:
+                torch.cuda.set_device(int(self.local_device))
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
+
+    def _set_cuda_device_id(self):
+        self.device_ids = [int(self.local_device)]
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
