@@ -1,4 +1,4 @@
-package org.ray.streaming.message;
+package io.ray.streaming.message;
 
 
 public class KeyRecord<K, T> extends Record<T> {

@@ -1,7 +1,7 @@
-package org.ray.streaming.runtime.master.graphmanager;
+package io.ray.streaming.runtime.master.graphmanager;
 
-import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.jobgraph.JobGraph;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Graph manager is one of the important roles of JobMaster. It mainly focuses on graph management.

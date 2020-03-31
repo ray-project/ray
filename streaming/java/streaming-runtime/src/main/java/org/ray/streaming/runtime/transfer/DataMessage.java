@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer;
 
 import java.nio.ByteBuffer;
 

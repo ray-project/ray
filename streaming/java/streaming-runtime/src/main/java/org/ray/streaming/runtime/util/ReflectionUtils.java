@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.util;
+package io.ray.streaming.runtime.util;
 
 import com.google.common.base.Preconditions;
 import java.lang.reflect.Method;

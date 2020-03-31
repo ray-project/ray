@@ -1,4 +1,4 @@
-package org.ray.streaming.message;
+package io.ray.streaming.message;
 
 import com.google.common.collect.Lists;
 import java.io.Serializable;

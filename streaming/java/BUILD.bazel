@@ -93,7 +93,7 @@ define_java_module(
     ],
     define_test_lib = True,
     exclude_srcs = [
-        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/*.java",
+        "streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/*.java",
     ],
     test_deps = [
         "//java:org_ray_ray_api",
@@ -186,7 +186,7 @@ genrule(
     cmd = """
         set -x
         WORK_DIR="$$(pwd)"
-        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated"
+        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated"
         rm -rf "$$GENERATED_DIR"
         mkdir -p "$$GENERATED_DIR"
         # Copy protobuf-generated files.

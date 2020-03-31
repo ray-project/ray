@@ -1,6 +1,6 @@
-package org.ray.streaming.runtime.core.resource;
+package io.ray.streaming.runtime.core.resource;
 
-import org.ray.streaming.runtime.core.common.AbstractID;
+import io.ray.streaming.runtime.core.common.AbstractID;
 
 /**
  * Container unique identifier.
