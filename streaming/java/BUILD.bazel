@@ -35,7 +35,7 @@ define_java_module(
     define_test_lib = True,
     test_deps = [
         "//java:io_ray_ray_api",
-        ":op_ray_ray_streaming-api",
+        ":io_ray_ray_streaming-api",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
