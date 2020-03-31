@@ -23,6 +23,14 @@ except ImportError:
     pass
 
 
+def _remind_gpu_usage(use_gpu, rank):
+    if rank > 0:
+        return
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
+
+
 class TorchRunner:
     """Manages a PyTorch model for training.
 
@@ -36,6 +44,7 @@ class TorchRunner:
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
         config (dict): see torch_trainer.py.
+        use_gpu (bool): see torch_trainer.py.
         use_fp16 (bool): see torch_trainer.py.
         apex_args (dict|None): see torch_trainer.py.
         scheduler_step_freq (str): see torch_trainer.py.
@@ -49,6 +58,7 @@ class TorchRunner:
                  scheduler_creator=None,
                  training_operator_cls=None,
                  config=None,
+                 use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False,
                  apex_args=None,
@@ -69,6 +79,7 @@ class TorchRunner:
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
+        self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.apex_args = apex_args or {}
@@ -117,8 +128,9 @@ class TorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available() and hasattr(self.criterion, "cuda"):
-            self.criterion = self.criterion.cuda()
+        if self.use_gpu and torch.cuda.is_available():
+            if hasattr(self.criterion, "cuda"):
+                self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
         # Learning rate schedules are optional.
@@ -138,11 +150,13 @@ class TorchRunner:
 
     def setup(self):
         """Initializes the model."""
+        _remind_gpu_usage(self.use_gpu, is_chief=True)
+        self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
-        if torch.cuda.is_available():
+        if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer")
@@ -153,7 +167,6 @@ class TorchRunner:
         self._create_schedulers_if_available()
         self._try_setup_apex()
         self._create_loss()
-        self._initialize_dataloaders()
         self.training_operator = self.training_operator_cls(
             self.config,
             models=self.models,

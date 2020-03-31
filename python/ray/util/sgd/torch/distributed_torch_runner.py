@@ -12,7 +12,7 @@ from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_IN_SECONDS
 
 import ray
-from ray.util.sgd.torch.torch_runner import TorchRunner
+from ray.util.sgd.torch.torch_runner import TorchRunner, _remind_gpu_usage
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,19 @@ class DistributedTorchRunner(TorchRunner):
 
     Args:
         args: Arguments for TorchRunner.
-        backend (string): Backend used by distributed PyTorch.
+        backend (str): Backend used by distributed PyTorch.
+        add_dist_sampler (bool): Whether to automatically add a
+            DistributedSampler to all created dataloaders.
         kwargs: Keyword arguments for TorchRunner.
 
     """
 
-    def __init__(self, *args, backend="gloo", **kwargs):
+    def __init__(self, *args, backend="gloo", add_dist_sampler=True, **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         if backend not in ("gloo", "nccl"):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
+        self.add_dist_sampler = add_dist_sampler
 
     def setup(self, url, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
@@ -42,6 +45,7 @@ class DistributedTorchRunner(TorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
+        _remind_gpu_usage(self.use_gpu, is_chief=world_rank == 0)
         self._setup_distributed_pytorch(url, world_rank, world_size)
         self._setup_training()
 
@@ -65,14 +69,21 @@ class DistributedTorchRunner(TorchRunner):
             world_size=world_size,
             timeout=timeout)
 
+        self.device_ids = None
+
+        if self.use_gpu and torch.cuda.is_available():
+            self.device_ids = [0]
+
     def _setup_training(self):
+        logger.debug("Loading data.")
+        self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
         assert all(isinstance(model, nn.Module) for model in self.models), (
             "All models must be PyTorch models: {}.".format(self.models))
-        if torch.cuda.is_available():
+        if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer.")
@@ -83,11 +94,14 @@ class DistributedTorchRunner(TorchRunner):
 
         self._create_schedulers_if_available()
         self._try_setup_apex()
+
         # This needs to happen after apex
-        self.models = [DistributedDataParallel(model) for model in self.models]
+        self.models = [
+            DistributedDataParallel(model, device_ids=[0])
+            for model in self.models
+        ]
 
         self._create_loss()
-        self._initialize_dataloaders()
 
         self.training_operator = self.training_operator_cls(
             self.config,
@@ -121,11 +135,13 @@ class DistributedTorchRunner(TorchRunner):
             return DataLoader(**data_loader_args)
 
         if isinstance(self.train_loader, DataLoader):
-            self.train_loader = with_sampler(self.train_loader)
+            if self.add_dist_sampler:
+                self.train_loader = with_sampler(self.train_loader)
 
         if self.validation_loader and isinstance(self.validation_loader,
                                                  DataLoader):
-            self.validation_loader = with_sampler(self.validation_loader)
+            if self.add_dist_sampler:
+                self.validation_loader = with_sampler(self.validation_loader)
 
     def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.

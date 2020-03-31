@@ -60,6 +60,7 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
+                 use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
         # You are not expected to override this method.
@@ -80,6 +81,8 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._use_gpu = use_gpu and torch.cuda.is_available()
+        self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
@@ -324,12 +327,16 @@ class TrainingOperator:
         }
 
     def state_dict(self):
-        """Returns a serializable representation of the operator state."""
+        """Override this to return a representation of the operator state."""
         pass
 
     def load_state_dict(self, state_dict):
-        """Loads a serializable representation of the operator state."""
+        """Override this to load the representation of the operator state."""
         pass
+
+    @property
+    def device(self):
+        return self._device
 
     @property
     def config(self):

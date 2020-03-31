@@ -9,8 +9,6 @@ from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 
-from tqdm import trange
-
 import ray
 from ray.tune import CLIReporter
 from ray.util.sgd.torch import TorchTrainer
