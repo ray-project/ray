@@ -297,22 +297,6 @@ cdef void prepare_args(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)))))
 
-cdef deserialize_args(
-        const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectID] &arg_reference_ids):
-    if c_args.empty():
-        return [], {}
-
-    args = ray.worker.global_worker.deserialize_objects(
-             RayObjectsToDataMetadataPairs(c_args),
-             VectorToObjectIDs(arg_reference_ids))
-
-    for arg in args:
-        if isinstance(arg, RayError):
-            raise arg
-
-    return ray.signature.recover_args(args)
-
 
 cdef execute_task(
         CTaskType task_type,
@@ -331,7 +315,7 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
-        CFiberEvent fiber_event
+        CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -410,13 +394,13 @@ cdef execute_task(
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
 
                 def callback(future):
-                    fiber_event.Notify()
+                    task_done_event.Notify()
                     monitor_state.unregister_coroutine(coroutine)
 
                 future.add_done_callback(callback)
                 with nogil:
                     (core_worker.core_worker.get()
-                        .YieldCurrentFiber(fiber_event))
+                        .YieldCurrentFiber(task_done_event))
 
                 return future.result()
 
@@ -431,7 +415,30 @@ cdef execute_task(
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
-                args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
+                if c_args.empty():
+                    args, kwargs = [], {}
+                else:
+                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                    object_ids = VectorToObjectIDs(c_arg_reference_ids)
+
+                    if core_worker.current_actor_is_asyncio():
+                        # We deserialize objects in event loop thread to
+                        # prevent segfaults. See #7799
+                        def deserialize_args():
+                            return (ray.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_ids))
+                        args = core_worker.run_function_in_event_loop(
+                            deserialize_args)
+                    else:
+                        args = ray.worker.global_worker.deserialize_objects(
+                            metadata_pairs, object_ids)
+
+                    for arg in args:
+                        if isinstance(arg, RayError):
+                            raise arg
+                    args, kwargs = ray.signature.recover_args(args)
+
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
                 class_name = actor.__class__.__name__
@@ -446,7 +453,6 @@ cdef execute_task(
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
-
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -1106,6 +1112,18 @@ cdef class CoreWorker:
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def run_function_in_event_loop(self, func):
+        cdef:
+            CFiberEvent event
+        loop = self.create_or_get_event_loop()
+        coroutine = sync_to_async(func)()
+        future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        future.add_done_callback(lambda _: event.Notify())
+        with nogil:
+            (self.core_worker.get()
+                .YieldCurrentFiber(event))
+        return future.result()
 
     def destory_event_loop_if_exists(self):
         if self.async_event_loop is not None:
