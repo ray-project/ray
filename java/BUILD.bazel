@@ -17,17 +17,17 @@ all_modules = [
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_" + module + ".jar"
+        "libio_ray_ray_" + module + ".jar"
         for module in all_modules
     ] + [
-        "liborg_ray_ray_" + module + "-src.jar"
+        "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules
     ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_" + module
+        ":io_ray_ray_" + module
         for module in all_modules
     ] + [
         ":all_tests",
@@ -86,8 +86,8 @@ define_java_module(
 define_java_module(
     name = "tutorial",
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         "@maven//:com_google_guava_guava",
     ],
 )
@@ -95,8 +95,8 @@ define_java_module(
 define_java_module(
     name = "test",
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
@@ -115,8 +115,8 @@ java_binary(
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_runtime_test",
-        ":org_ray_ray_test",
+        ":io_ray_ray_runtime_test",
+        ":io_ray_ray_test",
     ],
 )
 
