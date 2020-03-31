@@ -119,9 +119,9 @@ class TorchPolicy(Policy):
                 SampleBatch.CUR_OBS: obs_batch,
                 SampleBatch.ACTIONS: actions
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
             parameters, _ = self.model(input_dict, state_batches, [1])
