@@ -515,6 +515,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleKillTask(const rpc::KillTaskRequest &request, rpc::KillTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;

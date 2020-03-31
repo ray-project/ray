@@ -902,12 +902,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id) {
-  RAY_LOG(ERROR) << "Killing Task under actor id: " << actor_id;
+  auto task_id = object_id.TaskId();
+  RAY_LOG(ERROR) << "Killing Task under actor id: " << task_id.ActorId();
   if (task_manager_->IsTaskPending(task_id)) {
     RAY_LOG(ERROR) << "Pending task";
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-    direct_task_submitter_->KillTask(task_spec);
-    return Status::OK();
+    return direct_task_submitter_->KillTask(task_spec);
   } else {
     // Already finished :'(
     return Status::OK();
@@ -1096,6 +1096,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
+  RAY_LOG(ERROR) << "Setting current task id: " << task_spec.TaskId();
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
@@ -1406,6 +1407,20 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   // goes to 0.
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_id,
                                             owner_address, ref_removed_callback);
+}
+void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
+                                rpc::KillTaskReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) {
+  TaskID intended_task_id = TaskID::FromBinary(request.intended_task_id());
+  RAY_LOG(ERROR) << "Asking to kill: " << intended_task_id
+                 << " Currently running: " << GetCurrentTaskId()
+                 << " And also at main thread: " << main_thread_task_id_;
+  if (main_thread_task_id_ == intended_task_id) {
+    RAY_CHECK(false);
+  }
+  // if (GetCurrentTaskId() == request
+  // If runnning interrupt main
+  // Remove from scheduling Queue
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

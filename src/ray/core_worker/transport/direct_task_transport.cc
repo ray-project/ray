@@ -70,9 +70,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   } else {
     auto &client = *client_cache_[addr];
     auto task_spec = queue_entry->second.front();
-    PushNormalTask(addr, client, scheduling_key, task_spec,
-                   assigned_resources);
-    sent_tasks_[task_spec.TaskID()] = addr;
+    PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
+    sent_tasks_.emplace(task_spec.TaskId(), addr);
     queue_entry->second.pop_front();
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
@@ -193,7 +192,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
-          sent_tasks_.remove(task_id);
+          sent_tasks_.erase(task_id);
         }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return
@@ -233,29 +232,34 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
   const SchedulingKey scheduling_key(
-        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
-        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
-    absl::MutexLock lock(&mu_);
-    auto queue_entry = task_queues_.find(scheduling_key);
-    if (queue_entry != task_queues_.end()) { 
-      auto start = queue_entry->second.begin();
-      while (start != queue_entry->second.end()) {
-        if (*start == task_spec.TaskId()) {
-          queue_entry->second.erase(start);
-          if (queue_entry->second.size() == 0) {
-             task_queues_.erase(scheduling_key);
-            }
-          return Status::OK();
+      task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+      task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
+  absl::MutexLock lock(&mu_);
+  auto queue_entry = task_queues_.find(scheduling_key);
+  if (queue_entry != task_queues_.end()) {
+    auto start = queue_entry->second.begin();
+    while (start != queue_entry->second.end()) {
+      if (start->TaskId() == task_spec.TaskId()) {
+        queue_entry->second.erase(start);
+        if (queue_entry->second.size() == 0) {
+          task_queues_.erase(scheduling_key);
         }
+        return Status::OK();
       }
     }
-    auto rpc_client = sent_tasks_.find(task_spec.TaskId());
-    if (rpc_client == sent_tasks_.end()) {
-      RAY_LOG(ERROR) << "Task Cancellation failed for: " <<task_spec.TaskId();
-      return Status::OK();
-    }
-    client = client_cache_[addr];
-  return Status::OK();    
   }
+  auto rpc_client = sent_tasks_.find(task_spec.TaskId());
+  if (rpc_client == sent_tasks_.end() ||
+      client_cache_.find(rpc_client->second) == client_cache_.end()) {
+    RAY_LOG(ERROR) << "Task Cancellation failed for: " << task_spec.TaskId();
+    return Status::OK();
+  }
+  auto client = client_cache_.find(rpc_client->second);
+  auto request = rpc::KillTaskRequest();
+  request.set_intended_task_id(task_spec.TaskId().Binary());
+  // Set requqest options
+  return client->second->KillTask(request, nullptr);  // Maybe pass back more?
+  // client->second->KillTask();
+}
 
 };  // namespace ray
