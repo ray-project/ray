@@ -556,8 +556,9 @@ py_test(
 # MARWIL
 
 py_test(
-    name = "test_marwil_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
+    name = "test_marwil_cartpole_v0_tf",
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
@@ -567,6 +568,22 @@ py_test(
         "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        ]
+)
+
+py_test(
+    name = "test_marwil_cartpole_v0_torch",
+    main = "train.py",
+    srcs = ["train.py"],
+    tags = ["quick_train", "external_files"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "MARWIL",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"use_pytorch\": true, \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
 

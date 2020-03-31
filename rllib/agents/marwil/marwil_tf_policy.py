@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.explained_variance import explained_variance
@@ -14,7 +10,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class ValueNetworkMixin(object):
+class ValueNetworkMixin:
     def __init__(self):
         @make_tf_callable(self.get_session())
         def value(ob, prev_action, prev_reward, *state):
@@ -30,13 +26,13 @@ class ValueNetworkMixin(object):
         self._value = value
 
 
-class ValueLoss(object):
+class ValueLoss:
     def __init__(self, state_values, cumulative_rewards):
         self.loss = 0.5 * tf.reduce_mean(
             tf.square(state_values - cumulative_rewards))
 
 
-class ReweightedImitationLoss(object):
+class ReweightedImitationLoss:
     def __init__(self, state_values, cumulative_rewards, actions, action_dist,
                  beta):
         ma_adv_norm = tf.get_variable(
@@ -87,7 +83,7 @@ def postprocess_advantages(policy,
         use_critic=False)
 
 
-class MARWILLoss(object):
+class MARWILLoss:
     def __init__(self, state_values, action_dist, actions, advantages,
                  vf_loss_coeff, beta):
 
@@ -96,8 +92,8 @@ class MARWILLoss(object):
                                               actions, action_dist, beta)
 
         self.total_loss = self.p_loss.loss + vf_loss_coeff * self.v_loss.loss
-        self.explained_variance = tf.reduce_mean(
-            explained_variance(advantages, state_values))
+        explained_var = explained_variance(advantages, state_values)
+        self.explained_variance = tf.reduce_mean(explained_var)
 
     def _build_value_loss(self, state_values, cum_rwds):
         return ValueLoss(state_values, cum_rwds)
@@ -113,10 +109,12 @@ def marwil_loss(policy, model, dist_class, train_batch):
     action_dist = dist_class(model_out, model)
     state_values = model.value_function()
 
-    policy.loss = MARWILLoss(state_values, action_dist,
-                             train_batch[SampleBatch.ACTIONS],
-                             train_batch[Postprocessing.ADVANTAGES],
-                             policy.config["vf_coeff"], policy.config["beta"])
+    policy.loss = MARWILLoss(
+        state_values, action_dist,
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[Postprocessing.ADVANTAGES],
+        policy.config["vf_coeff"],
+        policy.config["beta"])
 
     return policy.loss.total_loss
 
