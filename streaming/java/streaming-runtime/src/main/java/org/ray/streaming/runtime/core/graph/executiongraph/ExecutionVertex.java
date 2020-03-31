@@ -9,6 +9,7 @@ import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
+import org.ray.streaming.runtime.core.resource.ResourceType;
 import org.ray.streaming.runtime.core.resource.Slot;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
@@ -138,10 +139,10 @@ public class ExecutionVertex implements Serializable {
     Map<String, Double> resourceMap = new HashMap<>();
     ResourceConfig resourceConfig = runtimeContext.getConf().masterConfig.resourceConfig;
     if (resourceConfig.isTaskCpuResourceLimit()) {
-      resourceMap.put(ResourceConfig.RESOURCE_KEY_CPU, resourceConfig.taskCpuResource());
+      resourceMap.put(ResourceType.CPU.name(), resourceConfig.taskCpuResource());
     }
     if (resourceConfig.isTaskMemResourceLimit()) {
-      resourceMap.put(ResourceConfig.RESOURCE_KEY_MEM, resourceConfig.taskMemResource());
+      resourceMap.put(ResourceType.MEM.name(), resourceConfig.taskMemResource());
     }
     return resourceMap;
   }

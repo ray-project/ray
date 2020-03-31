@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include <sys/wait.h>
-
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
@@ -68,7 +66,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifndef _WIN32
+#ifdef _WIN32
+  // If worker processes fail to initialize, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
+  // If worker processes crash, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
+#else
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
