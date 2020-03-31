@@ -29,7 +29,7 @@ PY_WHEEL_VERSIONS=("35" "36" "37" "38")
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_MMS=("3.5.5"
+  PY_MMS=("3.5.6"
           "3.6.9"
           "3.7.6"
           "3.8.2")
