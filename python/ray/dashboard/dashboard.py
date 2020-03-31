@@ -818,7 +818,7 @@ class TuneCollector(threading.Thread):
             analysis = Analysis(str(os.path.join(self._logdir, job_name)))
             df = analysis.dataframe()
 
-            if len(df) == 0:
+            if len(df) == 0 or "trial_id" not in df.columns:
                 continue
 
             # start TensorBoard server if not started yet
