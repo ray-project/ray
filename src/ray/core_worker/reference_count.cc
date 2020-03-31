@@ -54,8 +54,8 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs[ray::ObjectID::FromBinary(ref.reference().object_id())] =
-        Reference::FromProto(ref);
+    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+                 Reference::FromProto(ref));
   }
   return refs;
 }
@@ -145,12 +145,10 @@ void ReferenceCounter::AddObjectRefStats(
   }
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
-                                      const std::vector<ObjectID> &inner_ids,
-                                      const TaskID &owner_id,
-                                      const rpc::Address &owner_address,
-                                      const std::string &call_site,
-                                      const int64_t object_size) {
+void ReferenceCounter::AddOwnedObject(
+    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+    const TaskID &owner_id, const rpc::Address &owner_address,
+    const std::string &call_site, const int64_t object_size, bool is_reconstructable) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -158,8 +156,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id,
-                          Reference(owner_id, owner_address, call_site, object_size));
+  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address, call_site,
+                                               object_size, is_reconstructable));
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -354,7 +352,8 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     }
     it->second.local_ref_count = 0;
     it->second.submitted_task_ref_count = 0;
-    if (distributed_ref_counting_enabled_ && !it->second.OutOfScope()) {
+    if (distributed_ref_counting_enabled_ &&
+        !it->second.OutOfScope(lineage_pinning_enabled_)) {
       RAY_LOG(ERROR)
           << "ray.internal.free does not currently work for objects that are still in "
              "scope when distributed reference "
@@ -387,7 +386,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     should_delete_value = true;
   }
 
-  if (it->second.OutOfScope()) {
+  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
     should_delete_value = true;
@@ -789,7 +788,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
     // the object was zero. Also, we should have stripped all distributed ref
     // count information and returned it to the owner. Therefore, it should be
     // okay to delete the object, if it wasn't already deleted.
-    RAY_CHECK(it->second.OutOfScope());
+    RAY_CHECK(it->second.OutOfScope(lineage_pinning_enabled_));
   }
   // Send the owner information about any new borrowers.
   ReferenceTableToProto(borrowed_refs, reply->mutable_borrowed_refs());

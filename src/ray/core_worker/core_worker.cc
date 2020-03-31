@@ -732,7 +732,8 @@ Status CoreWorker::Put(const RayObject &object,
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                     rpc_address_, CurrentCallSite(), object.GetSize());
+                                     rpc_address_, CurrentCallSite(), object.GetSize(),
+                                     /*is_reconstructable=*/false);
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -785,7 +786,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                        rpc_address_, CurrentCallSite(),
-                                       data_size + metadata->Size());
+                                       data_size + metadata->Size(),
+                                       /*is_reconstructable=*/false);
   }
   return Status::OK();
 }
