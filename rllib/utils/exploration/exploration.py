@@ -74,7 +74,7 @@ class Exploration:
         Args:
             action_distribution (ActionDistribution): The instantiated
                 ActionDistribution object to work with when creating
-                exploration acitons.
+                exploration actions.
             timestep (int|TensorType): The current sampling time step. It can
                 be a tensor for TF graph mode, otherwise an integer.
             explore (bool): True: "Normal" exploration behavior.

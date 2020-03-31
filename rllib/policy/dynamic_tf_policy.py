@@ -177,7 +177,7 @@ class DynamicTFPolicy(TFPolicy):
 
         timestep = tf.placeholder(tf.int32, (), name="timestep")
 
-        # Fully customized action generation.
+        # Fully customized action generation (e.g., custom policy).
         if action_sampler_fn:
             sampled_action, sampled_action_logp = action_sampler_fn(
                 self,
@@ -190,7 +190,7 @@ class DynamicTFPolicy(TFPolicy):
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
-            # Distribution generation is customized.
+            # Distribution generation is customized, e.g., DQN, DDPG.
             if action_distribution_fn:
                 dist_inputs, dist_class, self._state_out = \
                     action_distribution_fn(
@@ -204,7 +204,7 @@ class DynamicTFPolicy(TFPolicy):
                             SampleBatch.PREV_REWARDS],
                         explore=explore,
                         is_training=self._input_dict["is_training"])
-            # Default distribution generation behavior: Pass through model.
+            # Default distribution generation behavior: Pass through model. E.g., PG, PPO.
             else:
                 dist_inputs, self._state_out = self.model(
                     self._input_dict, self._state_in, self._seq_lens)

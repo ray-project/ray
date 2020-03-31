@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
+#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
     postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
@@ -108,7 +108,7 @@ class TestPPO(unittest.TestCase):
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            BEHAVIOUR_LOGITS: np.array(
+            SampleBatch.ACTION_DIST_INPUTS: np.array(
                 [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
             SampleBatch.ACTION_LOGP: np.array(
                 [-0.5, -0.1, -0.2], dtype=np.float32),
@@ -186,7 +186,8 @@ class TestPPO(unittest.TestCase):
         """
         # Calculate expected PPO loss results.
         dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS], policy.model)
+        dist_prev = dist_class(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -

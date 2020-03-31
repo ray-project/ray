@@ -1,3 +1,4 @@
+import atexit
 import os
 import signal
 import sys
@@ -23,13 +24,23 @@ def reap_process_group(*args):
         # Give a one-second grace period for other processes to clean up.
         time.sleep(SIGTERM_GRACE_PERIOD_SECONDS)
         # SIGKILL the pgroup (including ourselves) as a last-resort.
-        os.killpg(0, signal.SIGKILL)
+        if sys.platform == "win32":
+            atexit.unregister(sigterm_handler)
+            os.kill(0, signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(0, signal.SIGKILL)
 
     # Set a SIGTERM handler to handle SIGTERMing ourselves with the group.
-    signal.signal(signal.SIGTERM, sigterm_handler)
+    if sys.platform == "win32":
+        atexit.register(sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Our parent must have died, SIGTERM the group (including ourselves).
-    os.killpg(0, signal.SIGTERM)
+    if sys.platform == "win32":
+        os.kill(0, signal.CTRL_C_EVENT)
+    else:
+        os.killpg(0, signal.SIGTERM)
 
 
 def main():

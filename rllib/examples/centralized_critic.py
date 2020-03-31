@@ -17,7 +17,7 @@ import numpy as np
 from gym.spaces import Discrete
 
 from ray import tune
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
+#from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
     PPOLoss
@@ -145,7 +145,7 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[SampleBatch.ACTION_DIST_INPUTS],
         train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,

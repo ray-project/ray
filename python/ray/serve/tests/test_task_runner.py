@@ -37,7 +37,7 @@ async def test_runner_actor(serve_instance):
     PRODUCER_NAME = "prod"
 
     runner = TaskRunnerActor.remote(echo)
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
+    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
@@ -68,7 +68,7 @@ async def test_ray_serve_mixin(serve_instance):
 
     runner = CustomActor.remote(3)
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
+    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
@@ -92,7 +92,7 @@ async def test_task_runner_check_context(serve_instance):
 
     runner = TaskRunnerActor.remote(echo)
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
+    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
@@ -122,7 +122,7 @@ async def test_task_runner_custom_method_single(serve_instance):
 
     runner = CustomActor.remote()
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
+    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
@@ -163,11 +163,11 @@ async def test_task_runner_custom_method_batch(serve_instance):
 
     runner = CustomActor.remote()
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
+    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
 
-    q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
-    q.set_backend_config.remote(
-        CONSUMER_NAME, BackendConfig(max_batch_size=2).__dict__)
+    await q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
+    await q.set_backend_config.remote(
+        CONSUMER_NAME, BackendConfig(max_batch_size=10).__dict__)
 
     a_query_param = RequestMetadata(
         PRODUCER_NAME, context.TaskContext.Python, call_method="a")
@@ -177,7 +177,7 @@ async def test_task_runner_custom_method_batch(serve_instance):
     futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
     futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
 
-    runner._ray_serve_fetch.remote()
+    await runner._ray_serve_fetch.remote()
 
     gathered = await asyncio.gather(*futures)
-    assert gathered == ["a-0", "a-1", "b-0", "b-1"]
+    assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
