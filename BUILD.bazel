@@ -927,8 +927,8 @@ cc_library(
     ],
     hdrs = [
         "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/store_client.h",
         "src/ray/gcs/store_client/redis_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
     ],
     copts = COPTS,
     deps = [
