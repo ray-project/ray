@@ -112,7 +112,7 @@ if __name__ == "__main__":
             BATCH_SIZE: 128 * args.num_workers,
         },
         use_gpu=args.use_gpu,
-        use_fp16=args.use_fp16)
+        use_fp16=args.fp16)
 
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
