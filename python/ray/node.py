@@ -626,7 +626,7 @@ class Node:
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
 
-        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
+        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
             self.start_gcs_server()
         else:
             self.start_raylet_monitor()
