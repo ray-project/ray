@@ -40,9 +40,7 @@ void NodeHoldObjectInfo::AddObjects(const std::unordered_set<ObjectID> &object_i
   object_ids_.insert(object_ids.begin(), object_ids.end());
 }
 
-std::unordered_set<ObjectID> NodeHoldObjectInfo::GetObjects() {
-  return object_ids_;
-}
+std::unordered_set<ObjectID> NodeHoldObjectInfo::GetObjects() { return object_ids_; }
 
 size_t NodeHoldObjectInfo::RemoveObject(const ObjectID &object_id) {
   auto it = object_ids_.find(object_id);
