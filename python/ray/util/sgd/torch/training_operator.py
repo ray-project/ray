@@ -336,6 +336,7 @@ class TrainingOperator:
 
     @property
     def device(self):
+    	"""The torch device, at your convenience."""
         return self._device
 
     @property
