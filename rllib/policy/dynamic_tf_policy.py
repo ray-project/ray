@@ -177,7 +177,7 @@ class DynamicTFPolicy(TFPolicy):
 
         timestep = tf.placeholder(tf.int32, (), name="timestep")
 
-        # Fully customized action generation.
+        # Fully customized action generation (e.g., custom policy).
         if action_sampler_fn:
             sampled_action, sampled_action_logp = action_sampler_fn(
                 self,
