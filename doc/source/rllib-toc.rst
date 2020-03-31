@@ -15,6 +15,8 @@ Training APIs
 
    -  `Common Parameters <rllib-training.html#common-parameters>`__
 
+   -  `Scaling Guide <rllib-training.html#scaling-guide>`__
+
    -  `Tuned Examples <rllib-training.html#tuned-examples>`__
 
 *  `Basic Python API <rllib-training.html#basic-python-api>`__
@@ -57,79 +59,84 @@ Training APIs
 
 Environments
 ------------
-* `RLlib Environments Overview <rllib-env.html>`__
-* `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
-* `OpenAI Gym <rllib-env.html#openai-gym>`__
-* `Vectorized <rllib-env.html#vectorized>`__
-* `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
-* `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+*  `RLlib Environments Overview <rllib-env.html>`__
+*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
+*  `OpenAI Gym <rllib-env.html#openai-gym>`__
+*  `Vectorized <rllib-env.html#vectorized>`__
+*  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
+*  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
 
    -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
-* `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+*  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 Models, Preprocessors, and Action Distributions
 -----------------------------------------------
-* `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
-* `TensorFlow Models <rllib-models.html#tensorflow-models>`__
-* `PyTorch Models <rllib-models.html#pytorch-models>`__
-* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
-* `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
-* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
-* `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
-* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
+*  `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
+*  `TensorFlow Models <rllib-models.html#tensorflow-models>`__
+*  `PyTorch Models <rllib-models.html#pytorch-models>`__
+*  `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+*  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
+*  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+*  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+*  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
 Algorithms
 ----------
 
 *  High-throughput architectures
 
-   -  |tensorflow| `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+   -  |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
+   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
-   -  |pytorch| `Decentralized Distributed Proximal Policy Optimization (DD-PPO) <rllib-algorithms.html#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__
+   -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-   -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
 *  Gradient-based
 
-   -  |pytorch| |tensorflow| `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
+   -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
+   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
-   -  |tensorflow| `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
+   -  |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
-   -  |pytorch| |tensorflow| `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
+   -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
-   -  |pytorch| |tensorflow| `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
+   -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
+   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
+   -  |tensorflow| :ref:`Evolution Strategies <es>`
 
 *  Multi-agent specific
 
-   -  |pytorch| `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
-   -  |tensorflow| `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <rllib-algorithms.html#multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`__
+   -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
+   -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
 
 *  Offline
 
-   -  |tensorflow| `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
+   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+
+*  Contextual bandits
+
+   -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
+   -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
 
 Offline Datasets
 ----------------
-* `Working with Offline Datasets <rllib-offline.html>`__
-* `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
-* `Input API <rllib-offline.html#input-api>`__
-* `Output API <rllib-offline.html#output-api>`__
+*  `Working with Offline Datasets <rllib-offline.html>`__
+*  `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
+*  `Input API <rllib-offline.html#input-api>`__
+*  `Output API <rllib-offline.html#output-api>`__
 
 Concepts and Custom Algorithms
 ------------------------------
@@ -152,30 +159,30 @@ Concepts and Custom Algorithms
 Examples
 --------
 
-* `Tuned Examples <rllib-examples.html#tuned-examples>`__
-* `Training Workflows <rllib-examples.html#training-workflows>`__
-* `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
-* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
-* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
-* `Community Examples <rllib-examples.html#community-examples>`__
+*  `Tuned Examples <rllib-examples.html#tuned-examples>`__
+*  `Training Workflows <rllib-examples.html#training-workflows>`__
+*  `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
+*  `Serving and Offline <rllib-examples.html#serving-and-offline>`__
+*  `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
+*  `Community Examples <rllib-examples.html#community-examples>`__
 
 Development
 -----------
 
-* `Development Install <rllib-dev.html#development-install>`__
-* `API Stability <rllib-dev.html#api-stability>`__
-* `Features <rllib-dev.html#feature-development>`__
-* `Benchmarks <rllib-dev.html#benchmarks>`__
-* `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
+*  `Development Install <rllib-dev.html#development-install>`__
+*  `API Stability <rllib-dev.html#api-stability>`__
+*  `Features <rllib-dev.html#feature-development>`__
+*  `Benchmarks <rllib-dev.html#benchmarks>`__
+*  `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
 Package Reference
 -----------------
-* `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
-* `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
-* `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
-* `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-* `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
-* `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
+*  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
+*  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
+*  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
+*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
+*  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting
 ---------------

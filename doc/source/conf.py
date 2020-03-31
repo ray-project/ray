@@ -26,8 +26,8 @@ MOCK_MODULES = [
     "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
     "ray.core.generated", "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task", "scipy", "scipy.signal",
-    "scipy.stats", "tensorflow_probability", "tensorflow",
-    "tensorflow.contrib", "tensorflow.contrib.all_reduce",
+    "scipy.stats", "setproctitle", "tensorflow_probability", "tensorflow",
+    "tensorflow.contrib", "tensorflow.contrib.all_reduce", "tree",
     "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
     "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
     "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
@@ -71,7 +71,7 @@ sphinx_gallery_conf = {
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
-    "backreferences_dir": False
+    # "backreferences_dir": "False",
     # "show_memory': False,
     # 'min_reported_time': False
 }

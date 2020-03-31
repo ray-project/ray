@@ -43,10 +43,4 @@ constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
 
 constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
-/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
-/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
-/// otherwise gcs service is enabled.
-/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
-constexpr char kRayGcsServiceEnabled[] = "RAY_GCS_SERVICE_ENABLED";
-
 #endif  // RAY_CONSTANTS_H_

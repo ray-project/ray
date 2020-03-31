@@ -191,6 +191,31 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
 
+    def testFailFast(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(fail_fast=True)
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process result, dispatch save
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
+        runner.step()  # Error
+        self.assertEqual(trials[0].status, Trial.ERROR)
+        self.assertRaises(TuneError, lambda: runner.step())
+
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()

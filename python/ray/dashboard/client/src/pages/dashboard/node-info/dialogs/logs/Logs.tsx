@@ -1,8 +1,11 @@
-import { fade } from "@material-ui/core/styles/colorManipulator";
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  createStyles,
+  fade,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import React from "react";
 import { getLogs, LogsResponse } from "../../../../../api";
 import DialogWithTitle from "../../../../../common/DialogWithTitle";
@@ -13,32 +16,32 @@ const styles = (theme: Theme) =>
     header: {
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      marginTop: theme.spacing(3)
+      marginTop: theme.spacing(3),
     },
     log: {
       backgroundColor: fade(theme.palette.primary.main, 0.04),
       borderLeftColor: theme.palette.primary.main,
       borderLeftStyle: "solid",
       borderLeftWidth: 2,
-      padding: theme.spacing(2)
-    }
+      padding: theme.spacing(2),
+    },
   });
 
-interface Props {
+type Props = {
   clearLogDialog: () => void;
   hostname: string;
   pid: number | null;
-}
+};
 
-interface State {
+type State = {
   result: LogsResponse | null;
   error: string | null;
-}
+};
 
 class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     result: null,
-    error: null
+    error: null,
   };
 
   async componentDidMount() {

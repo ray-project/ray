@@ -1,12 +1,15 @@
 from gym.spaces import Space
+from typing import Union
+
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
 from ray.rllib.models.modelv2 import ModelV2
-from typing import Union
+from ray.rllib.utils.annotations import DeveloperAPI
 
 tf = try_import_tf()
 
 
+@DeveloperAPI
 class Exploration:
     """Implements an exploration strategy for Policies.
 
@@ -32,6 +35,24 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
+    @DeveloperAPI
+    def before_compute_actions(self,
+                               *,
+                               timestep=None,
+                               explore=None,
+                               tf_sess=None,
+                               **kwargs):
+        """Hook for preparations before policy.compute_actions() is called.
+
+        Args:
+            timestep (Optional[TensorType]): An optional timestep tensor.
+            explore (Optional[TensorType]): An optional explore boolean flag.
+            tf_sess (Optional[tf.Session]): The tf-session object to use.
+            **kwargs: Forward compatibility kwargs.
+        """
+        pass
+
+    @DeveloperAPI
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
@@ -64,25 +85,55 @@ class Exploration:
         """
         pass
 
-    def get_loss_exploration_term(self,
-                                  model_output: TensorType,
-                                  model: ModelV2,
-                                  action_dist: type,
-                                  action_sample: TensorType = None):
-        """Returns an extra loss term to be added to a loss.
+    @DeveloperAPI
+    def on_episode_start(self,
+                         policy,
+                         *,
+                         environment=None,
+                         episode=None,
+                         tf_sess=None):
+        """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
-            model_output (TensorType): The Model's output Tensor(s).
-            model (ModelV2): The Model object.
-            action_dist: The ActionDistribution object resulting from
-                `model_output`. TODO: Or the class?
-            action_sample (TensorType): An optional action sample.
-
-        Returns:
-            TensorType: The extra loss term to add to the loss.
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
         """
-        pass  # TODO(sven): implement for some example Exploration class.
+        pass
 
+    @DeveloperAPI
+    def on_episode_end(self,
+                       policy,
+                       *,
+                       environment=None,
+                       episode=None,
+                       tf_sess=None):
+        """Handles necessary exploration logic at the end of an episode.
+
+        Args:
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
+        """
+        pass
+
+    @DeveloperAPI
+    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        """Handles post-processing of done episode trajectories.
+
+        Changes the given batch in place. This callback is invoked by the
+        sampler after policy.postprocess_trajectory() is called.
+
+        Args:
+            policy (Policy): The owning policy object.
+            sample_batch (SampleBatch): The SampleBatch object to post-process.
+            tf_sess (Optional[tf.Session]): An optional tf.Session object.
+        """
+        return sample_batch
+
+    @DeveloperAPI
     def get_info(self):
         """Returns a description of the current exploration state.
 
