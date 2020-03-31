@@ -30,9 +30,8 @@ public class OutputCollector implements Collector<Record> {
 
   @Override
   public void collect(Record record) {
-    Serializer.Meta encodeMeta = new Serializer.Meta();
     int[] partitions = this.partition.partition(record, outputQueues.length);
-    ByteBuffer msgBuffer = ByteBuffer.wrap(Serializer.encode(record, encodeMeta));
+    ByteBuffer msgBuffer = ByteBuffer.wrap(Serializer.encode(record).getLeft());
     for (int partition : partitions) {
       writer.write(outputQueues[partition], msgBuffer);
     }

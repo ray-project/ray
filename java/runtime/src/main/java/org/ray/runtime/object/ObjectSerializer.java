@@ -2,6 +2,7 @@ package org.ray.runtime.object;
 
 import java.util.Arrays;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
@@ -9,6 +10,7 @@ import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.serializer.Serializer;
+import org.ray.runtime.serializer.Serializer.Meta;
 
 /**
  * Serialize to and deserialize from {@link NativeRayObject}. Metadata is generated during
@@ -83,13 +85,11 @@ public class ObjectSerializer {
       // indicate it's raw binary. So that this object can also be read by Python.
       return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof RayTaskException) {
-      Serializer.Meta meta = new Serializer.Meta();
       byte[] serializedBytes = Serializer.encode(object).getLeft();
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
-      Serializer.Meta meta = new Serializer.Meta();
-      byte[] serializedBytes = Serializer.encode(object).getLeft();
-      return new NativeRayObject(serializedBytes, meta.isCrossLanguage ?
+      Pair<byte[], Meta> serialized = Serializer.encode(object);
+      return new NativeRayObject(serialized.getLeft(), serialized.getRight().isCrossLanguage ?
           OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
     }
   }
