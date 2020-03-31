@@ -36,7 +36,11 @@ if [[ "$platform" == "linux" ]]; then
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
-    PY_WHEEL_VERSION="${PY_MM//./}"
+
+    PY_WHEEL_VERSION="${PY_MM}"
+    while [ ! "${PY_WHEEL_VERSION}" = "${PY_WHEEL_VERSION##*.*.*}" ]; then  # reduce to major.minor versions
+      PY_WHEEL_VERSION="${PY_WHEEL_VERSION%.*}"
+    done
 
     conda install -y python="${PY_MM}"
 
@@ -44,7 +48,7 @@ if [[ "$platform" == "linux" ]]; then
     PIP_CMD="$HOME/miniconda3/bin/pip"
 
     # Find the right wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION}*" -print)
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION//./}*" -print)
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
@@ -83,13 +87,17 @@ elif [[ "$platform" == "macosx" ]]; then
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
-    PY_WHEEL_VERSION="${PY_MM//./}"
+
+    PY_WHEEL_VERSION="${PY_MM}"
+    while [ ! "${PY_WHEEL_VERSION}" = "${PY_WHEEL_VERSION##*.*.*}" ]; then  # reduce to major.minor versions
+      PY_WHEEL_VERSION="${PY_WHEEL_VERSION%.*}"
+    done
 
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION}*" -print)
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -maxdepth 1 -type f -name "*${PY_WHEEL_VERSION//./}*" -print)
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
