@@ -44,15 +44,15 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            list of np.array objects, if any
+            List[np.ndarray]: List of np.array objects containing the initial
+                hidden state of an RNN, if applicable.
 
         Examples:
-
-            def get_initial_state(self):
-                return [
-                    np.zeros(self.cell_size, np.float32),
-                    np.zeros(self.cell_size, np.float32),
-                ]
+            >>> def get_initial_state(self):
+            >>>    return [
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>    ]
         """
         return []
 
