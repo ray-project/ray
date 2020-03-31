@@ -2,6 +2,7 @@ import os
 import logging
 from os.path import dirname
 import sys
+
 logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
