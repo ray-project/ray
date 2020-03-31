@@ -121,8 +121,6 @@ class ParameterNoise(Exploration):
             model=self.model,
             **kwargs)
 
-        # Store the default setting for `explore`.
-        self.default_explore = policy_config["explore"]
         # Whether we need to call `self._delayed_on_episode_start` before
         # the forward pass.
         self.episode_started = False
@@ -133,13 +131,14 @@ class ParameterNoise(Exploration):
                                timestep=None,
                                explore=None,
                                tf_sess=None):
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
+
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
-            self._delayed_on_episode_start(tf_sess)
+            self._delayed_on_episode_start(explore, tf_sess)
 
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
         # Add noise if necessary.
         if explore and not self.weights_are_currently_noisy:
             self._add_stored_noise(tf_sess=tf_sess)
@@ -173,9 +172,9 @@ class ParameterNoise(Exploration):
         # We don't want to update into a noisy net.
         self.episode_started = True
 
-    def _delayed_on_episode_start(self, tf_sess):
+    def _delayed_on_episode_start(self, explore, tf_sess):
         # Sample fresh noise and add to weights.
-        if self.default_explore:
+        if explore:
             self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
         # Only sample, don't apply anything to the weights.
         else:

@@ -110,7 +110,7 @@ def traced_eager_policy(eager_policy_cls):
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -302,7 +302,7 @@ def build_eager_tf_policy(name,
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -614,9 +614,11 @@ def build_eager_tf_policy(name,
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], self._state_in,
+                dummy_batch[SampleBatch.CUR_OBS],
+                self._state_in,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
-                dummy_batch.get(SampleBatch.PREV_REWARDS))
+                dummy_batch.get(SampleBatch.PREV_REWARDS),
+                explore=False)
             dummy_batch.update(fetches)
 
             postprocessed_batch = self.postprocess_trajectory(

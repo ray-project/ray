@@ -132,19 +132,23 @@ class TestDQN(unittest.TestCase):
 
     def test_dqn_parameter_noise_exploration(self):
         """Tests, whether a DQN Agent works with ParameterNoise."""
-        config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs = np.array(0)
 
-        for fw in ["eager", "tf"]:
+        for fw in ["eager", "tf", "torch"]:
+            if fw == "torch":
+                continue
             print("framework={}".format(fw))
 
-            config["eager"] = fw == "eager"
-            config["use_pytorch"] = fw == "torch"
-            # Chose ParameterNoise as exploration class.
-            config["exploration_config"] = {"type": "ParameterNoise"}
-            config["explore"] = True
+            core_config = dqn.DEFAULT_CONFIG.copy()
+            core_config["num_workers"] = 0  # Run locally.
+            core_config["env_config"] = {
+                "is_slippery": False,
+                "map_name": "4x4"
+            }
+            core_config["eager"] = fw == "eager"
+            core_config["use_pytorch"] = fw == "torch"
+
+            config = core_config.copy()
 
             eager_mode_ctx = None
             if fw == "tf":
@@ -156,46 +160,70 @@ class TestDQN(unittest.TestCase):
 
             # DQN with ParameterNoise exploration (config["explore"]=True).
             # ----
+            config["exploration_config"] = {"type": "ParameterNoise"}
+            config["explore"] = True
+
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
+            self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
+            check(noise_before, 0.0)
             initial_weights = self._get_current_weight(policy, fw)
 
             # Pseudo-start an episode and compare the weights before and after.
             policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
-            noise = self._get_current_noise(policy, fw)
-            noisy_weights = self._get_current_weight(policy, fw)
-            check(noise, noise_before, false=True)
-            check(initial_weights - noise_before + noise, noisy_weights)
+            self.assertFalse(policy.exploration.weights_are_currently_noisy)
+            noise_after_ep_start = self._get_current_noise(policy, fw)
+            weights_after_ep_start = self._get_current_weight(policy, fw)
+            # Should be the same, as we don't do anything at the beginning of
+            # the episode, only one step later.
+            check(noise_after_ep_start, noise_before)
+            check(initial_weights, weights_after_ep_start)
 
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
+            self.assertFalse(policy.exploration.weights_are_currently_noisy)
+            noise = self._get_current_noise(policy, fw)
+            # We sampled the first noise (not zero anymore).
+            check(noise, 0.0, false=True)
+            # But still not applied b/c explore=False.
+            check(self._get_current_weight(policy, fw), initial_weights)
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
+                # Noise never gets applied.
+                check(self._get_current_weight(policy, fw), initial_weights)
+                self.assertFalse(
+                    policy.exploration.weights_are_currently_noisy)
 
-            # Explore=None (default: explore) should return different actions.
+            # Explore=None (default: True) should return different actions.
             # However, this is only due to the underlying epsilon-greedy
             # exploration.
             actions = []
+            current_weight = None
             for _ in range(10):
                 actions.append(trainer.compute_action(obs))
+                self.assertTrue(policy.exploration.weights_are_currently_noisy)
+                # Now, noise actually got applied (explore=True).
+                current_weight = self._get_current_weight(policy, fw)
+                check(current_weight, initial_weights, false=True)
+                check(current_weight, initial_weights + noise)
             check(np.std(actions), 0.0, false=True)
 
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
             policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
-            weights_after_episode_end = self._get_current_weight(policy, fw)
-            check(
-                initial_weights - noise_before,
-                weights_after_episode_end,
-                decimals=5)
+            weights_after_ep_end = self._get_current_weight(policy, fw)
+            check(current_weight - noise, weights_after_ep_end, decimals=5)
 
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
+            config = core_config.copy()
+            config["exploration_config"] = {"type": "ParameterNoise"}
             config["explore"] = False
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
+            self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 
             # Noise before anything (should be 0.0, no episode started yet).
@@ -205,18 +233,22 @@ class TestDQN(unittest.TestCase):
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
             policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            self.assertFalse(policy.exploration.weights_are_currently_noisy)
 
-            # Check, whether some noise has been sampled (NOT applied to the
-            # NN, due to explore=False).
+            # Should be the same, as we don't do anything at the beginning of
+            # the episode, only one step later.
             noise = self._get_current_noise(policy, fw)
-            check(noise, 0.0, false=True)
+            check(noise, 0.0)
             noisy_weights = self._get_current_weight(policy, fw)
             check(initial_weights, noisy_weights)
 
             # Setting explore=False or None should always return the same
             # action.
             a_ = trainer.compute_action(obs, explore=False)
-            for _ in range(10):
+            # Now we have re-sampled.
+            noise = self._get_current_noise(policy, fw)
+            check(noise, 0.0, false=True)
+            for _ in range(5):
                 a = trainer.compute_action(obs, explore=None)
                 check(a, a_)
                 a = trainer.compute_action(obs, explore=False)
@@ -235,6 +267,7 @@ class TestDQN(unittest.TestCase):
 
             # Switch off EpsilonGreedy underlying exploration.
             # ----
+            config = core_config.copy()
             config["exploration_config"] = {
                 "type": "ParameterNoise",
                 "sub_exploration": {
