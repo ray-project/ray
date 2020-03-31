@@ -190,7 +190,7 @@ class DynamicTFPolicy(TFPolicy):
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
-            # Distribution generation is customized.
+            # Distribution generation is customized, e.g., DQN, DDPG.
             if action_distribution_fn:
                 dist_inputs, dist_class, self._state_out = \
                     action_distribution_fn(
