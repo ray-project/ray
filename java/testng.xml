@@ -8,6 +8,6 @@
         </packages>
     </test>
     <listeners>
-        <listener class-name="TestProgressListener" />
+        <listener class-name="io.ray.api.TestProgressListener" />
     </listeners>
 </suite>
