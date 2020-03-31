@@ -83,15 +83,11 @@ class ServeMaster:
         self.tag_to_actor_handles[replica_tag] = runner_handle
 
         # Set up the worker.
-        # TODO(edoakes): this should probably be a blocking call, but that
-        # currently causes deadlock because setting up the actor requires
-        # initializing GlobalState within it, which calls into the master
-        # actor to get the KV store connector. We should avoid having any
-        # calls from children actors into the master actor for this reason.
-        runner_handle._ray_serve_setup.remote(backend_tag,
-                                              self.get_router()[0],
-                                              runner_handle)
-        runner_handle._ray_serve_fetch.remote()
+        ray.get(
+            runner_handle._ray_serve_setup.remote(backend_tag,
+                                                  self.get_router()[0],
+                                                  runner_handle))
+        ray.get(runner_handle._ray_serve_fetch.remote())
 
         # Register the worker in config tables and metric monitor.
         self.backend_table.add_replica(backend_tag, replica_tag)
