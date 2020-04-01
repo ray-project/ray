@@ -261,10 +261,9 @@ class DynamicTFPolicy(TFPolicy):
                                existing_inputs[len(self._loss_inputs) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict(
-            [("is_exploring", self._is_exploring)] + \
-            [(k, existing_inputs[i])
-             for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+        input_dict = OrderedDict([("is_exploring", self._is_exploring)] + [(
+            k, existing_inputs[i]) for i, (
+                k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,
