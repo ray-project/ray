@@ -601,8 +601,8 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 episodes=[active_episodes[t.env_id] for t in eval_data],
                 timestep=policy.global_timestep)
     if builder:
-        for k, v in pending_fetches.items():
-            eval_results[k] = builder.get(v)
+        for pid, v in pending_fetches.items():
+            eval_results[pid] = builder.get(v)
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(
@@ -629,7 +629,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
+
+        actions = eval_results[policy_id][0]
+        rnn_out_cols = eval_results[policy_id][1]
+        pi_info_cols = eval_results[policy_id][2]
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
