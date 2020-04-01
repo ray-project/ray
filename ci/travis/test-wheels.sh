@@ -25,7 +25,22 @@ TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
+function retry {
+  local n=1
+  local max=3
 
+  while true; do
+    "$@" && break || {
+      if [[ $n -lt $max ]]; then
+        ((n++))
+        echo "Command failed. Attempt $n/$max:"
+      else
+        echo "The command has failed after $n attempts."
+        exit 1
+      fi
+    }
+  done
+}
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
@@ -48,7 +63,7 @@ if [[ "$platform" == "linux" ]]; then
 
     # Find the right wheel by grepping for the Python version.
     PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
-    
+
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
@@ -62,11 +77,11 @@ if [[ "$platform" == "linux" ]]; then
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
 
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-        "$PYTHON_EXE" "$SCRIPT"
+        retry "$PYTHON_EXE" "$SCRIPT"
     done
 
     # Run the UI test to make sure that the packaged UI works.
-    "$PYTHON_EXE" "$UI_TEST_SCRIPT"
+    retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
   done
 
   # Check that the other wheels are present.
@@ -105,12 +120,12 @@ elif [[ "$platform" == "macosx" ]]; then
     # Run a simple test script to make sure that the wheel works.
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      "$PYTHON_EXE" "$SCRIPT"
+      retry "$PYTHON_EXE" "$SCRIPT"
     done
 
     if (( $(echo "$PY_MM >= 3.0" | bc) )); then
       # Run the UI test to make sure that the packaged UI works.
-      "$PYTHON_EXE" "$UI_TEST_SCRIPT"
+      retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
     fi
 
   done
