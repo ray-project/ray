@@ -191,7 +191,6 @@ class TorchPolicy(Policy):
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
 
-
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
@@ -199,7 +198,8 @@ class TorchPolicy(Policy):
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
