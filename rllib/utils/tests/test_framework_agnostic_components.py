@@ -63,13 +63,14 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
     def test_dummy_components(self):
 
+        # Bazel makes it hard to find files specified in `args`
+        # (and `data`).
+        # Use the true absolute path.
+        script_dir = Path(__file__).parent
+        abs_path = script_dir.absolute()
+
         for fw, sess in framework_iterator(session=True):
             fw_ = fw if fw != "eager" else "tf"
-            # Bazel makes it hard to find files specified in `args` (and `data`).
-            # Use the true absolute path.
-            script_dir = Path(__file__).parent
-            abs_path = script_dir.absolute()
-    
             # Try to create from an abstract class w/o default constructor.
             # Expect None.
             test = from_config({
@@ -77,15 +78,16 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 "framework": fw_
             })
             check(test, None)
-    
+
             # Create a Component via python API (config dict).
-            component = from_config(dict(
-                type=DummyComponent,
-                prop_a=1.0,
-                prop_d="non_default",
-                framework=fw_))
+            component = from_config(
+                dict(
+                    type=DummyComponent,
+                    prop_a=1.0,
+                    prop_d="non_default",
+                    framework=fw_))
             check(component.prop_d, "non_default")
-    
+
             # Create a tf Component from json file.
             config_file = str(abs_path.joinpath("dummy_config.json"))
             component = from_config(config_file, framework=fw_)
@@ -95,7 +97,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, 5.3)  # prop_b == 2.0
-    
+
             # Create a torch Component from yaml file.
             config_file = str(abs_path.joinpath("dummy_config.yml"))
             component = from_config(config_file, framework=fw_)
@@ -105,7 +107,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, np.array([2.2]))  # prop_b == 1.0
-    
+
             # Create tf Component from json-string (e.g. on command line).
             component = from_config(
                 '{"type": "ray.rllib.utils.tests.'
@@ -118,7 +120,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, -2.1)  # prop_b == -1.0
-    
+
             # Test recognizing default module path.
             component = from_config(
                 DummyComponent, '{"type": "NonAbstractChildOfDummyComponent", '
@@ -130,7 +132,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, -2.1)  # prop_b == -1.0
-    
+
             # Test recognizing default package path.
             scope = None
             if sess:
@@ -149,7 +151,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if scope:
                 scope.__exit__(None, None, None)
             check(component.epsilon_schedule.outside_value, 0.05)  # default
-    
+
             # Create torch Component from yaml-string.
             component = from_config(
                 "type: ray.rllib.utils.tests."
@@ -162,7 +164,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, np.array([-6.6]))  # prop_b == -1.5
-    
+
 
 if __name__ == "__main__":
     import pytest
