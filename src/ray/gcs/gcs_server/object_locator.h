@@ -1,9 +1,10 @@
 #ifndef GCS_GCS_SERVER_OBJECT_LOCATOR_H
 #define GCS_GCS_SERVER_OBJECT_LOCATOR_H
 
-#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
@@ -85,30 +86,34 @@ class ObjectLocator {
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
   void AddObjectsLocation(const ClientID &node_id,
-                          const std::unordered_set<ObjectID> &object_ids);
+                          const std::unordered_set<ObjectID> &object_ids)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add location of an object.
   ///
   /// \param object_id The id of object which location will be added.
   /// \param node_id The object location that will be added.
-  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id);
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get object's locations.
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id);
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Remove the location from objects.
   ///
   /// \param node_id The location that will be removed.
-  void RemoveNode(const ClientID &node_id);
+  void RemoveNode(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Remove object's location.
   ///
   /// \param object_id The id of the object which location will be removed.
   /// \param node_id The location that will be removed.
-  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id);
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Get ObjectLocationInfo by object id from map.
@@ -118,13 +123,15 @@ class ObjectLocator {
   /// \param create_if_not_exist Whether to create a new one if not found.
   /// \return std::shared_ptr<ObjectLocationInfo>
   std::shared_ptr<ObjectLocationInfo> GetObjectLocationInfo(
-      const ObjectID &object_id, bool create_if_not_exist = false);
+      const ObjectID &object_id, bool create_if_not_exist = false)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Delete ObjectLocationInfo of object id from map.
   ///
   /// \param object_id The id of object to be deleted.
   /// \return The ObjectLocationInfo which deleted from map.
-  std::shared_ptr<ObjectLocationInfo> DeleteObjectLocationInfo(const ObjectID &object_id);
+  std::shared_ptr<ObjectLocationInfo> DeleteObjectLocationInfo(const ObjectID &object_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get NodeHoldObjectInfo by node id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
@@ -133,21 +140,25 @@ class ObjectLocator {
   /// \param create_if_not_exist Whether to create a new one if not found.
   /// \return std::shared_ptr<NodeHoldObjectInfo>
   std::shared_ptr<NodeHoldObjectInfo> GetNodeHoldObjectInfo(
-      const ClientID &node_id, bool create_if_not_exist = false);
+      const ClientID &node_id, bool create_if_not_exist = false)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Delete NodeHoldObjectInfo of node id from map.
   ///
   /// \param node_id The id of node to be deleted.
   /// \return The NodeHoldObjectInfo which deleted from map.
-  std::shared_ptr<NodeHoldObjectInfo> DeleteNodeHoldObjectInfo(const ClientID &node_id);
+  std::shared_ptr<NodeHoldObjectInfo> DeleteNodeHoldObjectInfo(const ClientID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  mutable std::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   /// Mapping from Object id to object locations.
-  std::unordered_map<ObjectID, std::shared_ptr<ObjectLocationInfo>> object_to_locations_;
+  std::unordered_map<ObjectID, std::shared_ptr<ObjectLocationInfo>> object_to_locations_
+      GUARDED_BY(mutex_);
 
   /// Mapping from node id to objects held by node.
-  std::unordered_map<ClientID, std::shared_ptr<NodeHoldObjectInfo>> node_to_objects_;
+  std::unordered_map<ClientID, std::shared_ptr<NodeHoldObjectInfo>> node_to_objects_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs
