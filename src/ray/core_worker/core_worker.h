@@ -731,11 +731,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void.
   void StartExecutingTasks();
 
-  /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a worker.
+  /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
+  /// worker.
   void Exit(bool intentional);
 
   /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
-  /// If this function is called during shutdown, Raylet will treat it as an intentional disconnect.
+  /// If this function is called during shutdown, Raylet will treat it as an intentional
+  /// disconnect.
   void Disconnect();
 
   /// Shut down the worker completely.
