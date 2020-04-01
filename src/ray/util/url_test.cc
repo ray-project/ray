@@ -40,9 +40,11 @@ TEST(UrlTest, UrlIpTcpParseTest) {
   ASSERT_EQ(to_str(parse_url_endpoint("127.0.0.1/", 0), false), "127.0.0.1:0");
   ASSERT_EQ(to_str(parse_url_endpoint("127.0.0.1:1", 0), false), "127.0.0.1:1");
   ASSERT_EQ(to_str(parse_url_endpoint("127.0.0.1", 0), false), "127.0.0.1:0");
+#ifndef _WIN32
   ASSERT_EQ(to_str(parse_url_endpoint("unix:///tmp/sock"), false), "/tmp/sock");
   ASSERT_EQ(to_str(parse_url_endpoint("unix:/tmp/sock"), false), "/tmp/sock");
   ASSERT_EQ(to_str(parse_url_endpoint("/tmp/sock"), false), "/tmp/sock");
+#endif
 }
 
 }  // namespace ray

@@ -15,13 +15,14 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
+#include <deque>
+#include <memory>
+
 #include <boost/asio/basic_stream_socket.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/enable_shared_from_this.hpp>
-#include <deque>
-#include <memory>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
