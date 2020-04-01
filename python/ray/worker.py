@@ -671,7 +671,6 @@ def init(address=None,
 
     if local_mode:
         driver_mode = LOCAL_MODE
-        num_cpus = 0
     else:
         driver_mode = SCRIPT_MODE
 
