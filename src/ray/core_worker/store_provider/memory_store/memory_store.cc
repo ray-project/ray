@@ -161,7 +161,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
       std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                  object.GetNestedIds(), true, object.PinnedAtNodeId());
+                                  object.GetNestedIds(), true, object.PinnedAtRayletId());
   bool stored_in_direct_memory = true;
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
@@ -472,8 +472,8 @@ std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedN
     for (const auto &it : objects_) {
       if (it.second->IsInPlasmaError()) {
         RAY_LOG(INFO) << "Plasma object " << it.first << " pinned at "
-                      << it.second->PinnedAtNodeId().value_or(ClientID::Nil());
-        if (it.second->PinnedAtNodeId().value_or(ClientID::Nil()) == node_id) {
+                      << it.second->PinnedAtRayletId().value_or(ClientID::Nil());
+        if (it.second->PinnedAtRayletId().value_or(ClientID::Nil()) == node_id) {
           lost_objects.push_back(it.first);
         }
       }

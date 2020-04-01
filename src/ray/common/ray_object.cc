@@ -27,9 +27,9 @@ std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_
 RayObject::RayObject(rpc::ErrorType error_type)
     : RayObject(nullptr, MakeErrorMetadataBuffer(error_type), {}) {}
 
-RayObject::RayObject(const ClientID &pinned_at_node_id)
+RayObject::RayObject(const ClientID &pinned_at_raylet_id)
     : RayObject(nullptr, MakeErrorMetadataBuffer(rpc::ErrorType::OBJECT_IN_PLASMA), {},
-                /*copy_data=*/false, pinned_at_node_id) {}
+                /*copy_data=*/false, pinned_at_raylet_id) {}
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr) {
@@ -60,8 +60,8 @@ bool RayObject::IsInPlasmaError() const {
   return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 }
 
-const absl::optional<ClientID> &RayObject::PinnedAtNodeId() const {
-  return pinned_at_node_id_;
+const absl::optional<ClientID> &RayObject::PinnedAtRayletId() const {
+  return pinned_at_raylet_id_;
 }
 
 }  // namespace ray

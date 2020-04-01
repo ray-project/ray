@@ -95,8 +95,9 @@ class ObjectRecoveryManager {
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
-  Status PinNewObjectCopy(const ObjectID &object_id, const rpc::Address &raylet_address,
-                          const std::vector<rpc::Address> &other_locations);
+  Status PinExistingObjectCopy(const ObjectID &object_id,
+                               const rpc::Address &raylet_address,
+                               const std::vector<rpc::Address> &other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
   void ReconstructObject(const ObjectID &object_id);

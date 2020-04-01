@@ -433,7 +433,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-// If the raylet fails, we will be reassigned to init (PID=1).
+  // If the raylet fails, we will be reassigned to init (PID=1).
   if (getppid() == 1) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();

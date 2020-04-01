@@ -28,33 +28,31 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   bool already_pending_recovery = true;
-  bool has_object = in_memory_store_->HasObject(object_id);
-  if (!has_object) {
+  if (!in_memory_store_->HasObject(object_id)) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
       // duplicate reconstructions of the same object.
-      bool inserted = objects_pending_recovery_.insert(object_id).second;
-      RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
-      if (inserted) {
-        in_memory_store_->GetAsync(
-            object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
-              absl::MutexLock lock(&mu_);
-              RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
-              RAY_LOG(DEBUG) << "Recovery complete for object " << object_id;
-            });
-        already_pending_recovery = false;
-      }
+      already_pending_recovery = objects_pending_recovery_.insert(object_id).second;
     }
   }
 
   if (!already_pending_recovery) {
+    RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
+    in_memory_store_->GetAsync(
+        object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
+          absl::MutexLock lock(&mu_);
+          RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
+          RAY_LOG(DEBUG) << "Recovery complete for object " << object_id;
+        });
     // Lookup the object in the GCS to find another copy.
     RAY_RETURN_NOT_OK(object_lookup_(
         object_id,
         [this](const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
           PinOrReconstructObject(object_id, locations);
         }));
+  } else {
+    RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
   }
   return Status::OK();
 }
@@ -68,7 +66,7 @@ void ObjectRecoveryManager::PinOrReconstructObject(
   while (!locations_copy.empty()) {
     const auto location = locations_copy.back();
     locations_copy.pop_back();
-    if (PinNewObjectCopy(object_id, location, locations_copy).ok()) {
+    if (PinExistingObjectCopy(object_id, location, locations_copy).ok()) {
       pinned = true;
       break;
     }
@@ -85,7 +83,7 @@ void ObjectRecoveryManager::PinOrReconstructObject(
   }
 }
 
-Status ObjectRecoveryManager::PinNewObjectCopy(
+Status ObjectRecoveryManager::PinExistingObjectCopy(
     const ObjectID &object_id, const rpc::Address &raylet_address,
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
