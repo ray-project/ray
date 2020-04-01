@@ -50,7 +50,8 @@ def add_advantages(policy,
         policy.config["use_gae"], policy.config["use_critic"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model):
+def model_value_predictions(policy, input_dict, state_batches, model,
+                            action_dist):
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 

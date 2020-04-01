@@ -152,7 +152,7 @@ class TorchPolicy(Policy):
 
             # Add default and custom fetches.
             extra_fetches = self.extra_action_out(input_dict, state_batches,
-                                                  self.model)
+                                                  self.model, action_dist)
             # Action-logp and action-prob.
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
@@ -301,13 +301,15 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self, input_dict, state_batches, model):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
         """Returns dict of extra info to include in experience batch.
 
-        Arguments:
+        Args:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
             model (TorchModelV2): Reference to the model.
+            action_dist (TorchActionDistribution): Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
         """
         return {}
 
