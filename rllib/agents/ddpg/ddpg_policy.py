@@ -415,17 +415,14 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
             if self.config["parameter_noise"]:
-                import tensorflow.contrib.layers as layers
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hidden,
-                    activation_fn=activation,
-                    normalizer_fn=layers.layer_norm)
+                action_out = tf.keras.layers.Dense(
+                    units=hidden, activation=activation)(action_out)
+                action_out = tf.keras.layers.LayerNormalization()(action_out)
             else:
-                action_out = tf.layers.dense(
-                    action_out, units=hidden, activation=activation)
-        action_out = tf.layers.dense(
-            action_out, units=action_space.shape[0], activation=None)
+                action_out = tf.keras.layers.Dense(
+                    units=hidden, activation=activation)(action_out)
+        action_out = tf.keras.layers.Dense(
+            units=action_space.shape[0], activation=None)(action_out)
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
