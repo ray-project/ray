@@ -467,19 +467,19 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedNode(
     const ClientID &node_id) {
   std::vector<ObjectID> lost_objects;
-  {
-    absl::MutexLock lock(&mu_);
-    for (const auto &it : objects_) {
-      if (it.second->IsInPlasmaError()) {
-        RAY_LOG(INFO) << "Plasma object " << it.first << " pinned at "
-                      << it.second->PinnedAtRayletId().value_or(ClientID::Nil());
-        if (it.second->PinnedAtRayletId().value_or(ClientID::Nil()) == node_id) {
-          lost_objects.push_back(it.first);
-        }
+  absl::MutexLock lock(&mu_);
+  for (const auto &it : objects_) {
+    if (it.second->IsInPlasmaError()) {
+      RAY_LOG(INFO) << "Plasma object " << it.first << " pinned at "
+                    << it.second->PinnedAtRayletId().value_or(ClientID::Nil());
+      if (it.second->PinnedAtRayletId().value_or(ClientID::Nil()) == node_id) {
+        lost_objects.push_back(it.first);
       }
     }
   }
-  Delete(lost_objects);
+  for (const auto &obj : lost_objects) {
+    objects_.erase(obj);
+  }
   return lost_objects;
 }
 
