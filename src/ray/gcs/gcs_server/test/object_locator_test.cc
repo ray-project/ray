@@ -71,7 +71,7 @@ TEST_F(ObjectLocatorTest, RemoveObjectTest) {
   ASSERT_TRUE(locations.empty());
 }
 
-TEST_F(ObjectLocatorTest, RemoveLocationgTest) {
+TEST_F(ObjectLocatorTest, RemoveLocationTest) {
   for (const auto &node_id : node_ids_) {
     object_locator_.AddObjectsLocation(node_id, object_ids_);
   }
