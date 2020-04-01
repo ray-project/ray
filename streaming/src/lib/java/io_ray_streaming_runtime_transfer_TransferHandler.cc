@@ -13,7 +13,7 @@ static std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
 }
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
     JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
     jobject sync_func) {
   auto ray_async_func = FunctionDescriptorToRayFunction(env, async_func);
@@ -25,7 +25,7 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative
 }
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
     JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
     jobject sync_func) {
   ray::RayFunction ray_async_func = FunctionDescriptorToRayFunction(env, async_func);
@@ -37,14 +37,14 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   auto *writer_client = reinterpret_cast<WriterClient *>(ptr);
   writer_client->OnWriterMessage(JByteArrayToBuffer(env, bytes));
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   auto *writer_client = reinterpret_cast<WriterClient *>(ptr);
   std::shared_ptr<ray::LocalMemoryBuffer> result_buffer =
@@ -56,14 +56,14 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncN
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   auto *reader_client = reinterpret_cast<ReaderClient *>(ptr);
   reader_client->OnReaderMessage(JByteArrayToBuffer(env, bytes));
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative(
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   auto *reader_client = reinterpret_cast<ReaderClient *>(ptr);
   auto result_buffer = reader_client->OnReaderMessageSync(JByteArrayToBuffer(env, bytes));

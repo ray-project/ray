@@ -52,15 +52,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
  * Method:    nativeWait
  * Signature: (JLjava/util/List;IJ)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWait(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
     JNIEnv *, jclass, jlong, jobject, jint, jlong);
 
 /*
- * Class:     org_ray_runtime_object_NativeObjectStore
+ * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeDelete
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
+JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *, jclass, jlong, jobject, jboolean, jboolean);
 
 #ifdef __cplusplus
