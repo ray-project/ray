@@ -19,7 +19,7 @@ class ObjectLocator {
 
   ~ObjectLocator();
 
-  /// Add location of objects.
+  /// Add a location of objects.
   ///
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
@@ -27,7 +27,7 @@ class ObjectLocator {
                           const std::unordered_set<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Add location of an object.
+  /// Add a location of an object.
   ///
   /// \param object_id The id of object which location will be added.
   /// \param node_id The object location that will be added.
@@ -41,9 +41,9 @@ class ObjectLocator {
   std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove the location from objects.
+  /// Remove a node.
   ///
-  /// \param node_id The location that will be removed.
+  /// \param node_id The node that will be removed.
   void RemoveNode(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Remove object's location.
@@ -79,11 +79,11 @@ class ObjectLocator {
 
   mutable absl::Mutex mutex_;
 
-  /// Mapping from Object id to object locations.
+  /// Mapping from object id to object locations.
   std::unordered_map<ObjectID, std::shared_ptr<LocationSet>> object_to_locations_
       GUARDED_BY(mutex_);
 
-  /// Mapping from node id to objects held by node.
+  /// Mapping from node id to objects that held by the node.
   std::unordered_map<ClientID, std::shared_ptr<ObjectSet>> node_to_objects_
       GUARDED_BY(mutex_);
 };
