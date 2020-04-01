@@ -177,8 +177,7 @@ def model_creator(config):
 
 
 def main(args):
-    if args.output_dir:
-        utils.mkdir(args.output_dir)
+    os.makedirs(args.output_dir, exist_ok=True)
 
     print(args)
     start_time = time.time()
