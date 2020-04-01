@@ -22,7 +22,8 @@ def build_torch_policy(name,
                        before_init=None,
                        after_init=None,
                        make_model_and_action_dist=None,
-                       mixins=None):
+                       mixins=None,
+                       get_batch_divisibility_req=None):
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
@@ -52,6 +53,8 @@ def build_torch_policy(name,
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicy class
+        get_batch_divisibility_req (Optional[callable]): Optional callable that
+            returns the divisibility requirement for sample batches.
 
     Returns:
         a TorchPolicy instance that uses the specified args
@@ -80,14 +83,24 @@ def build_torch_policy(name,
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
-                    obs_space,
-                    action_space,
-                    logit_dim,
-                    self.config["model"],
-                    framework="torch")
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=logit_dim,
+                    model_config=self.config["model"],
+                    framework="torch",
+                    **self.config["model"].get("custom_options", {}))
 
-            TorchPolicy.__init__(self, obs_space, action_space, config,
-                                 self.model, loss_fn, self.dist_class)
+            TorchPolicy.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                model=self.model,
+                loss=loss_fn,
+                action_distribution_class=self.dist_class,
+                max_seq_len=config["model"]["max_seq_len"],
+                get_batch_divisibility_req=get_batch_divisibility_req,
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
