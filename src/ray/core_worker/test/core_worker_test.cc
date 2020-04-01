@@ -109,7 +109,7 @@ class CoreWorkerTest : public ::testing::Test {
     }
 
     // start gcs server
-    if (RayConfig::instance().gcs_service_enabled()) {
+    if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
       gcs_server_pid_ = StartGcsServer("127.0.0.1");
     } else {
       // core worker test relies on node resources. It's important that one raylet can
