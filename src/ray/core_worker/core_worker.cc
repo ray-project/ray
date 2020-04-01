@@ -147,7 +147,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
   {
     // Check that all `CoreWorker` instances have been removed.
-    absl::MutexLock lock(&worker_map_mutex_);
+    absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
   if (options_.log_dir != "") {
@@ -182,7 +182,7 @@ void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
     const WorkerID &worker_id) const {
-  absl::MutexLock lock(&worker_map_mutex_);
+  absl::ReaderMutexLock lock(&worker_map_mutex_);
   auto it = workers_.find(worker_id);
   RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
   return it->second;
