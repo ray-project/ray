@@ -94,10 +94,10 @@ class TestPPO(unittest.TestCase):
         """Tests the PPO loss function math."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["eager"] = True
         config["gamma"] = 0.99
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
+        config["vf_share_layers"] = True
 
         # Fake CartPole episode of n time steps.
         train_batch = {
@@ -114,69 +114,56 @@ class TestPPO(unittest.TestCase):
             ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
         }
 
-        # tf.
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        policy = trainer.get_policy()
+        for fw in ["tf", "torch"]:
+            print("framework={}".format(fw))
+            config["use_pytorch"] = fw == "torch"
+            config["eager"] = fw == "tf"
 
-        # Post-process (calculate simple (non-GAE) advantages) and attach to
-        # train_batch dict.
-        # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
-        # [0.50005, -0.505, 0.5]
-        train_batch = postprocess_ppo_gae_tf(policy, train_batch)
-        # Check Advantage values.
-        check(train_batch[Postprocessing.VALUE_TARGETS],
-              [0.50005, -0.505, 0.5])
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            policy = trainer.get_policy()
 
-        # Calculate actual PPO loss (results are stored in policy.loss_obj) for
-        # tf.
-        ppo_surrogate_loss_tf(policy, policy.model, Categorical, train_batch)
+            # Post-process (calculate simple (non-GAE) advantages) and attach
+            # to train_batch dict.
+            # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
+            # [0.50005, -0.505, 0.5]
+            if fw == "tf":
+                train_batch = postprocess_ppo_gae_tf(policy, train_batch)
+            else:
+                train_batch = postprocess_ppo_gae_torch(policy, train_batch)
+                train_batch = policy._lazy_tensor_dict(train_batch)
 
-        vars = policy.model.trainable_variables()
-        expected_logits = fc(
-            fc(train_batch[SampleBatch.CUR_OBS], vars[0].numpy(),
-               vars[1].numpy()), vars[4].numpy(), vars[5].numpy())
-        expected_value_outs = fc(
-            fc(train_batch[SampleBatch.CUR_OBS], vars[2].numpy(),
-               vars[3].numpy()), vars[6].numpy(), vars[7].numpy())
+            # Check Advantage values.
+            check(train_batch[Postprocessing.VALUE_TARGETS],
+                  [0.50005, -0.505, 0.5])
 
-        kl, entropy, pg_loss, vf_loss, overall_loss = \
-            self._ppo_loss_helper(
-                policy, policy.model, Categorical, train_batch,
-                expected_logits, expected_value_outs
-            )
-        check(policy.loss_obj.mean_kl, kl)
-        check(policy.loss_obj.mean_entropy, entropy)
-        check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
-        check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
-        check(policy.loss_obj.loss, overall_loss, decimals=4)
+            # Calculate actual PPO loss (results are stored in policy.loss_obj)
+            # for tf.
+            if fw == "tf":
+                ppo_surrogate_loss_tf(policy, policy.model, Categorical,
+                                      train_batch)
+            else:
+                ppo_surrogate_loss_torch(policy, policy.model,
+                                         TorchCategorical, train_batch)
 
-        # Torch.
-        config["use_pytorch"] = True
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        policy = trainer.get_policy()
-        train_batch = postprocess_ppo_gae_torch(policy, train_batch)
-        train_batch = policy._lazy_tensor_dict(train_batch)
+            vars = policy.model.variables() if fw == "tf" else \
+                list(policy.model.parameters())
+            expected_shared_out = fc(train_batch[SampleBatch.CUR_OBS], vars[0],
+                                     vars[1])
+            expected_logits = fc(expected_shared_out, vars[2], vars[3])
+            expected_value_outs = fc(expected_shared_out, vars[4], vars[5])
 
-        # Check Advantage values.
-        check(train_batch[Postprocessing.VALUE_TARGETS],
-              [0.50005, -0.505, 0.5])
-
-        # Calculate actual PPO loss (results are stored in policy.loss_obj)
-        # for tf.
-        ppo_surrogate_loss_torch(policy, policy.model, TorchCategorical,
-                                 train_batch)
-
-        kl, entropy, pg_loss, vf_loss, overall_loss = \
-            self._ppo_loss_helper(
-                policy, policy.model, TorchCategorical, train_batch,
-                policy.model.last_output(),
-                policy.model.value_function().detach().numpy()
-            )
-        check(policy.loss_obj.mean_kl, kl)
-        check(policy.loss_obj.mean_entropy, entropy)
-        check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
-        check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
-        check(policy.loss_obj.loss, overall_loss, decimals=4)
+            kl, entropy, pg_loss, vf_loss, overall_loss = \
+                self._ppo_loss_helper(
+                    policy, policy.model,
+                    Categorical if fw == "tf" else TorchCategorical,
+                    train_batch,
+                    expected_logits, expected_value_outs
+                )
+            check(policy.loss_obj.mean_kl, kl)
+            check(policy.loss_obj.mean_entropy, entropy)
+            check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
+            check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
+            check(policy.loss_obj.loss, overall_loss, decimals=4)
 
     def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits,
                          vf_outs):

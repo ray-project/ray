@@ -8,7 +8,7 @@ import ray.experimental.tf_utils
 from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
     ACTION_PROB, ACTION_LOGP
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -602,69 +602,27 @@ class TFPolicy(Policy):
         return fetches
 
     def _get_loss_inputs_dict(self, batch, shuffle):
-        """Return a feed dict from a batch.
+        # Get batch ready for RNNs, if applicable.
+        pad_batch_to_sequences_of_same_size(
+            batch,
+            shuffle=shuffle,
+            max_seq_len=self._max_seq_len,
+            batch_divisibility_req=self._batch_divisibility_req,
+            feature_keys=[k for k, v in self._loss_inputs])
 
-        Arguments:
-            batch (SampleBatch): batch of data to derive inputs from
-            shuffle (bool): whether to shuffle batch sequences. Shuffle may
-                be done in-place. This only makes sense if you're further
-                applying minibatch SGD after getting the outputs.
-
-        Returns:
-            feed dict of data
-        """
-
+        # Build the feed dict from the batch.
         feed_dict = {}
-        if self._batch_divisibility_req > 1:
-            meets_divisibility_reqs = (
-                len(batch[SampleBatch.CUR_OBS]) %
-                self._batch_divisibility_req == 0
-                and max(batch[SampleBatch.AGENT_INDEX]) == 0)  # not multiagent
-        else:
-            meets_divisibility_reqs = True
+        for k, ph in self._loss_inputs:
+            feed_dict[ph] = batch[k]
 
-        # Simple case: not RNN nor do we need to pad
-        if not self._state_inputs and meets_divisibility_reqs:
-            if shuffle:
-                batch.shuffle()
-            for k, ph in self._loss_inputs:
-                feed_dict[ph] = batch[k]
-            return feed_dict
-
-        if self._state_inputs:
-            max_seq_len = self._max_seq_len
-            dynamic_max = True
-        else:
-            max_seq_len = self._batch_divisibility_req
-            dynamic_max = False
-
-        # RNN or multi-agent case
-        feature_keys = [k for k, v in self._loss_inputs]
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
-        feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch[SampleBatch.EPS_ID],
-            batch[SampleBatch.UNROLL_ID],
-            batch[SampleBatch.AGENT_INDEX], [batch[k] for k in feature_keys],
-            [batch[k] for k in state_keys],
-            max_seq_len,
-            dynamic_max=dynamic_max,
-            shuffle=shuffle)
-        for k, v in zip(feature_keys, feature_sequences):
-            feed_dict[self._loss_input_dict[k]] = v
-        for k, v in zip(state_keys, initial_states):
-            feed_dict[self._loss_input_dict[k]] = v
-        feed_dict[self._seq_lens] = seq_lens
+        for k in state_keys:
+            feed_dict[self._loss_input_dict[k]] = batch[k]
+        if state_keys:
+            feed_dict[self._seq_lens] = batch["seq_lens"]
 
-        if log_once("rnn_feed_dict"):
-            logger.info("Padded input for RNN:\n\n{}\n".format(
-                summarize({
-                    "features": feature_sequences,
-                    "initial_states": initial_states,
-                    "seq_lens": seq_lens,
-                    "max_seq_len": max_seq_len,
-                })))
         return feed_dict
 
 

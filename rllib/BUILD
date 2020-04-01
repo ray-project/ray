@@ -1267,6 +1267,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_torch_rnn_model",
+    main = "examples/custom_torch_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_torch_rnn_model.py"],
+    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
+)
+
+py_test(
     name = "examples/custom_torch_policy",
     tags = ["examples", "examples_C"],
     size = "small",
