@@ -54,6 +54,7 @@ class DDPGPostprocessing:
                 feed_dict={
                     self.cur_observations: states,
                     self._is_exploring: False,
+                    self._timestep: self.global_timestep,
                 })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
