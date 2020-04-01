@@ -3,6 +3,7 @@ import time
 
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -34,7 +35,9 @@ class TorchPolicy(Policy):
                  loss,
                  action_distribution_class,
                  action_sampler_fn=None,
-                 action_distribution_fn=None):
+                 action_distribution_fn=None,
+                 max_seq_len=20,
+                 get_batch_divisibility_req=None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -63,6 +66,9 @@ class TorchPolicy(Policy):
                 forward pass through some model.
                 If None, pass inputs through `self.model()` to get the
                 distribution inputs.
+            max_seq_len (int): Max sequence length for LSTM training.
+            get_batch_divisibility_req (Optional[callable]): Optional callable
+                that returns the divisibility requirement for sample batches.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
@@ -81,6 +87,11 @@ class TorchPolicy(Policy):
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
 
+        self.max_seq_len = max_seq_len
+        self.batch_divisibility_req = \
+            get_batch_divisibility_req(self) if get_batch_divisibility_req \
+            else 1
+
     @override(Policy)
     def compute_actions(self,
                         obs_batch,
@@ -95,6 +106,7 @@ class TorchPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
+        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -126,8 +138,7 @@ class TorchPolicy(Policy):
                 else:
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
-                        input_dict, state_batches,
-                        self._convert_to_tensor([1]))
+                        input_dict, state_batches, seq_lens)
                 action_dist = dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.
@@ -166,18 +177,20 @@ class TorchPolicy(Policy):
                              "`action_distribution_fn` and a provided "
                              "`action_sampler_fn`!")
 
-        input_dict = self._lazy_tensor_dict({
-            SampleBatch.CUR_OBS: obs_batch,
-            SampleBatch.ACTIONS: actions
-        })
-        if prev_action_batch:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-        if prev_reward_batch:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-
         with torch.no_grad():
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch,
+                SampleBatch.ACTIONS: actions
+            })
+            if prev_action_batch:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
+
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
+
 
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
@@ -186,23 +199,22 @@ class TorchPolicy(Policy):
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches,
-                                            self._convert_to_tensor([1]))
+                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
-
-            action_tensor = self._lazy_tensor_dict({
-                SampleBatch.ACTIONS: actions
-            })
-            log_likelihoods = action_dist.logp(
-                action_tensor[SampleBatch.ACTIONS])
-
+            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
             return log_likelihoods
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Get batch ready for RNNs, if applicable.
+        pad_batch_to_sequences_of_same_size(
+            postprocessed_batch,
+            max_seq_len=self.max_seq_len,
+            shuffle=False,
+            batch_divisibility_req=self.batch_divisibility_req)
 
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = self._loss(self, self.model, self.dist_class, train_batch)
         self._optimizer.zero_grad()
         loss_out.backward()

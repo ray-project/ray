@@ -66,9 +66,10 @@ class PPOLoss:
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
         if valid_mask is not None:
+            num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.mean(t * valid_mask)
+                return torch.sum(t * valid_mask) / num_valid
 
         else:
 
@@ -186,14 +187,14 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                        self.device),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                        self.device),
+                    SampleBatch.CUR_OBS: self._convert_to_tensor([ob]),
+                    SampleBatch.PREV_ACTIONS: self._convert_to_tensor(
+                        [prev_action]),
+                    SampleBatch.PREV_REWARDS: self._convert_to_tensor(
+                        [prev_reward]),
                     "is_training": False,
-                }, [torch.Tensor([s]).to(self.device) for s in state],
-                                          torch.Tensor([1]).to(self.device))
+                }, [self._convert_to_tensor(s) for s in state],
+                                          self._convert_to_tensor([1]))
                 return self.model.value_function()[0]
 
         else:
