@@ -2,7 +2,6 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
     postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
@@ -12,7 +11,6 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
@@ -109,9 +107,10 @@ class TestPPO(unittest.TestCase):
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            BEHAVIOUR_LOGITS: np.array(
+            SampleBatch.ACTION_DIST_INPUTS: np.array(
                 [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-            ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
+            SampleBatch.ACTION_LOGP: np.array(
+                [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
         for fw in ["tf", "torch"]:
@@ -173,17 +172,19 @@ class TestPPO(unittest.TestCase):
         """
         # Calculate expected PPO loss results.
         dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS], policy.model)
+        dist_prev = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                               policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -
-                                  train_batch.get(ACTION_LOGP))
+                                  train_batch.get(SampleBatch.ACTION_LOGP))
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().numpy())
             # Entropy-loss component.
             entropy = np.mean(dist.entropy().detach().numpy())
         else:
-            expected_rho = np.exp(expected_logp - train_batch[ACTION_LOGP])
+            expected_rho = np.exp(expected_logp -
+                                  train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist))
             # Entropy-loss component.
