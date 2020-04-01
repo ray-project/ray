@@ -37,8 +37,10 @@ def from_aws_format(tags):
 def make_ec2_client(region, max_retries, aws_credentials):
     """Make client, retrying requests up to `max_retries`."""
     config = Config(retries={"max_attempts": max_retries})
-    return boto3.resource(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    if aws_credentials is not None:
+        return boto3.resource(
+            "ec2", region_name=region, config=config, **aws_credentials)
+    return boto3.resource("ec2", region_name=region, config=config)
 
 
 class AWSNodeProvider(NodeProvider):

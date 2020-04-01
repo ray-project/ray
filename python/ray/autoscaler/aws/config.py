@@ -40,11 +40,15 @@ assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
 def key_pair(i, region, key_name):
     """Returns the ith default (aws_key_pair_name, key_pair_path)."""
     if i == 0:
-        return ("{}_{}".format(RAY, region) if key_name is None else key_name,
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region)
-            if key_name is None else key_name + "_key-{}".format(i),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        key_pair_name = ("{}_{}".format(RAY, region)
+                         if key_name is None else key_name)
+        return (key_pair_name,
+                os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+
+    key_pair_name = ("{}_{}_{}".format(RAY, i, region)
+                     if key_name is None else key_name + "_key-{}".format(i))
+    return (key_pair_name,
+            os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
 
 
 # Suppress excessive connection dropped logs from boto
