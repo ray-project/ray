@@ -126,7 +126,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     RAY_CHECK(options_.num_workers == 1);
   }
 
-  RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << getpid();
+  RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
@@ -144,8 +144,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
-  RAY_LOG(INFO) << "Core worker process is exiting.";
+  RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
   {
+    // Check that all `CoreWorker` instances have been removed.
     absl::MutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }

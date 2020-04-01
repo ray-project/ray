@@ -52,6 +52,7 @@ namespace ray {
 
 class CoreWorker;
 
+/// The various initialization options for core worker.
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
@@ -152,17 +153,14 @@ struct CoreWorkerOptions {
 /// your own threads. Currently a Python worker process starts only 1 worker.
 class CoreWorkerProcess {
  public:
+  ///
+  /// Public methods used in both DRIVER and WORKER mode.
+  ///
+
   /// Initialize core workers at process level.
   ///
   /// \param[in] options The various initialization options.
   static void Initialize(const CoreWorkerOptions &options);
-
-  /// Shutdown workers completely at process level.
-  /// This API is for driver only.
-  static void Shutdown();
-
-  /// Where the current process has initialized for core worker.
-  static bool IsInitialized();
 
   /// Get the core worker associated with the current thread.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
@@ -175,27 +173,61 @@ class CoreWorkerProcess {
   /// \param worker_id The worker ID of the core worker instance.
   static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
 
+  /// Where the current process has initialized for core worker.
+  static bool IsInitialized();
+
+  ///
+  /// Public methods used in DRIVER mode only.
+  ///
+
+  /// Shutdown workers completely at process level.
+  /// This API is for driver only.
+  static void Shutdown();
+
+  ///
+  /// Public methods used in WORKER mode only.
+  ///
+
   /// Start receiving and executing tasks.
   /// This API is for worker only.
   static void StartExecutingTasks();
 
+  // The destructor is not a public API to use. However it's required by smart pointer.
   ~CoreWorkerProcess();
 
  private:
+  /// Create an `CoreWorkerProcess` with proper options.
+  ///
+  /// \param[in] options The various initialization options.
   CoreWorkerProcess(const CoreWorkerOptions &options);
 
+  /// Check that the core worker environment is initialized for this process.
+  ///
+  /// \return Void.
   static void EnsureInitialized();
 
+  /// Get the `CoreWorker` instance by worker ID.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
       LOCKS_EXCLUDED(worker_map_mutex_);
 
+  /// Create a new `CoreWorker` instance.
+  ///
+  /// \return The newly created `CoreWorker` instance.
   std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
 
+  /// Remove an existing `CoreWorker` instance.
+  ///
+  /// \param[in] The existing `CoreWorker` instance.
+  /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
-  /// The global instance.
+  /// The global instance of `CoreWorkerProcess`.
   static std::unique_ptr<CoreWorkerProcess> instance_;
 
+  /// The various options.
   const CoreWorkerOptions options_;
 
   /// The core worker instance associated with the current thread.
@@ -212,7 +244,7 @@ class CoreWorkerProcess {
   std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
       GUARDED_BY(worker_map_mutex_);
 
-  /// To protect access the `workers_` map.
+  /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
 };
 
@@ -699,8 +731,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void.
   void StartExecutingTasks();
 
+  /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a worker.
   void Exit(bool intentional);
 
+  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
+  /// If this function is called during shutdown, Raylet will treat it as an intentional disconnect.
   void Disconnect();
 
   /// Shut down the worker completely.
