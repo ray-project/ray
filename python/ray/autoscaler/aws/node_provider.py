@@ -34,10 +34,11 @@ def from_aws_format(tags):
     return tags
 
 
-def make_ec2_client(region, max_retries):
+def make_ec2_client(region, max_retries, aws_credentials):
     """Make client, retrying requests up to `max_retries`."""
     config = Config(retries={"max_attempts": max_retries})
-    return boto3.resource("ec2", region_name=region, config=config)
+    return boto3.resource(
+        "ec2", region_name=region, config=config, **aws_credentials)
 
 
 class AWSNodeProvider(NodeProvider):
@@ -45,10 +46,17 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)
-        self.ec2 = make_ec2_client(
-            region=provider_config["region"], max_retries=BOTO_MAX_RETRIES)
-        self.ec2_fail_fast = make_ec2_client(
-            region=provider_config["region"], max_retries=0)
+        try:
+            aws_credentials = (provider_config["extra_config"]
+                                              ["aws_credentials"])
+        except KeyError:
+            aws_credentials = None
+        self.ec2 = make_ec2_client(region=provider_config["region"],
+                                   max_retries=BOTO_MAX_RETRIES,
+                                   aws_credentials=aws_credentials)
+        self.ec2_fail_fast = make_ec2_client(region=provider_config["region"],
+                                             max_retries=0,
+                                             aws_credentials=aws_credentials)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
