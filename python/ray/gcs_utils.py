@@ -1,10 +1,11 @@
+from ray.core.generated.common_pb2 import ErrorType
+
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ActorTableData,
     GcsNodeInfo,
     JobTableData,
     ErrorTableData,
-    ErrorType,
     GcsEntry,
     HeartbeatBatchTableData,
     HeartbeatTableData,
