@@ -5,7 +5,11 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 if tf:
-    from tensorflow.python.eager.context import eager_mode
+    eager_mode = None
+    try:
+        from tensorflow.python.eager.context import eager_mode
+    except (ImportError, ModuleNotFoundError):
+        pass
 
 torch, _ = try_import_torch()
 
@@ -46,6 +50,10 @@ def framework_iterator(config=None,
         elif not tf:
             logger.warning("framework_iterator skipping {} (tf not "
                            "installed)!".format(fw))
+            continue
+        elif fw == "eager" and not eager_mode:
+            logger.warning("framework_iterator skipping eager (could not "
+                           "import `eager_mode` from tensorflow.python)!")
             continue
         assert fw in ["tf", "eager", "torch", None]
 
