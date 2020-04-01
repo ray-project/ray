@@ -38,7 +38,10 @@ assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
 
 
 def key_pair(i, region, key_name):
-    """Returns the ith default (aws_key_pair_name, key_pair_path)."""
+    """
+    If key_name is not None, key_pair will be named after key_name.
+    Returns the ith default (aws_key_pair_name, key_pair_path).
+    """
     if i == 0:
         key_pair_name = ("{}_{}".format(RAY, region)
                          if key_name is None else key_name)
