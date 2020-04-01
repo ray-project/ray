@@ -1,16 +1,25 @@
 import json
 
+from collections import namedtuple
+
 
 class ValidationError(Exception):
     pass
+
+
+Field = namedtuple("Field", ["required", "default", "type"])
 
 
 class BaseModel:
     """Base class to define schema.
 
     Model schema should be defined in class variable `__schema__`
-    within a child class. `__schema__` should be a dictionary that
-    contains `field`: `(required: bool, default: Any, type: type)`
+    within a child class. `__schema__` should be a dictionary that contains
+    `field`: `Field(
+        required=required: bool,
+        default=default: Any,
+        type=type: type
+    )`
     See the example below for more details.
 
     The class can have unexpected behavior if you don't follow the
@@ -19,10 +28,16 @@ class BaseModel:
     Example:
         class A(BaseModel):
             __schema__ = {
-                #             (REQUIRED,     DEFAULT,   TYPE)
-                "field_name": ([True|False], [default], [type]),
-                "cluster_id": (True, "1234", str),
-                "port": (False, 80, int)
+                "field_name": Field(
+                    required=[True|False],
+                    default=[default],
+                    type=[type]
+                ),
+                "cluster_id": Field(
+                    required=True,
+                    default="1234",
+                    type=str
+                ),
             }
 
     Raises:
@@ -59,52 +74,46 @@ class BaseModel:
         return cls(**obj)
 
 
-"""
-Request/Response
-"""
-
-
 class IngestRequest(BaseModel):
     __schema__ = {
-        "cluster_id": (True, None, str),
-        "access_token": (True, None, str),
-        "ray_config": (True, None, tuple),
-        "node_info": (True, None, dict),
-        "raylet_info": (True, None, dict),
-        "tune_info": (True, None, dict),
-        "tune_availability": (True, None, dict)
+        "cluster_id": Field(required=True, default=None, type=str),
+        "access_token": Field(required=True, default=None, type=str),
+        "ray_config": Field(required=True, default=None, type=tuple),
+        "node_info": Field(required=True, default=None, type=dict),
+        "raylet_info": Field(required=True, default=None, type=dict),
+        "tune_info": Field(required=True, default=None, type=dict),
+        "tune_availability": Field(required=True, default=None, type=dict)
     }
 
 
 class IngestResponse(BaseModel):
-    __schema__ = {"succeed": (True, None, bool), "actions": (False, [], list)}
+    __schema__ = {
+        "succeed": Field(required=True, default=None, type=bool),
+        "actions": Field(required=False, default=[], type=list)
+    }
 
 
 class AuthRequest(BaseModel):
-    __schema__ = {"cluster_id": (True, None, str)}
+    __schema__ = {"cluster_id": Field(required=True, default=None, type=str)}
 
 
 class AuthResponse(BaseModel):
     __schema__ = {
-        "dashboard_url": (True, None, str),
-        "access_token": (True, None, str)
+        "dashboard_url": Field(required=True, default=None, type=str),
+        "access_token": Field(required=True, default=None, type=str)
     }
 
 
-"""
-Actions
-"""
-
-
-# Types
+# Enum is not used because action types will be received
+# through a network communication, and it will be string.
 class ActionType:
     KILL_ACTOR = "KILL_ACTOR"
 
 
 class KillAction(BaseModel):
     __schema__ = {
-        "type": (False, ActionType.KILL_ACTOR, str),
-        "actor_id": (True, None, str),
-        "ip_address": (True, None, str),
-        "port": (True, None, int)
+        "type": Field(required=False, default=ActionType.KILL_ACTOR, type=str),
+        "actor_id": Field(required=True, default=None, type=str),
+        "ip_address": Field(required=True, default=None, type=str),
+        "port": Field(required=True, default=None, type=int)
     }

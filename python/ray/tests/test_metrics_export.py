@@ -7,7 +7,7 @@ from ray.dashboard.metrics_exporter.actions import ActionHandler
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.schema import (AuthResponse, BaseModel,
-                                                   ValidationError)
+                                                   ValidationError, Field)
 
 MOCK_DASHBOARD_ID = "1234"
 MOCK_DASHBOARD_ADDRESS = "127.0.0.1:9081"
@@ -143,7 +143,10 @@ def test_base_model():
     DEFAULT_VALUE = "default"
 
     class A(BaseModel):
-        __schema__ = {"a": (True, None, str), "b": (False, DEFAULT_VALUE, str)}
+        __schema__ = {
+            "a": Field(required=True, default=None, type=str),
+            "b": Field(required=False, default=DEFAULT_VALUE, type=str)
+        }
 
     # Test the correct case.
     obj = {"a": "1", "b": "1"}
