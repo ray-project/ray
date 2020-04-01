@@ -7,6 +7,7 @@ import torch.utils.data
 from torch import nn
 import torchvision
 
+import ray
 from ray.util.sgd.torch.examples.segmentation.coco_utils import get_coco
 import ray.util.sgd.torch.examples.segmentation.transforms as T
 import ray.util.sgd.torch.examples.segmentation.utils as utils
@@ -169,7 +170,7 @@ def model_creator(config):
         pretrained=args.pretrained)
     # We usually don't need to do this, but we're enabling batch norm
     # so we want to convert everything to GPU tensors first.
-    device = torch.device(args.device)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     if config["num_workers"] > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -213,7 +214,7 @@ def parse_args():
     parser.add_argument(
         "--address",
         required=False,
-        type=str,
+        default=None,
         help="the address to use for connecting to a Ray cluster.")
     parser.add_argument("--dataset", default="voc", help="dataset")
     parser.add_argument("--model", default="fcn_resnet101", help="model")
@@ -261,4 +262,5 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    ray.init(address=args.address)
     main(args)
