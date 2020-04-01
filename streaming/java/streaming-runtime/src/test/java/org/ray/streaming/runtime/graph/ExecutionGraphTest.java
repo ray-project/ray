@@ -20,7 +20,6 @@ import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import org.ray.streaming.runtime.core.resource.ResourceKey;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.master.graphmanager.GraphManager;
 import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
