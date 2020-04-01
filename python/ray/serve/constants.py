@@ -1,8 +1,5 @@
-#: The interval which http server refreshes its routing table
-HTTP_ROUTER_CHECKER_INTERVAL_S = 2
-
-#: Actor name used to register actor nursery
-SERVE_NURSERY_NAME = "SERVE_ACTOR_NURSERY"
+#: Actor name used to register master actor
+SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
 
 #: KVStore connector key in bootstrap config
 BOOTSTRAP_KV_STORE_CONN_KEY = "kv_store_connector"

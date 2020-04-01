@@ -3410,9 +3410,13 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
     for (const auto &worker_stats : reply.workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
             object_ref.contained_in_owned_size() == 0) {
+          continue;
+        }
+        if (obj_id.IsNil()) {
           continue;
         }
         if (!pid_printed) {
@@ -3423,7 +3427,6 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
           }
           pid_printed = true;
         }
-        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
         // TODO(ekl) we could convey more information about the reference status.
         if (object_ref.pinned_in_memory()) {

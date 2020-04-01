@@ -260,6 +260,14 @@ py_test(
 )
 
 py_test(
+    name = "test_metrics_export",
+    size = "small",
+    srcs = ["test_metrics_export.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_microbenchmarks",
     size = "small",
     srcs = ["test_microbenchmarks.py"],

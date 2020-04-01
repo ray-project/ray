@@ -12,15 +12,13 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_LOGP
+    EntropyCoeffSchedule
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
-
-BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
 class VTraceLoss:
@@ -171,8 +169,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
-    behaviour_action_logp = train_batch[ACTION_LOGP]
-    behaviour_logits = train_batch[BEHAVIOUR_LOGITS]
+    behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
+    behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
@@ -253,10 +251,6 @@ def postprocess_trajectory(policy,
     return sample_batch
 
 
-def add_behaviour_logits(policy):
-    return {BEHAVIOUR_LOGITS: policy.model.last_output()}
-
-
 def validate_config(policy, obs_space, action_space, config):
     if config["vtrace"] and not config["in_evaluation"]:
         assert config["batch_mode"] == "truncate_episodes", \
@@ -295,7 +289,6 @@ VTraceTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_behaviour_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
