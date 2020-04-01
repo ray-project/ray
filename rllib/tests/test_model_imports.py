@@ -3,7 +3,6 @@
 import h5py
 import numpy as np
 from pathlib import Path
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray
@@ -131,21 +130,9 @@ def model_import_test(algo, config, env):
 
     agent_cls = get_agent_class(algo)
 
-    for fw in ["tf", "torch"]:
-        print("framework={}".format(fw))
-
-        config["use_pytorch"] = fw == "torch"
-        config["eager"] = fw == "eager"
+    for fw in framework_iterator(config, ["tf", "torch"]):
         config["model"]["custom_model"] = "keras_model" if fw != "torch" else \
             "torch_model"
-
-        eager_mode_ctx = None
-        if fw == "eager":
-            eager_mode_ctx = eager_mode()
-            eager_mode_ctx.__enter__()
-            assert tf.executing_eagerly()
-        elif fw == "tf":
-            assert not tf.executing_eagerly()
 
         agent = agent_cls(config, env)
 
@@ -183,9 +170,6 @@ def model_import_test(algo, config, env):
         # Import (untrained) weights again.
         agent.import_model(import_file=import_file)
         check(current_weight(agent), weight_after_import)
-
-        if eager_mode_ctx:
-            eager_mode_ctx.__exit__(None, None, None)
 
 
 class TestModelImport(unittest.TestCase):

@@ -14,7 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -32,19 +32,12 @@ class TestPPO(unittest.TestCase):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-
-        # tf.
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-
         num_iterations = 2
-        for i in range(num_iterations):
-            trainer.train()
 
-        # Torch.
-        config["use_pytorch"] = True
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        for i in range(num_iterations):
-            trainer.train()
+        for _ in framework_iterator(config):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            for i in range(num_iterations):
+                trainer.train()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -54,10 +47,7 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
-
+        for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
             trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
             # explore=False, always expect the same (deterministic) action.
@@ -113,11 +103,7 @@ class TestPPO(unittest.TestCase):
                 [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
-        for fw in ["tf", "torch"]:
-            print("framework={}".format(fw))
-            config["use_pytorch"] = fw == "torch"
-            config["eager"] = fw == "tf"
-
+        for fw in framework_iterator(config):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
@@ -125,7 +111,7 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw == "tf":
+            if fw == "tf" or fw == "eager":
                 train_batch = postprocess_ppo_gae_tf(policy, train_batch)
             else:
                 train_batch = postprocess_ppo_gae_torch(policy, train_batch)
