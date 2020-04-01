@@ -91,7 +91,14 @@ std::unordered_set<ClientID> ObjectLocator::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
 
-  auto object_location_info = DeleteObjectLocationInfo(object_id);
+  std::shared_ptr<ObjectLocationInfo> object_location_info;
+  auto it = object_to_locations_.find(object_id);
+  if (it != object_to_locations_.end()) {
+    // ObjectLocationInfo for object_id already exists.
+    object_location_info = it->second;
+    object_to_locations_.erase(it);
+  }
+
   if (object_location_info) {
     return object_location_info->GetLocations();
   }
@@ -101,7 +108,14 @@ std::unordered_set<ClientID> ObjectLocator::GetObjectLocations(
 void ObjectLocator::RemoveNode(const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
-  auto node_hold_info = DeleteNodeHoldObjectInfo(node_id);
+  std::shared_ptr<NodeHoldObjectInfo> node_hold_info;
+  auto it = node_to_objects_.find(node_id);
+  if (it != node_to_objects_.end()) {
+    // NodeLoadObejectInfo for node_id already exists.
+    node_hold_info = it->second;
+    node_to_objects_.erase(it);
+  }
+
   if (node_hold_info == nullptr) {
     return;
   }
@@ -113,7 +127,7 @@ void ObjectLocator::RemoveNode(const ClientID &node_id) {
     if (object_location_info != nullptr) {
       size_t cur_size = object_location_info->RemoveLocation(node_id);
       if (cur_size == 0) {
-        DeleteObjectLocationInfo(object_id);
+        object_to_locations_.erase(object_id);
       }
     }
   }
@@ -127,7 +141,7 @@ void ObjectLocator::RemoveObjectLocation(const ObjectID &object_id,
   if (object_location_info) {
     size_t cur_size = object_location_info->RemoveLocation(node_id);
     if (cur_size == 0) {
-      DeleteObjectLocationInfo(object_id);
+      object_to_locations_.erase(object_id);
     }
   }
 
@@ -135,7 +149,7 @@ void ObjectLocator::RemoveObjectLocation(const ObjectID &object_id,
   if (node_hold_info) {
     size_t cur_size = node_hold_info->RemoveObject(object_id);
     if (cur_size == 0) {
-      DeleteNodeHoldObjectInfo(node_id);
+      node_to_objects_.erase(node_id);
     }
   }
 }
@@ -154,19 +168,6 @@ std::shared_ptr<ObjectLocationInfo> ObjectLocator::GetObjectLocationInfo(
     object_to_locations_[object_id] = object_location_info;
   }
 
-  return object_location_info;
-}
-
-std::shared_ptr<ObjectLocationInfo> ObjectLocator::DeleteObjectLocationInfo(
-    const ObjectID &object_id) {
-  std::shared_ptr<ObjectLocationInfo> object_location_info;
-
-  auto it = object_to_locations_.find(object_id);
-  if (it != object_to_locations_.end()) {
-    // ObjectLocationInfo for object_id already exists.
-    object_location_info = it->second;
-    object_to_locations_.erase(it);
-  }
   return object_location_info;
 }
 

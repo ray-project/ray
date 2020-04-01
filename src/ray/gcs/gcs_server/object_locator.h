@@ -126,13 +126,6 @@ class ObjectLocator {
       const ObjectID &object_id, bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Delete ObjectLocationInfo of object id from map.
-  ///
-  /// \param object_id The id of object to be deleted.
-  /// \return The ObjectLocationInfo which deleted from map.
-  std::shared_ptr<ObjectLocationInfo> DeleteObjectLocationInfo(const ObjectID &object_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Get NodeHoldObjectInfo by node id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
   ///
