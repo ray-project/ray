@@ -120,7 +120,12 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     @ray.remote
     def work(signal):
-        ray.get(signal.wait.remote())
+        wait_signal = signal.wait.remote()
+        while True:
+            ready, not_ready = ray.wait([wait_signal], timeout=0)
+            if len(ready) == 1:
+                break
+            time.sleep(1)
 
     signal = SignalActor.remote()
 
@@ -137,7 +142,12 @@ def test_heartbeats_single(ray_start_cluster_head):
     @ray.remote
     class Actor:
         def work(self, signal):
-            ray.get(signal.wait.remote())
+            wait_signal = signal.wait.remote()
+            while True:
+                ready, not_ready = ray.wait([wait_signal], timeout=0)
+                if len(ready) == 1:
+                    break
+                time.sleep(1)
 
     signal = SignalActor.remote()
 
