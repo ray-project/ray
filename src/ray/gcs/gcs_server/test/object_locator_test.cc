@@ -61,22 +61,12 @@ TEST_F(ObjectLocatorTest, AddObjectLocationTest) {
   }
 }
 
-TEST_F(ObjectLocatorTest, RemoveObjectTest) {
+TEST_F(ObjectLocatorTest, RemoveNodeTest) {
   for (const auto &node_id : node_ids_) {
     object_locator_.AddObjectsLocation(node_id, object_ids_);
   }
 
-  object_locator_.RemoveObject(*object_ids_.begin());
-  auto locations = object_locator_.GetObjectLocations(*object_ids_.begin());
-  ASSERT_TRUE(locations.empty());
-}
-
-TEST_F(ObjectLocatorTest, RemoveLocationTest) {
-  for (const auto &node_id : node_ids_) {
-    object_locator_.AddObjectsLocation(node_id, object_ids_);
-  }
-
-  object_locator_.RemoveLocation(*node_ids_.begin());
+  object_locator_.RemoveNode(*node_ids_.begin());
   auto locations = object_locator_.GetObjectLocations(*object_ids_.begin());
   ASSERT_EQ(locations.size() + 1, node_ids_.size());
 

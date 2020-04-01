@@ -33,7 +33,7 @@ NodeHoldObjectInfo::~NodeHoldObjectInfo() {}
 
 void NodeHoldObjectInfo::AddObject(const ObjectID &object_id) {
   object_ids_.emplace(object_id);
-  RAY_LOG(DEBUG) << "Add object " << object_id << " to node " << node_id_;
+  RAY_LOG(DEBUG) << "Finished adding object " << object_id << " to node " << node_id_;
 }
 
 void NodeHoldObjectInfo::AddObjects(const std::unordered_set<ObjectID> &object_ids) {
@@ -98,27 +98,7 @@ std::unordered_set<ClientID> ObjectLocator::GetObjectLocations(
   return std::unordered_set<ClientID>{};
 }
 
-void ObjectLocator::RemoveObject(const ObjectID &object_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
-
-  auto object_location_info = DeleteObjectLocationInfo(object_id);
-  if (object_location_info == nullptr) {
-    return;
-  }
-
-  auto node_ids = object_location_info->GetLocations();
-  for (const auto &node_id : node_ids) {
-    auto node_load_info = GetNodeHoldObjectInfo(node_id);
-    if (node_load_info) {
-      size_t cur_size = node_load_info->RemoveObject(object_id);
-      if (cur_size == 0) {
-        DeleteNodeHoldObjectInfo(node_id);
-      }
-    }
-  }
-}
-
-void ObjectLocator::RemoveLocation(const ClientID &node_id) {
+void ObjectLocator::RemoveNode(const ClientID &node_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto node_hold_info = DeleteNodeHoldObjectInfo(node_id);

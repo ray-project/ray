@@ -99,17 +99,10 @@ class ObjectLocator {
   /// \return Object locations.
   std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id);
 
-  /// Remove object. This object will not be used again.
-  /// This will remove object from the object to location map and also the
-  /// remove from the node to objects map.
-  ///
-  /// \param object_id The id of object to be removed.
-  void RemoveObject(const ObjectID &object_id);
-
   /// Remove the location from objects.
   ///
   /// \param node_id The location that will be removed.
-  void RemoveLocation(const ClientID &node_id);
+  void RemoveNode(const ClientID &node_id);
 
   /// Remove object's location.
   ///
