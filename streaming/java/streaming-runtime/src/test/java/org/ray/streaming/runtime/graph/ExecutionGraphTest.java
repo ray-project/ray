@@ -2,11 +2,9 @@ package org.ray.streaming.runtime.graph;
 
 import com.google.common.collect.Lists;
 
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.DataStream;
@@ -20,6 +18,7 @@ import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import org.ray.streaming.runtime.core.resource.ResourceType;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.master.graphmanager.GraphManager;
 import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
@@ -66,7 +65,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.forEach(vertex -> {
-        Assert.assertEquals(vertex.getResources().get(ResourceKey.CPU.name()), 2.0);
+        Assert.assertEquals(vertex.getResources().get(ResourceType.CPU.name()), 2.0);
         vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
             Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
         });
