@@ -25,7 +25,7 @@ extern "C" {
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeInitCoreWorker
  * Signature:
- * (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I[BLorg/ray/runtime/gcs/GcsClientOptions;)J
+ * (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I[BLio/ray/runtime/gcs/GcsClientOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
     JNIEnv *, jclass, jint, jstring, jstring, jstring, jint, jbyteArray, jobject);

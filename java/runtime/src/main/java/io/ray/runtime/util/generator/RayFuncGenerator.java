@@ -55,7 +55,7 @@ public class RayFuncGenerator extends BaseGenerator {
 
   public static void main(String[] args) throws IOException {
     String root = System.getProperty("user.dir")
-        + "/api/src/main/java/org/ray/api/function/";
+        + "/api/src/main/java/io/ray/api/function/";
     RayFuncGenerator generator = new RayFuncGenerator();
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       // Functions that have return.

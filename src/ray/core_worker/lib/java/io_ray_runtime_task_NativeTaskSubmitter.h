@@ -25,7 +25,7 @@ extern "C" {
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitTask
  * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
+ * (JLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
     JNIEnv *, jclass, jlong, jobject, jobject, jint, jobject);
@@ -34,7 +34,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeCreateActor
  * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)[B
+ * (JLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lio/ray/api/options/ActorCreationOptions;)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jlong,
@@ -45,7 +45,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass,
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitActorTask
  * Signature:
- * (J[BLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
+ * (J[BLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
