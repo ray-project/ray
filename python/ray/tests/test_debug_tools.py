@@ -38,7 +38,7 @@ def test_raylet_gdb(ray_gdb_start):
 
     # Check process name in `ps aux | grep gdb`
     for process_name in ["raylet/raylet", "plasma/plasma_store_server"]:
-        # Will raise an exception if pgrep doesn't find the procss name.
+        # Will raise an exception if pgrep doesn't find the process name.
         subprocess.check_output(
             ["pgrep", "-f", "gdb.*{}".format(process_name)])
 
