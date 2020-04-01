@@ -49,16 +49,19 @@ class AWSNodeProvider(NodeProvider):
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)
         try:
-            aws_credentials = (provider_config["extra_config"]
-                                              ["aws_credentials"])
+            aws_credentials = (
+                provider_config["extra_config"]["aws_credentials"])
         except KeyError:
             aws_credentials = None
-        self.ec2 = make_ec2_client(region=provider_config["region"],
-                                   max_retries=BOTO_MAX_RETRIES,
-                                   aws_credentials=aws_credentials)
-        self.ec2_fail_fast = make_ec2_client(region=provider_config["region"],
-                                             max_retries=0,
-                                             aws_credentials=aws_credentials)
+
+        self.ec2 = make_ec2_client(
+            region=provider_config["region"],
+            max_retries=BOTO_MAX_RETRIES,
+            aws_credentials=aws_credentials)
+        self.ec2_fail_fast = make_ec2_client(
+            region=provider_config["region"],
+            max_retries=0,
+            aws_credentials=aws_credentials)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)

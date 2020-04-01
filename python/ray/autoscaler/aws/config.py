@@ -380,27 +380,25 @@ def _client(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     try:
         aws_credentials = config["provider"]["extra_config"]["aws_credentials"]
-        return boto3.client(name,
-                            config["provider"]["region"],
-                            config=boto_config,
-                            **aws_credentials
-                            )
+        return boto3.client(
+            name,
+            config["provider"]["region"],
+            config=boto_config,
+            **aws_credentials)
     except KeyError:
-        return boto3.client(name,
-                            config["provider"]["region"],
-                            config=boto_config)
+        return boto3.client(
+            name, config["provider"]["region"], config=boto_config)
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     try:
         aws_credentials = config["provider"]["extra_config"]["aws_credentials"]
-        return boto3.resource(name,
-                              config["provider"]["region"],
-                              config=boto_config,
-                              **aws_credentials
-                              )
+        return boto3.resource(
+            name,
+            config["provider"]["region"],
+            config=boto_config,
+            **aws_credentials)
     except KeyError:
-        return boto3.resource(name,
-                              config["provider"]["region"],
-                              config=boto_config)
+        return boto3.resource(
+            name, config["provider"]["region"], config=boto_config)
