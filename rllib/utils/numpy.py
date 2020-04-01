@@ -132,7 +132,7 @@ def fc(x, weights, biases=None):
             isinstance(weights, torch.Tensor) else weights
         biases = biases.detach().numpy() if \
             isinstance(biases, torch.Tensor) else biases
-    if tf:
+    if tf and tf.executing_eagerly():
         x = x.numpy() if isinstance(x, tf.Variable) else x
         weights = weights.numpy() if isinstance(weights, tf.Variable) else \
             weights
