@@ -8,16 +8,6 @@ import org.ray.streaming.runtime.config.Config;
 public interface ResourceConfig extends Config {
 
   /**
-   * CPU definition key of resource management.
-   */
-  String RESOURCE_KEY_CPU = "CPU";
-
-  /**
-   * Memory definition key of resource management.
-   */
-  String RESOURCE_KEY_MEM = "MEM";
-
-  /**
    * Number of actors per container.
    */
   String MAX_ACTOR_NUM_PER_CONTAINER = "streaming.container.per.max.actor";

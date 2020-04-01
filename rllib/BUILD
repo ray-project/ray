@@ -883,7 +883,7 @@ py_test(
 py_test(
     name = "policy/tests/test_compute_log_likelihoods",
     tags = ["policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
@@ -966,7 +966,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_eager_support.py"]
 )
 
@@ -1361,7 +1361,8 @@ sh_test(
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    name = "examples/rock_paper_scissors_multiagent",
+    main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
     size = "large",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
@@ -1374,6 +1375,24 @@ py_test(
     size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ucb",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
 
 py_test(

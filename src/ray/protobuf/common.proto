@@ -67,11 +67,22 @@ message PythonFunctionDescriptor {
   string function_hash = 4;
 }
 
+/// Function descriptor for C/C++.
+message CppFunctionDescriptor {
+  /// Dynamic library name which contains the remote function.
+  string lib_name = 1;
+  /// Remote function offset from base address.
+  string function_offset = 2;
+  /// Executable function offset from base address.
+  string exec_function_offset = 3;
+}
+
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
     JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
+    CppFunctionDescriptor cpp_function_descriptor = 3;
   }
 }
 
