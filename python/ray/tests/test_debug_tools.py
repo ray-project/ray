@@ -32,17 +32,15 @@ def test_raylet_gdb(ray_gdb_start):
 
     @ray.remote
     def f():
-        return 42
+        return ray.get(ray.put(42))
 
     assert ray.get(f.remote()) == 42
 
     # Check process name in `ps aux | grep gdb`
     for process_name in ["raylet/raylet", "plasma/plasma_store_server"]:
-        pgrep_command = subprocess.Popen(
-            ["pgrep", "-f", "gdb.*{}".format(process_name)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        assert pgrep_command.communicate()[0]
+        # Will raise an exception if pgrep doesn't find the procss name.
+        subprocess.check_output(
+            ["pgrep", "-f", "gdb.*{}".format(process_name)])
 
 
 if __name__ == "__main__":
