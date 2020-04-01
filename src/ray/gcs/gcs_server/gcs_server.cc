@@ -158,7 +158,10 @@ void GcsServer::StoreGcsServerAddressInRedis() {
           !ep.address().is_multicast()) {
         primary_endpoint.address(ep.address());
         primary_endpoint.port(ep.port());
-        break;
+
+        if (Ping(primary_endpoint.address().to_string(), GetPort())) {
+          break;
+        }
       }
       iter++;
     }
@@ -179,6 +182,18 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
+}
+
+bool GcsServer::Ping(const std::string &ip, int port) {
+  try {
+    boost::asio::io_service io_service;
+    boost::asio::ip::tcp::socket socket(io_service);
+    socket.connect(
+        boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
