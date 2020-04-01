@@ -99,7 +99,7 @@ class TestDistributions(unittest.TestCase):
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussia ActionDistribution (tf-eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "eager"], enter_session=True):
+                frameworks=["tf", "eager"], session=True):
             input_space = Box(-1.0, 1.0, shape=(200, 10))
             low, high = -2.0, 1.0
 
@@ -175,7 +175,8 @@ class TestDistributions(unittest.TestCase):
 
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""
-        for fw in framework_iterator(frameworks=["tf", "eager"]):
+        for fw, sess in framework_iterator(
+                frameworks=["tf", "eager"], session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
@@ -195,9 +196,8 @@ class TestDistributions(unittest.TestCase):
             gumbel_softmax = GumbelSoftmax(inputs, {}, temperature=1.0)
             expected_mean = np.mean(np.argmax(inputs, -1)).astype(np.float32)
             outs = gumbel_softmax.sample()
-            if fw == "tf":
-                with tf.Session() as sess:
-                    outs = sess.run(outs)
+            if sess:
+                outs = sess.run(outs)
             check(np.mean(np.argmax(outs, -1)), expected_mean, rtol=0.08)
 
 

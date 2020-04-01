@@ -21,8 +21,8 @@ class TestSchedules(unittest.TestCase):
 
         for fw in framework_iterator(
                 frameworks=["tf", "eager", "torch", None]):
-            config["framework"] = fw if fw != "eager" else "tf"
-            constant = from_config(ConstantSchedule, config, framework=fw)
+            fw_ = fw if fw != "eager" else "tf"
+            constant = from_config(ConstantSchedule, config, framework=fw_)
             for t in ts:
                 out = constant(t)
                 check(out, value)
@@ -33,8 +33,8 @@ class TestSchedules(unittest.TestCase):
 
         for fw in framework_iterator(
                 frameworks=["tf", "eager", "torch", None]):
-            config["framework"] = fw if fw != "eager" else "tf"
-            linear = from_config(LinearSchedule, config, framework=fw)
+            fw_ = fw if fw != "eager" else "tf"
+            linear = from_config(LinearSchedule, config, framework=fw_)
             for t in ts:
                 out = linear(t)
                 check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
@@ -51,8 +51,8 @@ class TestSchedules(unittest.TestCase):
 
         for fw in framework_iterator(
                 frameworks=["tf", "eager", "torch", None]):
-            config["framework"] = fw if fw != "eager" else "tf"
-            polynomial = from_config(config)
+            fw_ = fw if fw != "eager" else "tf"
+            polynomial = from_config(config, framework=fw_)
             for t in ts:
                 out = polynomial(t)
                 check(out, 0.5 + (2.0 - 0.5) * (1.0 - t / 100)**2, decimals=4)
@@ -63,8 +63,9 @@ class TestSchedules(unittest.TestCase):
 
         for fw in framework_iterator(
                 frameworks=["tf", "eager", "torch", None]):
-            config["framework"] = fw if fw != "eager" else "tf"
-            exponential = from_config(ExponentialSchedule, config)
+            fw_ = fw if fw != "eager" else "tf"
+            exponential = from_config(
+                ExponentialSchedule, config, framework=fw_)
             for t in ts:
                 out = exponential(t)
                 check(out, 2.0 * 0.99**(t / 100), decimals=4)
@@ -78,8 +79,8 @@ class TestSchedules(unittest.TestCase):
 
         for fw in framework_iterator(
                 frameworks=["tf", "eager", "torch", None]):
-            config["framework"] = fw if fw != "eager" else "tf"
-            piecewise = from_config(PiecewiseSchedule, config)
+            fw_ = fw if fw != "eager" else "tf"
+            piecewise = from_config(PiecewiseSchedule, config, framework=fw_)
             for t, e in zip(ts, expected):
                 out = piecewise(t)
                 check(out, e, decimals=4)

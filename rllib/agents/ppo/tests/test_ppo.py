@@ -94,7 +94,10 @@ class TestPPO(unittest.TestCase):
                  [0.9, 1.0, 1.1, 1.2]],
                 dtype=np.float32),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
+            SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
+            SampleBatch.PREV_REWARDS:
+                np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
             SampleBatch.ACTION_DIST_INPUTS: np.array(
@@ -103,7 +106,7 @@ class TestPPO(unittest.TestCase):
                 [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
-        for fw in framework_iterator(config):
+        for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
@@ -124,6 +127,9 @@ class TestPPO(unittest.TestCase):
             # Calculate actual PPO loss (results are stored in policy.loss_obj)
             # for tf.
             if fw == "tf":
+                sess.run(policy._loss, feed_dict=policy._get_loss_inputs_dict(
+                    train_batch, shuffle=False))
+            elif fw == "eager":
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             else:
