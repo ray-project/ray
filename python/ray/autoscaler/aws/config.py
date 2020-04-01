@@ -42,7 +42,8 @@ def key_pair(i, region, key_name):
     if i == 0:
         return ("{}_{}".format(RAY, region) if key_name is None else key_name,
                 os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region) if key_name is None else key_name + "_key-{}".format(i),
+    return ("{}_{}_{}".format(RAY, i, region)
+            if key_name is None else key_name + "_key-{}".format(i),
             os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
 
 
@@ -137,11 +138,13 @@ def _configure_key_pair(config):
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
         try:
-            key_name = config["provider"]["extra_config"]["key_pair"]["key_name"]
+            key_name = config["provider"]["extra_config"]["key_pair"][
+                "key_name"]
         except KeyError:
             key_name = None
 
-        key_name, key_path = key_pair(i, config["provider"]["region"], key_name)
+        key_name, key_path = key_pair(i, config["provider"]["region"],
+                                      key_name)
         key = _get_key(key_name, config)
 
         # Found a good key.
@@ -257,8 +260,8 @@ def _configure_security_group(config):
             }]
         }]
         try:
-            IpPermissions.extend(
-                config["provider"]["extra_config"]["security_group"]["IpPermissions"])
+            IpPermissions.extend(config["provider"]["extra_config"][
+                "security_group"]["IpPermissions"])
         except KeyError:
             pass
 
