@@ -108,11 +108,11 @@ if __name__ == "__main__":
         initialization_hook=initialization_hook,
         num_workers=args.num_workers,
         config={
-            "test_mode": args.test_mode,  # whether to to subset the data
+            "test_mode": args.smoke_test,  # whether to to subset the data
             BATCH_SIZE: 128 * args.num_workers,
         },
         use_gpu=args.use_gpu,
-        use_fp16=args.use_fp16)
+        use_fp16=args.fp16)
 
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -137,7 +137,7 @@ if __name__ == "__main__":
             "lr": tune.choice([0.001, 0.01, 0.1]),
             "momentum": 0.8
         },
-        stop={"training_iteration": 2 if args.test_mode else 100},
+        stop={"training_iteration": 2 if args.smoke_test else 100},
         max_failures=3,  # used for fault tolerance
         checkpoint_freq=3,  # used for fault tolerance
         keep_checkpoints_num=1,  # used for fault tolerance

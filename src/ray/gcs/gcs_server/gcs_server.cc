@@ -145,18 +145,27 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
 void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
-  boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
-  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
+  boost::asio::ip::tcp::resolver::query query(
+      boost::asio::ip::host_name(), "",
+      boost::asio::ip::resolver_query_base::flags::v4_mapped);
+  boost::system::error_code error_code;
+  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
   boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-  while (iter != end) {
-    boost::asio::ip::tcp::endpoint ep = *iter;
-    if (ep.address().is_v4() && !ep.address().is_loopback() &&
-        !ep.address().is_multicast()) {
-      primary_endpoint.address(ep.address());
-      primary_endpoint.port(ep.port());
-      break;
+  if (!error_code) {
+    while (iter != end) {
+      boost::asio::ip::tcp::endpoint ep = *iter;
+      if (ep.address().is_v4() && !ep.address().is_loopback() &&
+          !ep.address().is_multicast()) {
+        primary_endpoint.address(ep.address());
+        primary_endpoint.port(ep.port());
+        break;
+      }
+      iter++;
     }
-    iter++;
+  } else {
+    RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
+                     << strerror(error_code.value());
+    iter = end;
   }
 
   std::string address;

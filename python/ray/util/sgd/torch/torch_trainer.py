@@ -276,7 +276,6 @@ class TorchTrainer:
             optimizer_creator=self.optimizer_creator,
             loss_creator=self.loss_creator,
             scheduler_creator=self.scheduler_creator,
-            backend=self.backend,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
             use_fp16=self.use_fp16,

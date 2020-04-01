@@ -134,8 +134,9 @@ cdef class ObjectID(BaseID):
         self.in_core_worker = False
 
         worker = ray.worker.global_worker
-        # TODO(edoakes): there are dummy object IDs being created in
-        # includes/task.pxi before the core worker is initialized.
+        # TODO(edoakes): We should be able to remove the in_core_worker flag.
+        # But there are still some dummy object IDs being created outside the
+        # context of a core worker.
         if hasattr(worker, "core_worker"):
             worker.core_worker.add_object_id_reference(self)
             self.in_core_worker = True

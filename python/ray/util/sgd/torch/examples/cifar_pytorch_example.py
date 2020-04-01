@@ -101,8 +101,8 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-
-    ray.init(address=args.address, log_to_driver=True)
+    num_cpus = 4 if args.smoke_test else None
+    ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = TorchTrainer(
         model_creator=ResNet18,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         use_tqdm=True)
     pbar = trange(args.num_epochs, unit="epoch")
     for i in pbar:
-        info = {"num_steps": 1} if args.test_mode else {}
+        info = {"num_steps": 1} if args.smoke_test else {}
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.

@@ -36,7 +36,6 @@ from ray.includes.common cimport (
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
-from ray.includes.task cimport CTaskSpec
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType

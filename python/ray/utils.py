@@ -517,6 +517,8 @@ def detect_fate_sharing_support_win32():
             kernel32.SetInformationJobObject.restype = BOOL
             kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
             kernel32.AssignProcessToJobObject.restype = BOOL
+            kernel32.IsDebuggerPresent.argtypes = ()
+            kernel32.IsDebuggerPresent.restype = BOOL
         except (AttributeError, TypeError, ImportError):
             kernel32 = None
         job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
@@ -558,6 +560,8 @@ def detect_fate_sharing_support_win32():
                     ("PeakJobMemoryUsed", ctypes.c_size_t),
                 ]
 
+            debug = kernel32.IsDebuggerPresent()
+
             # Defined in <WinNT.h>; also available here:
             # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
             JobObjectExtendedLimitInformation = 9
@@ -566,7 +570,7 @@ def detect_fate_sharing_support_win32():
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
             buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
             buf.BasicLimitInformation.LimitFlags = (
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
                 | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
                 | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
             infoclass = JobObjectExtendedLimitInformation
