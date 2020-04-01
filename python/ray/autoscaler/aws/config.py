@@ -37,12 +37,12 @@ assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
 
-def key_pair(i, region):
+def key_pair(i, region, key_name):
     """Returns the ith default (aws_key_pair_name, key_pair_path)."""
     if i == 0:
-        return ("{}_{}".format(RAY, region),
+        return ("{}_{}".format(RAY, region) if key_name is None else key_name,
                 os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
+    return ("{}_{}_{}".format(RAY, i, region) if key_name is None else key_name + "_key-{}".format(i),
             os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
 
 
@@ -136,7 +136,12 @@ def _configure_key_pair(config):
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
-        key_name, key_path = key_pair(i, config["provider"]["region"])
+        try:
+            key_name = config["provider"]["extra_config"]["key_pair"]["key_name"]
+        except KeyError:
+            key_name = None
+
+        key_name, key_path = key_pair(i, config["provider"]["region"], key_name)
         key = _get_key(key_name, config)
 
         # Found a good key.
@@ -236,7 +241,7 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
+        IpPermissions = [{
             "FromPort": -1,
             "ToPort": -1,
             "IpProtocol": "-1",
@@ -250,7 +255,14 @@ def _configure_security_group(config):
             "IpRanges": [{
                 "CidrIp": "0.0.0.0/0"
             }]
-        }])
+        }]
+        try:
+            IpPermissions.extend(
+                config["provider"]["extra_config"]["security_group"]["IpPermissions"])
+        except KeyError:
+            pass
+
+        security_group.authorize_ingress(IpPermissions=IpPermissions)
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
