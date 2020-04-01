@@ -105,6 +105,7 @@ class DynamicTFPolicy(TFPolicy):
                 prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
                 prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
             action_input = existing_inputs[SampleBatch.ACTIONS]
+            explore = existing_inputs["is_exploring"]
         else:
             obs = tf.placeholder(
                 tf.float32,
@@ -116,8 +117,8 @@ class DynamicTFPolicy(TFPolicy):
                     action_space, "prev_action")
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
-
-        explore = tf.placeholder_with_default(False, (), name="is_exploring")
+            explore = tf.placeholder_with_default(
+                True, (), name="is_exploring")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -261,6 +262,7 @@ class DynamicTFPolicy(TFPolicy):
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
         input_dict = OrderedDict(
+            [("is_exploring", self._is_exploring)] + \
             [(k, existing_inputs[i])
              for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
         instance = self.__class__(
