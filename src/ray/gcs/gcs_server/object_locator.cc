@@ -187,20 +187,6 @@ std::shared_ptr<NodeHoldObjectInfo> ObjectLocator::GetNodeHoldObjectInfo(
   return node_hold_info;
 }
 
-std::shared_ptr<NodeHoldObjectInfo> ObjectLocator::DeleteNodeHoldObjectInfo(
-    const ClientID &node_id) {
-  std::shared_ptr<NodeHoldObjectInfo> node_hold_info;
-
-  auto it = node_to_objects_.find(node_id);
-  if (it != node_to_objects_.end()) {
-    // NodeLoadObejectInfo for node_id already exists.
-    node_hold_info = it->second;
-    node_to_objects_.erase(it);
-  }
-
-  return node_hold_info;
-}
-
 }  // namespace gcs
 
 }  // namespace ray

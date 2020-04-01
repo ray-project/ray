@@ -136,13 +136,6 @@ class ObjectLocator {
       const ClientID &node_id, bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Delete NodeHoldObjectInfo of node id from map.
-  ///
-  /// \param node_id The id of node to be deleted.
-  /// \return The NodeHoldObjectInfo which deleted from map.
-  std::shared_ptr<NodeHoldObjectInfo> DeleteNodeHoldObjectInfo(const ClientID &node_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   mutable absl::Mutex mutex_;
 
   /// Mapping from Object id to object locations.
