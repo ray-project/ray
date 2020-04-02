@@ -16,6 +16,8 @@ The main features are:
   This API is new and may be revised in future Ray releases. If you encounter
   any bugs, please file an `issue on GitHub`_.
 
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
 
 Getting Started
 ---------------
