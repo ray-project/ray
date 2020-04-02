@@ -43,7 +43,6 @@ class BaseModel:
     Raises:
         ValidationError: Raised if a given arg doesn't satisfy the schema.
     """
-    definition = {}
 
     def __init__(self, **kwargs):
         self._dict = kwargs

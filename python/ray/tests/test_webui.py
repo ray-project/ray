@@ -24,9 +24,15 @@ def test_get_webui(shutdown_only):
                                      "/api/node_info").json()
             break
         except requests.exceptions.ConnectionError:
-            if time.time() > start_time + 30:
+            if time.time() > start_time + 1:
+                error_log = None
+                with open(
+                        "{}/logs/dashboard.err".format(
+                            addresses["session_dir"]), "r") as f:
+                    error_log = f.read()
                 raise Exception(
-                    "Timed out while waiting for dashboard to start.")
+                    "Timed out while waiting for dashboard to start. "
+                    "Dashboard error log: {}".format(error_log))
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
