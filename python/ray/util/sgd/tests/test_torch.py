@@ -503,6 +503,44 @@ def test_save_and_restore(ray_start_2_cpus, num_workers,
     trainer2.shutdown()
 
 
+def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
+    if not dist.is_available():
+        return
+    trainer1 = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        wrap_ddp=False,
+        num_workers=2)
+    trainer1.train()
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    trainer1.save(checkpoint_path)
+
+    model1 = trainer1.get_model()
+    trainer1.shutdown()
+
+    trainer2 = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        wrap_ddp=False,
+        num_workers=2)
+    trainer2.load(checkpoint_path)
+
+    model2 = trainer2.get_model()
+
+    model1_state_dict = model1.state_dict()
+    model2_state_dict = model2.state_dict()
+
+    assert set(model1_state_dict.keys()) == set(model2_state_dict.keys())
+
+    for k in model1_state_dict:
+        assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+    trainer2.shutdown()
+
+
 def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return

@@ -26,15 +26,23 @@ class DistributedTorchRunner(TorchRunner):
         backend (str): Backend used by distributed PyTorch.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
         kwargs: Keyword arguments for TorchRunner.
 
     """
 
-    def __init__(self, *args, backend="gloo", add_dist_sampler=True, **kwargs):
+    def __init__(self,
+                 *args,
+                 backend="gloo",
+                 add_dist_sampler=True,
+                 wrap_ddp=False,
+                 **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         if backend not in ("gloo", "nccl"):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
+        self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
 
     def setup(self, url, world_rank, world_size):
@@ -99,17 +107,20 @@ class DistributedTorchRunner(TorchRunner):
         self._create_schedulers_if_available()
         self._try_setup_apex()
 
-        # This needs to happen after apex
-        self.models = [
-            DistributedDataParallel(model, device_ids=self.device_ids)
-            for model in self.models
-        ]
-
         self._create_loss()
+
+        training_models = self.models
+
+        if self.wrap_ddp:
+            # This needs to happen after apex
+            training_models = [
+                DistributedDataParallel(model, device_ids=self.device_ids)
+                for model in self.models
+            ]
 
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=self.models,
+            models=training_models,
             optimizers=self.optimizers,
             criterion=self.criterion,
             train_loader=self.train_loader,
@@ -158,16 +169,16 @@ class DistributedTorchRunner(TorchRunner):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
-    def _get_model_state_dicts(self):
-        """Fetch state from ``model.module`` instead of ``model``.
+    # def _get_model_state_dicts(self):
+    #     """Fetch state from ``model.module`` instead of ``model``.
 
-        This is needed for PyTorch DistributedDataParallel models.
-        """
-        return [model.module.state_dict() for model in self.models]
+    #     This is needed for PyTorch DistributedDataParallel models.
+    #     """
+    #     return [model.module.state_dict() for model in self.models]
 
-    def _set_model_state_dicts(self, model_state_dicts):
-        for model, model_state_dict in zip(self.models, model_state_dicts):
-            model.module.load_state_dict(model_state_dict)
+    # def _set_model_state_dicts(self, model_state_dicts):
+    #     for model, model_state_dict in zip(self.models, model_state_dicts):
+    #         model.module.load_state_dict(model_state_dict)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
