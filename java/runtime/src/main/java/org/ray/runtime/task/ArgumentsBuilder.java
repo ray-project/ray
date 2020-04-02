@@ -1,6 +1,5 @@
 package org.ray.runtime.task;
 
-import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,9 +43,13 @@ public class ArgumentsBuilder {
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
-          Preconditions.checkState(
+          boolean isCrossData =
               Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
-                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW));
+                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW);
+          if (!isCrossData) {
+            throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
+                Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
+          }
         }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           RayRuntime runtime = Ray.internal();

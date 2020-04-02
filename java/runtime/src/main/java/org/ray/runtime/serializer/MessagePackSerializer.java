@@ -39,7 +39,7 @@ public class MessagePackSerializer {
   private static final TypePacker EXTENSION_PACKER;
 
   static {
-    // ===== Initialize packers =====:
+    // ===== Initialize packers =====
     // Null packer.
     NULL_PACKER = (object, packer, javaSerializer) -> packer.packNil();
 
@@ -82,7 +82,7 @@ public class MessagePackSerializer {
           packer.writePayload(bytes);
         }));
 
-    // ===== Initialize unpackers =====:
+    // ===== Initialize unpackers =====
     List<Class<?>> booleanClasses = ImmutableList.of(Boolean.class, boolean.class);
     List<Class<?>> byteClasses = ImmutableList.of(Byte.class, byte.class);
     List<Class<?>> shortClasses = ImmutableList.of(Short.class, short.class);
