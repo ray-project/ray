@@ -142,7 +142,7 @@ struct CoreWorkerOptions {
 /// worker. If you started your own threads and you want to use core worker APIs in these
 /// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
 /// once in the new thread before calling core worker APIs, to associate the current
-/// thread with a worker. You can ontain the worker ID via
+/// thread with a worker. You can obtain the worker ID via
 /// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
 /// starts multiple workers by default, but can be configured to start only 1 worker by
 /// overwriting the internal config `num_workers_per_process_java`.
@@ -173,14 +173,14 @@ class CoreWorkerProcess {
   /// \param worker_id The worker ID of the core worker instance.
   static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
 
-  /// Where the current process has initialized for core worker.
+  /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
 
   ///
   /// Public methods used in DRIVER mode only.
   ///
 
-  /// Shutdown workers completely at process level.
+  /// Shutdown workers completely at the process level.
   /// This API is for driver only.
   static void Shutdown();
 
@@ -192,7 +192,7 @@ class CoreWorkerProcess {
   /// This API is for worker only.
   static void StartExecutingTasks();
 
-  // The destructor is not a public API to use. However it's required by smart pointer.
+  // The destructor is not to be used as a public API, but it's required by smart pointers.
   ~CoreWorkerProcess();
 
  private:

@@ -1316,7 +1316,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     SetCallerCreationTimestamp();
   }
 
-  // Because we support concurrent actor calls, so we need to update the
+  // Because we support concurrent actor calls, we need to update the
   // worker ID for the current thread.
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
