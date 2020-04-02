@@ -60,6 +60,7 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
+                 device_ids=self.device_ids,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
@@ -408,6 +409,14 @@ class TrainingOperator:
     def use_tqdm(self):
         """Whether tqdm progress bars are enabled."""
         return self._use_tqdm
+
+    @property
+    def device_ids(self):
+        """Device IDs for the model.
+
+        This is useful for using batch norm with DistributedDataParallel.
+        """
+        return self._device_ids
 
 
 class _TestingOperator(TrainingOperator):
