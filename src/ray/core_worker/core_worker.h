@@ -191,7 +191,8 @@ class CoreWorkerProcess {
   /// Start receiving and executing tasks.
   static void RunTaskExecutionLoop();
 
-  // The destructor is not to be used as a public API, but it's required by smart pointers.
+  // The destructor is not to be used as a public API, but it's required by smart
+  // pointers.
   ~CoreWorkerProcess();
 
  private:

@@ -1278,8 +1278,9 @@ Status CoreWorker::AllocateReturnObjects(
       }
 
       // Allocate a buffer for the return object.
-      if (options_.is_local_mode || static_cast<int64_t>(data_sizes[i]) <
-                                RayConfig::instance().max_direct_call_object_size()) {
+      if (options_.is_local_mode ||
+          static_cast<int64_t>(data_sizes[i]) <
+              RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(
@@ -1367,7 +1368,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
-                     : worker_context_.GetCurrentTask()->CallerAddress());
+                             : worker_context_.GetCurrentTask()->CallerAddress());
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
