@@ -325,7 +325,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         nullptr,                        // check_signals
         nullptr,                        // gc_collect
         nullptr,                        // get_lang_stack
-        1,                              // ref_counting_enabled
+        true,                           // ref_counting_enabled
+        false,                          // is_local_mode
         1,                              // num_workers
     };
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
