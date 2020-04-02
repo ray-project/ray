@@ -798,7 +798,8 @@ class TuneCollector(threading.Thread):
                         self._errors[str(trial)]["trial_id"] = str(trial_id)
                         if str(trial_id) in self._trial_records.keys():
                             self._trial_records[str(trial_id)]["error"] = text
-                            self._trial_records[str(trial_id)]["status"] = "ERROR"
+                            self._trial_records[str(trial_id)][
+                                "status"] = "ERROR"
 
     def collect(self):
         """
