@@ -96,8 +96,7 @@ public abstract class ObjectStore {
       Object object = null;
       if (dataAndMeta != null) {
         object = ObjectSerializer
-            .deserialize(dataAndMeta, ids.get(i), elementType,
-                workerContext.getCurrentClassLoader());
+            .deserialize(dataAndMeta, ids.get(i), elementType);
       }
       if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task

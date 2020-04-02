@@ -16,37 +16,17 @@ public class FstSerializer {
   });
 
 
-  public static byte[] encode(Object obj, ClassLoader classLoader) {
-    byte[] result;
+  public static byte[] encode(Object obj) {
     FSTConfiguration current = conf.get();
-    if (classLoader != null && classLoader != current.getClassLoader()) {
-      ClassLoader old = current.getClassLoader();
-      current.setClassLoader(classLoader);
-      result = current.asByteArray(obj);
-      current.setClassLoader(old);
-    } else {
-      result = current.asByteArray(obj);
-    }
-    return result;
+    current.setClassLoader(Thread.currentThread().getContextClassLoader());
+    return current.asByteArray(obj);
   }
 
 
   @SuppressWarnings("unchecked")
-  public static <T> T decode(byte[] bs, ClassLoader classLoader) {
-    Object object;
+  public static <T> T decode(byte[] bs) {
     FSTConfiguration current = conf.get();
-    if (classLoader != null && classLoader != current.getClassLoader()) {
-      ClassLoader old = current.getClassLoader();
-      current.setClassLoader(classLoader);
-      object = current.asObject(bs);
-      current.setClassLoader(old);
-    } else {
-      object = current.asObject(bs);
-    }
-    return (T) object;
-  }
-
-  public static void setClassloader(ClassLoader classLoader) {
-    conf.get().setClassLoader(classLoader);
+    current.setClassLoader(Thread.currentThread().getContextClassLoader());
+    return (T) current.asObject(bs);
   }
 }

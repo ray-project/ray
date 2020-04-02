@@ -215,7 +215,7 @@ public class MessagePackSerializer {
     return unpackers.get(v.getValueType()).unpack(v, type, javaDeserializer);
   }
 
-  public static Pair<byte[], MutableBoolean> encode(Object obj, ClassLoader classLoader) {
+  public static Pair<byte[], MutableBoolean> encode(Object obj) {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     try {
       // Reserve MESSAGE_PACK_OFFSET bytes for MessagePack bytes length.
@@ -223,7 +223,7 @@ public class MessagePackSerializer {
       // Serialize input object by MessagePack.
       MutableBoolean isCrossLanguage = new MutableBoolean(true);
       pack(obj, packer, ((object, packer1) -> {
-        byte[] payload = FstSerializer.encode(object, classLoader);
+        byte[] payload = FstSerializer.encode(object);
         packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
         packer1.addPayload(payload);
         isCrossLanguage.setFalse();
@@ -246,7 +246,7 @@ public class MessagePackSerializer {
 
 
   @SuppressWarnings("unchecked")
-  public static <T> T decode(byte[] bs, Class<?> type, ClassLoader classLoader) {
+  public static <T> T decode(byte[] bs, Class<?> type) {
     try {
       // Read MessagePack bytes length.
       MessageUnpacker headerUnpacker = MessagePack.newDefaultUnpacker(bs, 0, MESSAGE_PACK_OFFSET);
@@ -262,13 +262,9 @@ public class MessagePackSerializer {
         type = Object.class;
       }
       return (T) unpack(v, type,
-          ((ExtensionValue ev) -> FstSerializer.decode(ev.getData(), classLoader)));
+          ((ExtensionValue ev) -> FstSerializer.decode(ev.getData())));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-  }
-
-  public static void setClassloader(ClassLoader classLoader) {
-    FstSerializer.setClassloader(classLoader);
   }
 }

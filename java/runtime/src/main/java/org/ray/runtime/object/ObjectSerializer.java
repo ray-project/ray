@@ -37,11 +37,10 @@ public class ObjectSerializer {
    *
    * @param nativeRayObject The object to deserialize.
    * @param objectId The associated object ID of the object.
-   * @param classLoader The classLoader of the object.
    * @return The deserialized object.
    */
   public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId,
-      Class<?> objectType, ClassLoader classLoader) {
+      Class<?> objectType) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
@@ -51,7 +50,7 @@ public class ObjectSerializer {
         return data;
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
           Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
-        return Serializer.decode(data, objectType, classLoader);
+        return Serializer.decode(data, objectType);
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
         return new RayWorkerException();
       } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
@@ -59,7 +58,7 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        return Serializer.decode(data, objectType, classLoader);
+        return Serializer.decode(data, objectType);
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
         throw new IllegalArgumentException("Can't deserialize Python object: " + objectId
             .toString());
@@ -67,7 +66,7 @@ public class ObjectSerializer {
       throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
     } else {
       // If data is not null, deserialize the Java object.
-      return Serializer.decode(data, objectType, classLoader);
+      return Serializer.decode(data, objectType);
     }
   }
 
