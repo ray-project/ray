@@ -16,6 +16,11 @@ class RayConnectionError(RayError):
     pass
 
 
+class RayCancellationError(RayError):
+    """Raised when this task or a task that this is dependent on is cancelled"""
+    pass
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 

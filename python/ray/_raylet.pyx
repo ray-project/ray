@@ -91,6 +91,7 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     RayTimeoutError,
+    RayCancellationError
 )
 from ray.utils import decode
 
@@ -450,8 +451,11 @@ cdef execute_task(
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
-                    outputs = function_executor(*args, **kwargs)
-                    task_exception = False
+                    try:
+                        outputs = function_executor(*args, **kwargs)
+                        task_exception = False
+                    except KeyboardInterrupt as e:
+                        raise RayCancellationError("")
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
             # Store the outputs in the object store.
@@ -467,10 +471,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls)
+                                              error.cause_cls, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__)
+                                              error.__class__, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
