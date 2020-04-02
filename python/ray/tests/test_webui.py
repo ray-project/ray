@@ -25,16 +25,13 @@ def test_get_webui(shutdown_only):
             break
         except requests.exceptions.ConnectionError:
             if time.time() > start_time + 1:
-                error_log = None
-                with open(
-                        "{}/logs/dashboard.out".format(
-                            addresses["session_dir"]), "r") as f:
-                    error_log = f.read()
+                import os
+                path = "{}/logs".format(addresses["session_dir"])
                 raise Exception(
                     "Timed out while waiting for dashboard to start. "
-                    "Dashboard error log: {}\n"
+                    "files: {}\n"
                     "Session dir: {}\n"
-                    "".format(error_log, addresses["session_dir"]))
+                    "".format(os.listdir(path), addresses["session_dir"]))
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
