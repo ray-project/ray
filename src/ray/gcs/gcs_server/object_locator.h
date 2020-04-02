@@ -62,8 +62,8 @@ class ObjectLocator {
   ///
   /// \param object_id The id of object to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
-  /// \return std::shared_ptr<LocationSet>
-  std::shared_ptr<ObjectLocator::LocationSet> GetObjectLocationSet(
+  /// \return LocationSet *
+  ObjectLocator::LocationSet *GetObjectLocationSet(
       const ObjectID &object_id, bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -72,19 +72,19 @@ class ObjectLocator {
   ///
   /// \param node_id The id of node to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
-  /// \return std::shared_ptr<ObjectSet>
-  std::shared_ptr<ObjectLocator::ObjectSet> GetNodeHoldObjectSet(
+  /// \return ObjectSet *
+  ObjectLocator::ObjectSet *GetNodeHoldObjectSet(
       const ClientID &node_id, bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 
   /// Mapping from object id to object locations.
-  std::unordered_map<ObjectID, std::shared_ptr<LocationSet>> object_to_locations_
+  std::unordered_map<ObjectID, LocationSet> object_to_locations_
       GUARDED_BY(mutex_);
 
   /// Mapping from node id to objects that held by the node.
-  std::unordered_map<ClientID, std::shared_ptr<ObjectSet>> node_to_objects_
+  std::unordered_map<ClientID, ObjectSet> node_to_objects_
       GUARDED_BY(mutex_);
 };
 
