@@ -27,12 +27,14 @@ def test_get_webui(shutdown_only):
             if time.time() > start_time + 1:
                 error_log = None
                 with open(
-                        "{}/logs/dashboard.err".format(
+                        "{}/logs/dashboard.out".format(
                             addresses["session_dir"]), "r") as f:
                     error_log = f.read()
                 raise Exception(
                     "Timed out while waiting for dashboard to start. "
-                    "Dashboard error log: {}".format(error_log))
+                    "Dashboard error log: {}\n"
+                    "Session dir: {}\n"
+                    "".format(error_log))
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
