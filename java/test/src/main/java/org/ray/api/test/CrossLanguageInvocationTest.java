@@ -81,6 +81,10 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
           new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object.class), input);
       Object r = res.get();
       Assert.assertEquals(r, input);
+
+      String s = null;
+      RayObject<String> obj = Ray.put(s);
+      Assert.assertTrue(obj.get() == null);
     }
     // array
     {
