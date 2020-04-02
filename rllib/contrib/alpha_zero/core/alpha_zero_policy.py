@@ -14,9 +14,12 @@ class AlphaZeroPolicy(TorchPolicy):
                  action_distribution_class, mcts_creator, env_creator,
                  **kwargs):
         super().__init__(
-            observation_space, action_space, config, model, loss,
-            action_distribution_class
-        )
+            observation_space,
+            action_space,
+            config,
+            model=model,
+            loss=loss,
+            action_distribution_class=action_distribution_class)
         # we maintain an env copy in the policy that is used during mcts
         # simulations
         self.env_creator = env_creator

@@ -21,6 +21,9 @@ build --per_file_copt="-\\.(asm|S)$,\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
 # Ignore this warning since it's impractical to fix in the relevant headers
 build --per_file_copt="-\\.(asm|S)$,.*/ray/raylet/reconstruction_policy_test\\.cc@-Wno-inconsistent-missing-override"
+# Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
+build --per_file_copt="-\\.(asm|S)$,.*/_raylet\\.cpp@-Wno-deprecated-declarations"
+build --per_file_copt="-\\.(asm|S)$,.*/_streaming\\.cpp@-Wno-deprecated-declarations"
 # Ignore minor warnings for host tools, which we generally can't control
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"

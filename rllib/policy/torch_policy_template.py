@@ -12,6 +12,7 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 def build_torch_policy(name,
+                       *,
                        loss_fn,
                        get_default_config=None,
                        stats_fn=None,
@@ -21,8 +22,11 @@ def build_torch_policy(name,
                        optimizer_fn=None,
                        before_init=None,
                        after_init=None,
+                       action_sampler_fn=None,
+                       action_distribution_fn=None,
                        make_model_and_action_dist=None,
-                       mixins=None):
+                       mixins=None,
+                       get_batch_divisibility_req=None):
     """Helper function for creating a torch policy at runtime.
 
     Arguments:
@@ -45,6 +49,12 @@ def build_torch_policy(name,
             policy init that takes the same arguments as the policy constructor
         after_init (func): optional function to run at the end of policy init
             that takes the same arguments as the policy constructor
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
+            action and its log-likelihood given some (obs and state) inputs.
+        action_distribution_fn (Optional[callable]): A callable returning
+            distribution inputs (parameters), a dist-class to generate an
+            action distribution object from, and internal-state outputs (or an
+            empty list if not applicable).
         make_model_and_action_dist (func): optional func that takes the same
             arguments as policy init and returns a tuple of model instance and
             torch action distribution class. If not specified, the default
@@ -52,6 +62,8 @@ def build_torch_policy(name,
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicy class
+        get_batch_divisibility_req (Optional[callable]): Optional callable that
+            returns the divisibility requirement for sample batches.
 
     Returns:
         a TorchPolicy instance that uses the specified args
@@ -70,24 +82,36 @@ def build_torch_policy(name,
                 before_init(self, obs_space, action_space, config)
 
             if make_model_and_action_dist:
-                self.model, self.dist_class = make_model_and_action_dist(
+                self.model, dist_class = make_model_and_action_dist(
                     self, obs_space, action_space, config)
                 # Make sure, we passed in a correct Model factory.
                 assert isinstance(self.model, TorchModelV2), \
                     "ERROR: TorchPolicy::make_model_and_action_dist must " \
                     "return a TorchModelV2 object!"
             else:
-                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
-                    obs_space,
-                    action_space,
-                    logit_dim,
-                    self.config["model"],
-                    framework="torch")
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=logit_dim,
+                    model_config=self.config["model"],
+                    framework="torch",
+                    **self.config["model"].get("custom_options", {}))
 
-            TorchPolicy.__init__(self, obs_space, action_space, config,
-                                 self.model, loss_fn, self.dist_class)
+            TorchPolicy.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                model=self.model,
+                loss=loss_fn,
+                action_distribution_class=dist_class,
+                action_sampler_fn=action_sampler_fn,
+                action_distribution_fn=action_distribution_fn,
+                max_seq_len=config["model"]["max_seq_len"],
+                get_batch_divisibility_req=get_batch_divisibility_req,
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
