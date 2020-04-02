@@ -50,18 +50,18 @@ std::unordered_set<ClientID> ObjectLocator::GetObjectLocations(
 void ObjectLocator::RemoveNode(const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
-  ObjectSet *node_hold_objects = nullptr;
+  ObjectSet node_hold_objects;
   auto it = node_to_objects_.find(node_id);
   if (it != node_to_objects_.end()) {
-    node_hold_objects = &it->second;
+    node_hold_objects = it->second;
     node_to_objects_.erase(it);
   }
 
-  if (!node_hold_objects) {
+  if (node_hold_objects.empty()) {
     return;
   }
 
-  for (const auto &object_id : *node_hold_objects) {
+  for (const auto &object_id : node_hold_objects) {
     auto *object_locations = GetObjectLocationSet(object_id);
     if (object_locations) {
       object_locations->erase(node_id);
