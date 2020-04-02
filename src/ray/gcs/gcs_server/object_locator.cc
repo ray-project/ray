@@ -31,7 +31,8 @@ void ObjectLocator::AddObjectLocation(const ObjectID &object_id,
   auto *node_hold_objects = GetNodeHoldObjectSet(node_id, /* create_if_not_exist */ true);
   node_hold_objects->emplace(object_id);
 
-  auto *object_locations = GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
+  auto *object_locations =
+      GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
   object_locations->emplace(node_id);
 }
 
@@ -108,8 +109,8 @@ ObjectLocator::LocationSet *ObjectLocator::GetObjectLocationSet(
   return object_locations;
 }
 
-ObjectLocator::ObjectSet *ObjectLocator::GetNodeHoldObjectSet(
-    const ClientID &node_id, bool create_if_not_exist) {
+ObjectLocator::ObjectSet *ObjectLocator::GetNodeHoldObjectSet(const ClientID &node_id,
+                                                              bool create_if_not_exist) {
   ObjectSet *node_hold_objects = nullptr;
 
   auto it = node_to_objects_.find(node_id);
