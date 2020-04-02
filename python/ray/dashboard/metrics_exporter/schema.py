@@ -64,8 +64,9 @@ class BaseModel:
             required, default, arg_type = schema
             if field not in obj:
                 if required:
-                    raise ValidationError(f"{field} is required, but doesn't "
-                                          "exist in a given object {obj}")
+                    raise ValidationError("{} is required, but doesn't "
+                                          "exist in a given object {}".format(
+                                              field, obj))
                 else:
                     # Set default value if the field is optional
                     obj[field] = default
