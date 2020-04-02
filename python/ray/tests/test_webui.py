@@ -34,7 +34,7 @@ def test_get_webui(shutdown_only):
                     "Timed out while waiting for dashboard to start. "
                     "Dashboard error log: {}\n"
                     "Session dir: {}\n"
-                    "".format(error_log))
+                    "".format(error_log, addresses["session_dir"]))
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
