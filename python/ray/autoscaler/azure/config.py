@@ -2,16 +2,10 @@ import json
 import logging
 import random
 import os
-import time
-import uuid
 
-from azure.common.exceptions import CloudError, AuthenticationError
 from azure.common.client_factory import get_client_from_cli_profile
-from azure.mgmt.authorization import AuthorizationManagementClient
-from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
-from azure.mgmt.msi import ManagedServiceIdentityClient
 
 RETRIES = 30
 MSI_NAME = "ray-msi-user-identity"
@@ -62,8 +56,8 @@ def _configure_resource_group(config):
 
     # load the template
     template_path = os.path.join(
-        os.path.dirname(__file__), 'azure-config-template.json')
-    with open(template_path, 'r') as template_file_fd:
+        os.path.dirname(__file__), "azure-config-template.json")
+    with open(template_path, "r") as template_file_fd:
         template = json.load(template_file_fd)
 
     # choose a random subnet
@@ -72,13 +66,16 @@ def _configure_resource_group(config):
     parameters = {"subnet": "10.{}.0.0/16".format(random.randint(1, 254))}
 
     deployment_properties = {
-        'mode': DeploymentMode.incremental,
-        'template': template,
-        'parameters': {k: { 'value': v } for k, v in parameters.items()}
+        "mode": DeploymentMode.incremental,
+        "template": template,
+        "parameters": {k: {
+            "value": v
+        }
+                       for k, v in parameters.items()}
     }
 
     deployment_async_operation = resource_client.deployments.create_or_update(
-        resource_group, 'ray-config', deployment_properties)
+        resource_group, "ray-config", deployment_properties)
     deployment_async_operation.wait()
 
     return config
@@ -94,7 +91,7 @@ def _configure_key_pair(config):
             raise Exception("Config must define {}".format(key_type))
         except TypeError:
             raise Exception("Invalid config value for {}".format(key_type))
-        
+
         assert os.path.exists(key_path), (
             "Could not find ssh key: {}".format(key_path))
 

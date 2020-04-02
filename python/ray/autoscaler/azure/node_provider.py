@@ -7,14 +7,13 @@ from uuid import uuid4
 from azure.common.client_factory import get_client_from_cli_profile
 from msrestazure.azure_active_directory import MSIAuthentication
 from azure.mgmt.compute import ComputeManagementClient
-from azure.mgmt.compute.models import ResourceIdentityType
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 from knack.util import CLIError
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, TAG_RAY_NODE_TYPE, NODE_TYPE_HEAD
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8
@@ -175,13 +174,12 @@ class AzureNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         # TODO: restart deallocated nodes if possible
-        location = self.provider_config["location"]
         resource_group = self.provider_config["resource_group"]
 
         # load the template
         template_path = os.path.join(
-            os.path.dirname(__file__), 'azure-vm-template.json')
-        with open(template_path, 'r') as template_file_fd:
+            os.path.dirname(__file__), "azure-vm-template.json")
+        with open(template_path, "r") as template_file_fd:
             template = json.load(template_file_fd)
 
         # get the tags
@@ -192,7 +190,7 @@ class AzureNodeProvider(NodeProvider):
         name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
         unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
 
-        parameters = node_config['azure_arm_parameters'].copy()
+        parameters = node_config["azure_arm_parameters"].copy()
         parameters["vmName"] = "{name}-{id}".format(
             name=name_tag, id=unique_id)
         parameters["provisionPublicIp"] = not self.provider_config.get(
@@ -201,20 +199,18 @@ class AzureNodeProvider(NodeProvider):
         parameters["vmCount"] = count
 
         deployment_properties = {
-            'mode': DeploymentMode.incremental,
-            'template': template,
-            'parameters': {k: {
-                'value': v
+            "mode": DeploymentMode.incremental,
+            "template": template,
+            "parameters": {k: {
+                "value": v
             }
                            for k, v in parameters.items()}
         }
 
-        deployment_async_operation = self.resource_client.deployments.create_or_update(
-            resource_group, 'ray-vm-{}'.format(name_tag),
-            deployment_properties)
-
         # TODO: we could get the private/public ips back directly
-        deployment_async_operation.wait()
+        self.resource_client.deployments.create_or_update(
+            resource_group, "ray-vm-{}".format(name_tag),
+            deployment_properties).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):

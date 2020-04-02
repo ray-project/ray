@@ -66,12 +66,7 @@ auth:
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 head_node:
     azure_arm_parameters:
         vmSize: Standard_NC6
@@ -82,11 +77,7 @@ head_node:
         imageVersion: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# Documentation on fields used can be found here:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 worker_nodes:
     azure_arm_parameters:
         vmSize: Standard_NC6
@@ -95,11 +86,6 @@ worker_nodes:
         imageOffer: ubuntu-1804
         imageSku: 1804
         imageVersion: 20.02.01
-    # run workers on spot instances by default
-    priority: Spot
-    eviction_policy: Deallocate
-    billing_profile:
-        max_price: -1
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

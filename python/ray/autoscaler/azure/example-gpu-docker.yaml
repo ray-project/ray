@@ -60,23 +60,13 @@ auth:
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 head_node:
     azure_arm_parameters:
         vmSize: Standard_NC6s_v3
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 worker_nodes:
     azure_arm_parameters:
         vmSize: Standard_NC6s_v3
