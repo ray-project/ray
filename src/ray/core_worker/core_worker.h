@@ -52,7 +52,6 @@ namespace ray {
 
 class CoreWorker;
 
-/// The various initialization options for core worker.
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
@@ -131,7 +130,7 @@ struct CoreWorkerOptions {
 ///     };
 ///     CoreWorkerProcess::Initialize(options);
 ///     ...                                 // Do other stuff
-///     CoreWorkerProcess::StartExecutingTasks();
+///     CoreWorkerProcess::RunTaskExecutionLoop();
 ///
 /// To shutdown a worker in the current process, return a system exit status (with status
 /// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
@@ -157,7 +156,7 @@ class CoreWorkerProcess {
   /// Public methods used in both DRIVER and WORKER mode.
   ///
 
-  /// Initialize core workers at process level.
+  /// Initialize core workers at the process level.
   ///
   /// \param[in] options The various initialization options.
   static void Initialize(const CoreWorkerOptions &options);
@@ -180,8 +179,7 @@ class CoreWorkerProcess {
   /// Public methods used in DRIVER mode only.
   ///
 
-  /// Shutdown workers completely at the process level.
-  /// This API is for driver only.
+  /// Shutdown the driver completely at the process level.
   static void Shutdown();
 
   ///
@@ -189,8 +187,7 @@ class CoreWorkerProcess {
   ///
 
   /// Start receiving and executing tasks.
-  /// This API is for worker only.
-  static void StartExecutingTasks();
+  static void RunTaskExecutionLoop();
 
   // The destructor is not to be used as a public API, but it's required by smart pointers.
   ~CoreWorkerProcess();
@@ -261,6 +258,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorker const &) = delete;
   void operator=(CoreWorker const &other) = delete;
+
+  ///
+  /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
+  ///
+
+  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
+  /// If this function is called during shutdown, Raylet will treat it as an intentional
+  /// disconnect.
+  ///
+  /// \return Void.
+  void Disconnect();
+
+  /// Shut down the worker completely.
+  ///
+  /// \return void.
+  void Shutdown();
+
+  /// Block the current thread until the worker is shut down.
+  void WaitForShutdown();
+
+  /// Start receiving and executing tasks.
+  /// \return void.
+  void RunTaskExecutionLoop();
 
   const WorkerID &GetWorkerID() const;
 
@@ -727,22 +747,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
-  /// Start receiving and executing tasks.
-  /// \return void.
-  void StartExecutingTasks();
-
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
   void Exit(bool intentional);
-
-  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
-  /// If this function is called during shutdown, Raylet will treat it as an intentional
-  /// disconnect.
-  void Disconnect();
-
-  /// Shut down the worker completely.
-  /// \return void.
-  void Shutdown();
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
@@ -1010,7 +1017,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
 
-  friend class CoreWorkerProcess;
   friend class CoreWorkerTest;
 };
 

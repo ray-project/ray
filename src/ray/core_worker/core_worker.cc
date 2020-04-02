@@ -133,7 +133,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     // 1. This is a driver process. In this case, the driver is ready to use right after
     // the CoreWorkerProcess::Initialize.
     // 2. This is a Python worker process. In this case, Python will invoke some core
-    // worker APIs before `CoreWorkerProcess::StartExecutingTasks` is called. So we need
+    // worker APIs before `CoreWorkerProcess::RunTaskExecutionLoop` is called. So we need
     // to create the worker instance here. One example of invocations is
     // https://github.com/ray-project/ray/blob/45ce40e5d44801193220d2c546be8de0feeef988/python/ray/worker.py#L1281.
     if (options_.worker_type == WorkerType::DRIVER ||
@@ -205,10 +205,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 }
 
 void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->io_thread_.join();
-  if (options_.worker_type == WorkerType::WORKER) {
-    RAY_CHECK(worker->task_execution_service_.stopped());
-  }
+  worker->WaitForShutdown();
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
   } else {
@@ -225,21 +222,21 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   }
 }
 
-void CoreWorkerProcess::StartExecutingTasks() {
+void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized();
   RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
   if (instance_->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
     auto worker =
         instance_->global_worker_ ? instance_->global_worker_ : instance_->CreateWorker();
-    worker->StartExecutingTasks();
+    worker->RunTaskExecutionLoop();
     instance_->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
     for (int i = 0; i < instance_->options_.num_workers; i++) {
       worker_threads.emplace_back([]() {
         auto worker = instance_->CreateWorker();
-        worker->StartExecutingTasks();
+        worker->RunTaskExecutionLoop();
         instance_->RemoveWorker(worker);
       });
     }
@@ -502,6 +499,15 @@ void CoreWorker::RunIOService() {
 #endif
 
   io_service_.run();
+}
+
+void CoreWorker::WaitForShutdown() {
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+  if (options_.worker_type == WorkerType::WORKER) {
+    RAY_CHECK(task_execution_service_.stopped());
+  }
 }
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
@@ -1212,7 +1218,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
       new worker::ProfileEvent(profiler_, event_type));
 }
 
-void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
+void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }
 
 Status CoreWorker::AllocateReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,

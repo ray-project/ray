@@ -225,4 +225,4 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         @staticmethod
         void Shutdown()
         @staticmethod
-        void StartExecutingTasks()
+        void RunTaskExecutionLoop()

@@ -317,9 +317,9 @@ class StreamingWorker {
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
-  void StartExecutingTasks() {
+  void RunTaskExecutionLoop() {
     // Start executing tasks.
-    CoreWorkerProcess::StartExecutingTasks();
+    CoreWorkerProcess::RunTaskExecutionLoop();
   }
 
  private:
@@ -458,6 +458,6 @@ int main(int argc, char **argv) {
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
                                          gcs_options);
-  worker.StartExecutingTasks();
+  worker.RunTaskExecutionLoop();
   return 0;
 }

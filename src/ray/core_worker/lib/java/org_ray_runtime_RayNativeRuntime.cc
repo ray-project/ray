@@ -128,7 +128,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
     JNIEnv *env, jclass o, jobject javaTaskExecutor) {
   java_task_executor = javaTaskExecutor;
-  ray::CoreWorkerProcess::StartExecutingTasks();
+  ray::CoreWorkerProcess::RunTaskExecutionLoop();
   java_task_executor = nullptr;
 }
 

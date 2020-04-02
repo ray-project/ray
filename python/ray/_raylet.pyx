@@ -685,7 +685,7 @@ cdef class CoreWorker:
 
     def run_task_loop(self):
         with nogil:
-            CCoreWorkerProcess.StartExecutingTasks()
+            CCoreWorkerProcess.RunTaskExecutionLoop()
 
     def get_current_task_id(self):
         return TaskID(

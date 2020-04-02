@@ -59,7 +59,7 @@ class MockWorker {
     CoreWorkerProcess::Initialize(options);
   }
 
-  void StartExecutingTasks() { CoreWorkerProcess::StartExecutingTasks(); }
+  void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
@@ -145,6 +145,6 @@ int main(int argc, char **argv) {
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
-  worker.StartExecutingTasks();
+  worker.RunTaskExecutionLoop();
   return 0;
 }
