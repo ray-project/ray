@@ -352,7 +352,7 @@ message RegisterWorkerRequest {
   /// The ID of the worker.
   bytes worker_id = 2;
   /// The information of the worker in a dictionary.
-  map<string, string> worker_info = 3;
+  map<string, bytes> worker_info = 3;
 }
 
 message RegisterWorkerReply {

@@ -883,8 +883,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
   rpc::RegisterWorkerRequest request;
   request.set_worker_type(worker_type);
   request.set_worker_id(worker_id.Binary());
-  request.mutable_worker_info()->insert(request.worker_info().begin(),
-                                        request.worker_info().end());
+  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
   client_impl_->GetGcsRpcClient().RegisterWorker(
       request,
       [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
