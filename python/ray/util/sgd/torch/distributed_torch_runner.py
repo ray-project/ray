@@ -215,7 +215,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-
+        self.local_device = 0
         global _dummy_actor
         if not self.is_actor() and _dummy_actor is None:
             _dummy_actor = ray.remote(
