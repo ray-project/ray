@@ -11,6 +11,70 @@
                 "type": "string",
                 "description": "shell command"
             }
+        },
+        "aws_ec2_security_group_rule_targets": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "AWS EC2 instance security group targets",
+            "properties": {
+                "cidr_ips": {
+                  "type": "array",
+                  "description": "CIDR IP blocks"
+                },
+                "cidr_ipv6s": {
+                  "type": "array",
+                  "description": "CIDR IPv6 blocks"
+                },
+                "security_group_ids": {
+                  "type": "array",
+                  "description": "Security group IDs"
+                },
+                "prefix_list_ids": {
+                  "type": "array",
+                  "description": "Prefix list IDs"
+                }
+            }
+        },
+        "aws_ec2_security_group_rule_channel": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "AWS EC2 instance security group rule network channel",
+            "required": [ "from_port", "to_port", "ip_protocol" ],
+            "properties": {
+                "from_port": {
+                  "type": "integer",
+                  "description": "Port range start (inclusive)"
+                },
+                "to_port": {
+                  "type": "integer",
+                  "description": "Port range end (inclusive)"
+                },
+                "ip_protocol": {
+                  "type": "string",
+                  "description": "Protocol"
+                }
+            }
+        },
+        "aws_ec2_security_group_rule": {
+            "type": "object",
+            "description": "AWS EC2 instance security group rule",
+            "additionalProperties": false,
+            "required": [ "channel" ],
+            "properties": {
+                "channel": {
+                    "$ref": "#/definitions/aws_ec2_security_group_rule_channel"
+                },
+                "targets": {
+                    "$ref": "#/definitions/aws_ec2_security_group_rule_targets"
+                }
+            }
+        },
+        "aws_ec2_security_group_rules": {
+            "type": "array",
+            "description": "AWS EC2 instance security group rules",
+            "items": {
+                "$ref": "#/definitions/aws_ec2_security_group_rule"
+            }
         }
     },
     "required": [
@@ -83,6 +147,16 @@
                 "use_internal_ips": {
                     "type": "boolean",
                     "description": "don't require public ips"
+                },
+                "default_inbound_sources": {
+                    "$ref": "#/definitions/aws_ec2_security_group_rule_targets",
+                    "description": "AWS EC2 instance inbound sources to use for all default/required head and worker node security group rules, except those authorizing cross head/worker communication."
+                },
+                "head_inbound_rules": {
+                    "$ref": "#/definitions/aws_ec2_security_group_rules"
+                },
+                "worker_inbound_rules": {
+                  "$ref": "#/definitions/aws_ec2_security_group_rules"
                 },
                 "namespace": {
                     "type": "string",
@@ -237,6 +311,11 @@
         },
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
+        },
+        "config_cache_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "If true, caches successfully applied cluster configs on disk and never reapplies a cached config. If false, always idempotently applies cluster config."
         }
     }
 }

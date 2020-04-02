@@ -33,6 +33,17 @@ DEFAULT_AMI = {
     "sa-east-1": "ami-054e94fd9b444491d",  # SA (Sao Paulo)
 }
 
+FROM_PORT = 0
+TO_PORT = 1
+IP_PROTOCOL = 2
+
+ALL_TRAFFIC_CHANNEL = (-1, -1, "-1")
+SSH_CHANNEL = (22, 22, "tcp")
+DEFAULT_INBOUND_CHANNELS = [SSH_CHANNEL]
+
+RESOURCE_CACHE = {}
+
+
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
@@ -232,57 +243,22 @@ def _configure_security_group(config):
             "SecurityGroupIds" in config["worker_nodes"]:
         return config  # have user-defined groups
 
-    group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
-    vpc_id = _get_vpc_id_or_die(config, config["worker_nodes"]["SubnetIds"][0])
-    security_group = _get_security_group(config, vpc_id, group_name)
-
-    if security_group is None:
-        logger.info("_configure_security_group: "
-                    "Creating new security group {}".format(group_name))
-        client = _client("ec2", config)
-        client.create_security_group(
-            Description="Auto-created security group for Ray workers",
-            GroupName=group_name,
-            VpcId=vpc_id)
-        security_group = _get_security_group(config, vpc_id, group_name)
-        assert security_group, "Failed to create security group"
-
-    if not security_group.ip_permissions:
-        IpPermissions = [{
-            "FromPort": -1,
-            "ToPort": -1,
-            "IpProtocol": "-1",
-            "UserIdGroupPairs": [{
-                "GroupId": security_group.id
-            }]
-        }, {
-            "FromPort": 22,
-            "ToPort": 22,
-            "IpProtocol": "TCP",
-            "IpRanges": [{
-                "CidrIp": "0.0.0.0/0"
-            }]
-        }]
-
-        additional_IpPermissions = config["provider"].get(
-            "security_group", {}).get("IpPermissions", [])
-        IpPermissions.extend(additional_IpPermissions)
-
-        security_group.authorize_ingress(IpPermissions=IpPermissions)
+    security_groups = _upsert_security_groups(config)
+    head_sg = security_groups["head"]
+    workers_sg = security_groups["workers"]
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
             "_configure_security_group: "
-            "SecurityGroupIds not specified for head node, using {}".format(
-                security_group.group_name))
-        config["head_node"]["SecurityGroupIds"] = [security_group.id]
+            "SecurityGroupIds not specified for head node, using {} ({})"
+            .format(head_sg.group_name, head_sg.id))
+        config["head_node"]["SecurityGroupIds"] = [head_sg.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        logger.info(
-            "_configure_security_group: "
-            "SecurityGroupIds not specified for workers, using {}".format(
-                security_group.group_name))
-        config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
+        logger.info("_configure_security_group: "
+                    "SecurityGroupIds not specified for workers, using {} ({})"
+                    .format(workers_sg.group_name, workers_sg.id))
+        config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
 
     return config
 
@@ -315,6 +291,41 @@ def _check_ami(config):
                         region=region))
 
 
+def _upsert_security_groups(config):
+    vpc_group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
+    rules_group_name = vpc_group_name + "-aux"
+
+    security_groups = _get_or_create_vpc_security_groups(
+        config, {vpc_group_name, rules_group_name}, vpc_group_name)
+    _upsert_security_group_rules(config, security_groups, rules_group_name)
+
+    return security_groups
+
+
+def _get_or_create_vpc_security_groups(conf, all_group_names, vpc_group_name):
+    worker_subnet_id = conf["worker_nodes"]["SubnetIds"][0]
+    head_subnet_id = conf["head_node"]["SubnetIds"][0]
+
+    worker_vpc_id = _get_vpc_id_or_die(conf, worker_subnet_id)
+    head_vpc_id = _get_vpc_id_or_die(conf, head_subnet_id) \
+        if head_subnet_id != worker_subnet_id else worker_vpc_id
+
+    vpc_ids = [worker_vpc_id, head_vpc_id] \
+        if head_vpc_id != worker_vpc_id else [worker_vpc_id]
+    all_sgs = _get_security_groups(conf, vpc_ids, all_group_names)
+
+    worker_sg = next((_ for _ in all_sgs if _.vpc_id == worker_vpc_id), None)
+    if worker_sg is None:
+        worker_sg = _create_security_group(conf, worker_vpc_id, vpc_group_name)
+        all_sgs.append(worker_sg)
+
+    head_sg = next((_ for _ in all_sgs if _.vpc_id == head_vpc_id), None)
+    if head_sg is None:
+        head_sg = _create_security_group(conf, head_vpc_id, vpc_group_name)
+
+    return {"head": head_sg, "workers": worker_sg}
+
+
 def _get_vpc_id_or_die(config, subnet_id):
     ec2 = _resource("ec2", config)
     subnet = list(
@@ -327,16 +338,218 @@ def _get_vpc_id_or_die(config, subnet_id):
     return subnet.vpc_id
 
 
+def _get_or_create_security_group(config, vpc_id, group_name):
+    return _get_security_group(config, vpc_id, group_name) or \
+           _create_security_group(config, vpc_id, group_name)
+
+
 def _get_security_group(config, vpc_id, group_name):
+    security_group = _get_security_groups(config, [vpc_id], [group_name])
+    return None if not security_group else security_group[0]
+
+
+def _get_security_groups(config, vpc_ids, group_names):
     ec2 = _resource("ec2", config)
     existing_groups = list(
         ec2.security_groups.filter(Filters=[{
             "Name": "vpc-id",
-            "Values": [vpc_id]
+            "Values": vpc_ids
         }]))
+    matching_groups = []
     for sg in existing_groups:
-        if sg.group_name == group_name:
-            return sg
+        if sg.group_name in group_names:
+            matching_groups.append(sg)
+    return matching_groups
+
+
+def _create_security_group(config, vpc_id, group_name):
+    client = _client("ec2", config)
+    client.create_security_group(
+        Description="Auto-created security group for Ray workers",
+        GroupName=group_name,
+        VpcId=vpc_id)
+    security_group = _get_security_group(config, vpc_id, group_name)
+    logger.info("_create_security_group: Created new security group {} ({})"
+                .format(security_group.group_name, security_group.id))
+    assert security_group, "Failed to create security group"
+    return security_group
+
+
+def _upsert_security_group_rules(config, security_groups, rules_group_name):
+    head_rules = config["provider"].get("head_inbound_rules", {})
+    worker_rules = config["provider"].get("worker_inbound_rules", {})
+
+    head_security_group = security_groups["head"]
+    worker_security_group = security_groups["workers"]
+
+    if head_rules != worker_rules:
+        if head_security_group.id == worker_security_group.id:
+            worker_security_group = _get_or_create_security_group(
+                config, worker_security_group.vpc_id, rules_group_name)
+            security_groups["workers"] = worker_security_group
+
+    sgids = {head_security_group.id, worker_security_group.id}
+
+    head_channel_rules = _group_rules_by_channel(config, head_rules)
+    _update_inbound_rules(head_security_group, head_channel_rules, sgids)
+    worker_channel_rules = _group_rules_by_channel(config, worker_rules)
+    _update_inbound_rules(worker_security_group, worker_channel_rules, sgids)
+
+
+def _group_rules_by_channel(config, rules):
+    """Group rules by network "channel" (from_port, to_port, ip_protocol)"""
+    channel_rules = {}
+
+    for inbound_rule in rules:
+        rule_channel = inbound_rule["channel"]
+        channel_group_key = (rule_channel["from_port"],
+                             rule_channel["to_port"],
+                             rule_channel["ip_protocol"].lower())
+        _union_targets(
+            inbound_rule.get("targets", {}),
+            channel_rules.setdefault(channel_group_key, {}))
+
+    default_sources = config["provider"].get("default_inbound_sources", {})
+    if default_sources:
+        valid_source = _target_exists(default_sources)
+        assert valid_source, "No targets specified for default inbound sources"
+        for default_channel in DEFAULT_INBOUND_CHANNELS:
+            if not channel_rules.setdefault(default_channel, {}):
+                _union_targets(default_sources, channel_rules[default_channel])
+
+    return channel_rules
+
+
+def _union_targets(rule_targets, channel_targets):
+    cidr_ips = set(rule_targets.get("cidr_ips", []))
+    cidr_ipv6s = {_.lower() for _ in rule_targets.get("cidr_ipv6s", [])}
+    plids = {_.lower() for _ in rule_targets.get("prefix_list_ids", [])}
+    sgids = {_.lower() for _ in rule_targets.get("security_group_ids", [])}
+
+    channel_targets["cidr_ips"] = channel_targets.get(
+        "cidr_ips", set(cidr_ips)).union(cidr_ips)
+    channel_targets["cidr_ipv6s"] = channel_targets.get(
+        "cidr_ipv6s", set(cidr_ipv6s)).union(cidr_ipv6s)
+    channel_targets["prefix_list_ids"] = channel_targets.get(
+        "prefix_list_ids", set(plids)).union(plids)
+    channel_targets["security_group_ids"] = channel_targets.get(
+        "security_group_ids", set(sgids)).union(sgids)
+
+
+def _update_inbound_rules(sg, channel_rules, sgids):
+    _update_security_group_ingress(sg, channel_rules, sgids, True)
+    req_channel_rules = _get_required_channel_rules(sg, channel_rules, sgids)
+    _update_security_group_ingress(sg, req_channel_rules, sgids, False)
+
+
+def _update_security_group_ingress(sg, channel_rules, required_sgids, revoke):
+    ipps_to_revoke = []
+    channel_rules_to_add = {}
+
+    for channel, inbound_sources in channel_rules.items():
+        cidr_ips = inbound_sources.get("cidr_ips", [])
+        cidr_ipv6s = inbound_sources.get("cidr_ipv6s", [])
+        plids = inbound_sources.get("prefix_list_ids", [])
+        sgids = inbound_sources.get("security_group_ids", [])
+        if channel == ALL_TRAFFIC_CHANNEL:
+            sgids = sgids.union(required_sgids)
+
+        src_to_add = channel_rules_to_add.setdefault(
+            channel, {
+                "cidr_ips": set(cidr_ips),
+                "cidr_ipv6s": set(cidr_ipv6s),
+                "prefix_list_ids": set(plids),
+                "security_group_ids": set(sgids)
+            })
+
+        sg_ipps = sg.ip_permissions
+        for ipp in (_ for _ in sg_ipps if _match_ipp_channel(channel, _)):
+            _revoke_or_add(ipp, "IpRanges", "CidrIp", ipps_to_revoke, cidr_ips,
+                           src_to_add["cidr_ips"])
+            _revoke_or_add(ipp, "Ipv6Ranges", "CidrIpv6", ipps_to_revoke,
+                           cidr_ipv6s, src_to_add["cidr_ipv6s"])
+            _revoke_or_add(ipp, "PrefixListIds", "PrefixListId",
+                           ipps_to_revoke, plids,
+                           src_to_add["prefix_list_ids"])
+            _revoke_or_add(ipp, "UserIdGroupPairs", "GroupId", ipps_to_revoke,
+                           sgids, src_to_add["security_group_ids"])
+
+    if ipps_to_revoke and revoke:
+        logger.info("_update_inbound_rules: "
+                    "Revoking inbound rules from {} ({}) -- {}".format(
+                        sg.group_name, sg.id, ipps_to_revoke))
+        sg.revoke_ingress(IpPermissions=ipps_to_revoke)
+
+    if any(_target_exists(_) for _ in channel_rules_to_add.values()):
+        ipps_to_authorize = _create_ip_permissions(channel_rules_to_add)
+        logger.info("_update_inbound_rules: "
+                    "Adding inbound rules to {} ({}) -- {}".format(
+                        sg.group_name, sg.id, ipps_to_authorize))
+        sg.authorize_ingress(IpPermissions=ipps_to_authorize)
+
+
+def _match_ipp_channel(channel, ip_permission):
+    return channel[FROM_PORT] == ip_permission.get("FromPort", -1) and \
+           channel[TO_PORT] == ip_permission.get("ToPort", -1) and \
+           channel[IP_PROTOCOL] == ip_permission.get("IpProtocol")
+
+
+def _revoke_or_add(ipp, srcs_key, src_key, ipp_revokes, whitelist, add_srcs):
+    for ipp_srcs in (_ for _ in ipp.get(srcs_key, []) if _.get(src_key)):
+        ipp_revokes.append({
+            "FromPort": ipp.get("FromPort", -1),
+            "ToPort": ipp.get("ToPort", -1),
+            "IpProtocol": ipp.get("IpProtocol"),
+            srcs_key: [{src_key: ipp_srcs[src_key]}]
+        }) if ipp_srcs[src_key] not in whitelist \
+           else add_srcs.remove(ipp_srcs[src_key])
+
+
+def _target_exists(inbound_sources):
+    return bool(
+        inbound_sources.get("cidr_ips") or inbound_sources.get("cidr_ipv6s")
+        or inbound_sources.get("prefix_list_ids")
+        or inbound_sources.get("security_group_ids"))
+
+
+def _get_required_channel_rules(sg, channel_rules, sgids):
+    required_channel_rules = {
+        ALL_TRAFFIC_CHANNEL: {
+            "security_group_ids": set(sgids)
+        }
+    }
+    ssh_rules_exist = _target_exists(channel_rules.get(SSH_CHANNEL, {})) or \
+        any(_ for _ in sg.ip_permissions if _match_ipp_channel(SSH_CHANNEL, _))
+    if not ssh_rules_exist:
+        default_ssh_targets = {"cidr_ips": ["0.0.0.0/0"]}
+        required_channel_rules[SSH_CHANNEL] = default_ssh_targets
+    return required_channel_rules
+
+
+def _create_ip_permissions(channel_rules):
+    ip_permissions = []
+    for channel in sorted(channel_rules.keys()):
+        src = channel_rules[channel]
+        ipp = {
+            "FromPort": channel[FROM_PORT],
+            "ToPort": channel[TO_PORT],
+            "IpProtocol": channel[IP_PROTOCOL],
+        }
+        _append_ipp_sources(src.get("cidr_ips"), ipp, "IpRanges", "CidrIp")
+        _append_ipp_sources(
+            src.get("cidr_ipv6s"), ipp, "Ipv6Ranges", "CidrIpv6")
+        _append_ipp_sources(
+            src.get("security_group_ids"), ipp, "UserIdGroupPairs", "GroupId")
+        _append_ipp_sources(
+            src.get("prefix_list_ids"), ipp, "PrefixListIds", "PrefixListId")
+        ip_permissions.append(ipp)
+
+    return ip_permissions
+
+
+def _append_ipp_sources(sources_to_add, ipp, ipp_sources_key, src_key):
+    if sources_to_add:
+        ipp[ipp_sources_key] = [{src_key: _} for _ in sorted(sources_to_add)]
 
 
 def _get_role(role_name, config):
@@ -376,20 +589,16 @@ def _get_key(key_name, config):
 
 
 def _client(name, config):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    aws_credentials = config["provider"].get("aws_credentials", {})
-    return boto3.client(
-        name,
-        config["provider"]["region"],
-        config=boto_config,
-        **aws_credentials)
+    return _resource(name, config).meta.client
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return boto3.resource(
+    return RESOURCE_CACHE.setdefault(
         name,
-        config["provider"]["region"],
-        config=boto_config,
-        **aws_credentials)
+        boto3.resource(
+            name,
+            config["provider"]["region"],
+            config=boto_config,
+            **aws_credentials))

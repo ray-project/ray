@@ -9,6 +9,12 @@ import subprocess
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.autoscaler.aws.config import RESOURCE_CACHE
+from ray.ray_constants import BOTO_MAX_RETRIES
+
+import boto3
+from botocore.stub import Stubber
+from botocore.config import Config
 
 
 @pytest.fixture
@@ -195,3 +201,23 @@ def two_node_cluster():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.fixture()
+def iam_client_stub():
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    resource = RESOURCE_CACHE.setdefault(
+        "iam", boto3.resource("iam", "us-east-1", config=boto_config))
+    with Stubber(resource.meta.client) as stubber:
+        yield stubber
+        stubber.assert_no_pending_responses()
+
+
+@pytest.fixture()
+def ec2_client_stub():
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    resource = RESOURCE_CACHE.setdefault(
+        "ec2", boto3.resource("ec2", "us-east-1", config=boto_config))
+    with Stubber(resource.meta.client) as stubber:
+        yield stubber
+        stubber.assert_no_pending_responses()

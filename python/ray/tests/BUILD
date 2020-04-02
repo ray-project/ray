@@ -166,6 +166,14 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+
+py_test(
+    name = "test_autoscaler_aws",
+    size = "small",
+    srcs = ["test_autoscaler_aws.py"],
+    deps = ["//:ray_lib"],
+)
+
 py_test(
     name = "test_autoscaler_yaml",
     size = "small",
