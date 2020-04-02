@@ -54,6 +54,7 @@ class DDPGPostprocessing:
                 feed_dict={
                     self.cur_observations: states,
                     self._is_exploring: False,
+                    self._timestep: self.global_timestep,
                 })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
@@ -414,16 +415,10 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
+            action_out = tf.layers.dense(
+                action_out, units=hidden, activation=activation)
             if self.config["parameter_noise"]:
-                import tensorflow.contrib.layers as layers
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hidden,
-                    activation_fn=activation,
-                    normalizer_fn=layers.layer_norm)
-            else:
-                action_out = tf.layers.dense(
-                    action_out, units=hidden, activation=activation)
+                action_out = tf.keras.layers.LayerNormalization()(action_out)
         action_out = tf.layers.dense(
             action_out, units=action_space.shape[0], activation=None)
 

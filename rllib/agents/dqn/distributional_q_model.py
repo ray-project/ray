@@ -125,14 +125,12 @@ class DistributionalQModel(TFModelV2):
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
                                                   state_out, q_hiddens[i],
                                                   sigma0)
-                elif parameter_noise:
-                    state_out = tf.keras.layers.Dense(
-                        units=q_hiddens[i],
-                        activation_fn=tf.nn.relu,
-                        normalizer_fn=tf.contrib.layers.layer_norm)(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i], activation=tf.nn.relu)(state_out)
+                    if parameter_noise:
+                        state_out = tf.keras.layers.LayerNormalization()(
+                            state_out)
             if use_noisy:
                 state_score = self._noisy_layer(
                     "dueling_output",
