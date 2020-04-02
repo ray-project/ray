@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.msgpack.core.MessageBufferPacker;
@@ -19,7 +20,6 @@ import org.msgpack.value.ExtensionValue;
 import org.msgpack.value.IntegerValue;
 import org.msgpack.value.Value;
 import org.msgpack.value.ValueType;
-import org.ray.runtime.serializer.Serializer.Meta;
 
 // We can't pack List / Map by MessagePack, because we don't know the type class when unpacking.
 public class MessagePackSerializer {
@@ -215,18 +215,18 @@ public class MessagePackSerializer {
     return unpackers.get(v.getValueType()).unpack(v, type, javaDeserializer);
   }
 
-  public static Pair<byte[], Meta> encode(Object obj, ClassLoader classLoader) {
+  public static Pair<byte[], MutableBoolean> encode(Object obj, ClassLoader classLoader) {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     try {
       // Reserve MESSAGE_PACK_OFFSET bytes for MessagePack bytes length.
       packer.writePayload(new byte[MESSAGE_PACK_OFFSET]);
       // Serialize input object by MessagePack.
-      Serializer.Meta javaEncoderMeta = new Serializer.Meta();
+      MutableBoolean isCrossLanguage = new MutableBoolean(true);
       pack(obj, packer, ((object, packer1) -> {
         byte[] payload = FstSerializer.encode(object, classLoader);
         packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
         packer1.addPayload(payload);
-        javaEncoderMeta.isCrossLanguage = false;
+        isCrossLanguage.setFalse();
       }));
       byte[] msgpackBytes = packer.toByteArray();
       // Serialize MessagePack bytes length.
@@ -238,7 +238,7 @@ public class MessagePackSerializer {
       Preconditions.checkState(msgpackBytesLength.length <= MESSAGE_PACK_OFFSET);
       // Write MessagePack bytes length to reserved buffer.
       System.arraycopy(msgpackBytesLength, 0, msgpackBytes, 0, msgpackBytesLength.length);
-      return ImmutablePair.of(msgpackBytes, javaEncoderMeta);
+      return ImmutablePair.of(msgpackBytes, isCrossLanguage);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
