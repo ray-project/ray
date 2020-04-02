@@ -202,8 +202,8 @@ def test_killing_replicas(serve_instance):
     serve.set_backend_config("simple:v1", bnew_config)
     new_replica_tag_list = global_state.backend_table.list_replicas(
         "simple:v1")
-    global_state.refresh_actor_handle_cache()
-    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+    new_all_tag_list = list(
+        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 
     # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
@@ -236,8 +236,8 @@ def test_not_killing_replicas(serve_instance):
     serve.set_backend_config("bsimple:v1", bnew_config)
     new_replica_tag_list = global_state.backend_table.list_replicas(
         "bsimple:v1")
-    global_state.refresh_actor_handle_cache()
-    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+    new_all_tag_list = list(
+        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 
     # the old and new replica tag list should be identical
     # and should be subset of all_tag_list

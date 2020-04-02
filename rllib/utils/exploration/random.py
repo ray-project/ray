@@ -1,12 +1,12 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,7 +20,7 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, framework="tf", **kwargs):
+    def __init__(self, action_space, *, model, framework, **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -28,7 +28,10 @@ class Random(Exploration):
             framework (Optional[str]): One of None, "tf", "torch".
         """
         super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+            action_space=action_space,
+            framework=framework,
+            model=model,
+            **kwargs)
 
         # Determine py_func types, depending on our action-space.
         if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
@@ -40,17 +43,17 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
-                               model: ModelV2,
+                               *,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(distribution_inputs, model)
         if self.framework == "tf":
-            return self.get_tf_exploration_action_op(action_dist, explore)
+            return self.get_tf_exploration_action_op(action_distribution,
+                                                     explore)
         else:
-            return self.get_torch_exploration_action(action_dist, explore)
+            return self.get_torch_exploration_action(action_distribution,
+                                                     explore)
 
     def get_tf_exploration_action_op(self, action_dist, explore):
         def true_fn():

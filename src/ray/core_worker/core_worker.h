@@ -92,7 +92,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
              std::function<void(std::string *)> get_lang_stack = nullptr,
-             bool ref_counting_enabled = false);
+             bool ref_counting_enabled = false, bool local_mode = false);
 
   virtual ~CoreWorker();
 
@@ -138,7 +138,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
+    // TOOD(ilr): better way of keeping an object from being deleted
+    if (ref_counting_enabled_ && !is_local_mode_) {
       memory_store_->Delete(deleted);
     }
   }
@@ -629,6 +630,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
 
+  /// Execute a local mode task (runs normal ExecuteTask)
+  ///
+  /// \param spec[in] task_spec Task specification.
+  /// \return Status.
+  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                              const ActorID &actor_id = ActorID::Nil());
+
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
   /// fetch its content from store and; for arguments that are passed by value,
@@ -685,6 +693,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether local reference counting is enabled.
   const bool ref_counting_enabled_;
+
+  /// Is local mode being used.
+  const bool is_local_mode_;
 
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
