@@ -783,7 +783,7 @@ cdef class CoreWorker:
             write_serialized_object(serialized_object, data)
             if self.is_local_mode:
                 c_object_id_vector.push_back(c_object_id)
-                check_status(self.core_worker.get().Put(
+                check_status(CCoreWorkerProcess.GetCoreWorker().Put(
                         CRayObject(data, metadata, c_object_id_vector),
                         c_object_id_vector, c_object_id))
             else:
@@ -1138,7 +1138,7 @@ cdef class CoreWorker:
                 if self.is_local_mode:
                     return_ids_vector.push_back(return_ids[i])
                     check_status(
-                        self.core_worker.get().Put(
+                        CCoreWorkerProcess.GetCoreWorker().Put(
                             CRayObject(returns[0][i].get().GetData(),
                                        returns[0][i].get().GetMetadata(),
                                        return_ids_vector),
