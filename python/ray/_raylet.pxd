@@ -76,6 +76,7 @@ cdef class CoreWorker:
         object async_thread
         object async_event_loop
         object plasma_event_handler
+        c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,

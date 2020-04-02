@@ -35,7 +35,6 @@ from ray.includes.common cimport (
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
-from ray.includes.task cimport CTaskSpec
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
@@ -212,6 +211,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void() nogil) gc_collect
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
+        c_bool is_local_mode
         int num_workers
         CCoreWorkerOptions()
 

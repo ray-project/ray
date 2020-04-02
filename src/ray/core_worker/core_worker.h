@@ -105,6 +105,8 @@ struct CoreWorkerOptions {
   std::function<void(std::string *)> get_lang_stack;
   /// Whether to enable object ref counting.
   bool ref_counting_enabled;
+  /// Is local mode being used.
+  bool is_local_mode;
   /// The number of workers to be started in the current process.
   int num_workers;
 };
@@ -316,7 +318,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (options_.ref_counting_enabled) {
+    // TOOD(ilr): better way of keeping an object from being deleted
+    if (options_.ref_counting_enabled && !options_.is_local_mode) {
       memory_store_->Delete(deleted);
     }
   }
@@ -810,6 +813,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
+
+  /// Execute a local mode task (runs normal ExecuteTask)
+  ///
+  /// \param spec[in] task_spec Task specification.
+  /// \return Status.
+  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                              const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
