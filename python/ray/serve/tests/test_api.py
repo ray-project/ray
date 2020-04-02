@@ -5,7 +5,6 @@ import requests
 from ray import serve
 from ray.serve import BackendConfig
 import ray
-from ray.serve.constants import NO_ROUTE_KEY
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 
@@ -13,8 +12,6 @@ from ray.serve.handle import RayServeHandle
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
-    result = serve.api._get_global_state().route_table.list_service()
-    assert result["/api"] == "endpoint"
 
     retry_count = 5
     timeout_sleep = 0.5
@@ -62,13 +59,6 @@ def test_route_decorator(serve_instance):
 
 def test_no_route(serve_instance):
     serve.create_endpoint("noroute-endpoint")
-    global_state = serve.api._get_global_state()
-
-    result = global_state.route_table.list_service(include_headless=True)
-    assert result[NO_ROUTE_KEY] == ["noroute-endpoint"]
-
-    without_headless_result = global_state.route_table.list_service()
-    assert NO_ROUTE_KEY not in without_headless_result
 
     def func(_, i=1):
         return 1
