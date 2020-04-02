@@ -9,7 +9,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorClassID, Language
+from ray import ActorID, ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
