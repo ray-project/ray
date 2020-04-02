@@ -185,12 +185,17 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 bool GcsServer::Ping(const std::string &ip, int port) {
-  boost::asio::io_service io_service;
-  boost::asio::ip::tcp::socket socket(io_service);
   boost::system::error_code error_code;
-  socket.connect(
-      boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port),
-      error_code);
+  try {
+    boost::asio::io_service io_service;
+    boost::asio::ip::tcp::socket socket(io_service);
+    socket.connect(
+        boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port),
+        error_code);
+  } catch (...) {
+    return false;
+  }
+
   if (error_code) {
     return false;
   }
