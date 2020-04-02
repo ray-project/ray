@@ -23,7 +23,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/gcs/gcs_server",
     "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
     "ray/streaming/_streaming.so",
 ]
 
@@ -75,7 +74,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "debug": [],
-    "dashboard": [],
+    "dashboard": ["requests"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
@@ -192,7 +191,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.29"],
+    setup_requires=["cython >= 0.29.14"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

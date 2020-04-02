@@ -923,6 +923,7 @@ class Node:
         return not any(self.dead_processes())
 
 
+# TODO(ilr) Remove this soon
 class LocalNode:
     """Imitate the node that manages the processes in local mode."""
 

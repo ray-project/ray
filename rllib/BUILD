@@ -348,7 +348,7 @@ py_test(
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1264,6 +1264,15 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
     args = ["--iters=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_torch_rnn_model",
+    main = "examples/custom_torch_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_torch_rnn_model.py"],
+    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
 )
 
 py_test(
