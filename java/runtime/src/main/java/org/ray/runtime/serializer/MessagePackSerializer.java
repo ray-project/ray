@@ -194,21 +194,21 @@ public class MessagePackSerializer {
 
   private static void pack(Object object, MessagePacker packer, JavaSerializer javaSerializer)
       throws IOException {
+    TypePacker typePacker;
     if (object == null) {
-      NULL_PACKER.pack(null, packer, javaSerializer);
+      typePacker = NULL_PACKER;
     } else {
       Class<?> type = object.getClass();
-      TypePacker pk = packers.get(type);
-      if (pk != null) {
-        pk.pack(object, packer, javaSerializer);
-      } else {
+      typePacker = packers.get(type);
+      if (typePacker == null) {
         if (type.isArray()) {
-          ARRAY_PACKER.pack(object, packer, javaSerializer);
+          typePacker = ARRAY_PACKER;
         } else {
-          EXTENSION_PACKER.pack(object, packer, javaSerializer);
+          typePacker = EXTENSION_PACKER;
         }
       }
     }
+    typePacker.pack(object, packer, javaSerializer);
   }
 
   private static Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {
