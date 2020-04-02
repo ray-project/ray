@@ -148,7 +148,7 @@ public class FailureTest extends BaseTest {
       RayObject<Integer> obj2 = Ray.call(FailureTest::slowFunc);
       Instant start = Instant.now();
       try {
-        Ray.get(Arrays.asList(obj1.getId(), obj2.getId()), obj1.getType());
+        Ray.get(Arrays.asList(obj1, obj2));
         Assert.fail("Should throw RayException.");
       } catch (RayException e) {
         Instant end = Instant.now();

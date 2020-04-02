@@ -103,7 +103,7 @@ public class MultiThreadingTest extends BaseTest {
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.put(arg);
-      Assert.assertEquals(arg, (int) Ray.get(obj.getId(), obj.getType()));
+      Assert.assertEquals(arg, (int) Ray.get(obj));
     }, LOOP_COUNTER);
 
     TestUtils.warmUpCluster();
