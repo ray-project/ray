@@ -24,8 +24,8 @@ class TestApex(unittest.TestCase):
             infos = trainer.workers.foreach_policy(
                 lambda p, _: p.get_exploration_info())
             eps = [i["cur_epsilon"] for i in infos]
-            assert np.allclose(
-                eps, [1.0, 0.016190862, 0.00065536, 2.6527108e-05])
+            assert np.allclose(eps,
+                               [1.0, 0.016190862, 0.00065536, 2.6527108e-05])
 
 
 if __name__ == "__main__":
