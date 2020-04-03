@@ -50,7 +50,7 @@ class TestPPO(unittest.TestCase):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
         config = ppo.DEFAULT_CONFIG.copy()
         # Fake GPU setup.
-        config["num_gpus"] = 6
+        config["num_gpus"] = 2
         config["_fake_gpus"] = True
         # Mimick tuned_example for PPO CartPole.
         config["num_workers"] = 1
@@ -64,13 +64,14 @@ class TestPPO(unittest.TestCase):
 
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         num_iterations = 200
-        results = None
+        learnt = False
         for i in range(num_iterations):
             results = trainer.train()
             if results["episode_reward_mean"] > 150:
+                learnt = True
                 break
             print(results)
-        self.assertTrue(results["episode_reward_mean"] > 150)
+        assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
