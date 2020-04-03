@@ -42,6 +42,8 @@ optional_ray_files = []
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/azure/azure-vm-template.json",
+    "ray/autoscaler/azure/azure-config-template.json",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
