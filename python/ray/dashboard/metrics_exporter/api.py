@@ -30,7 +30,8 @@ def ingest_request(url, access_token, ray_config, node_info, raylet_info,
         url,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
+            "Authorization": "Bearer {access_token}".format(
+                access_token=access_token)
         },
         data=ingest_request.json())
     response.raise_for_status()
