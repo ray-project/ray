@@ -77,7 +77,8 @@ class QLoss:
             # priority is robust and insensitive to `prioritized_replay_alpha`
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
-            self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.loss = tf.reduce_mean(
+                self.td_error * tf.cast(importance_weights, tf.float32))
             self.stats = {
                 # TODO: better Q stats for dist dqn
                 "mean_td_error": tf.reduce_mean(self.td_error),
