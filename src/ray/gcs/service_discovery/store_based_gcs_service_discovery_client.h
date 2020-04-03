@@ -3,7 +3,7 @@
 
 #include <memory>
 #include "ray/gcs/service_discovery/gcs_service_discovery_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
 
@@ -23,22 +23,24 @@ class StoreBasedGcsServiceDiscoveryClient : public GcsServiceDiscoveryClient {
 
   virtual ~StoreBasedGcsServiceDiscoveryClient();
 
-  Status Init(boost::asio::io_service &io_service);
+  Status Init(boost::asio::io_service &io_service) override;
 
-  Status RegisterService(const rpc::GcsServiceInfo &service_info);
+  void Shutdown() override;
 
-  void RegisterServiceWatcher(const ServiceWatcherCallback &callback);
+  Status RegisterService(const rpc::GcsServerInfo &service_info) override;
+
+  void RegisterServiceWatcher(const ServiceWatcherCallback &callback) override;
 
  private:
   /// Process the gcs service information that received from storage.
   ///
   /// \param cur_service_info The information that received from storage.
-  void OnReceiveGcsServiceInfo(const GcsServiceInfo &cur_service_info);
+  void OnReceiveGcsServiceInfo(const GcsServerInfo &cur_service_info);
 
   /// Get local gcs service info.
   ///
-  /// return boost::optional<rpc::GcsServiceInfo>
-  boost::optional<rpc::GcsServiceInfo> GetGcsServiceInfo();
+  /// return boost::optional<rpc::GcsServerInfo>
+  boost::optional<rpc::GcsServerInfo> GetGcsServiceInfo();
 
   /// Start timer to poll gcs service information from storage.
   void RunQueryStoreTimer();

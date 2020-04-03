@@ -18,8 +18,18 @@ Status StoreBasedGcsServiceDiscoveryClient::Init(boost::asio::io_service &io_ser
   query_store_timer_.reset(new boost::asio::deadline_timer(io_service));
 }
 
+void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
+  if (query_store_timer_) {
+    boost::system::error_code ec;
+    query_store_timer_->cancel(ec);
+    if (ec) {
+      RAY_LOG(WARNING) << "An exception occurs when Shutdown, error " << ec.message();
+    }
+  }
+}
+
 Status StoreBasedGcsServiceDiscoveryClient::RegisterService(
-    const rpc::GcsServiceInfo &service_info) {
+    const rpc::GcsServerInfo &service_info) {
   return store_client_->Put(options_.target_gcs_service_name_,
                             service_info.SerializeToString());
 }
@@ -40,9 +50,9 @@ void StoreBasedGcsServiceDiscoveryClient::RegisterServiceWatcher(
   RunQueryStoreTimer();
 }
 
-boost::optional<rpc::GcsServiceInfo>
+boost::optional<rpc::GcsServerInfo>
 StoreBasedGcsServiceDiscoveryClient::GetGcsServiceInfo() {
-  boost::optional<rpc::GcsServiceInfo> opt_service_info;
+  boost::optional<rpc::GcsServerInfo> opt_service_info;
   {
     absl::MutexLock lock(&mutex_);
     if (!received_gcs_service_info_.gcs_server_address_.empty()) {
@@ -53,7 +63,7 @@ StoreBasedGcsServiceDiscoveryClient::GetGcsServiceInfo() {
 }
 
 void StoreBasedGcsServiceDiscoveryClient::OnReceiveGcsServiceInfo(
-    const GcsServiceInfo &cur_service_info) {
+    const GcsServerInfo &cur_service_info) {
   bool changed = false;
   if (cur_service_info.gcs_server_address_.empty()) {
     RAY_LOG(DEBUG) << "Receive empty gcs service info.";
@@ -79,7 +89,7 @@ void StoreBasedGcsServiceDiscoveryClient::RunQueryStoreTimer() {
   auto on_get_callback =
       [this](Status status, const boost::optional<std::string> &result) {
         if (status.OK() && result) {
-          GcsServiceInfo cur_service_info;
+          GcsServerInfo cur_service_info;
           RAY_DCHECK(cur_service_info.ParseFromString(*result));
           OnReceiveGcsServiceInfo(cur_service_info);
         }

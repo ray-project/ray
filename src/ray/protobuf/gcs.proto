@@ -310,3 +310,14 @@ enum ErrorType {
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
 }
+
+message GcsServerInfo {
+  // The ID of this gcs server.
+  bytes gcs_server_id = 1;
+  // GCS Server address and port.
+  string gcs_server_address = 2;
+  int32 gcs_server_port = 3;
+  // Pubsub server address and port.
+  string pubsub_server_address = 4;
+  int pubsub_server_port = 5;
+}

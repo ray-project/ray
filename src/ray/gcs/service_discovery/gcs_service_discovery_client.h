@@ -6,7 +6,7 @@
 #include <string>
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
-#include "ray/protobuf/gcs_service.pb.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -43,7 +43,10 @@ class GcsServiceDiscoveryClient {
   ///
   /// \param io_service The event loop for this client.
   /// \return Status
-  Status Init(boost::asio::io_service &io_service);
+  Status Init(boost::asio::io_service &io_service) = 0;
+
+  /// Shutdown this client.
+  void Shutdown() = 0;
 
   /// Register gcs service information to discovery service synchronously.
   /// This interface is used for GCS Server to register as a service.
@@ -51,31 +54,31 @@ class GcsServiceDiscoveryClient {
   /// \param service_info The information of gcs service that will be registered.
   /// \return Status
   // TODO(micafan) Maybe change it to asynchronous method.
-  Status RegisterService(const rpc::GcsServiceInfo &service_info);
+  Status RegisterService(const rpc::GcsServerInfo &service_info) = 0;
 
   /// This callback is used to receive notifications of service info.
   using ServiceWatcherCallback =
-      std::function<void(const rpc::GcsServiceInfo &service_info)>;
+      std::function<void(const rpc::GcsServerInfo &service_info)>;
 
   /// Listen for gcs service information changes from discovery service.
   /// This interface is used for GCS Client to discover service.
   ///
   /// \param callback The callback that will be called when gcs service info changes.
-  void RegisterServiceWatcher(const ServiceWatcherCallback &callback);
+  void RegisterServiceWatcher(const ServiceWatcherCallback &callback) = 0;
 
  protected:
   GcsServiceDiscoveryClient(const GcsServiceDiscoveryOptions &options)
       : options_(options) {}
 
   /// Options of this client.
-  GcsServiceDiscoveryOptions options_;
+  GcsServiceDiscoveryClientOptions options_;
 
   /// The callback that registered to watch gcs service information.
   ServiceWatcherCallback service_watcher_callback_{nullptr};
 
   absl::Mutex mutex_;
   /// The gcs service information that received from discovery service.
-  rpc::GcsServiceInfo received_gcs_service_info_ GUARDED_BY(mutex_);
+  rpc::GcsServerInfo received_gcs_service_info_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs
