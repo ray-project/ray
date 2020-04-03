@@ -144,11 +144,8 @@ def _configure_key_pair(config):
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
-        try:
-            key_name = config["provider"]["extra_config"]["key_pair"][
-                "key_name"]
-        except KeyError:
-            key_name = None
+
+        key_name = config["provider"].get("key_pair", {}).get("key_name", None)
 
         key_name, key_path = key_pair(i, config["provider"]["region"],
                                       key_name)
@@ -266,11 +263,10 @@ def _configure_security_group(config):
                 "CidrIp": "0.0.0.0/0"
             }]
         }]
-        try:
-            IpPermissions.extend(config["provider"]["extra_config"][
-                "security_group"]["IpPermissions"])
-        except KeyError:
-            pass
+
+        additional_IpPermissions = config["provider"].get(
+            "security_group", {}).get("IpPermissions", {})
+        IpPermissions.extend(additional_IpPermissions)
 
         security_group.authorize_ingress(IpPermissions=IpPermissions)
 
@@ -381,27 +377,19 @@ def _get_key(key_name, config):
 
 def _client(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    try:
-        aws_credentials = config["provider"]["extra_config"]["aws_credentials"]
-        return boto3.client(
-            name,
-            config["provider"]["region"],
-            config=boto_config,
-            **aws_credentials)
-    except KeyError:
-        return boto3.client(
-            name, config["provider"]["region"], config=boto_config)
+    aws_credentials = config["provider"].get("aws_credentials", {})
+    return boto3.client(
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    try:
-        aws_credentials = config["provider"]["extra_config"]["aws_credentials"]
-        return boto3.resource(
-            name,
-            config["provider"]["region"],
-            config=boto_config,
-            **aws_credentials)
-    except KeyError:
-        return boto3.resource(
-            name, config["provider"]["region"], config=boto_config)
+    aws_credentials = config["provider"].get("aws_credentials", {})
+    return boto3.resource(
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
