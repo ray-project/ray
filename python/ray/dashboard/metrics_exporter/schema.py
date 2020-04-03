@@ -59,9 +59,8 @@ class BaseModel:
     @classmethod
     def parse_obj(cls, obj):
         # Validation.
-        assert type(obj) == dict, (
-            "It can only parse dict type object, "
-            "but {} type is given.".format(type(obj)))
+        assert type(obj) == dict, ("It can only parse dict type object, "
+                                   "but {} type is given.".format(type(obj)))
         for field, schema in cls.__schema__.items():
             required, default, arg_type = schema
             if field not in obj:

@@ -16,7 +16,7 @@ class MetricsExportClient:
     multiple threads that export the same metrics.
 
     Args:
-        address(str): Address to export metrics. 
+        address(str): Address to export metrics.
             This should include a web protocol.
         dashboard_controller(BaseDashboardController): Dashboard controller to
             run dashboard business logic.
@@ -125,8 +125,8 @@ class Exporter(threading.Thread):
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
         ingest_response = api.ingest_request(
-            self.export_address, self.access_token,
-            ray_config, node_info, raylet_info, tune_info, tune_availability)
+            self.export_address, self.access_token, ray_config, node_info,
+            raylet_info, tune_info, tune_availability)
         actions = ingest_response.actions
         self.action_handler.handle_actions(actions)
 

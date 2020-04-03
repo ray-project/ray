@@ -18,9 +18,8 @@ def authentication_request(url, cluster_id) -> AuthResponse:
     return AuthResponse.parse_obj(json.loads(response.json()))
 
 
-def ingest_request(url, access_token, ray_config, node_info,
-                   raylet_info, tune_info,
-                   tune_availability) -> IngestResponse:
+def ingest_request(url, access_token, ray_config, node_info, raylet_info,
+                   tune_info, tune_availability) -> IngestResponse:
     ingest_request = IngestRequest(
         ray_config=ray_config,
         node_info=node_info,
@@ -30,9 +29,9 @@ def ingest_request(url, access_token, ray_config, node_info,
     response = requests.post(
         url,
         headers={
-            "Content-Type":"application/json",
-            "Authorization": f"Bearer {access_token}"},
-        data=ingest_request.json()
-    )
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        },
+        data=ingest_request.json())
     response.raise_for_status()
     return IngestResponse.parse_obj(json.loads(response.json()))
