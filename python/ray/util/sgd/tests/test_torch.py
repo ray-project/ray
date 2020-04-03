@@ -518,6 +518,7 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     trainer1.save(checkpoint_path)
 
     model1 = trainer1.get_model()
+    assert not hasattr(trainer1.local_worker.training_operator.model, "module")
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(

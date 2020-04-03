@@ -170,17 +170,6 @@ class DistributedTorchRunner(TorchRunner):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
-    # def _get_model_state_dicts(self):
-    #     """Fetch state from ``model.module`` instead of ``model``.
-
-    #     This is needed for PyTorch DistributedDataParallel models.
-    #     """
-    #     return [model.module.state_dict() for model in self.models]
-
-    # def _set_model_state_dicts(self, model_state_dicts):
-    #     for model, model_state_dict in zip(self.models, model_state_dicts):
-    #         model.module.load_state_dict(model_state_dict)
-
     def shutdown(self):
         """Attempts to shut down the worker."""
         # However, it seems to be harmless to remove permanently
