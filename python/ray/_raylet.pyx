@@ -107,8 +107,6 @@ include "includes/libcoreworker.pxi"
 
 logger = logging.getLogger(__name__)
 
-MEMCOPY_THREADS = 6
-
 
 def set_internal_config(dict options):
     cdef:
@@ -292,7 +290,9 @@ cdef prepare_args(
             if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
-                write_serialized_object(serialized_arg, arg_data)
+                if size > 0:
+                    (<SerializedObject>serialized_arg).write_to(
+                        Buffer.make(arg_data))
                 for object_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
@@ -628,32 +628,6 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
-cdef write_serialized_object(
-        serialized_object, const shared_ptr[CBuffer]& buf):
-    from ray.serialization import Pickle5SerializedObject, RawSerializedObject
-
-    if isinstance(serialized_object, RawSerializedObject):
-        if buf.get() != NULL and buf.get().Size() > 0:
-            size = serialized_object.total_bytes
-            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
-                parallel_memcopy(buf.get().Data(),
-                                 <const uint8_t*> serialized_object.value,
-                                 size, kMemcopyDefaultBlocksize,
-                                 MEMCOPY_THREADS)
-            else:
-                memcpy(buf.get().Data(),
-                       <const uint8_t*>serialized_object.value, size)
-
-    elif isinstance(serialized_object, Pickle5SerializedObject):
-        (<Pickle5Writer>serialized_object.writer).write_to(
-            serialized_object.msgpack_bytes,
-            serialized_object.inband,
-            buf,
-            MEMCOPY_THREADS)
-    else:
-        raise TypeError("Unsupported serialization type.")
-
-
 cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
@@ -762,7 +736,9 @@ cdef class CoreWorker:
             &c_object_id, &data)
 
         if not object_already_exists:
-            write_serialized_object(serialized_object, data)
+            if total_bytes > 0:
+                (<SerializedObject>serialized_object).write_to(
+                    Buffer.make(data))
             if self.is_local_mode:
                 c_object_id_vector.push_back(c_object_id)
                 check_status(self.core_worker.get().Put(
@@ -1107,8 +1083,9 @@ cdef class CoreWorker:
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() != NULL:
-                write_serialized_object(
-                    serialized_object, returns[0][i].get().GetData())
+                if returns[0][i].get().HasData():
+                    (<SerializedObject>serialized_object).write_to(
+                        Buffer.make(returns[0][i].get().GetData()))
                 if self.is_local_mode:
                     return_ids_vector.push_back(return_ids[i])
                     check_status(
