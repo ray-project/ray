@@ -19,6 +19,7 @@
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
+#include "ray/common/client_connection.h"
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
 #include "worker_info_handler_impl.h"
@@ -185,21 +186,8 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 bool GcsServer::Ping(const std::string &ip, int port) {
-  boost::system::error_code error_code;
-  try {
-    boost::asio::io_service io_service;
-    boost::asio::ip::tcp::socket socket(io_service);
-    socket.connect(
-        boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port),
-        error_code);
-  } catch (...) {
-    return false;
-  }
-
-  if (error_code) {
-    return false;
-  }
-  return true;
+  AsyncClient client;
+  return client.Connect(ip, port, 1000);
 }
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {

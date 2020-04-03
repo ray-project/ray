@@ -22,6 +22,10 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <boost/asio.hpp>
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/bind.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/common/id.h"
@@ -214,6 +218,53 @@ class ClientConnection : public ServerConnection {
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
+};
+
+using boost::asio::deadline_timer;
+using boost::asio::io_service;
+using boost::asio::ip::tcp;
+
+class AsyncClient {
+ public:
+  AsyncClient() : socket_(io_service_), timer_(io_service_) {}
+
+  bool Connect(const std::string &ip, int port, int64_t timeout_ms) {
+    auto endpoint =
+        boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
+
+    bool is_connected = false;
+    bool is_timeout = false;
+    socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this, _1,
+                                                boost::ref(is_connected)));
+    timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
+    timer_.async_wait(
+        boost::bind(&AsyncClient::TimerHandle, this, _1, boost::ref(is_timeout)));
+
+    do {
+      io_service_.run_one();
+    } while (!is_timeout && !is_connected);
+
+    timer_.cancel();
+    return is_connected;
+  }
+
+ private:
+  void ConnectHandle(boost::system::error_code error_code, bool &is_connected) {
+    if (!error_code) {
+      is_connected = true;
+    }
+  }
+
+  void TimerHandle(boost::system::error_code error_code, bool &is_timeout) {
+    if (!error_code) {
+      socket_.close();
+      is_timeout = true;
+    }
+  }
+
+  boost::asio::io_service io_service_;
+  tcp::socket socket_;
+  deadline_timer timer_;
 };
 
 }  // namespace ray
