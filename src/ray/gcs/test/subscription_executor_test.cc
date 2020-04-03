@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/subscription_executor.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
@@ -11,12 +25,13 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+      ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
-    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
+    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->log_based_actor_table()));
 
     subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
       const auto it = id_to_data_.find(id);

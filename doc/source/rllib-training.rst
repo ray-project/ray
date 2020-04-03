@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options include ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,7 +83,24 @@ Specifying Resources
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
 
+.. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
+
+Scaling Guide
+~~~~~~~~~~~~~
+
+Here are some rules of thumb for scaling training with RLlib.
+
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+
+
+2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
+
+
+3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
+
+   
+4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -140,6 +157,18 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # an h5-file with weight values in it, e.g.
+    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
+    # (see: https://keras.io/models/about-keras-models/)
+
+    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
@@ -520,8 +549,8 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
-Customized Exploration Behavior (Training and Evaluation)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Customizing Exploration Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib offers a unified top-level API to configure and customize an agent’s
 exploration behavior, including the decisions (how and whether) to sample
@@ -632,8 +661,9 @@ The following are example excerpts from different Trainers' configs
     # a) DQN: see rllib/agents/dqn/dqn.py
     "explore": True,
     "exploration_config": {
-       "type": "EpsilonGreedy",  # <- Exploration sub-class by name or full path to module+class
-                                 # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       # Exploration sub-class by name or full path to module+class
+       # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       "type": "EpsilonGreedy",
        # Parameters for the Exploration class' constructor:
        "initial_epsilon": 1.0,
        "final_epsilon": 0.02,
@@ -665,9 +695,9 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can evaluate policies during training by setting one
-or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
-``evaluation_num_workers``, and ``custom_eval_function`` configs
+of environment configurations). You can evaluate policies during training by setting
+the ``evaluation_interval`` config, and optionally also ``evaluation_num_episodes``,
+``evaluation_config``, ``evaluation_num_workers``, and ``custom_eval_function``
 (see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
 
 By default, exploration is left as-is within ``evaluation_config``.
@@ -682,9 +712,11 @@ via:
        "explore": False
     }
 
-**IMPORTANT NOTE**: Policy gradient algorithms are able to find the optimal
-policy, even if this is a stochastic one. Setting "explore=False" above
-will result in the evaluation workers not using this optimal policy.
+.. note::
+
+    Policy gradient algorithms are able to find the optimal
+    policy, even if this is a stochastic one. Setting "explore=False" above
+    will result in the evaluation workers not using this stochastic policy.
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 
@@ -745,6 +777,19 @@ Note that in the ``on_postprocess_traj`` callback you have full access to the tr
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
+
+To access the policy / model (``policy.model``) in the callbacks, note that ``info['pre_batch']`` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+
+.. code-block:: python
+
+    from ray.rllib.evaluation.rollout_worker import get_global_worker
+
+    # You can use this from any callback to get a reference to the
+    # RolloutWorker running in the process, which in turn has references to
+    # all the policies, etc: see rollout_worker.py for more info.
+    rollout_worker = get_global_worker()
+
+Policy losses are defined over the ``post_batch`` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
 
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
@@ -896,15 +941,13 @@ Stack Traces
 
 You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
-REST API
---------
+External Application API
+------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if it were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
 
-.. autoclass:: ray.rllib.utils.policy_client.PolicyClient
+.. autoclass:: ray.rllib.env.policy_client.PolicyClient
     :members:
 
-.. autoclass:: ray.rllib.utils.policy_server.PolicyServer
+.. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
-
-For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

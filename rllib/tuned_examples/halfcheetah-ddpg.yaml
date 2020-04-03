@@ -42,7 +42,7 @@ halfcheetah-ddpg:
         huber_threshold: 1.0
         l2_reg: 0.000001
         learning_starts: 500
-        sample_batch_size: 1
+        rollout_fragment_length: 1
         train_batch_size: 64
 
         # === Parallelism ===

@@ -48,28 +48,30 @@ class Location:
 
 
 class ExportFormat:
-    """Describes the format to export the trial Trainable.
+    """Describes the format to import/export the trial Trainable.
 
     This may correspond to different file formats based on the
     Trainable implementation.
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    H5 = "h5"
 
     @staticmethod
-    def validate(export_formats):
-        """Validates export_formats.
+    def validate(formats):
+        """Validates formats.
 
         Raises:
             ValueError if the format is unknown.
         """
-        for i in range(len(export_formats)):
-            export_formats[i] = export_formats[i].strip().lower()
-            if export_formats[i] not in [
-                    ExportFormat.CHECKPOINT, ExportFormat.MODEL
+        for i in range(len(formats)):
+            formats[i] = formats[i].strip().lower()
+            if formats[i] not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL,
+                    ExportFormat.H5
             ]:
-                raise TuneError("Unsupported export format: " +
-                                export_formats[i])
+                raise TuneError("Unsupported import/export format: " +
+                                formats[i])
 
 
 def checkpoint_deleter(trial_id, runner):
@@ -102,6 +104,27 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
+class TrialInfo:
+    """Serializable struct for holding information for a Trial.
+
+    Attributes:
+        trial_name (str): String name of the currernt trial.
+        trial_id (str): trial_id of the trial
+    """
+
+    def __init__(self, trial):
+        self._trial_name = str(trial)
+        self._trial_id = trial.trial_id
+
+    @property
+    def trial_name(self):
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        return self._trial_id
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -110,6 +133,19 @@ class Trial:
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+
+    Attributes:
+        trainable_name (str): Name of the trainable object to be executed.
+        config (dict): Provided configuration dictionary with evaluated params.
+        trial_id (str): Unique identifier for the trial.
+        local_dir (str): Local_dir as passed to tune.run.
+        logdir (str): Directory where the trial logs are saved.
+        evaluated_params (dict): Evaluated parameters by search algorithm,
+        experiment_tag (str): Identifying trial name to show in the console.
+        resources (Resources): Amount of resources that this trial will use.
+        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file (str): Path to the errors that this trial has raised.
+
     """
 
     PENDING = "PENDING"
@@ -236,13 +272,13 @@ class Trial:
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
-        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
-        Otherwise, it is the most recent PERSISTENT checkpoint.
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
         """
-        if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_memory_checkpoint.value
-            return self.checkpoint_manager.newest_memory_checkpoint
-        checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
+        if self.status == Trial.ERROR:
+            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
+        else:
+            checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
             checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
         return checkpoint

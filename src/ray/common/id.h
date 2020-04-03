@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_ID_H_
 #define RAY_ID_H_
 
@@ -6,6 +20,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <msgpack.hpp>
 #include <mutex>
 #include <random>
 #include <string>
@@ -92,6 +107,8 @@ class UniqueID : public BaseID<UniqueID> {
 
   UniqueID() : BaseID() {}
 
+  MSGPACK_DEFINE(id_);
+
  protected:
   UniqueID(const std::string &binary);
 
@@ -111,6 +128,8 @@ class JobID : public BaseID<JobID> {
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -156,6 +175,8 @@ class ActorID : public BaseID<ActorID> {
   ///
   /// \return The job id to which this actor belongs.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -223,6 +244,8 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \return The `JobID` of the job which creates this task.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -349,6 +372,16 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return A random object id.
   static ObjectID FromRandom();
 
+  /// Compute the object ID that is used to track an actor's lifetime. This
+  /// object does not actually have a value; it is just used for counting
+  /// references (handles) to the actor.
+  ///
+  /// \param actor_id The ID of the actor to track.
+  /// \return The computed object ID.
+  static ObjectID ForActorHandle(const ActorID &actor_id);
+
+  MSGPACK_DEFINE(id_);
+
  private:
   /// A helper method to generate an ObjectID.
   static ObjectID GenerateObjectId(const std::string &task_id_binary,
@@ -422,7 +455,7 @@ template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
-  T t = T::Nil();
+  T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
 }
