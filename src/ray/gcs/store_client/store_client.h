@@ -99,8 +99,6 @@ class StoreClient {
   StoreClient() = default;
 };
 
-typedef StoreClient<ActorID, rpc::ActorTableData, JobID> ActorStoreTable;
-
 }  // namespace gcs
 
 }  // namespace ray

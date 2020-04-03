@@ -18,8 +18,9 @@ class StoreBasedGcsServiceDiscoveryClient : public GcsServiceDiscoveryClient {
   ///
   /// \param options Options of this client.
   /// \param store_client The storage client to access service information from.
-  StoreBasedGcsServiceDiscoveryClient(const GcsServiceDiscoveryClientOptions &options,
-                                      std::shared_ptr<StoreClient> store_client);
+  StoreBasedGcsServiceDiscoveryClient(
+      const GcsServiceDiscoveryClientOptions &options,
+      std::shared_ptr<GcsServerInfoTable> gcs_server_table);
 
   virtual ~StoreBasedGcsServiceDiscoveryClient();
 
@@ -45,7 +46,7 @@ class StoreBasedGcsServiceDiscoveryClient : public GcsServiceDiscoveryClient {
   /// Start timer to poll gcs service information from storage.
   void RunQueryStoreTimer();
 
-  std::shared_ptr<StoreClient> store_client_;
+  std::shared_ptr<GcsServerInfoTable> gcs_server_table_;
 
   /// A timer that ticks every fixed milliseconds.
   std::unique_ptr<boost::asio::deadline_timer> query_store_timer_;

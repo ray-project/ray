@@ -60,7 +60,8 @@ class RedisStoreClient : public StoreClient<Key, Data, IndexKey> {
   std::shared_ptr<RedisClient> redis_client_;
 };
 
-typedef RedisStoreClient<ActorID, rpc::ActorTableData, JobID> RedisActorStoreTable;
+// TODO(micafan) We will use class GcsServerInfoTable instead of this typedef.
+typedef StoreClient<GcsServerID, rpc::GcsServerInfo, GcsServerID> GcsServerInfoTable;
 
 }  // namespace gcs
 

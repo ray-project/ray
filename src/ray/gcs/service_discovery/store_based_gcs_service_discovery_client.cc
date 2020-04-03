@@ -6,9 +6,9 @@ namespace gcs {
 
 StoreBasedGcsServiceDiscoveryClient::StoreBasedGcsServiceDiscoveryClient(
     const GcsServiceDiscoveryClientOptions &options,
-    std::shared_ptr<StoreClient> store_client)
-    : GcsServiceDiscoveryClient(options), store_client_(store_client) {
-  RAY_CHECK(store_client_);
+    std::shared_ptr<GcsServerInfoTable> gcs_server_table)
+    : GcsServiceDiscoveryClient(options), gcs_server_table_(std::move(gcs_server_table)) {
+  RAY_CHECK(gcs_server_table_);
   RAY_CHECK(!options_.target_gcs_service_name_.empty());
 }
 
@@ -30,8 +30,9 @@ void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
 
 Status StoreBasedGcsServiceDiscoveryClient::RegisterService(
     const rpc::GcsServerInfo &service_info) {
-  return store_client_->Put(options_.target_gcs_service_name_,
-                            service_info.SerializeToString());
+  return gcs_server_table_->Put(options_.target_gcs_service_name_,
+                                options_.target_gcs_service_name_,
+                                service_info.SerializeToString());
 }
 
 void StoreBasedGcsServiceDiscoveryClient::RegisterServiceWatcher(
@@ -108,7 +109,8 @@ void StoreBasedGcsServiceDiscoveryClient::RunQueryStoreTimer() {
       }
 
   Status status =
-      store_client_->AsyncGet(options_.target_gcs_service_name_, on_get_callback);
+      gcs_server_table_->AsyncGet(options_.target_gcs_service_name_,
+                                  options_.target_gcs_service_name_, on_get_callback);
   RAY_CHECK_OK(status);
 }
 
