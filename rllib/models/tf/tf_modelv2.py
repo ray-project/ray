@@ -85,19 +85,6 @@ class TFModelV2(ModelV2):
         """
         raise NotImplementedError
 
-    def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
-
-        Returns:
-            value estimate tensor of shape [BATCH].
-
-        Sample implementation for the ``MyModelClass`` example::
-
-            def value_function(self):
-                return self._value_out
-        """
-        raise NotImplementedError
-
     def update_ops(self):
         """Return the list of update ops for this model.
 

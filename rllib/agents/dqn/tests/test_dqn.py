@@ -1,54 +1,42 @@
 import numpy as np
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
 
 class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
-        """Test whether a DQNTrainer can be built with both frameworks."""
+        """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        num_iterations = 2
+
+        for fw in framework_iterator(config):
+            # double-dueling DQN.
+            plain_config = config.copy()
+            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
 
         # Rainbow.
+            # TODO(sven): Add torch once DQN-torch supports distributional-Q.
+            if fw == "torch":
+                continue
         rainbow_config = config.copy()
-        rainbow_config["eager"] = False
         rainbow_config["num_atoms"] = 10
         rainbow_config["noisy"] = True
         rainbow_config["double_q"] = True
         rainbow_config["dueling"] = True
         rainbow_config["n_step"] = 5
         trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
-        num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
-
-        # tf.
-        tf_config = config.copy()
-        tf_config["eager"] = False
-        trainer = dqn.DQNTrainer(config=tf_config, env="CartPole-v0")
-        num_iterations = 1
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-
-        # Eager.
-        eager_config = config.copy()
-        eager_config["eager"] = True
-        eager_ctx = eager_mode()
-        eager_ctx.__enter__()
-        trainer = dqn.DQNTrainer(config=eager_config, env="CartPole-v0")
-        num_iterations = 1
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-        eager_ctx.__exit__(None, None, None)
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
@@ -58,22 +46,7 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw == "torch":
-                continue
-
-            print("framework={}".format(fw))
-
-            eager_mode_ctx = None
-            if fw == "tf":
-                assert not tf.executing_eagerly()
-            else:
-                eager_mode_ctx = eager_mode()
-                eager_mode_ctx.__enter__()
-
-            config["eager"] = fw == "eager"
-            config["use_pytorch"] = fw == "torch"
-
+        for _ in framework_iterator(config):
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.
@@ -91,14 +64,14 @@ class TestDQN(unittest.TestCase):
             # (but no epsilon exploration).
             config["exploration_config"] = {
                 "type": "SoftQ",
-                "temperature": 0.001
+                "temperature": 0.000001
             }
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Due to the low temp, always expect the same action.
-            a_ = trainer.compute_action(obs)
+            actions = [trainer.compute_action(obs)]
             for _ in range(50):
-                a = trainer.compute_action(obs)
-                check(a, a_)
+                actions.append(trainer.compute_action(obs))
+            check(np.std(actions), 0.0, decimals=3)
 
             # Higher softmax temperature.
             config["exploration_config"]["temperature"] = 1.0
@@ -127,36 +100,16 @@ class TestDQN(unittest.TestCase):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
 
-            if eager_mode_ctx:
-                eager_mode_ctx.__exit__(None, None, None)
-
     def test_dqn_parameter_noise_exploration(self):
         """Tests, whether a DQN Agent works with ParameterNoise."""
         obs = np.array(0)
+        core_config = dqn.DEFAULT_CONFIG.copy()
+        core_config["num_workers"] = 0  # Run locally.
+        core_config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
 
-        for fw in ["eager", "tf", "torch"]:
-            if fw == "torch":
-                continue
-            print("framework={}".format(fw))
-
-            core_config = dqn.DEFAULT_CONFIG.copy()
-            core_config["num_workers"] = 0  # Run locally.
-            core_config["env_config"] = {
-                "is_slippery": False,
-                "map_name": "4x4"
-            }
-            core_config["eager"] = fw == "eager"
-            core_config["use_pytorch"] = fw == "torch"
-
+        # Test against all frameworks.
+        for fw in framework_iterator(core_config):
             config = core_config.copy()
-
-            eager_mode_ctx = None
-            if fw == "tf":
-                assert not tf.executing_eagerly()
-            elif fw == "eager":
-                eager_mode_ctx = eager_mode()
-                eager_mode_ctx.__enter__()
-                assert tf.executing_eagerly()
 
             # DQN with ParameterNoise exploration (config["explore"]=True).
             # ----
@@ -165,13 +118,14 @@ class TestDQN(unittest.TestCase):
 
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
+            p_sess = getattr(policy, "_sess", None)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
             check(noise_before, 0.0)
             initial_weights = self._get_current_weight(policy, fw)
 
             # Pseudo-start an episode and compare the weights before and after.
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=p_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_after_ep_start = self._get_current_noise(policy, fw)
             weights_after_ep_start = self._get_current_weight(policy, fw)
@@ -212,7 +166,7 @@ class TestDQN(unittest.TestCase):
 
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=p_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
 
@@ -223,6 +177,7 @@ class TestDQN(unittest.TestCase):
             config["explore"] = False
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
+            p_sess = getattr(policy, "_sess", None)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 
@@ -232,7 +187,7 @@ class TestDQN(unittest.TestCase):
 
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=p_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
 
             # Should be the same, as we don't do anything at the beginning of
@@ -257,7 +212,7 @@ class TestDQN(unittest.TestCase):
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones (no noise permanently
             # applied throughout the episode).
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=p_sess)
             weights_after_episode_end = self._get_current_weight(policy, fw)
             check(initial_weights, weights_after_episode_end)
             # Noise should still be the same (re-sampling only happens at
@@ -282,14 +237,12 @@ class TestDQN(unittest.TestCase):
             # the same action for the same input (parameter noise is
             # deterministic).
             policy = trainer.get_policy()
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            p_sess = getattr(policy, "_sess", None)
+            policy.exploration.on_episode_start(policy, tf_sess=p_sess)
             a_ = trainer.compute_action(obs)
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
-
-            if eager_mode_ctx:
-                eager_mode_ctx.__exit__(None, None, None)
 
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.

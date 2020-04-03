@@ -2,7 +2,8 @@ from gym.spaces import Discrete
 import numpy as np
 
 import ray
-from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.agents.dqn.distributional_q_tf_model import \
+    DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
@@ -77,7 +78,8 @@ class QLoss:
             # priority is robust and insensitive to `prioritized_replay_alpha`
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
-            self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.loss = tf.reduce_mean(
+                self.td_error * tf.cast(importance_weights, tf.float32))
             self.stats = {
                 # TODO: better Q stats for dist dqn
                 "mean_td_error": tf.reduce_mean(self.td_error),
@@ -129,7 +131,7 @@ def build_q_model(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    if config["hiddens"]:
+    if config["dueling_hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
         num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
         config["model"]["no_final_linear"] = True
@@ -142,10 +144,10 @@ def build_q_model(policy, obs_space, action_space, config):
         num_outputs,
         config["model"],
         framework="tf",
-        model_interface=DistributionalQModel,
+        model_interface=DistributionalQTFModel,
         name=Q_SCOPE,
         num_atoms=config["num_atoms"],
-        q_hiddens=config["hiddens"],
+        dueling_hiddens=config["dueling_hiddens"],
         dueling=config["dueling"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
@@ -163,10 +165,10 @@ def build_q_model(policy, obs_space, action_space, config):
         num_outputs,
         config["model"],
         framework="tf",
-        model_interface=DistributionalQModel,
+        model_interface=DistributionalQTFModel,
         name=Q_TARGET_SCOPE,
         num_atoms=config["num_atoms"],
-        q_hiddens=config["hiddens"],
+        dueling_hiddens=config["dueling_hiddens"],
         dueling=config["dueling"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
@@ -256,12 +258,12 @@ def adam_optimizer(policy, config):
 
 
 def clip_gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
+    if policy.config["grad_clip"] is not None:
         grads_and_vars = minimize_and_clip(
             optimizer,
             loss,
             var_list=policy.q_func_vars,
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
     else:
         grads_and_vars = optimizer.compute_gradients(
             loss, var_list=policy.q_func_vars)

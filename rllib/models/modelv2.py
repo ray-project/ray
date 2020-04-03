@@ -84,7 +84,11 @@ class ModelV2:
         raise NotImplementedError
 
     def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
+        """Returns the value function output for the most recent forward pass.
+
+        Note that a `forward` call has to be performed first, before this
+        methods can return anything and thus that calling this method does not
+        cause an extra forward pass through the network.
 
         Returns:
             value estimate tensor of shape [BATCH].

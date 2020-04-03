@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_common_config({
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": 40,
+    "grad_clip": 40,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that

@@ -2,7 +2,7 @@ import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
@@ -30,11 +30,11 @@ DEFAULT_CONFIG = with_common_config({
     "sigma0": 0.5,
     # Whether to use dueling dqn
     "dueling": True,
+    # Dense-layer setup for each the advantage branch and the value branch
+    # in a dueling architecture.
+    "dueling_hiddens": [256],
     # Whether to use double dqn
     "double_q": True,
-    # Postprocess model outputs with these hidden layers to compute the
-    # state and action values. See also the model config in catalog.py.
-    "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
 
@@ -90,13 +90,13 @@ DEFAULT_CONFIG = with_common_config({
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": 40,
+    "grad_clip": 40,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
-    # Size of a batched sampled from replay buffer for training. Note that
+    # Size of a batch sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
@@ -122,6 +122,8 @@ DEFAULT_CONFIG = with_common_config({
     "softmax_temp": DEPRECATED_VALUE,
     "soft_q": DEPRECATED_VALUE,
     "parameter_noise": DEPRECATED_VALUE,
+    "hiddens": DEPRECATED_VALUE,
+    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -165,6 +167,14 @@ def validate_config_and_setup_param_noise(config):
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
+    if config.get("hiddens", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("hiddens", "dueling_hiddens")
+        config["dueling_hiddens"] = config.pop("hiddens")
+
+    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("grad_norm_clipping", "grad_clip")
+        config["grad_clip"] = config.pop("grad_norm_clipping")
+
     schedule_max_timesteps = None
     if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
