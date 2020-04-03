@@ -964,6 +964,8 @@ void NodeManager::ProcessClientMessage(
     }
   }
 
+  RAY_LOG(WARNING) << "message_type_value = " << (int64_t)message_type_value; 
+
   switch (message_type_value) {
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
@@ -975,6 +977,7 @@ void NodeManager::ProcessClientMessage(
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
+    RAY_LOG(WARNING) << "DisconnectClient";
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
