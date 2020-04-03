@@ -170,7 +170,7 @@ TEST_F(StreamingTransferTest, flow_control_test) {
   std::list<StreamingMessagePtr> read_message_list;
   while (read_message_list.size() < num) {
     std::shared_ptr<DataBundle> msg;
-    reader->GetBundle(5000, msg);
+    reader->GetBundle(1000, msg);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
     auto &message_list = bundle_ptr->GetMessageList();
     std::copy(message_list.begin(), message_list.end(),
