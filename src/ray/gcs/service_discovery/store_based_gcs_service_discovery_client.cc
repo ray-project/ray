@@ -30,6 +30,7 @@ void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
 
 Status StoreBasedGcsServiceDiscoveryClient::RegisterService(
     const rpc::GcsServerInfo &service_info) {
+  // TODO(micafan) StoreClient派生类支持string类型
   return gcs_server_table_->Put(options_.target_gcs_service_name_,
                                 options_.target_gcs_service_name_,
                                 service_info.SerializeToString());
@@ -108,6 +109,7 @@ void StoreBasedGcsServiceDiscoveryClient::RunQueryStoreTimer() {
         });
       }
 
+  // TODO(micafan) StoreClient派生类支持string类型
   Status status =
       gcs_server_table_->AsyncGet(options_.target_gcs_service_name_,
                                   options_.target_gcs_service_name_, on_get_callback);
