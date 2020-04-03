@@ -1,3 +1,4 @@
+from functools import partial
 import gym
 import logging
 import numpy as np

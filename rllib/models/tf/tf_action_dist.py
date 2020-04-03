@@ -328,8 +328,8 @@ class Deterministic(TFActionDistribution):
         return self.inputs
 
     @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        return 0.0
+    def logp(self, x):
+        return tf.zeros_like(self.inputs)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):

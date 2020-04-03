@@ -10,6 +10,7 @@ from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check
 
@@ -36,29 +37,16 @@ class TestSAC(unittest.TestCase):
         num_iterations = 2000
 
         # eager (discrete and cont. actions).
-        for fw in ["torch", "eager", "tf"]:
-            print("framework={}".format(fw))
-
-            config["eager"] = fw == "eager"
-            config["use_pytorch"] = fw == "torch"
-
-            eager_ctx = None
-            if fw == "eager":
-                eager_ctx = eager_mode()
-                eager_ctx.__enter__()
-                assert tf.executing_eagerly()
-            elif fw == "tf":
-                assert not tf.executing_eagerly()
-
-            for env in ["Pendulum-v0", "CartPole-v0"]:
+        for _ in framework_iterator(config, ["tf", "eager"]):
+            for env in [
+                    "CartPole-v0",
+                    "Pendulum-v0",
+            ]:
                 print("Env={}".format(env))
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-
-            if eager_ctx:
-                eager_ctx.__exit__(None, None, None)
 
     def test_sac_loss_function(self):
         """Tests SAC function results across all frameworks."""

@@ -74,12 +74,18 @@ py_test(
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
-# DQNTrainer
+# DQNTrainer/SimpleQTrainer
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+py_test(
+    name = "test_simple_q",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # APEXTrainer
@@ -348,7 +354,7 @@ py_test(
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -388,7 +394,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
+        "--config", "'{\"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"dueling_hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
         ]
 )
 
@@ -883,7 +889,7 @@ py_test(
 py_test(
     name = "policy/tests/test_compute_log_likelihoods",
     tags = ["policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
@@ -966,7 +972,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_eager_support.py"]
 )
 
@@ -1267,6 +1273,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_torch_rnn_model",
+    main = "examples/custom_torch_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_torch_rnn_model.py"],
+    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
+)
+
+py_test(
     name = "examples/custom_torch_policy",
     tags = ["examples", "examples_C"],
     size = "small",
@@ -1361,7 +1376,8 @@ sh_test(
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    name = "examples/rock_paper_scissors_multiagent",
+    main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
     size = "large",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
@@ -1374,6 +1390,24 @@ py_test(
     size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ucb",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
 
 py_test(

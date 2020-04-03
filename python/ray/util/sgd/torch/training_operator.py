@@ -1,10 +1,9 @@
 import collections
-
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
-from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
@@ -15,6 +14,12 @@ except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
+    pass
+
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
     pass
 
 
@@ -55,7 +60,9 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
-                 use_fp16=False):
+                 use_gpu=False,
+                 use_fp16=False,
+                 use_tqdm=False):
         # You are not expected to override this method.
         self._models = models  # List of models
         assert isinstance(models, collections.Iterable), (
@@ -74,6 +81,11 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._use_gpu = use_gpu and torch.cuda.is_available()
+        self._device = torch.device("cuda" if self._use_gpu else "cpu")
+        if tqdm is None and use_tqdm:
+            raise ValueError("tqdm must be installed to use tqdm in training.")
+        self._use_tqdm = use_tqdm
         self.global_step = 0
 
         if type(self) is TrainingOperator:
@@ -84,11 +96,7 @@ class TrainingOperator:
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
         self.timers = TimerCollection()
-        self.reporters = []
         self.setup(config)
-
-    def set_reporters(self, reporters):
-        self.reporters = reporters
 
     def _set_timers(self, timers):
         """Passes in the timers from the Runner."""
@@ -142,8 +150,19 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        for r in self.reporters:
-            r.on_epoch_begin(info, self)
+        if self.use_tqdm and self.world_rank == 0:
+            desc = ""
+            if info is not None and "epoch_idx" in info:
+                if "num_epochs" in info:
+                    desc = "{}/{}e".format(info["epoch_idx"] + 1,
+                                           info["num_epochs"])
+                else:
+                    desc = "{}e".format(info["epoch_idx"] + 1)
+            _progress_bar = tqdm(
+                total=info[NUM_STEPS] or len(self.train_loader),
+                desc=desc,
+                unit="batch",
+                leave=False)
 
         metric_meters = AverageMeterCollection()
 
@@ -156,8 +175,12 @@ class TrainingOperator:
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
-            for r in self.reporters:
-                r.on_batch_end(batch_info, metrics, self)
+            if self.use_tqdm and self.world_rank == 0:
+                _progress_bar.n = batch_idx + 1
+                postfix = {}
+                if "train_loss" in metrics:
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
@@ -247,7 +270,7 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics from the evaluation.
-                By default, returns "mean_accuracy" and "mean_val_loss"
+                By default, returns "val_accuracy" and "val_loss"
                 which is computed by aggregating "loss" and "correct" values
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
@@ -304,12 +327,17 @@ class TrainingOperator:
         }
 
     def state_dict(self):
-        """Returns a serializable representation of the operator state."""
+        """Override this to return a representation of the operator state."""
         pass
 
     def load_state_dict(self, state_dict):
-        """Loads a serializable representation of the operator state."""
+        """Override this to load the representation of the operator state."""
         pass
+
+    @property
+    def device(self):
+        """The torch device, at your convenience."""
+        return self._device
 
     @property
     def config(self):
@@ -375,6 +403,11 @@ class TrainingOperator:
     def use_fp16(self):
         """Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
+
+    @property
+    def use_tqdm(self):
+        """Whether tqdm progress bars are enabled."""
+        return self._use_tqdm
 
 
 class _TestingOperator(TrainingOperator):

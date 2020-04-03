@@ -333,6 +333,8 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
 
     checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
     trainer_1.save(checkpoint_path)
+    # You can only have 1 trainer alive at a time
+    trainer_1.shutdown()
 
     trainer_2 = TorchTrainer(
         model_creator=model_creator,
@@ -340,7 +342,7 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         num_workers=num_workers)
-    trainer_2.restore(checkpoint_path)
+    trainer_2.load(checkpoint_path)
 
 
 Retrieving the model
@@ -442,23 +444,19 @@ During each ``train`` method, each parallel worker iterates through the iterable
   5. If there are no available resources, the Trainer will apply an exponential backoff before retrying to create workers.
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
-Note that we assume the Trainer itself is not on a pre-emptible node. It is currently not possible to recover from a Trainer node failure.
-
-Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training iterable.
-
-.. code-block:: python
-
-    trainer.train(max_retries=N, checkpoint="auto")
-
+Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
 
 Advanced: Hyperparameter Tuning
 -------------------------------
 
-``TorchTrainer`` naturally integrates with Tune via the ``TorchTrainable`` interface. The same arguments to ``TorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
+``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
    :language: python
    :start-after: __torch_tune_example__
+   :end-before: __end_torch_tune_example__
+
+You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
 
 
 Simultaneous Multi-model Training
@@ -589,8 +587,14 @@ to contribute an example, feel free to create a `pull request here <https://gith
 - `Torch training example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/train_example.py>`__:
    Simple example of using Ray's TorchTrainer.
 
+- `TorchTrainer and RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`__:
+   Simple example of hyperparameter tuning with Ray's TorchTrainer.
+
 - `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__:
    Training a ResNet18 model on CIFAR10.
+
+- `CIFAR10 RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_pbt.py>`__:
+   Tuning a ResNet18 model on CIFAR10 with Population-based training on RayTune.
 
 - `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__:
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.

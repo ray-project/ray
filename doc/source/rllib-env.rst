@@ -80,6 +80,10 @@ RLlib uses Gym as its environment interface for single-agent training. For more 
 Performance
 ~~~~~~~~~~~
 
+.. tip::
+
+    Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
+
 There are two ways to scale experience collection with Gym environments:
 
     1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
@@ -256,7 +260,7 @@ Alternatively, the env itself can be modified to share observations between agen
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as :ref:`Q-Mix <qmix>` that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
 .. literalinclude:: ../../rllib/env/multi_agent_env.py
    :language: python
