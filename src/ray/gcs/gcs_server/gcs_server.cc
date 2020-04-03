@@ -20,6 +20,7 @@
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
 #include "ray/common/client_connection.h"
+#include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
 #include "worker_info_handler_impl.h"
@@ -187,7 +188,8 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 bool GcsServer::Ping(const std::string &ip, int port) {
   AsyncClient client;
-  return client.Connect(ip, port, 1000);
+  return client.Connect(
+      ip, port, RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
 }
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {

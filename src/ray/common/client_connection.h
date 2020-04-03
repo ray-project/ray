@@ -224,10 +224,20 @@ using boost::asio::deadline_timer;
 using boost::asio::io_service;
 using boost::asio::ip::tcp;
 
+/// \class AsyncClient
+///
+/// This class provides the socket asynchronous interface with timeout: Connect.
 class AsyncClient {
  public:
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
 
+  /// This function is used to asynchronously connect a socket to the specified address
+  /// with timeout.
+  ///
+  /// \param ip The ip that the rpc server is listening on.
+  /// \param port The port that the rpc server is listening on.
+  /// \param timeout_ms The maximum wait time in milliseconds.
+  /// \return Whether the connection is successful.
   bool Connect(const std::string &ip, int port, int64_t timeout_ms) {
     try {
       auto endpoint =
@@ -237,6 +247,8 @@ class AsyncClient {
       bool is_timeout = false;
       socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this, _1,
                                                   boost::ref(is_connected)));
+
+      // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
       timer_.async_wait(
           boost::bind(&AsyncClient::TimerHandle, this, _1, boost::ref(is_timeout)));
