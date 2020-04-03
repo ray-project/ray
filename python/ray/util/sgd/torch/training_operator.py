@@ -60,7 +60,7 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
-                 device_ids=self.device_ids,
+                 device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
