@@ -978,8 +978,6 @@ void NodeManager::ProcessClientMessage(
     }
   }
 
-  RAY_LOG(WARNING) << "message_type_value = " << (int64_t)message_type_value; 
-
   switch (message_type_value) {
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
@@ -991,7 +989,6 @@ void NodeManager::ProcessClientMessage(
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
-    RAY_LOG(WARNING) << "DisconnectClient";
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
@@ -1219,7 +1216,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                     << "been disconnected.";
-      return;
+      return;              
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
@@ -1800,9 +1797,9 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   Status status;
-  if (worker) {
-    leased_workers_.erase(worker_id);
+  leased_workers_.erase(worker_id);
 
+  if (worker) {
     if (request.disconnect_worker()) {
       ProcessDisconnectClientMessage(worker->Connection());
     } else {
@@ -2237,10 +2234,19 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   TaskID task_id = worker->GetAssignedTaskId();
+
+  // First, always release task dependencies. This ensures we don't leak resources even
+  // if we don't need to unblock the worker below.
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+
+  if (!worker->IsBlocked()) {
+    return;  // Don't need to unblock the worker.
+  }
+
   Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
   const ResourceSet cpu_resources = required_resources.GetNumCpus();
@@ -2261,7 +2267,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
         << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
   }
   worker->MarkUnblocked();
-  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
 }
 
 void NodeManager::AsyncResolveObjects(
