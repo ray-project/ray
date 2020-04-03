@@ -9,7 +9,9 @@ class ObjectLocatorTest : public ::testing::Test {
  public:
   ObjectLocatorTest() {}
 
-  void GetTestData() {
+  void SetUp() override { GenTestData(); }
+
+  void GenTestData() {
     for (size_t i = 0; i < object_count_; ++i) {
       ObjectID object_id = ObjectID::FromRandom();
       object_ids_.emplace(object_id);
@@ -90,3 +92,8 @@ TEST_F(ObjectLocatorTest, RemoveObjectLocationTest) {
 }  // namespace gcs
 
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

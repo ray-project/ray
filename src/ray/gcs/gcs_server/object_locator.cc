@@ -53,7 +53,7 @@ void ObjectLocator::RemoveNode(const ClientID &node_id) {
   ObjectSet node_hold_objects;
   auto it = node_to_objects_.find(node_id);
   if (it != node_to_objects_.end()) {
-    node_hold_objects = it->second;
+    node_hold_objects.swap(it->second);
     node_to_objects_.erase(it);
   }
 
