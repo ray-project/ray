@@ -51,8 +51,8 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
         arg += ch;
         escaping = surroundings == dquote && ch == backslash;  // backslash in "..."
       }
-    } else {                           // outside quotes
-      if (ch == space || ch == tab) {  // delimeter?
+    } else {  // outside quotes
+      if (ch == space || ch == tab) {
         is_delimeter = true;
         if (arg_started) {  // we just finished an argument
           result.push_back(arg);
