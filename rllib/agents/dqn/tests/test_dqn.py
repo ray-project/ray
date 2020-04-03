@@ -1,10 +1,9 @@
 import numpy as np
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -14,41 +13,27 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built with both frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-
-        # Rainbow.
-        rainbow_config = config.copy()
-        rainbow_config["eager"] = False
-        rainbow_config["num_atoms"] = 10
-        rainbow_config["noisy"] = True
-        rainbow_config["double_q"] = True
-        rainbow_config["dueling"] = True
-        rainbow_config["n_step"] = 5
-        trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
         num_iterations = 2
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
 
-        # tf.
-        tf_config = config.copy()
-        tf_config["eager"] = False
-        trainer = dqn.DQNTrainer(config=tf_config, env="CartPole-v0")
-        num_iterations = 1
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
+        for _ in framework_iterator(config, frameworks=["tf", "eager"]):
+            # Rainbow.
+            rainbow_config = config.copy()
+            rainbow_config["num_atoms"] = 10
+            rainbow_config["noisy"] = True
+            rainbow_config["double_q"] = True
+            rainbow_config["dueling"] = True
+            rainbow_config["n_step"] = 5
+            trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
 
-        # Eager.
-        eager_config = config.copy()
-        eager_config["eager"] = True
-        eager_ctx = eager_mode()
-        eager_ctx.__enter__()
-        trainer = dqn.DQNTrainer(config=eager_config, env="CartPole-v0")
-        num_iterations = 1
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-        eager_ctx.__exit__(None, None, None)
+            # double-dueling DQN.
+            plain_config = config.copy()
+            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
@@ -58,22 +43,7 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw == "torch":
-                continue
-
-            print("framework={}".format(fw))
-
-            eager_mode_ctx = None
-            if fw == "tf":
-                assert not tf.executing_eagerly()
-            else:
-                eager_mode_ctx = eager_mode()
-                eager_mode_ctx.__enter__()
-
-            config["eager"] = fw == "eager"
-            config["use_pytorch"] = fw == "torch"
-
+        for _ in framework_iterator(config, ["tf", "eager"]):
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.
