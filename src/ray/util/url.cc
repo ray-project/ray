@@ -97,23 +97,23 @@ parse_url_endpoint(const std::string &endpoint, int default_port) {
   boost::asio::generic::stream_protocol::endpoint result;
   std::string address = endpoint, scheme;
   if (address.find("unix://") == 0) {
-    scheme = "unix";
-    address.erase(0, scheme.size() + 3);
+    scheme = "unix://";
+    address.erase(0, scheme.size());
   } else if (address.size() > 0 && ray::IsDirSep(address[0])) {
-    scheme = "unix";
+    scheme = "unix://";
   } else if (address.find("tcp://") == 0) {
-    scheme = "tcp";
-    address.erase(0, scheme.size() + 3);
+    scheme = "tcp://";
+    address.erase(0, scheme.size());
   } else {
-    scheme = "tcp";
+    scheme = "tcp://";
   }
-  if (scheme == "unix") {
+  if (scheme == "unix://") {
 #ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
     result = boost::asio::local::stream_protocol::endpoint(address);
 #else
     RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported: " << endpoint;
 #endif
-  } else if (scheme == "tcp") {
+  } else if (scheme == "tcp://") {
     std::string::const_iterator i = address.begin();
     std::string host = ScanToken(i, "[%*[^][/]]");
     host = host.empty() ? ScanToken(i, "%*[^/:]") : host.substr(1, host.size() - 2);
