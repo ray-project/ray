@@ -470,7 +470,7 @@ std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedN
   absl::MutexLock lock(&mu_);
   for (const auto &it : objects_) {
     if (it.second->IsInPlasmaError()) {
-      RAY_LOG(INFO) << "Plasma object " << it.first << " pinned at "
+      RAY_LOG(DEBUG) << "Plasma object " << it.first << " pinned at "
                     << it.second->PinnedAtRayletId().value_or(ClientID::Nil());
       if (it.second->PinnedAtRayletId().value_or(ClientID::Nil()) == node_id) {
         lost_objects.push_back(it.first);
