@@ -1,3 +1,5 @@
+import json
+
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
@@ -9,7 +11,7 @@ from ray.dashboard.metrics_exporter.schema import AuthRequest, AuthResponse
 from ray.dashboard.metrics_exporter.schema import IngestRequest, IngestResponse
 
 
-def authentication_request(url, cluster_id):
+def authentication_request(url, cluster_id) -> AuthResponse:
     auth_requeset = AuthRequest(cluster_id=cluster_id)
     response = requests.post(url, data=auth_requeset.json())
     response.raise_for_status()
@@ -17,7 +19,8 @@ def authentication_request(url, cluster_id):
 
 
 def ingest_request(url, cluster_id, access_token, ray_config, node_info,
-                   raylet_info, tune_info, tune_availability):
+                   raylet_info, tune_info,
+                   tune_availability) -> IngestResponse:
     ingest_request = IngestRequest(
         cluster_id=cluster_id,
         access_token=access_token,
@@ -28,4 +31,4 @@ def ingest_request(url, cluster_id, access_token, ray_config, node_info,
         tune_availability=tune_availability)
     response = requests.post(url, data=ingest_request.json())
     response.raise_for_status()
-    return IngestResponse.parse_obj(response.json())
+    return IngestResponse.parse_obj(json.loads(response.json()))
