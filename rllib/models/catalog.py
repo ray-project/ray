@@ -471,7 +471,7 @@ class ModelCatalog:
 
     @staticmethod
     def _get_default_torch_model_class_v2(obs_space, action_space, num_outputs,
-                                    model_config, name):
+                                          model_config, name):
         from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                   PyTorchFCNet)
         from ray.rllib.models.torch.visionnet import (VisionNetwork as

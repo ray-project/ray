@@ -76,8 +76,10 @@ def do_test_log_likelihood(run,
                                 layer_key[0])])
                 else:
                     expected_mean_logstd = fc(
-                        fc(obs_batch, np.transpose(
-                            vars["_hidden_layers.0._model.0.weight"])),
+                        fc(
+                            obs_batch,
+                            np.transpose(
+                                vars["_hidden_layers.0._model.0.weight"])),
                         np.transpose(vars["_logits._model.0.weight"]))
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:

@@ -75,8 +75,8 @@ class DistributionalQTFModel(TFModelV2):
                 for i in range(len(dueling_hiddens)):
                     if use_noisy:
                         action_out = self._noisy_layer(
-                            "hidden_%d" % i, action_out,
-                            dueling_hiddens[i], sigma0)
+                            "hidden_%d" % i, action_out, dueling_hiddens[i],
+                            sigma0)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
                             units=dueling_hiddens[i],
@@ -135,9 +135,9 @@ class DistributionalQTFModel(TFModelV2):
             state_out = model_out
             for i in range(len(dueling_hiddens)):
                 if use_noisy:
-                    state_out = self._noisy_layer(
-                        "dueling_hidden_%d" % i, state_out,
-                        dueling_hiddens[i], sigma0)
+                    state_out = self._noisy_layer("dueling_hidden_%d" % i,
+                                                  state_out,
+                                                  dueling_hiddens[i], sigma0)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=dueling_hiddens[i],

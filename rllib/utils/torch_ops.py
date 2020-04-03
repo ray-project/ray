@@ -93,6 +93,7 @@ def convert_to_torch_tensor(stats, device=None):
         Any: A new struct with the same structure as `stats`, but with all
             values converted to torch Tensor types.
     """
+
     def mapping(item):
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
@@ -103,4 +104,3 @@ def convert_to_torch_tensor(stats, device=None):
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, stats)
-

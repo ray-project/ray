@@ -289,8 +289,10 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def get_weights(self):
-        return {k: v.cpu().detach().numpy() for k, v in
-                self.model.state_dict().items()}
+        return {
+            k: v.cpu().detach().numpy()
+            for k, v in self.model.state_dict().items()
+        }
 
     @override(Policy)
     def set_weights(self, weights):
