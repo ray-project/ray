@@ -22,15 +22,6 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
-class ParameterNoiseMixin:
-    def __init__(self, obs_space, action_space, config):
-        pass
-
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
-
-
 class TargetNetworkMixin:
     def __init__(self, obs_space, action_space, config):
         @make_tf_callable(self.get_session())
@@ -154,10 +145,6 @@ def compute_q_values(policy, model, obs, explore):
     return model.get_q_values(model_out)
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
-    ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
-
-
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
@@ -170,7 +157,6 @@ SimpleQPolicy = build_tf_policy(
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    mixins=[ParameterNoiseMixin, TargetNetworkMixin])
+    mixins=[TargetNetworkMixin])
