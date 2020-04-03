@@ -609,6 +609,8 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   };
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
                                                             nullptr));
+  WaitPendingDone(task_lease_count, 1);
+
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
