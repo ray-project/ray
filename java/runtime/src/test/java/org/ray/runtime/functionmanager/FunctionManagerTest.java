@@ -9,7 +9,6 @@ import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.id.JobId;
@@ -23,12 +22,10 @@ import org.testng.annotations.Test;
  */
 public class FunctionManagerTest {
 
-  @RayRemote
   public static Object foo() {
     return null;
   }
 
-  @RayRemote
   public static class Bar {
 
     public Bar() {
@@ -81,19 +78,16 @@ public class FunctionManagerTest {
     RayFunction func = functionManager.getFunction(JobId.NIL, fooFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test actor method
     func = functionManager.getFunction(JobId.NIL, barFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
-    Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
     func = functionManager.getFunction(JobId.NIL, barConstructor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
   }
 
   @Test
@@ -103,19 +97,16 @@ public class FunctionManagerTest {
     RayFunction func = functionManager.getFunction(JobId.NIL, fooDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test actor method
     func = functionManager.getFunction(JobId.NIL, barDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
-    Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
     func = functionManager.getFunction(JobId.NIL, barConstructorDescriptor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
-    Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test raise overload exception
     Assert.expectThrows(RuntimeException.class, () -> {

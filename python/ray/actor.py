@@ -1,7 +1,5 @@
-import copy
 import inspect
 import logging
-import six
 import weakref
 
 from abc import ABCMeta, abstractmethod
@@ -11,7 +9,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorClassID, Language
+from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
@@ -95,7 +93,7 @@ class ActorMethod:
             self._actor_hard_ref = None
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Actor methods cannot be called directly. Instead "
+        raise TypeError("Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try "
                         "'object.{}.remote()'.".format(self._method_name,
                                                        self._method_name))
@@ -158,7 +156,7 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise Exception("{} can not be constructed directly, "
+        raise TypeError("{} can not be constructed directly, "
                         "instead of running '{}()', try '{}.create()'".format(
                             class_name, class_name, class_name))
 
@@ -310,7 +308,7 @@ class ActorClass:
         Raises:
             Exception: Always.
         """
-        raise Exception("Actors cannot be instantiated directly. "
+        raise TypeError("Actors cannot be instantiated directly. "
                         "Instead of '{}()', use '{}.remote()'.".format(
                             self.__ray_metadata__.class_name,
                             self.__ray_metadata__.class_name))
@@ -463,15 +461,15 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         if worker.mode is None:
-            raise Exception("Actors cannot be created before ray.init() "
-                            "has been called.")
+            raise RuntimeError("Actors cannot be created before ray.init() "
+                               "has been called.")
 
         if detached and name is None:
-            raise Exception("Detached actors must be named. "
-                            "Please use Actor._remote(name='some_name') "
-                            "to associate the name.")
+            raise ValueError("Detached actors must be named. "
+                             "Please use Actor._remote(name='some_name') "
+                             "to associate the name.")
 
         # Check whether the name is already taken.
         if name is not None:
@@ -504,66 +502,57 @@ class ActorClass:
                            if meta.num_cpus is None else meta.num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
-        # Do not export the actor class or the actor if run in LOCAL_MODE
-        # Instead, instantiate the actor locally and add it to the worker's
-        # dictionary
+        # LOCAL_MODE cannot handle cross_language
         if worker.mode == ray.LOCAL_MODE:
             assert not meta.is_cross_language, \
                 "Cross language ActorClass cannot be executed locally."
-            actor_id = ActorID.from_random()
-            worker.actors[actor_id] = meta.modified_class(
-                *copy.deepcopy(args), **copy.deepcopy(kwargs))
+
+        # Export the actor.
+        if not meta.is_cross_language and (meta.last_export_session_and_job !=
+                                           worker.current_session_and_job):
+            # If this actor class was not exported in this session and job,
+            # we need to export this function again, because current GCS
+            # doesn't have it.
+            meta.last_export_session_and_job = (worker.current_session_and_job)
+            # After serialize / deserialize modified class, the __module__
+            # of modified class will be ray.cloudpickle.cloudpickle.
+            # So, here pass actor_creation_function_descriptor to make
+            # sure export actor class correct.
+            worker.function_actor_manager.export_actor_class(
+                meta.modified_class, meta.actor_creation_function_descriptor,
+                meta.method_meta.methods.keys())
+
+        resources = ray.utils.resources_from_resource_arguments(
+            cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
+            meta.resources, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
+
+        # If the actor methods require CPU resources, then set the required
+        # placement resources. If actor_placement_resources is empty, then
+        # the required placement resources will be the same as resources.
+        actor_placement_resources = {}
+        assert actor_method_cpu in [0, 1]
+        if actor_method_cpu == 1:
+            actor_placement_resources = resources.copy()
+            actor_placement_resources["CPU"] += 1
+        if meta.is_cross_language:
+            creation_args = cross_language.format_args(worker, args, kwargs)
         else:
-            # Export the actor.
-            if not meta.is_cross_language and (meta.last_export_session_and_job
-                                               !=
-                                               worker.current_session_and_job):
-                # If this actor class was not exported in this session and job,
-                # we need to export this function again, because current GCS
-                # doesn't have it.
-                meta.last_export_session_and_job = (
-                    worker.current_session_and_job)
-                # After serialize / deserialize modified class, the __module__
-                # of modified class will be ray.cloudpickle.cloudpickle.
-                # So, here pass actor_creation_function_descriptor to make
-                # sure export actor class correct.
-                worker.function_actor_manager.export_actor_class(
-                    meta.modified_class,
-                    meta.actor_creation_function_descriptor,
-                    meta.method_meta.methods.keys())
-
-            resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, meta.num_gpus, meta.memory,
-                meta.object_store_memory, meta.resources, num_cpus, num_gpus,
-                memory, object_store_memory, resources)
-
-            # If the actor methods require CPU resources, then set the required
-            # placement resources. If actor_placement_resources is empty, then
-            # the required placement resources will be the same as resources.
-            actor_placement_resources = {}
-            assert actor_method_cpu in [0, 1]
-            if actor_method_cpu == 1:
-                actor_placement_resources = resources.copy()
-                actor_placement_resources["CPU"] += 1
-            if meta.is_cross_language:
-                creation_args = cross_language.format_args(
-                    worker, args, kwargs)
-            else:
-                function_signature = meta.method_meta.signatures["__init__"]
-                creation_args = signature.flatten_args(function_signature,
-                                                       args, kwargs)
-            actor_id = worker.core_worker.create_actor(
-                meta.language,
-                meta.actor_creation_function_descriptor,
-                creation_args,
-                meta.max_reconstructions,
-                resources,
-                actor_placement_resources,
-                max_concurrency,
-                detached,
-                is_asyncio,
-                # Store actor_method_cpu in actor handle's extension data.
-                extension_data=str(actor_method_cpu))
+            function_signature = meta.method_meta.signatures["__init__"]
+            creation_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+        actor_id = worker.core_worker.create_actor(
+            meta.language,
+            meta.actor_creation_function_descriptor,
+            creation_args,
+            meta.max_reconstructions,
+            resources,
+            actor_placement_resources,
+            max_concurrency,
+            detached,
+            is_asyncio,
+            # Store actor_method_cpu in actor handle's extension data.
+            extension_data=str(actor_method_cpu))
 
         actor_handle = ActorHandle(
             meta.language,
@@ -652,6 +641,14 @@ class ActorHandle:
                     decorator=self._ray_method_decorators.get(method_name))
                 setattr(self, method_name, method)
 
+    def __del__(self):
+        # Mark that this actor handle has gone out of scope. Once all actor
+        # handles are out of scope, the actor will exit.
+        worker = ray.worker.global_worker
+        if worker.connected and hasattr(worker, "core_worker"):
+            worker.core_worker.remove_actor_handle_reference(
+                self._ray_actor_id)
+
     def _actor_method_call(self,
                            method_name,
                            args=None,
@@ -674,7 +671,7 @@ class ActorHandle:
             object_ids: A list of object IDs returned by the remote actor
                 method.
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
 
         args = args or []
         kwargs = kwargs or {}
@@ -698,14 +695,10 @@ class ActorHandle:
             assert not self._ray_is_cross_language,\
                 "Cross language remote actor method " \
                 "cannot be executed locally."
-            function = getattr(worker.actors[self._actor_id], method_name)
-            object_ids = worker.local_mode_manager.execute(
-                function, method_name, args, kwargs, num_return_vals)
-        else:
-            object_ids = worker.core_worker.submit_actor_task(
-                self._ray_actor_language, self._ray_actor_id,
-                function_descriptor, list_args, num_return_vals,
-                self._ray_actor_method_cpus)
+
+        object_ids = worker.core_worker.submit_actor_task(
+            self._ray_actor_language, self._ray_actor_id, function_descriptor,
+            list_args, num_return_vals, self._ray_actor_method_cpus)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -722,7 +715,7 @@ class ActorHandle:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
-                    raise Exception(
+                    raise TypeError(
                         "Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try 'object.{}.remote()'.".
                         format(item, item))
@@ -752,36 +745,6 @@ class ActorHandle:
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
 
-    def __del__(self):
-        """Terminate the worker that is running this actor."""
-        # TODO(swang): Also clean up forked actor handles.
-        # Kill the worker if this is the original actor handle, created
-        # with Class.remote(). TODO(rkn): Even without passing handles around,
-        # this is not the right policy. the actor should be alive as long as
-        # there are ANY handles in scope in the process that created the actor,
-        # not just the first one.
-        worker = ray.worker.get_global_worker()
-        exported_in_current_session_and_job = (
-            self._ray_session_and_job == worker.current_session_and_job)
-        if (worker.mode == ray.worker.SCRIPT_MODE
-                and not exported_in_current_session_and_job):
-            # If the worker is a driver and driver id has changed because
-            # Ray was shut down re-initialized, the actor is already cleaned up
-            # and we don't need to send `__ray_terminate__` again.
-            logger.warning(
-                "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_actor_creation_function_descriptor.class_name)
-            return
-        if worker.connected and self._ray_original_handle:
-            # Note: in py2 the weakref is destroyed prior to calling __del__
-            # so we need to set the hardref here briefly
-            try:
-                self.__ray_terminate__._actor_hard_ref = self
-                self.__ray_terminate__.remote()
-            finally:
-                self.__ray_terminate__._actor_hard_ref = None
-
     def __ray_kill__(self):
         """Deprecated - use ray.kill() instead."""
         logger.warning("actor.__ray_kill__() is deprecated and will be removed"
@@ -792,25 +755,22 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
-    def _serialization_helper(self, ray_forking):
+    def _serialization_helper(self):
         """This is defined in order to make pickling work.
-
-        Args:
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
 
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
             # Non-local mode
-            state = worker.core_worker.serialize_actor_handle(self)
+            state = worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id)
         else:
             # Local mode
-            state = {
+            state = ({
                 "actor_language": self._ray_actor_language,
                 "actor_id": self._ray_actor_id,
                 "method_decorators": self._ray_method_decorators,
@@ -819,26 +779,28 @@ class ActorHandle:
                 "actor_method_cpus": self._ray_actor_method_cpus,
                 "actor_creation_function_descriptor": self.
                 _ray_actor_creation_function_descriptor,
-            }
+            }, None)
 
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, ray_forking):
+    def _deserialization_helper(cls, state, outer_object_id=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
+            outer_object_id: The ObjectID that the serialized actor handle was
+                contained in, if any. This is used for counting references to
+                the actor handle.
+
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state)
+                state, outer_object_id)
         else:
             # Local mode
             return cls(
@@ -855,8 +817,8 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper(False)
-        return ActorHandle._deserialization_helper, (state, False)
+        state = self._serialization_helper()
+        return ActorHandle._deserialization_helper, (state)
 
 
 def modify_class(cls):
@@ -882,7 +844,7 @@ def modify_class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_terminate__(self):
-            worker = ray.worker.get_global_worker()
+            worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
@@ -895,7 +857,7 @@ def modify_class(cls):
             """
             worker = ray.worker.global_worker
             if not isinstance(self, ray.actor.Checkpointable):
-                raise Exception(
+                raise TypeError(
                     "__ray_checkpoint__.remote() may only be called on actors "
                     "that implement ray.actor.Checkpointable")
             return worker._save_actor_checkpoint()
@@ -925,9 +887,9 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):
-        raise Exception("max_reconstructions must be in range [%d, %d]." %
-                        (ray_constants.NO_RECONSTRUCTION,
-                         ray_constants.INFINITE_RECONSTRUCTION))
+        raise ValueError("max_reconstructions must be in range [%d, %d]." %
+                         (ray_constants.NO_RECONSTRUCTION,
+                          ray_constants.INFINITE_RECONSTRUCTION))
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
@@ -957,10 +919,8 @@ def exit_actor():
         raise exit
         assert False, "This process should have terminated."
     else:
-        raise Exception("exit_actor called on a non-actor worker.")
+        raise TypeError("exit_actor called on a non-actor worker.")
 
-
-ray.worker.global_worker.make_actor = make_actor
 
 CheckpointContext = namedtuple(
     "CheckpointContext",
@@ -988,7 +948,7 @@ Checkpoint = namedtuple(
 """A namedtuple that represents a checkpoint."""
 
 
-class Checkpointable(six.with_metaclass(ABCMeta, object)):
+class Checkpointable(metaclass=ABCMeta):
     """An interface that indicates an actor can be checkpointed."""
 
     @abstractmethod

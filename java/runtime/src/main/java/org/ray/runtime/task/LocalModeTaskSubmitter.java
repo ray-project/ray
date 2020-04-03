@@ -17,7 +17,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
@@ -188,7 +188,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+  public BaseActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                               ActorCreationOptions options) {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
@@ -203,7 +203,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public List<ObjectId> submitActorTask(
-      RayActor actor, FunctionDescriptor functionDescriptor,
+      BaseActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);

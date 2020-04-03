@@ -88,44 +88,34 @@ def build_q_models(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
-                       action_space, config):
-    # Action Q network.
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space)
+def get_distribution_inputs_and_class(policy,
+                                      q_model,
+                                      obs_batch,
+                                      *,
+                                      explore=True,
+                                      **kwargs):
+    q_vals = compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-    action_dist = Categorical(q_vals, q_model)
-    return action_dist.logp(actions)
 
-
-def simple_sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                        action_space, explore, config,
-                                        timestep):
-    # Action Q network.
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space)
-    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    policy.q_values = q_vals
     policy.q_func_vars = q_model.variables()
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            policy.q_values, Categorical, q_model, explore, timestep)
-
-    return policy.output_actions, policy.sampled_action_logp
+    return policy.q_values, Categorical, []  # state-outs
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
     # q network evaluation
-    q_t = _compute_q_values(policy, policy.q_model,
-                            train_batch[SampleBatch.CUR_OBS],
-                            policy.observation_space, policy.action_space)
+    q_t = compute_q_values(
+        policy,
+        policy.q_model,
+        train_batch[SampleBatch.CUR_OBS],
+        explore=False)
 
     # target q network evalution
-    q_tp1 = _compute_q_values(policy, policy.target_q_model,
-                              train_batch[SampleBatch.NEXT_OBS],
-                              policy.observation_space, policy.action_space)
+    q_tp1 = compute_q_values(
+        policy,
+        policy.target_q_model,
+        train_batch[SampleBatch.NEXT_OBS],
+        explore=False)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
@@ -155,12 +145,12 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def _compute_q_values(policy, model, obs, obs_space, action_space):
-    input_dict = {
-        "obs": obs,
+def compute_q_values(policy, model, obs, explore):
+    model_out, _ = model({
+        SampleBatch.CUR_OBS: obs,
         "is_training": policy._get_is_training_placeholder(),
-    }
-    model_out, _ = model(input_dict, [], None)
+    }, [], None)
+
     return model.get_q_values(model_out)
 
 
@@ -176,8 +166,7 @@ SimpleQPolicy = build_tf_policy(
     name="SimpleQPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
-    action_sampler_fn=simple_sample_action_from_q_network,
-    log_likelihood_fn=get_log_likelihood,
+    action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},

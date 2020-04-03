@@ -33,7 +33,7 @@ backend_config_v1 = serve.get_backend_config("echo:v1")
 # goes to my_endpoint will now goes to echo:v1 backend.
 serve.link("my_endpoint", "echo:v1")
 
-print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).json())
+print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).text)
 # The service will be reachable from http
 
 print(ray.get(serve.get_handle("my_endpoint").remote(response="hello")))
@@ -55,7 +55,7 @@ serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 # Observe requests are now split between two backends.
 for _ in range(10):
-    print(requests.get("http://127.0.0.1:8000/echo").json())
+    print(requests.get("http://127.0.0.1:8000/echo").text)
     time.sleep(0.5)
 
 # You can also change number of replicas

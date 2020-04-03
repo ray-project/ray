@@ -1,9 +1,24 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -14,7 +29,6 @@ static std::string libray_redis_module_path;
 class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
  public:
   void SetUp() override {
-    gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
@@ -22,11 +36,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     config.is_test = true;
     config.redis_port = REDIS_SERVER_PORT;
     gcs_server_.reset(new gcs::GcsServer(config));
+    io_service_.reset(new boost::asio::io_service());
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
-      io_service_.run();
+          new boost::asio::io_service::work(*io_service_));
+      io_service_->run();
     }));
 
     thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
@@ -40,15 +55,16 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
   }
 
   void TearDown() override {
     gcs_server_->Stop();
-    io_service_.stop();
+    io_service_->stop();
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
+    FlushAll();
   }
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
@@ -104,11 +120,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::ActorCheckpointData GetCheckpoint(const ActorCheckpointID &checkpoint_id) {
+  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
+                                         const ActorCheckpointID &checkpoint_id) {
     std::promise<bool> promise;
     rpc::ActorCheckpointData actor_checkpoint_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id,
+        checkpoint_id, actor_id,
         [&actor_checkpoint_data, &promise](
             Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
           assert(result);
@@ -212,14 +229,6 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool ReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> batch_heartbeat) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(
-        batch_heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(
@@ -305,6 +314,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     rpc::GcsNodeInfo gcs_node_info;
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
+    gcs_node_info.set_node_manager_address("127.0.0.1");
     return gcs_node_info;
   }
 
@@ -329,10 +339,11 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   }
 
   // Gcs server
+  gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
-  boost::asio::io_service io_service_;
+  std::unique_ptr<boost::asio::io_service> io_service_;
 
   // Gcs client
   std::unique_ptr<gcs::GcsClient> gcs_client_;
@@ -422,7 +433,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
   ASSERT_TRUE(AddCheckpoint(checkpoint));
 
   // Get Checkpoint
-  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
+  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
   ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
 
   // Get CheckpointID
@@ -549,14 +560,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_count = 0;
-  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
-                                                const gcs::HeartbeatTableData &result) {
-    ++heartbeat_count;
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
-
   int heartbeat_batch_count = 0;
   auto heartbeat_batch_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
@@ -570,12 +573,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitPendingDone(heartbeat_count, 1);
-
-  // Report batch heartbeat
-  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
-  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
   WaitPendingDone(heartbeat_batch_count, 1);
 }
 
@@ -626,6 +623,43 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
+  // Create job_table_data
+  JobID add_job_id = JobID::FromInt(1);
+  auto job_table_data = GenJobTableData(add_job_id);
+
+  RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
+  gcs_server_->Stop();
+  thread_gcs_server_->join();
+
+  gcs_server_.reset(new gcs::GcsServer(config));
+  thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+
+  // Wait until server starts listening.
+  while (gcs_server_->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  RAY_LOG(INFO) << "Gcs service restart success, port = " << gcs_server_->GetPort();
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  promise.get_future().get();
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
+  // Stop redis.
+  TearDownTestCase();
+
+  // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
+  // detects that the redis is failure and then stop itself.
+  auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
+  std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
+
+  // Check if gcs server has exited.
+  RAY_CHECK(gcs_server_->IsStopped());
 }
 
 }  // namespace ray

@@ -25,7 +25,7 @@ Training can be done with either the Trainable **Class API** or **function-based
 Trainable API
 ~~~~~~~~~~~~~
 
-The class-based API will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
+The class-based API will require users to subclass ``ray.tune.Trainable``. See the API documentation: :ref:`trainable-docstring`.
 
 Here is an example:
 
@@ -63,7 +63,7 @@ User-defined functions will need to have following signature and call ``tune.tra
             tune.track.log(**kwargs)
 
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#module-ray.tune.track>`__.
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be found here: :ref:`track-docstring`.
 
 Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
 
@@ -185,7 +185,7 @@ You may want to get a summary of multiple experiments that point to the same ``l
     from ray.tune import Analysis
     analysis = Analysis("~/ray_results/example-experiment")
 
-See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
+See the full documentation for the ``Analysis`` object: :ref:`analysis-docstring`.
 
 
 Tune Search Space (Default)
@@ -209,7 +209,7 @@ Use ``tune.sample_from(<func>)`` to sample a value for a hyperparameter. The ``f
         }
     )
 
-Tune provides a couple helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See the `Package Reference <tune-package-ref.html#ray.tune.uniform>`_ for more details.
+Tune provides a couple of helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See :ref:`tune-sample-docs` for more details.
 
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
@@ -459,7 +459,7 @@ You often will want to compute a large object (e.g., training data, model weight
 
     import ray
     from ray import tune
-    from ray.tune.util import pin_in_object_store, get_pinned_object
+    from ray.tune.utils import pin_in_object_store, get_pinned_object
 
     import numpy as np
 
@@ -616,7 +616,7 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+These loggers will be called along with the default Tune loggers. All loggers must inherit the Logger interface (:ref:`logger-interface`). Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 MLFlow
 ~~~~~~
@@ -660,42 +660,6 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         sync_to_cloud=custom_sync_func,
     )
 
-Tune Client API
----------------
-
-You can interact with an ongoing experiment with the Tune Client API. The Tune Client API is organized around REST, which includes resource-oriented URLs, accepts form-encoded requests, returns JSON-encoded responses, and uses standard HTTP protocol.
-
-To allow Tune to receive and respond to your API calls, you have to start your experiment with ``with_server=True``:
-
-.. code-block:: python
-
-    tune.run(..., with_server=True, server_port=4321)
-
-The easiest way to use the Tune Client API is with the built-in TuneClient. To use TuneClient, verify that you have the ``requests`` library installed:
-
-.. code-block:: bash
-
-    $ pip install requests
-
-Then, on the client side, you can use the following class. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
-
-.. autoclass:: ray.tune.web_server.TuneClient
-    :members:
-
-For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
-
-The API also supports curl. Here are the examples for getting trials (``GET /trials/[:id]``):
-
-.. code-block:: bash
-
-    $ curl http://<address>:<port>/trials
-    $ curl http://<address>:<port>/trials/<trial_id>
-
-And stopping a trial (``PUT /trials/:id``):
-
-.. code-block:: bash
-
-    $ curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 Debugging
 ---------
@@ -707,121 +671,6 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
     ray.init(local_mode=True)
 
 Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
-
-CLI Progress Reporting
-----------------------
-
-By default, Tune reports experiment progress periodically to the command-line as follows.
-
-.. code-block:: bash
-
-    == Status ==
-    Memory usage on this node: 11.4/16.0 GiB
-    Using FIFO scheduling algorithm.
-    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.17 GiB heap, 0.0/1.07 GiB objects
-    Result logdir: /Users/foo/ray_results/myexp
-    Number of trials: 4 (4 RUNNING)
-    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
-    | Trial name           | status   | loc                 |    param1 | param2 | param3 |    acc |   loss |   total time (s) |  iter |
-    |----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------|
-    | MyTrainable_a826033a | RUNNING  | 10.234.98.164:31115 | 0.303706  | 0.0761 | 0.4328 | 0.1289 | 1.8572 |          7.54952 |    15 |
-    | MyTrainable_a8263fc6 | RUNNING  | 10.234.98.164:31117 | 0.929276  | 0.158  | 0.3417 | 0.4865 | 1.6307 |          7.0501  |    14 |
-    | MyTrainable_a8267914 | RUNNING  | 10.234.98.164:31111 | 0.068426  | 0.0319 | 0.1147 | 0.9585 | 1.9603 |          7.0477  |    14 |
-    | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
-    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
-
-Note that columns will be hidden if they are completely empty. The output can be configured in various ways by instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook). Here's an example:
-
-.. code-block:: python
-
-    from ray.tune import CLIReporter
-
-    # Limit the number of rows.
-    reporter = CLIReporter(max_progress_rows=10)
-    # Add a custom metric column, in addition to the default metrics.
-    # Note that this must be a metric that is returned in your training results.
-    reporter.add_metric_column("custom_metric")
-    tune.run(my_trainable, progress_reporter=reporter)
-
-Extending ``CLIReporter`` lets you control reporting frequency. For example:
-
-.. code-block:: python
-
-    class ExperimentTerminationReporter(CLIReporter):
-        def should_report(self, trials, done=False):
-            """Reports only on experiment termination."""
-            return done
-
-    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
-
-    class TrialTerminationReporter(CLIReporter):
-        def __init__(self):
-            self.num_terminated = 0
-
-        def should_report(self, trials, done=False):
-            """Reports only on trial termination events."""
-            old_num_terminated = self.num_terminated
-            self.num_terminated = len([t for t in trials if t.status == Trial.TERMINATED])
-            return self.num_terminated > old_num_terminated
-
-    tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
-
-The default reporting style can also be overriden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
-
-.. code-block:: python
-
-    from ray.tune import ProgressReporter
-
-    class CustomReporter(ProgressReporter):
-
-        def should_report(self, trials, done=False):
-            return True
-
-        def report(self, trials, *sys_info):
-            print(*sys_info)
-            print("\n".join([str(trial) for trial in trials]))
-
-    tune.run(my_trainable, progress_reporter=CustomReporter())
-
-Tune CLI (Experimental)
------------------------
-
-``tune`` has an easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
-
-.. code-block:: bash
-
-    $ pip install tabulate
-
-Here are a few examples of command line calls.
-
-- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` and ``--result-columns`` flags to select specific columns to display.
-
-.. code-block:: bash
-
-    $ tune list-trials [EXPERIMENT_DIR] --output note.csv
-
-    +------------------+-----------------------+------------+
-    | trainable_name   | experiment_tag        | trial_id   |
-    |------------------+-----------------------+------------|
-    | MyTrainableClass | 0_height=40,width=37  | 87b54a1d   |
-    | MyTrainableClass | 1_height=21,width=70  | 23b89036   |
-    | MyTrainableClass | 2_height=99,width=90  | 518dbe95   |
-    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
-    | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
-    +------------------+-----------------------+------------+
-    Dropped columns: ['status', 'last_update_time']
-    Please increase your terminal size to view remaining columns.
-    Output saved at: note.csv
-
-    $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
-
-    +------------------+-----------------------+------------+
-    | trainable_name   | experiment_tag        | trial_id   |
-    |------------------+-----------------------+------------|
-    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
-    +------------------+-----------------------+------------+
-    Dropped columns: ['status', 'last_update_time']
-    Please increase your terminal size to view remaining columns.
 
 
 Further Questions or Issues?

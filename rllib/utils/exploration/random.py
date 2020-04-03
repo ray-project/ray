@@ -1,9 +1,11 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
+from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function
+    TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
@@ -18,7 +20,7 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, framework="tf", **kwargs):
+    def __init__(self, action_space, *, model, framework, **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -26,7 +28,10 @@ class Random(Exploration):
             framework (Optional[str]): One of None, "tf", "torch".
         """
         super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+            action_space=action_space,
+            framework=framework,
+            model=model,
+            **kwargs)
 
         # Determine py_func types, depending on our action-space.
         if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
@@ -38,28 +43,34 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
+                               *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(distribution_inputs, model)
         if self.framework == "tf":
-            return self.get_tf_exploration_action_op(action_dist, explore)
+            return self.get_tf_exploration_action_op(action_distribution,
+                                                     explore)
         else:
-            return self.get_torch_exploration_action(action_dist, explore)
+            return self.get_torch_exploration_action(action_distribution,
+                                                     explore)
 
-    @tf_function(tf)
     def get_tf_exploration_action_op(self, action_dist, explore):
-        if explore:
+        def true_fn():
             action = tf.py_function(self.action_space.sample, [],
                                     self.dtype_sample)
             # Will be unnecessary, once we support batch/time-aware Spaces.
-            action = tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
-        else:
-            action = tf.cast(
+            return tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
+
+        def false_fn():
+            return tf.cast(
                 action_dist.deterministic_sample(), dtype=self.dtype)
+
+        action = tf.cond(
+            pred=tf.constant(explore, dtype=tf.bool)
+            if isinstance(explore, bool) else explore,
+            true_fn=true_fn,
+            false_fn=false_fn)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
         if isinstance(action, TupleActions):

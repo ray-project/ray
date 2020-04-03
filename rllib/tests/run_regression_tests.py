@@ -6,12 +6,14 @@
 #
 # When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
 # py_test(
-#    name = "run_regression_tests",
-#    main = "tests/run_regression_tests.py",
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = glob(["tuned_examples/regression_tests/**"]),
-#    args = glob(["tuned_examples/regression_tests/**"])
+#     name = "run_regression_tests",
+#     main = "tests/run_regression_tests.py",
+#     tags = ["learning_tests"],
+#     size = "enormous",  # = 60min timeout
+#     srcs = ["tests/run_regression_tests.py"],
+#     data = glob(["tuned_examples/regression_tests/*.yaml"]),
+#     Pass `BAZEL` option and the path to look for yaml regression files.
+#     args = ["BAZEL", "tuned_examples/regression_tests"]
 # )
 
 from pathlib import Path

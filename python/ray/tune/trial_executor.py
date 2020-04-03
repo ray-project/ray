@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class TrialExecutor:
-    """Manages platform-specific details such as resource handling
+    """Module for interacting with remote trainables.
+
+    Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
 
@@ -75,7 +77,7 @@ class TrialExecutor:
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint(Checkpoint): A Python object or path storing the state
+            checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "

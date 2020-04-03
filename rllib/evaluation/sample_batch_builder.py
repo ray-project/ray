@@ -95,9 +95,9 @@ class MultiAgentSampleBatchBuilder:
     def total(self):
         """Returns summed number of steps across all agent buffers."""
 
-        return sum(p.count for p in self.policy_builders.values())
+        return sum(a.count for a in self.agent_builders.values())
 
-    def has_pending_data(self):
+    def has_pending_agent_data(self):
         """Returns whether there is pending unprocessed data."""
 
         return len(self.agent_builders) > 0
@@ -151,6 +151,9 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            # Call the Policy's Exploration's postprocess method.
+            policy.exploration.postprocess_trajectory(
+                policy, post_batches[agent_id], getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(

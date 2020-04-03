@@ -1,7 +1,11 @@
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Represents a generic tensor type.
+TensorType = Any
 
 
 def check_framework(framework="tf"):
@@ -95,6 +99,17 @@ def try_import_tfp(error=False):
         return None
 
 
+# Fake module for torch.nn.
+class NNStub:
+    pass
+
+
+# Fake class for torch.nn.Module to allow it to be inherited from.
+class ModuleStub:
+    def __init__(self, *a, **kw):
+        raise ImportError("Could not import `torch`.")
+
+
 def try_import_torch(error=False):
     """
     Args:
@@ -114,7 +129,10 @@ def try_import_torch(error=False):
     except ImportError as e:
         if error:
             raise e
-        return None, None
+
+        nn = NNStub()
+        nn.Module = ModuleStub
+        return None, nn
 
 
 def get_variable(value, framework="tf", tf_name="unnamed-variable"):
@@ -130,7 +148,12 @@ def get_variable(value, framework="tf", tf_name="unnamed-variable"):
     """
     if framework == "tf":
         import tensorflow as tf
-        return tf.compat.v1.get_variable(tf_name, initializer=value)
+        dtype = getattr(
+            value, "dtype", tf.float32
+            if isinstance(value, float) else tf.int32
+            if isinstance(value, int) else None)
+        return tf.compat.v1.get_variable(
+            tf_name, initializer=value, dtype=dtype)
     # torch or None: Return python primitive.
     return value
 
