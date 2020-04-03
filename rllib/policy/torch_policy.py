@@ -118,7 +118,9 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            state_batches = [self._convert_to_tensor(s) for s in state_batches]
+            state_batches = [
+                self._convert_to_tensor(s) for s in (state_batches or [])
+            ]
 
             if self.action_sampler_fn:
                 action_dist = dist_inputs = None
