@@ -216,6 +216,8 @@ class QMixTorchPolicy(Policy):
             name="target_model",
             default_model=RNNModel).to(self.device)
 
+        self.exploration = self._create_exploration()
+
         # Setup the mixer network.
         if config["mixer"] is None:
             self.mixer = None
