@@ -6,7 +6,8 @@ from typing import List
 import ray
 import ray.streaming._streaming as _streaming
 import ray.streaming.generated.streaming_pb2 as streaming_pb
-from ray.actor import ActorHandle, ActorID
+from ray import ActorID
+from ray.actor import ActorHandle
 from ray.streaming.config import Config
 
 CHANNEL_ID_LEN = 20
