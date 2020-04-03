@@ -221,6 +221,7 @@ class TorchTrainer:
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
