@@ -110,7 +110,7 @@ def traced_eager_policy(eager_policy_cls):
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -302,7 +302,7 @@ def build_eager_tf_policy(name,
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -320,22 +320,26 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._state_in = state_batches
 
+            if tf.executing_eagerly():
+                n = len(obs_batch)
+            else:
+                n = obs_batch.shape[0]
+            seq_lens = tf.ones(n, dtype=tf.int32)
+
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
-                    dist_class = dist_inputs = None
+                    dist_inputs = None
                     state_out = []
                     actions, logp = self.action_sampler_fn(
                         self,
@@ -357,8 +361,7 @@ def build_eager_tf_policy(name,
                     else:
                         dist_class = self.dist_class
                         dist_inputs, state_out = self.model(
-                            input_dict, state_batches,
-                            tf.convert_to_tensor([1]))
+                            input_dict, state_batches, seq_lens)
 
                     action_dist = dist_class(dist_inputs, self.model)
 
@@ -424,8 +427,10 @@ def build_eager_tf_policy(name,
             else:
                 dist_inputs, _ = self.model(input_dict, state_batches,
                                             seq_lens)
-                action_dist = self.dist_class(dist_inputs, self.model)
-                log_likelihoods = action_dist.logp(actions)
+                dist_class = self.dist_class
+
+            action_dist = dist_class(dist_inputs, self.model)
+            log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
@@ -609,9 +614,11 @@ def build_eager_tf_policy(name,
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], self._state_in,
+                dummy_batch[SampleBatch.CUR_OBS],
+                self._state_in,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
-                dummy_batch.get(SampleBatch.PREV_REWARDS))
+                dummy_batch.get(SampleBatch.PREV_REWARDS),
+                explore=False)
             dummy_batch.update(fetches)
 
             postprocessed_batch = self.postprocess_trajectory(

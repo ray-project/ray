@@ -1,17 +1,16 @@
 from gym.spaces import Discrete
 import numpy as np
-from scipy.stats import entropy
 
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
-from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin, \
-    ParameterNoiseMixin
+from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils import try_import_tf
@@ -124,34 +123,6 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def postprocess_trajectory(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
-    if policy.config["parameter_noise"]:
-        # adjust the sigma of parameter space noise
-        states = [list(x) for x in sample_batch.columns(["obs"])][0]
-
-        noisy_action_distribution = policy.get_session().run(
-            policy.action_probs, feed_dict={policy.cur_observations: states})
-        policy.get_session().run(policy.remove_noise_op)
-        clean_action_distribution = policy.get_session().run(
-            policy.action_probs, feed_dict={policy.cur_observations: states})
-        distance_in_action_space = np.mean(
-            entropy(clean_action_distribution.T, noisy_action_distribution.T))
-        policy.pi_distance = distance_in_action_space
-        if (distance_in_action_space <
-                -np.log(1 - policy.cur_epsilon_value +
-                        policy.cur_epsilon_value / policy.num_actions)):
-            policy.parameter_noise_sigma_val *= 1.01
-        else:
-            policy.parameter_noise_sigma_val /= 1.01
-        policy.parameter_noise_sigma.load(
-            policy.parameter_noise_sigma_val, session=policy.get_session())
-
-    return postprocess_nstep_and_prio(policy, sample_batch)
-
-
 def build_q_model(policy, obs_space, action_space, config):
 
     if not isinstance(action_space, Discrete):
@@ -180,7 +151,11 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"],
-        parameter_noise=config["parameter_noise"])
+        # TODO(sven): Move option to add LayerNorm after each Dense
+        #  generically into ModelCatalog.
+        add_layer_norm=isinstance(
+            getattr(policy, "exploration", None), ParameterNoise)
+        or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -197,7 +172,11 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"],
-        parameter_noise=config["parameter_noise"])
+        # TODO(sven): Move option to add LayerNorm after each Dense
+        #  generically into ModelCatalog.
+        add_layer_norm=isinstance(
+            getattr(policy, "exploration", None), ParameterNoise)
+        or config["exploration_config"]["type"] == "ParameterNoise")
 
     return policy.q_model
 
@@ -298,7 +277,6 @@ def build_q_stats(policy, batch):
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):
@@ -417,7 +395,6 @@ DQNTFPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[
-        ParameterNoiseMixin,
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
