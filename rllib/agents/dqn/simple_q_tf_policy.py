@@ -140,6 +140,7 @@ def compute_q_values(policy, model, obs, explore, is_training=None):
 
     return model_out
 
+
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
