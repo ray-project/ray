@@ -12,6 +12,7 @@ COPTS = ["-DRAY_USE_GLOG"] + select({
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
     "//conditions:default": [
+        "-fvisibility=hidden"
     ],
 })
 

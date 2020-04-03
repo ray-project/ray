@@ -1078,7 +1078,7 @@ pyx_library(
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
-        copts = COPTS,
+        copts = [opt for opt in COPTS if opt != "-fvisibility=hidden"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
