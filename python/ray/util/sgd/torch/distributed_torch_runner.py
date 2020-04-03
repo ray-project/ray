@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_IN_SECONDS
+from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner, _remind_gpu_usage
@@ -69,7 +69,7 @@ class DistributedTorchRunner(TorchRunner):
                 "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
             os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
-        timeout = timedelta(seconds=NCCL_TIMEOUT_IN_SECONDS)
+        timeout = timedelta(seconds=NCCL_TIMEOUT_S)
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
