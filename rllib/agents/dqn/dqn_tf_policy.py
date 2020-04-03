@@ -5,16 +5,16 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
-from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
