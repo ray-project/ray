@@ -37,10 +37,12 @@ TEST(StreamingMockTransfer, mock_produce_consume) {
 class StreamingTransferTest : public ::testing::Test {
  public:
   StreamingTransferTest() {
-    runtime_context = std::make_shared<RuntimeContext>();
-    runtime_context->MarkMockTest();
-    writer = std::make_shared<DataWriter>(runtime_context);
-    reader = std::make_shared<DataReader>(runtime_context);
+    writer_runtime_context = std::make_shared<RuntimeContext>();
+    reader_runtime_context = std::make_shared<RuntimeContext>();
+    writer_runtime_context->MarkMockTest();
+    reader_runtime_context->MarkMockTest();
+    writer = std::make_shared<DataWriter>(writer_runtime_context);
+    reader = std::make_shared<DataReader>(reader_runtime_context);
   }
   virtual ~StreamingTransferTest() = default;
   void InitTransfer(int channel_num = 1) {
@@ -64,7 +66,8 @@ class StreamingTransferTest : public ::testing::Test {
   std::shared_ptr<DataWriter> writer;
   std::shared_ptr<DataReader> reader;
   std::vector<ObjectID> queue_vec;
-  std::shared_ptr<RuntimeContext> runtime_context;
+  std::shared_ptr<RuntimeContext> writer_runtime_context;
+  std::shared_ptr<RuntimeContext> reader_runtime_context;
 };
 
 TEST_F(StreamingTransferTest, exchange_single_channel_test) {
@@ -149,8 +152,8 @@ TEST_F(StreamingTransferTest, flow_control_test) {
   std::unordered_map<ObjectID, ConsumerChannelInfo> *reader_offset_info = nullptr;
   writer->GetOffsetInfo(writer_offset_info);
   reader->GetOffsetInfo(reader_offset_info);
-  uint32_t writer_step = runtime_context->GetConfig().GetWriterConsumedStep();
-  uint32_t reader_step = runtime_context->GetConfig().GetReaderConsumedStep();
+  uint32_t writer_step = writer_runtime_context->GetConfig().GetWriterConsumedStep();
+  uint32_t reader_step = reader_runtime_context->GetConfig().GetReaderConsumedStep();
   uint64_t &writer_current_seq_id = (*writer_offset_info)[queue_vec[0]].current_seq_id;
   uint64_t &writer_current_message_id =
       (*writer_offset_info)[queue_vec[0]].current_message_id;
