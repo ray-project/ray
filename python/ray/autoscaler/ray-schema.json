@@ -128,10 +128,6 @@
                     "type": "object",
                     "description": "k8s autoscaler permissions, if using k8s"
                 },
-                "extra_config": {
-                    "type": "object",
-                    "description": "provider-specific config"
-                },
                 "cache_stopped_nodes": {
                     "type": "boolean",
                     "description": " Whether to try to reuse previously stopped nodes instead of launching nodes. This will also cause the autoscaler to stop nodes instead of terminating them. Only implemented for AWS."
