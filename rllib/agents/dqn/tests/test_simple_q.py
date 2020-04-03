@@ -59,13 +59,14 @@ class TestSimpleQ(unittest.TestCase):
             # Q(s,a) outputs.
             q_t = np.sum(
                 one_hot(input_[SampleBatch.ACTIONS], 2) * fc(
-                    fc(input_[SampleBatch.CUR_OBS], vars[0], vars[1]), vars[2],
-                    vars[3]), 1)
+                    fc(input_[SampleBatch.CUR_OBS], vars[0], vars[1],
+                       framework=fw), vars[2], vars[3], framework=fw), 1)
             # max[a'](Qtarget(s',a')) outputs.
             q_target_tp1 = np.max(
                 fc(
-                    fc(input_[SampleBatch.NEXT_OBS], vars_t[0], vars_t[1]),
-                    vars_t[2], vars_t[3]), 1)
+                    fc(input_[SampleBatch.NEXT_OBS], vars_t[0], vars_t[1],
+                       framework=fw),
+                    vars_t[2], vars_t[3], framework=fw), 1)
             # TD-errors (Bellman equation).
             td_error = q_t - config["gamma"] * input_[SampleBatch.REWARDS] + \
                 q_target_tp1
