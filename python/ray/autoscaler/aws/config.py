@@ -145,7 +145,7 @@ def _configure_key_pair(config):
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
 
-        key_name = config["provider"].get("key_pair", {}).get("key_name", None)
+        key_name = config["provider"].get("key_pair", {}).get("key_name")
 
         key_name, key_path = key_pair(i, config["provider"]["region"],
                                       key_name)
