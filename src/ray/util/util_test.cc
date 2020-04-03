@@ -21,7 +21,7 @@ TEST(UtilTest, ParseCommandLineTest) {
     ASSERT_EQ(ParseCommandLine(R"("\"")", syn), ArgList({R"(")"}));
     ASSERT_EQ(ParseCommandLine(R"(a" b c"d )", syn), ArgList({R"(a b cd)"}));
     ASSERT_EQ(ParseCommandLine(R"(\"a b)", syn), ArgList({R"("a)", R"(b)"}));
-    ASSERT_EQ(ParseCommandLine(R"(| ! ^ # \)", syn), ArgList({"|", "!", "^", "#", "\\"}));
+    ASSERT_EQ(ParseCommandLine(R"(| ! ^ # [)", syn), ArgList({"|", "!", "^", "#", "["}));
     ASSERT_EQ(ParseCommandLine(R"(; ? * $ &)", syn), ArgList({";", "?", "*", "$", "&"}));
     ASSERT_EQ(ParseCommandLine(R"(: ` < > ~)", syn), ArgList({":", "`", "<", ">", "~"}));
   }
@@ -37,6 +37,8 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"(C:\  D)", win32), ArgList({R"(C:\)", R"(D)"}));
   ASSERT_EQ(ParseCommandLine(R"(C:\\\  D)", posix), ArgList({R"(C:\ )", R"(D)"}));
   ASSERT_EQ(ParseCommandLine(R"(C:\\\  D)", win32), ArgList({R"(C:\\\)", R"(D)"}));
+  ASSERT_EQ(ParseCommandLine(R"(\)", posix), ArgList({R"()"}));
+  ASSERT_EQ(ParseCommandLine(R"(\)", win32), ArgList({R"(\)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\a)", posix), ArgList({R"(\a)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\a)", win32), ArgList({R"(\\a)"}));
   ASSERT_EQ(ParseCommandLine(R"(\\\a)", posix), ArgList({R"(\a)"}));

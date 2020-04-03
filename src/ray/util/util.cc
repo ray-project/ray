@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <algorithm>
-#include <regex>
 #include <string>
 #include <vector>
 
@@ -19,49 +18,74 @@ std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
   return result;
 }
 
+/// Rules:
+/// 1. Adjacent tokens are concatenated, so "a"b'c' is just abc
+/// 2. Outside quotes: backslashes make the next character literal; space & tab delimit
+/// 3. Inside "...": backslashes escape a following " and \ and otherwise stay literal
+/// 4. Inside '...': no escaping occurs
+/// 5. [&|;<>`#()!] etc. are literal, but should be in '...' to avoid confusion.
+/// Note: POSIX shells can perform additional processing (like piping) not reflected here.
+/// Refer to the unit tests for examples.
+/// To compare against the platform's behavior, try a command like the following:
+/// $ python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y" '\x\\y'
+/// Python analog: shlex.split(s)
 static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
-  // See the unit-tests for examples. To compare against the platform's behavior, try:
-  // $ python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y" '\x\\y'
+  const char space = ' ', tab = '\t', backslash = '\\', squote = '\'', dquote = '\"';
+  char surroundings = space;
+  bool escaping = false, arg_started = false;
   std::vector<std::string> result;
-  std::string arg, c_str = s + '\0';
-  std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
-  for (bool stop = false; !stop;) {
-    if (i >= j || *i == ' ' || *i == '\t') {
-      if (i > c_str.begin()) {
-        result.push_back(arg);
+  std::string arg;
+  for (char ch : s) {
+    bool is_delimeter = false;
+    if (escaping) {
+      if (surroundings == dquote && (ch == backslash || ch == dquote)) {
+        arg.pop_back();  // remove backslash because it precedes \ or " in double-quotes
       }
-      arg.clear();
-      ScanToken(i, "%*[ \t]");  // skip extra whitespace
-      stop |= i >= j;
-    } else if (*i == '\'') {
-      arg += ScanToken(++i, "%*[^\']");
-      ScanToken(i, "%*1[\']");
-    } else if (*i == '\\') {
-      ++i;
-      arg += i < j ? *i++ : *(i - 1);  // remove backslash, but only if it's not at EOF
-    } else if (*i == '\"') {
-      ++i;
-      while (i < j && *i != '\"') {
-        arg += ScanToken(i, "%*[^\\\"]");
-        std::string t = ScanToken(i, "\\%*1c");  // scan escape sequence
-        if (t.size() > 1 && (t.back() == '\\' || t.back() == '\"')) {
-          t.erase(0, 1);  // remove backslash
+      arg += ch;
+      escaping = false;
+    } else if (surroundings == dquote || surroundings == squote) {  // inside quotes
+      if (ch == surroundings) {
+        surroundings = space;  // leaving quotes
+      } else {
+        arg += ch;
+        escaping = surroundings == dquote && ch == backslash;  // backslash in "..."
+      }
+    } else {                           // outside quotes
+      if (ch == space || ch == tab) {  // delimeter?
+        is_delimeter = true;
+        if (arg_started) {  // we just finished an argument
+          result.push_back(arg);
         }
-        arg += t;
+        arg.clear();
+      } else if (ch == dquote || ch == squote) {
+        surroundings = ch;  // entering quotes
+      } else if (ch == backslash) {
+        escaping = true;
+      } else {
+        arg += ch;
       }
-      ScanToken(i, "\"");
-    } else {
-      arg += *i++;
     }
+    arg_started = !is_delimeter;
+  }
+  if (arg_started) {
+    result.push_back(arg);
   }
   return result;
 }
 
+/// Rules:
+/// 1. Adjacent tokens are concatenated, so "a"b"c" is just abc
+/// 2. Backslashes escape when eventually followed by " but stay literal otherwise
+/// 3. Outside "...": space and tab are delimiters
+/// 4. [&|:<>^#()] etc. are literal, but should be in "..." to avoid confusion.
+/// Note: Windows tools have additional processing & quirks not reflected here.
+/// Refer to the unit tests for examples.
+/// To compare against the platform's behavior, try a command like the following:
+/// > python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y"
+/// Python analog: None (would be shlex.split(s, posix=False), but it doesn't unquote)
 static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
-  // See the unit-tests for examples. To compare against the platform's behavior, try:
-  // > python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y"
   std::vector<std::string> result;
   std::string arg, c_str = s + '\0';
   std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
@@ -108,6 +132,7 @@ std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSynta
   return result;
 }
 
+/// Python analog: shlex.join(args)
 std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
   std::string result;
   const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
@@ -140,6 +165,7 @@ std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
   return result;
 }
 
+// Python analog: subprocess.list2cmdline(args)
 static std::string CreateWindowsCommandLine(const std::vector<std::string> &args) {
   std::string result;
   const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
