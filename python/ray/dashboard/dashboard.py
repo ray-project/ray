@@ -1130,6 +1130,13 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
+    # TODO(sang) Remove this check.
+    if metrics_export_address is not None \
+            and not metrics_export_address.startswith("http://"):
+        raise ValueError(
+            "Given address {} doesn't contain the protocol. Currently, "
+            "http:// is the only supported protocol. Please your protocl. "
+            "EX) http://[address]")
 
     try:
         dashboard = Dashboard(
