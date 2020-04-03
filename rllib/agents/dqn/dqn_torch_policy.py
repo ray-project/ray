@@ -13,7 +13,7 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
-from ray.rllib.utils.torch_ops import huber_loss
+from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
@@ -219,10 +219,21 @@ def compute_q_values(policy, model, obs, explore, is_training=False):
     if policy.config["num_atoms"] > 1:
         raise ValueError("torch DQN does not support distributional DQN yet!")
 
-    q_values, state = model({
+    model_out, state = model({
         SampleBatch.CUR_OBS: obs,
         "is_training": is_training,
     }, [], None)
+
+    advantages_or_q_values = model.get_advantages_or_q_values(model_out)
+
+    if policy.config["dueling"]:
+        state_value = model.get_state_value(model_out)
+        advantages_mean = reduce_mean_ignore_inf(advantages_or_q_values, 1)
+        advantages_centered = advantages_or_q_values - torch.unsqueeze(
+            advantages_mean, 1)
+        q_values = state_value + advantages_centered
+    else:
+        q_values = advantages_or_q_values
 
     return q_values
 

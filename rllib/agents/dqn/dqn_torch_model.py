@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 torch, nn = try_import_torch()
 
 
-class DQNTorchModel(TorchModelV2, nn.Module):
+class DQNTorchModel(TorchModelV2):
     """Extension of standard TorchModelV2 to provide dueling-Q functionality.
     """
 
@@ -49,34 +49,17 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             add_layer_norm (bool): Enable layer norm (for param noise).
         """
 
-        super().__init__(obs_space, action_space, num_outputs,
-                         model_config, name)
-        nn.Module.__init__(self)
+        super(DQNTorchModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name)
 
         self.dueling = dueling
+        ins = num_outputs
 
         # Dueling case: Build the shared (advantages and value) fc-network.
-        # Non-dueling case: Build simple fc-net with Q-output layer.
-        #shared_module = nn.Sequential()
-        ins = obs_space.shape[-1]
-        #for i, n in enumerate(dueling_hiddens):
-        #    shared_module.add_module("dueling_{}".format(i), nn.Linear(ins, n))
-        #    # Add activations if necessary.
-        #    if dueling_activation == "relu":
-        #        shared_module.add_module("dueling_act_{}".format(i), nn.ReLU())
-        #    elif dueling_activation == "tanh":
-        #        shared_module.add_module("dueling_act_{}".format(i), nn.Tanh())
-        #    # Add LayerNorm after each Dense.
-        #    if add_layer_norm:
-        #        shared_module.add_module(
-        #            "LayerNorm_{}".format(i),
-        #            nn.LayerNorm(normalized_shape=(n, )))
-        #    ins = n
-
-        # Build dueling setup.
         advantage_module = nn.Sequential()
-        value_module = nn.Sequential()
+        value_module = None
         if self.dueling:
+            value_module = nn.Sequential()
             for i, n in enumerate(dueling_hiddens):
                 advantage_module.add_module("dueling_A_{}".format(i),
                                             nn.Linear(ins, n))
@@ -103,31 +86,35 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 ins = n
             # Actual Advantages layer (nodes=num-actions) and
             # value layer (nodes=1).
-            advantage_module.add_module("A", nn.Linear(ins, num_outputs))
+            advantage_module.add_module("A", nn.Linear(ins, action_space.n))
             value_module.add_module("V", nn.Linear(ins, 1))
         # Non-dueling:
         # Q-value layer (use Advantage module's outputs as Q-values).
         else:
-            advantage_module.add_module("Q", nn.Linear(ins, num_outputs))
+            advantage_module.add_module("Q", nn.Linear(ins, action_space.n))
 
         self.advantage_module = advantage_module
         self.value_module = value_module
-        #self.shared_module = shared_module
 
-    #@override(TorchModelV2)
-    #def forward(self, input_dict, hidden_state=None, seq_lens=None):
-    #    out = input_dict[SampleBatch.CUR_OBS]
-    #    # Calculate Q- or advantage values (num_outputs=number of
-    #    # discrete actions).
-    #    shared_out = self.shared_module(out)
-    #    q_values = shared_out
-    #    # In the dueling case, add the state-value to advantages and subtract
-    #    # by the mean advantage (see paper on dueling Q).
-    #    if self.dueling:
-    #        advantages = self.advantage_module(shared_out)
-    #        values = self.value_module(shared_out)
-    #        q_values = (advantages - advantages.mean()) + values
-    #    return q_values, []
+    def get_advantages_or_q_values(self, model_out):
+        """Returns distributional values for Q(s, a) given a state embedding.
+
+        Override this in your custom model to customize the Q output head.
+
+        Arguments:
+            model_out (Tensor): embedding from the model layers
+
+        Returns:
+            (action_scores, logits, dist) if num_atoms == 1, otherwise
+            (action_scores, z, support_logits_per_action, logits, dist)
+        """
+
+        return self.advantage_module(model_out)
+
+    def get_state_value(self, model_out):
+        """Returns the state value prediction for the given state embedding."""
+
+        return self.value_module(model_out)
 
     def _noisy_layer(self, action_in, out_size, sigma0, non_linear=True):
         """

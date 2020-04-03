@@ -15,7 +15,7 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, frameworks=["torch", "tf", "eager"]):
             # double-dueling DQN.
             plain_config = config.copy()
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
@@ -23,20 +23,20 @@ class TestDQN(unittest.TestCase):
                 results = trainer.train()
                 print(results)
 
-        # Rainbow.
+            # Rainbow.
             # TODO(sven): Add torch once DQN-torch supports distributional-Q.
             if fw == "torch":
                 continue
-        rainbow_config = config.copy()
-        rainbow_config["num_atoms"] = 10
-        rainbow_config["noisy"] = True
-        rainbow_config["double_q"] = True
-        rainbow_config["dueling"] = True
-        rainbow_config["n_step"] = 5
-        trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
+            rainbow_config = config.copy()
+            rainbow_config["num_atoms"] = 10
+            rainbow_config["noisy"] = True
+            rainbow_config["double_q"] = True
+            rainbow_config["dueling"] = True
+            rainbow_config["n_step"] = 5
+            trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""

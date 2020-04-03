@@ -23,7 +23,7 @@ def huber_loss(x, delta=1.0):
 
 def reduce_mean_ignore_inf(x, axis):
     """Same as torch.mean() but ignores -inf values."""
-    mask = torch.ne(x, torch.float32.min)
+    mask = torch.ne(x, float("-inf"))
     x_zeroed = torch.where(mask, x, torch.zeros_like(x))
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
