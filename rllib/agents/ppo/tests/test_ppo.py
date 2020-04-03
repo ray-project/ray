@@ -14,7 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -32,19 +32,12 @@ class TestPPO(unittest.TestCase):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-
-        # tf.
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-
         num_iterations = 2
-        for i in range(num_iterations):
-            trainer.train()
 
-        # Torch.
-        config["use_pytorch"] = True
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        for i in range(num_iterations):
-            trainer.train()
+        for _ in framework_iterator(config):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            for i in range(num_iterations):
+                trainer.train()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -54,10 +47,7 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
-
+        for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
             trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
             # explore=False, always expect the same (deterministic) action.
@@ -104,7 +94,10 @@ class TestPPO(unittest.TestCase):
                  [0.9, 1.0, 1.1, 1.2]],
                 dtype=np.float32),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
+            SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
+            SampleBatch.PREV_REWARDS: np.array(
+                [1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
             SampleBatch.ACTION_DIST_INPUTS: np.array(
@@ -113,11 +106,8 @@ class TestPPO(unittest.TestCase):
                 [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
-        for fw in ["tf", "torch"]:
-            print("framework={}".format(fw))
-            config["use_pytorch"] = fw == "torch"
-            config["eager"] = fw == "tf"
-
+        for fw, sess in framework_iterator(
+                config, frameworks=["eager", "tf", "torch"], session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
@@ -125,7 +115,7 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw == "tf":
+            if fw == "tf" or fw == "eager":
                 train_batch = postprocess_ppo_gae_tf(policy, train_batch)
             else:
                 train_batch = postprocess_ppo_gae_torch(policy, train_batch)
@@ -135,17 +125,18 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS],
                   [0.50005, -0.505, 0.5])
 
-            # Calculate actual PPO loss (results are stored in policy.loss_obj)
-            # for tf.
-            if fw == "tf":
+            # Calculate actual PPO loss.
+            if fw == "eager":
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
-            else:
+            elif fw == "torch":
                 ppo_surrogate_loss_torch(policy, policy.model,
                                          TorchCategorical, train_batch)
 
-            vars = policy.model.variables() if fw == "tf" else \
+            vars = policy.model.variables() if fw != "torch" else \
                 list(policy.model.parameters())
+            if fw == "tf":
+                vars = policy.get_session().run(vars)
             expected_shared_out = fc(train_batch[SampleBatch.CUR_OBS], vars[0],
                                      vars[1])
             expected_logits = fc(expected_shared_out, vars[2], vars[3])
@@ -154,18 +145,42 @@ class TestPPO(unittest.TestCase):
             kl, entropy, pg_loss, vf_loss, overall_loss = \
                 self._ppo_loss_helper(
                     policy, policy.model,
-                    Categorical if fw == "tf" else TorchCategorical,
+                    Categorical if fw != "torch" else TorchCategorical,
                     train_batch,
-                    expected_logits, expected_value_outs
+                    expected_logits, expected_value_outs,
+                    sess=sess
                 )
-            check(policy.loss_obj.mean_kl, kl)
-            check(policy.loss_obj.mean_entropy, entropy)
-            check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
-            check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
-            check(policy.loss_obj.loss, overall_loss, decimals=4)
+            if sess:
+                policy_sess = policy.get_session()
+                k, e, pl, v, tl = policy_sess.run(
+                    [
+                        policy.loss_obj.mean_kl, policy.loss_obj.mean_entropy,
+                        policy.loss_obj.mean_policy_loss,
+                        policy.loss_obj.mean_vf_loss, policy.loss_obj.loss
+                    ],
+                    feed_dict=policy._get_loss_inputs_dict(
+                        train_batch, shuffle=False))
+                check(k, kl)
+                check(e, entropy)
+                check(pl, np.mean(-pg_loss))
+                check(v, np.mean(vf_loss), decimals=4)
+                check(tl, overall_loss, decimals=4)
+            else:
+                check(policy.loss_obj.mean_kl, kl)
+                check(policy.loss_obj.mean_entropy, entropy)
+                check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
+                check(
+                    policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
+                check(policy.loss_obj.loss, overall_loss, decimals=4)
 
-    def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits,
-                         vf_outs):
+    def _ppo_loss_helper(self,
+                         policy,
+                         model,
+                         dist_class,
+                         train_batch,
+                         logits,
+                         vf_outs,
+                         sess=None):
         """
         Calculates the expected PPO loss (components) given Policy,
         Model, distribution, some batch, logits & vf outputs, using numpy.
@@ -183,12 +198,20 @@ class TestPPO(unittest.TestCase):
             # Entropy-loss component.
             entropy = np.mean(dist.entropy().detach().numpy())
         else:
+            if sess:
+                expected_logp = sess.run(expected_logp)
             expected_rho = np.exp(expected_logp -
                                   train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
-            kl = np.mean(dist_prev.kl(dist))
+            kl = dist_prev.kl(dist)
+            if sess:
+                kl = sess.run(kl)
+            kl = np.mean(kl)
             # Entropy-loss component.
-            entropy = np.mean(dist.entropy())
+            entropy = dist.entropy()
+            if sess:
+                entropy = sess.run(entropy)
+            entropy = np.mean(entropy)
 
         # Policy loss component.
         pg_loss = np.minimum(
@@ -208,9 +231,15 @@ class TestPPO(unittest.TestCase):
         vf_loss = np.maximum(vf_loss1, vf_loss2)
 
         # Overall loss.
-        overall_loss = np.mean(-pg_loss + policy.kl_coeff * kl +
+        if sess:
+            policy_sess = policy.get_session()
+            kl_coeff, entropy_coeff = policy_sess.run(
+                [policy.kl_coeff, policy.entropy_coeff])
+        else:
+            kl_coeff, entropy_coeff = policy.kl_coeff, policy.entropy_coeff
+        overall_loss = np.mean(-pg_loss + kl_coeff * kl +
                                policy.config["vf_loss_coeff"] * vf_loss -
-                               policy.entropy_coeff * entropy)
+                               entropy_coeff * entropy)
         return kl, entropy, pg_loss, vf_loss, overall_loss
 
 

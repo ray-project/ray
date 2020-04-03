@@ -3,7 +3,7 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
+from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -133,20 +133,27 @@ def make_policy_optimizer(workers, config):
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
+    # SimpleQ does not use a PR buffer.
+    kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
+    kwargs.update(**config["optimizer"])
+    if "prioritized_replay" in config:
+        kwargs.update({
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_beta_annealing_timesteps": config[
+                "prioritized_replay_beta_annealing_timesteps"],
+            "final_prioritized_replay_beta": config[
+                "final_prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        })
+
     return SyncReplayOptimizer(
         workers,
         # TODO(sven): Move all PR-beta decays into Schedule components.
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
-        prioritized_replay=config["prioritized_replay"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_beta_annealing_timesteps=config[
-            "prioritized_replay_beta_annealing_timesteps"],
-        final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"],
         train_batch_size=config["train_batch_size"],
-        **config["optimizer"])
+        **kwargs)
 
 
 def validate_config_and_setup_param_noise(config):
@@ -154,10 +161,6 @@ def validate_config_and_setup_param_noise(config):
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
-
     # TODO(sven): Remove at some point.
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
@@ -309,9 +312,27 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+        return DQNTorchPolicy
+    else:
+        return DQNTFPolicy
+
+
+def get_simple_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.dqn.simple_q_torch_policy import \
+            SimpleQTorchPolicy
+        return SimpleQTorchPolicy
+    else:
+        return SimpleQTFPolicy
+
+
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
+    get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
@@ -324,4 +345,5 @@ GenericOffPolicyTrainer = build_trainer(
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
 
-SimpleQTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)
+SimpleQTrainer = DQNTrainer.with_updates(
+    default_policy=SimpleQTFPolicy, get_policy_class=get_simple_policy_class)

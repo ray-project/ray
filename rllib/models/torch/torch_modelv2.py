@@ -1,5 +1,5 @@
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils import try_import_torch
 
 _, nn = try_import_torch()
@@ -75,15 +75,13 @@ class TorchModelV2(ModelV2):
         """
         raise NotImplementedError
 
-    def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
+    @override(ModelV2)
+    def variables(self, as_dict=False):
+        if as_dict:
+            return self.state_dict()
+        return list(self.parameters())
 
-        Returns:
-            value estimate tensor of shape [BATCH].
-
-        Sample implementation for the ``MyModelClass`` example::
-
-            def value_function(self):
-                return self._value_out
-        """
-        raise NotImplementedError
+    @override(ModelV2)
+    def trainable_variables(self):
+        """Returns the list of trainable variables for this model."""
+        return [p for p in self.parameters() if p.requires_grad is True]

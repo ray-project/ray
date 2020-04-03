@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
-from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin
+from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy

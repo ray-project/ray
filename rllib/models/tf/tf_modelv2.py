@@ -1,6 +1,7 @@
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
 
 tf = try_import_tf()
 
@@ -107,10 +108,13 @@ class TFModelV2(ModelV2):
         """Register the given list of variables with this model."""
         self.var_list.extend(variables)
 
-    def variables(self):
-        """Returns the list of variables for this model."""
+    @override(ModelV2)
+    def variables(self, as_dict=False):
+        if as_dict:
+            return {v.name: v for v in self.var_list}
         return list(self.var_list)
 
+    @override(ModelV2)
     def trainable_variables(self):
         """Returns the list of trainable variables for this model."""
         return [v for v in self.variables() if v.trainable]

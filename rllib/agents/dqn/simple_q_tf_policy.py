@@ -4,9 +4,9 @@ from gym.spaces import Discrete
 import logging
 
 import ray
-from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -50,31 +50,24 @@ def build_q_models(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    if config["hiddens"]:
-        num_outputs = 256
-        config["model"]["no_final_linear"] = True
-    else:
-        num_outputs = action_space.n
-
     policy.q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        num_outputs,
+        action_space.n,  # num_outputs,
         config["model"],
-        framework="tf",
-        name=Q_SCOPE,
-        model_interface=SimpleQModel,
-        q_hiddens=config["hiddens"])
+        framework="torch" if config["use_pytorch"] else "tf",
+        name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
-        num_outputs,
+        action_space.n,  # num_outputs,
         config["model"],
-        framework="tf",
-        name=Q_TARGET_SCOPE,
-        model_interface=SimpleQModel,
-        q_hiddens=config["hiddens"])
+        framework="torch" if config["use_pytorch"] else "tf",
+        name=Q_TARGET_SCOPE)
+
+    policy.q_func_vars = policy.q_model.variables()
+    policy.target_q_func_vars = policy.target_q_model.variables()
 
     return policy.q_model
 
@@ -84,13 +77,15 @@ def get_distribution_inputs_and_class(policy,
                                       obs_batch,
                                       *,
                                       explore=True,
+                                      is_training=True,
                                       **kwargs):
-    q_vals = compute_q_values(policy, q_model, obs_batch, explore)
+    q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = q_model.variables()
-    return policy.q_values, Categorical, []  # state-outs
+    return policy.q_values,\
+        TorchCategorical if policy.config["use_pytorch"] else Categorical,\
+        []  # state-outs
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
@@ -136,21 +131,22 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def compute_q_values(policy, model, obs, explore):
+def compute_q_values(policy, model, obs, explore, is_training=None):
     model_out, _ = model({
         SampleBatch.CUR_OBS: obs,
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": is_training
+        if is_training is not None else policy._get_is_training_placeholder(),
     }, [], None)
 
-    return model.get_q_values(model_out)
+    return model_out
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-SimpleQPolicy = build_tf_policy(
-    name="SimpleQPolicy",
+SimpleQTFPolicy = build_tf_policy(
+    name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
     action_distribution_fn=get_distribution_inputs_and_class,

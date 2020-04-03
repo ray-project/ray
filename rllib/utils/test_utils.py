@@ -1,9 +1,88 @@
+import logging
 import numpy as np
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+if tf:
+    eager_mode = None
+    try:
+        from tensorflow.python.eager.context import eager_mode
+    except (ImportError, ModuleNotFoundError):
+        pass
+
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
+
+
+def framework_iterator(config=None,
+                       frameworks=("tf", "eager", "torch"),
+                       session=False):
+    """An generator that allows for looping through n frameworks for testing.
+
+    Provides the correct config entries ("use_pytorch" and "eager") as well
+    as the correct eager/non-eager contexts for tf.
+
+    Args:
+        config (Optional[dict]): An optional config dict to alter in place
+            depending on the iteration.
+        frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
+            Allowed are: "tf", "eager", and "torch".
+        session (bool): If True, enter a tf.Session() and yield that as
+            well in the tf-case (otherwise, yield (fw, None)).
+
+    Yields:
+        str: If enter_session is False:
+            The current framework ("tf", "eager", "torch") used.
+        Tuple(str, Union[None,tf.Session]: If enter_session is True:
+            A tuple of the current fw and the tf.Session if fw="tf".
+    """
+    config = config or {}
+    frameworks = [frameworks] if isinstance(frameworks, str) else frameworks
+
+    for fw in frameworks:
+        # Skip non-installed frameworks.
+        if fw == "torch" and not torch:
+            logger.warning(
+                "framework_iterator skipping torch (not installed)!")
+            continue
+        elif not tf:
+            logger.warning("framework_iterator skipping {} (tf not "
+                           "installed)!".format(fw))
+            continue
+        elif fw == "eager" and not eager_mode:
+            logger.warning("framework_iterator skipping eager (could not "
+                           "import `eager_mode` from tensorflow.python)!")
+            continue
+        assert fw in ["tf", "eager", "torch", None]
+
+        # Do we need a test session?
+        sess = None
+        if fw == "tf" and session is True:
+            sess = tf.Session()
+            sess.__enter__()
+
+        print("framework={}".format(fw))
+
+        config["eager"] = fw == "eager"
+        config["use_pytorch"] = fw == "torch"
+
+        eager_ctx = None
+        if fw == "eager":
+            eager_ctx = eager_mode()
+            eager_ctx.__enter__()
+            assert tf.executing_eagerly()
+        elif fw == "tf":
+            assert not tf.executing_eagerly()
+
+        yield fw if session is False else (fw, sess)
+
+        # Exit any context we may have entered.
+        if eager_ctx:
+            eager_ctx.__exit__(None, None, None)
+        elif sess:
+            sess.__exit__(None, None, None)
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
@@ -108,15 +187,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                             rtol=rtol,
                             false=false)
         if torch is not None:
-            # y should never be a Tensor (y=expected value).
-            if isinstance(y, torch.Tensor):
-                raise ValueError("`y` (expected value) must not be a Tensor. "
-                                 "Use numpy.ndarray instead")
             if isinstance(x, torch.Tensor):
-                try:
-                    x = x.numpy()
-                except RuntimeError:
-                    x = x.detach().numpy()
+                x = x.detach().numpy()
+            if isinstance(y, torch.Tensor):
+                y = y.detach().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:

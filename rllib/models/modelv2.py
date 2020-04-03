@@ -222,6 +222,25 @@ class ModelV2:
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
+    def variables(self, as_dict=False):
+        """Returns the list (or a dict) of variables for this model.
+
+        Returns:
+            List: The list of all variables of this ModelV2.
+            or (if as_dict is True):
+            Dict[str,any]: A dict with desciptive keys (str) and the variables
+                of this ModelV2 as values.
+        """
+        raise NotImplementedError
+
+    def trainable_variables(self):
+        """Returns the list of trainable variables for this model.
+
+        Returns:
+            List: The list of all trainable variables of this ModelV2.
+        """
+        raise NotImplementedError
+
 
 class NullContextManager:
     """No-op context manager"""

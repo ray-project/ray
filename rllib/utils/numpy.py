@@ -83,6 +83,10 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     Returns:
         np.ndarray: The one-hot encoded equivalent of the input array.
     """
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
     # Handle bool arrays correctly.
     if x.dtype == np.bool_:
         x = x.astype(np.int)
@@ -135,7 +139,7 @@ def fc(x, weights, biases=None):
             isinstance(weights, torch.Tensor) else weights
         biases = biases.detach().numpy() if \
             isinstance(biases, torch.Tensor) else biases
-    if tf:
+    if tf and tf.executing_eagerly():
         x = x.numpy() if isinstance(x, tf.Variable) else x
         weights = weights.numpy() if isinstance(weights, tf.Variable) else \
             weights
@@ -216,3 +220,10 @@ def lstm(x,
             unrolled_outputs[:, t, :] = h_states
 
     return unrolled_outputs, (c_states, h_states)
+
+
+def huber_loss(x, delta=1.0):
+    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+    return np.where(
+        np.abs(x) < delta,
+        np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta))
