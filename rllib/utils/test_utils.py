@@ -120,14 +120,20 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
         # Using decimals.
         if atol is None and rtol is None:
+            # Assert equality of both values.
             try:
                 np.testing.assert_almost_equal(x, y, decimal=decimals)
+            # Both values are not equal.
+            except AssertionError as e:
+                # Raise error in normal case.
+                if false is False:
+                    raise e
+            # Both values are equal.
+            else:
+                # If false is set -> raise error (not expected to be equal).
                 if false is True:
                     assert False, \
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
-            except AssertionError as e:
-                if false is False:
-                    raise e
 
         # Using atol/rtol.
         else:
@@ -138,9 +144,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 rtol = 1e-7
             try:
                 np.testing.assert_allclose(x, y, atol=atol, rtol=rtol)
-                if false is True:
-                    assert False, \
-                        "ERROR: x ({}) is the same as y ({})!".format(x, y)
             except AssertionError as e:
                 if false is False:
                     raise e
+            else:
+                if false is True:
+                    assert False, \
+                        "ERROR: x ({}) is the same as y ({})!".format(x, y)
