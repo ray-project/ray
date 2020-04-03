@@ -229,23 +229,27 @@ class AsyncClient {
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
 
   bool Connect(const std::string &ip, int port, int64_t timeout_ms) {
-    auto endpoint =
-        boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
+    try {
+      auto endpoint =
+          boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
 
-    bool is_connected = false;
-    bool is_timeout = false;
-    socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this, _1,
-                                                boost::ref(is_connected)));
-    timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
-    timer_.async_wait(
-        boost::bind(&AsyncClient::TimerHandle, this, _1, boost::ref(is_timeout)));
+      bool is_connected = false;
+      bool is_timeout = false;
+      socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this, _1,
+                                                  boost::ref(is_connected)));
+      timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
+      timer_.async_wait(
+          boost::bind(&AsyncClient::TimerHandle, this, _1, boost::ref(is_timeout)));
 
-    do {
-      io_service_.run_one();
-    } while (!is_timeout && !is_connected);
+      do {
+        io_service_.run_one();
+      } while (!is_timeout && !is_connected);
 
-    timer_.cancel();
-    return is_connected;
+      timer_.cancel();
+      return is_connected;
+    } catch (...) {
+      return false;
+    }
   }
 
  private:
