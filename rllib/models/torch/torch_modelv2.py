@@ -55,7 +55,7 @@ class TorchModelV2(ModelV2):
 
         Custom models should override this instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "obs_flat", "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
@@ -66,12 +66,11 @@ class TorchModelV2(ModelV2):
             (outputs, state): The model output tensor of size
                 [BATCH, num_outputs]
 
-        Sample implementation for the ``MyModelClass`` example::
-
-            def forward(self, input_dict, state, seq_lens):
-                features = self._hidden_layers(input_dict["obs"])
-                self._value_out = self._value_branch(features)
-                return self._logits(features), state
+        Examples:
+            >>> def forward(self, input_dict, state, seq_lens):
+            >>>     features = self._hidden_layers(input_dict["obs"])
+            >>>     self._value_out = self._value_branch(features)
+            >>>    return self._logits(features), state
         """
         raise NotImplementedError
 

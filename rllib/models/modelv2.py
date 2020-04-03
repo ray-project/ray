@@ -230,10 +230,8 @@ class ModelV2:
         """Returns the list (or a dict) of variables for this model.
 
         Returns:
-            List: The list of all variables of this ModelV2.
-            or (if as_dict is True):
-            Dict[str,any]: A dict with desciptive keys (str) and the variables
-                of this ModelV2 as values.
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all variables of this ModelV2:
         """
         raise NotImplementedError
 
