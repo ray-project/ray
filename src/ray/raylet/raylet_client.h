@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
@@ -60,6 +74,21 @@ class WorkerLeaseInterface {
   virtual ~WorkerLeaseInterface(){};
 };
 
+/// Interface for waiting dependencies. Abstract for testing.
+class DependencyWaiterInterface {
+ public:
+  /// Wait for the given objects, asynchronously. The core worker is notified when
+  /// the wait completes.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \return ray::Status.
+  virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+                                                 int64_t tag) = 0;
+
+  virtual ~DependencyWaiterInterface(){};
+};
+
 namespace raylet {
 
 class RayletConnection {
@@ -101,7 +130,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient : public WorkerLeaseInterface {
+class RayletClient : public WorkerLeaseInterface, public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -191,7 +220,7 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                         int64_t tag);
+                                         int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///

@@ -44,7 +44,15 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            list of np.array objects, if any
+            List[np.ndarray]: List of np.array objects containing the initial
+                hidden state of an RNN, if applicable.
+
+        Examples:
+            >>> def get_initial_state(self):
+            >>>    return [
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>    ]
         """
         return []
 
@@ -191,6 +199,20 @@ class ModelV2:
             states.append(train_batch["state_in_{}".format(i)])
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+
+    def import_from_h5(self, h5_file):
+        """Imports weights from an h5 file.
+
+        Args:
+            h5_file (str): The h5 file name to import weights from.
+
+        Example:
+            >>> trainer = MyTrainer()
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
+            >>> for _ in range(10):
+            >>>     trainer.train()
+        """
+        raise NotImplementedError
 
     def last_output(self):
         """Returns the last output returned from calling the model."""

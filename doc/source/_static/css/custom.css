@@ -1,0 +1,16 @@
+/*Extends the docstring signature box.*/
+.rst-content dl:not(.docutils) dt {
+    display: block;
+    padding: 10px;
+    word-wrap: break-word;
+    padding-right: 100px;
+}
+/*Lists in an admonition note do not have awkward whitespace below.*/
+.rst-content .admonition-note .section ul {
+    margin-bottom: 0px
+}
+/*Properties become blue (classmethod, staticmethod, property)*/
+.rst-content dl dt em.property {
+    color: #2980B9;
+    text-transform: uppercase
+}

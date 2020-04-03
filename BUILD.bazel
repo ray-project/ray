@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PROPAGATED_WINDOWS_DEFINES")
+load("//bazel:ray.bzl", "COPTS")
 
 # === Begin of protobuf definitions ===
 
@@ -270,6 +270,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
+        "@msgpack",
         "@plasma//:plasma_client",
     ],
 )
@@ -384,7 +385,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/raylet/mock_gcs_client.cc",
-            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/monitor*.cc",
             "src/ray/raylet/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
@@ -393,10 +394,6 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    defines = select({
-        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
-        "//conditions:default": [],
-    }),
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
         ],
@@ -808,6 +805,7 @@ cc_library(
         "@bazel_tools//src/conditions:windows": glob([
             "src/shims/windows/**/*.c",
             "src/shims/windows/**/*.cc",
+            "src/shims/windows/**/*.h",
         ]),
         "//conditions:default": [],
     }),
@@ -846,12 +844,12 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@plasma//:plasma_client",
     ],
 )
@@ -899,6 +897,78 @@ cc_library(
     includes = ["src/ray/thirdparty"],
 )
 
+alias(
+    name = "hiredis",
+    actual = "@com_github_antirez_redis//:hiredis",
+)
+
+cc_library(
+    name = "redis_client",
+    srcs = [
+        "src/ray/gcs/asio.cc",
+        "src/ray/gcs/redis_async_context.cc",
+        "src/ray/gcs/redis_client.cc",
+        "src/ray/gcs/redis_context.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/asio.h",
+        "src/ray/gcs/redis_async_context.h",
+        "src/ray/gcs/redis_client.h",
+        "src/ray/gcs/redis_context.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":hiredis",
+        ":ray_common",
+        ":ray_util",
+        ":stats_lib",
+        "@boost//:asio",
+    ],
+)
+
+cc_library(
+    name = "redis_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/redis_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/redis_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_client",
+    ],
+)
+
+cc_library(
+    name = "store_client_test_lib",
+    hdrs = [
+        "src/ray/gcs/store_client/test/store_client_test_base.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_store_client",
+    ],
+)
+
+cc_test(
+    name = "redis_store_client_test",
+    srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli)"],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":redis_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gcs",
     srcs = glob(
@@ -916,13 +986,13 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs_cc_proto",
+        ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
-        "@redis//:hiredis",
     ],
 )
 
@@ -1189,6 +1259,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
+        "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",
         "python/ray/autoscaler/local/example-full.yaml",
         "python/ray/cloudpickle/*.py",
@@ -1196,7 +1267,8 @@ filegroup(
         "python/ray/core/generated/__init__.py",
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
-        "python/ray/dashboard/dashboard.py",
+        "python/ray/dashboard/*.py",
+        "python/ray/dashboard/metrics_exporter/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
@@ -1215,10 +1287,11 @@ genrule(
     ] + select({
         # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": [
-            "@win-redis-bin//file",
+            "@com_github_tporadowski_redis_bin//file",
         ],
         "//conditions:default": [
-            "@redis-src//file",
+            "@com_github_antirez_redis//:file",  # This is necessary so we can access the root of the directory
+            "@com_github_antirez_redis//:files",  # This is necessary to ensure entire directory tree is accessible
         ],
     }),
     outs = [
@@ -1228,18 +1301,21 @@ genrule(
     cmd = select({
         # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": """
-            unzip -q -o -- $(location @win-redis-bin//file) redis-server.exe redis-cli.exe &&
+            unzip -q -o -- $(location @com_github_tporadowski_redis_bin//file) redis-server.exe redis-cli.exe &&
             mv -f -- redis-server.exe $(location redis-server) &&
             mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
             set -x &&
-            tar -xzf $(location @redis-src//file) --strip-components=1 -C . &&
-            make &&
-            mv ./src/redis-server $(location redis-server) &&
+            tmpdir="redis.tmp" &&
+            path=$(location @com_github_antirez_redis//:file) &&
+            cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
-            mv ./src/redis-cli $(location redis-cli) &&
-            chmod +x $(location redis-cli)
+            mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli) &&
+            rm -r -f -- "$${tmpdir}"
         """,
     }),
     visibility = ["//java:__subpackages__"],
@@ -1285,22 +1361,10 @@ py_library(
 )
 
 genrule(
-    name = "cp_streaming_lib",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    outs = ["cp_streaming_lib.out"],
-    cmd = """
-        set -x &&
-        WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-)
-
-genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
+        "python/ray/streaming/_streaming.so",
         "//:python_sources",
         "//:all_py_proto",
         "//:redis-server",
@@ -1311,10 +1375,7 @@ genrule(
         "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [],  # ignore build streaming for windows
-        "//conditions:default": [":cp_streaming_lib"],
-    }),
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
@@ -1331,6 +1392,7 @@ genrule(
             fi;
         fi &&
         cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&

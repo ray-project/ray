@@ -1,6 +1,21 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gcs_server.h"
 #include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
+#include "gcs_node_manager.h"
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
@@ -21,6 +36,14 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
+
+  // Init gcs node_manager
+  InitGcsNodeManager();
+
+  // Init gcs detector
+  gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
+      main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+  gcs_redis_failure_detector_->Start();
 
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
@@ -76,11 +99,15 @@ void GcsServer::Start() {
 }
 
 void GcsServer::Stop() {
+  RAY_LOG(INFO) << "Stopping gcs server.";
   // Shutdown the rpc server
   rpc_server_.Shutdown();
 
   // Stop the event loop.
   main_service_.stop();
+
+  is_stopped_ = true;
+  RAY_LOG(INFO) << "Finished stopping gcs server.";
 }
 
 void GcsServer::InitBackendClient() {
@@ -89,6 +116,10 @@ void GcsServer::InitBackendClient() {
   redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
   auto status = redis_gcs_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+}
+
+void GcsServer::InitGcsNodeManager() {
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
@@ -103,7 +134,7 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 
 std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
   return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
-      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_, *gcs_node_manager_));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
@@ -114,18 +145,27 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
 void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
-  boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
-  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
+  boost::asio::ip::tcp::resolver::query query(
+      boost::asio::ip::host_name(), "",
+      boost::asio::ip::resolver_query_base::flags::v4_mapped);
+  boost::system::error_code error_code;
+  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
   boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-  while (iter != end) {
-    boost::asio::ip::tcp::endpoint ep = *iter;
-    if (ep.address().is_v4() && !ep.address().is_loopback() &&
-        !ep.address().is_multicast()) {
-      primary_endpoint.address(ep.address());
-      primary_endpoint.port(ep.port());
-      break;
+  if (!error_code) {
+    while (iter != end) {
+      boost::asio::ip::tcp::endpoint ep = *iter;
+      if (ep.address().is_v4() && !ep.address().is_loopback() &&
+          !ep.address().is_multicast()) {
+        primary_endpoint.address(ep.address());
+        primary_endpoint.port(ep.port());
+        break;
+      }
+      iter++;
     }
-    iter++;
+  } else {
+    RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
+                     << strerror(error_code.value());
+    iter = end;
   }
 
   std::string address;

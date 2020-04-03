@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-import six
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
@@ -48,25 +47,27 @@ def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
 class Experiment:
     """Tracks experiment specifications.
 
-    Implicitly registers the Trainable if needed.
+    Implicitly registers the Trainable if needed. The args here take
+    the same meaning as the arguments defined `tune.py:run`.
 
-    Examples:
-        >>> experiment_spec = Experiment(
-        >>>     "my_experiment_name",
-        >>>     my_func,
-        >>>     stop={"mean_accuracy": 100},
-        >>>     config={
-        >>>         "alpha": tune.grid_search([0.2, 0.4, 0.6]),
-        >>>         "beta": tune.grid_search([1, 2]),
-        >>>     },
-        >>>     resources_per_trial={
-        >>>         "cpu": 1,
-        >>>         "gpu": 0
-        >>>     },
-        >>>     num_samples=10,
-        >>>     local_dir="~/ray_results",
-        >>>     checkpoint_freq=10,
-        >>>     max_failures=2)
+    .. code-block:: python
+
+        experiment_spec = Experiment(
+            "my_experiment_name",
+            my_func,
+            stop={"mean_accuracy": 100},
+            config={
+                "alpha": tune.grid_search([0.2, 0.4, 0.6]),
+                "beta": tune.grid_search([1, 2]),
+            },
+            resources_per_trial={
+                "cpu": 1,
+                "gpu": 0
+            },
+            num_samples=10,
+            local_dir="~/ray_results",
+            checkpoint_freq=10,
+            max_failures=2)
     """
 
     def __init__(self,
@@ -88,23 +89,7 @@ class Experiment:
                  checkpoint_score_attr=None,
                  export_formats=None,
                  max_failures=0,
-                 restore=None,
-                 repeat=None,
-                 trial_resources=None,
-                 sync_function=None):
-        """Initialize a new Experiment.
-
-        The args here take the same meaning as the command line flags defined
-        in `tune.py:run`.
-        """
-        if repeat:
-            _raise_deprecation_note("repeat", "num_samples", soft=False)
-        if trial_resources:
-            _raise_deprecation_note(
-                "trial_resources", "resources_per_trial", soft=False)
-        if sync_function:
-            _raise_deprecation_note(
-                "sync_function", "sync_to_driver", soft=False)
+                 restore=None):
 
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
@@ -203,7 +188,7 @@ class Experiment:
             A string representing the trainable identifier.
         """
 
-        if isinstance(run_object, six.string_types):
+        if isinstance(run_object, str):
             return run_object
         elif isinstance(run_object, sample_from):
             logger.warning("Not registering trainable. Resolving as variant.")

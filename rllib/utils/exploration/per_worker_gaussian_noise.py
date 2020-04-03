@@ -10,12 +10,7 @@ class PerWorkerGaussianNoise(GaussianNoise):
     See Ape-X paper.
     """
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 num_workers=0,
-                 worker_index=0,
-                 framework="tf",
+    def __init__(self, action_space, *, framework, num_workers, worker_index,
                  **kwargs):
         """
         Args:
@@ -30,11 +25,12 @@ class PerWorkerGaussianNoise(GaussianNoise):
         if num_workers > 0:
             if worker_index >= 0:
                 exponent = (1 + worker_index / float(num_workers - 1) * 7)
-                scale_schedule = ConstantSchedule(0.4**exponent)
+                scale_schedule = ConstantSchedule(
+                    0.4**exponent, framework=framework)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:
-                scale_schedule = ConstantSchedule(0.0)
+                scale_schedule = ConstantSchedule(0.0, framework=framework)
 
         super().__init__(
             action_space,

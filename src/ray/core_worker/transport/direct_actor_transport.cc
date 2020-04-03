@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 #include <thread>
@@ -8,9 +22,25 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+                                                   bool force_kill,
+                                                   bool no_reconstruction) {
   absl::MutexLock lock(&mu_);
-  pending_force_kills_.insert(actor_id);
+  rpc::KillActorRequest request;
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_reconstruction(no_reconstruction);
+  auto inserted = pending_force_kills_.emplace(actor_id, request);
+  if (!inserted.second && force_kill) {
+    // Overwrite the previous request to kill the actor if the new request is a
+    // force kill.
+    inserted.first->second.set_force_kill(true);
+    if (no_reconstruction) {
+      // Overwrite the previous request to disable reconstruction if the new request's
+      // no_reconstruction flag is set to true.
+      inserted.first->second.set_no_reconstruction(true);
+    }
+  }
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
     // Actor is not yet created, or is being reconstructed, cache the request
@@ -23,7 +53,6 @@ Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
   } else {
     SendPendingTasks(actor_id);
   }
-  return Status::OK();
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
@@ -47,6 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+    request->set_caller_version(caller_creation_timestamp_ms_);
 
     absl::MutexLock lock(&mu_);
 
@@ -83,9 +113,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
-  if (pending_requests_.count(actor_id) > 0) {
-    SendPendingTasks(actor_id);
-  }
+  SendPendingTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -116,6 +144,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
+
+    pending_force_kills_.erase(actor_id);
   }
 }
 
@@ -124,11 +154,12 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   RAY_CHECK(client);
   // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
-  if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
-    rpc::KillActorRequest request;
-    request.set_intended_actor_id(actor_id.Binary());
-    RAY_CHECK_OK(client->KillActor(request, nullptr));
-    pending_force_kills_.erase(actor_id);
+  auto it = pending_force_kills_.find(actor_id);
+  if (it != pending_force_kills_.end()) {
+    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
+    // It's okay if this fails because this means the worker is already dead.
+    RAY_UNUSED(client->KillActor(it->second, nullptr));
+    pending_force_kills_.erase(it);
   }
 
   // Submit all pending requests.
@@ -171,9 +202,14 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
-                                        rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
+void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t timestamp) {
+  caller_creation_timestamp_ms_ = timestamp;
+}
+
+void CoreWorkerDirectTaskReceiver::Init(
+    rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
+  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -183,12 +219,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
-                        nullptr, nullptr);
-    return;
-  }
-
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
@@ -212,10 +242,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   }
 
   auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
-    // We have posted an exit task onto the main event loop,
-    // so shouldn't bother executing any further work.
-    if (exiting_) return;
-
     auto num_returns = task_spec.NumReturns();
     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
       // Decrease to account for the dummy object id.
@@ -238,6 +264,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
         // The object is nullptr if it already existed in the object store.
         const auto &result = return_objects[i];
+        return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
         } else {
@@ -259,25 +286,19 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will reconstruct the actor.
-        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+        RAY_CHECK_OK(task_done_());
       }
     }
     if (status.IsSystemExit()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
-      // In Python, SystemExit can only be raised on the main thread. To
-      // work around this when we are executing tasks on worker threads,
-      // we re-post the exit event explicitly on the main thread.
-      exiting_ = true;
       if (objects_valid) {
         // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
         send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post(
-          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);
@@ -295,15 +316,50 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto caller_worker_id = WorkerID::FromBinary(request.caller_address().worker_id());
+  auto caller_version = request.caller_version();
   auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it != scheduling_queue_.end()) {
+    if (it->second.first.caller_worker_id != caller_worker_id) {
+      // We received a request with the same caller ID, but from a different worker,
+      // this indicates the caller (actor) is reconstructed.
+      if (it->second.first.caller_creation_timestamp_ms < caller_version) {
+        // The new request has a newer caller version, then remove the old entry
+        // from scheduling queue since it's invalid now.
+        RAY_LOG(INFO) << "Remove existing scheduling queue for caller "
+                      << task_spec.CallerId() << " after receiving a "
+                      << "request from a different worker ID with a newer "
+                      << "version, old worker ID: " << it->second.first.caller_worker_id
+                      << ", new worker ID" << caller_worker_id;
+        scheduling_queue_.erase(task_spec.CallerId());
+        it = scheduling_queue_.end();
+      } else {
+        // The existing caller has the newer version, this indicates the request
+        // is from an old caller, which might be possible when network has problems.
+        // In this case fail this request.
+        RAY_LOG(WARNING) << "Ignoring request from an old caller because "
+                         << "it has a smaller timestamp, old worker ID: "
+                         << caller_worker_id << ", current worker ID"
+                         << it->second.first.caller_worker_id;
+        // Fail request with an old caller version.
+        reject_callback();
+        return;
+      }
+    }
+  }
+
   if (it == scheduling_queue_.end()) {
+    SchedulingQueueTag tag;
+    tag.caller_worker_id = caller_worker_id;
+    tag.caller_creation_timestamp_ms = caller_version;
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, worker_context_)));
+        task_spec.CallerId(),
+        std::make_pair(tag, std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                task_main_io_service_, *waiter_, worker_context_))));
     it = result.first;
   }
-  it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                  accept_callback, reject_callback, dependencies);
+  it->second.second->Add(request.sequence_number(), request.client_processed_up_to(),
+                         accept_callback, reject_callback, dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(

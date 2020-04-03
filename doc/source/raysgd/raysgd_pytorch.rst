@@ -3,7 +3,7 @@ Distributed PyTorch
 
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch. The ``TorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to wrap your training code in bash scripts.
 
-Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
+Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
     :align: center
@@ -19,7 +19,7 @@ Setting up training
 
 The ``TorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it requires constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_trainer_start__
    :end-before: __torch_trainer_end__
@@ -31,7 +31,7 @@ Model Creator
 
 This is the signature needed for ``TorchTrainer(model_creator=...)``.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_model_start__
    :end-before: __torch_model_end__
@@ -42,11 +42,10 @@ Optimizer Creator
 
 This is the signature needed for ``TorchTrainer(optimizer_creator=...)``.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_optimizer_start__
    :end-before: __torch_optimizer_end__
-
 
 
 Data Creator
@@ -54,11 +53,36 @@ Data Creator
 
 This is the signature needed for ``TorchTrainer(data_creator=...)``.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_data_start__
    :end-before: __torch_data_end__
 
+
+.. tip:: Setting the batch size: Using a provided ``ray.util.sgd.utils.BATCH_SIZE`` variable, you can provide a global batch size that will be divided among all workers automatically.
+
+.. code-block:: python
+
+    from torch.utils.data import DataLoader
+    from ray.util.sgd.utils import BATCH_SIZE
+
+    def data_creator(config):
+        # config[BATCH_SIZE] == provided BATCH_SIZE // num_workers
+        train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2, 5)
+        train_loader = DataLoader(train_dataset, batch_size=config[BATCH_SIZE])
+        val_loader = DataLoader(val_dataset, batch_size=config[BATCH_SIZE])
+        return train_loader, val_loader
+
+    trainer = Trainer(
+        model_creator=model_creator,
+        optimizer_creator=optimizer_creator,
+        data_creator=batch_data_creator
+        config={BATCH_SIZE: 1024},
+        num_workers=128
+    )
+
+    # Each worker will process 1024 // 128 samples per batch
+    stats = Trainer.train()
 
 
 Loss Creator
@@ -66,7 +90,7 @@ Loss Creator
 
 This is the signature needed for ``TorchTrainer(loss_creator=...)``.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_loss_start__
    :end-before: __torch_loss_end__
@@ -78,7 +102,7 @@ Scheduler Creator
 Optionally, you can provide a creator function for the learning rate scheduler. This is the signature needed
 for ``TorchTrainer(scheduler_creator=...)``.
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_scheduler_start__
    :end-before: __torch_scheduler_end__
@@ -91,14 +115,14 @@ Putting things together
 
 Before instantiating the trainer, first start or connect to a Ray cluster:
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_ray_start__
    :end-before: __torch_ray_end__
 
 Instantiate the trainer object:
 
-.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_trainer_start__
    :end-before: __torch_trainer_end__
@@ -109,13 +133,13 @@ You can also set the number of workers and whether the workers will use GPUs:
     :emphasize-lines: 8,9
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
         config={"lr": 0.001},
-        num_replicas=100,
+        num_workers=100,
         use_gpu=True)
 
 
@@ -128,7 +152,27 @@ Now that the trainer is constructed, here's how to train the model.
         val_metrics = trainer.validate()
 
 
-Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
+Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
+
+You can also obtain profiling information:
+
+.. code-block:: python
+
+    >>> from ray.tune.logger import pretty_print
+    >>> print(pretty_print(trainer.train(profile=True)))
+
+    batch_count: 16
+    epoch: 1
+    last_train_loss: 0.15574650466442108
+    mean_train_loss: 7.475177114367485
+    num_samples: 1000
+    profile:
+      mean_apply_s: 2.639293670654297e-05
+      mean_fwd_s: 0.00012960433959960938
+      mean_grad_s: 0.00016553401947021483
+      train_epoch_s: 0.023712158203125
+
+Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
 
 After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
 
@@ -238,12 +282,12 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
             }
 
     trainer = TorchTrainer(
-            model_creator,
-            data_creator,
-            optimizer_creator,
-            nn.BCELoss,
+            model_creator=model_creator,
+            data_creator=data_creator,
+            optimizer_creator=optimizer_creator,
+            loss_creator=nn.BCELoss,
             training_operator_cls=GANOperator,
-            num_replicas=num_replicas,
+            num_workers=num_workers,
             config=config,
             use_gpu=True,
             batch_size=128)
@@ -270,13 +314,13 @@ Use the ``initialization_hook`` parameter to initialize state on each worker pro
         os.environ["NCCL_DEBUG"] = "INFO"
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         initialization_hook=initialization_hook,
         config={"lr": 0.001}
-        num_replicas=100,
+        num_workers=100,
         use_gpu=True)
 
 Save and Load
@@ -289,14 +333,16 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
 
     checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
     trainer_1.save(checkpoint_path)
+    # You can only have 1 trainer alive at a time
+    trainer_1.shutdown()
 
     trainer_2 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=num_replicas)
-    trainer_2.restore(checkpoint_path)
+        num_workers=num_workers)
+    trainer_2.load(checkpoint_path)
 
 
 Retrieving the model
@@ -318,11 +364,11 @@ You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. 
     :emphasize-lines: 7
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=4,
+        num_workers=4,
         use_fp16=True
     )
 
@@ -335,11 +381,11 @@ To specify particular parameters for ``amp.initialize``, you can use the ``apex_
     :emphasize-lines: 7-12
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=4,
+        num_workers=4,
         use_fp16=True,
         apex_args={
             opt_level="O3",
@@ -369,11 +415,11 @@ After connecting, you can scale up the number of workers seamlessly across multi
 .. code-block:: python
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=100
+        num_workers=100
     )
     trainer.train()
     model = trainer.get_model()
@@ -389,7 +435,7 @@ For distributed deep learning, jobs are often run on infrastructure where nodes 
     trainer.train(max_retries=N)
 
 
-During each ``train`` method, each parallel worker iterates through the dataset, synchronizing gradients and parameters at each batch. These synchronization primitives can hang when one or more of the parallel workers becomes unresponsive (i.e., when a node is lost). To address this, we've implemented the following protocol.
+During each ``train`` method, each parallel worker iterates through the iterable, synchronizing gradients and parameters at each batch. These synchronization primitives can hang when one or more of the parallel workers becomes unresponsive (i.e., when a node is lost). To address this, we've implemented the following protocol.
 
   1. If any worker node is lost, Ray will mark the training task as complete (``ray.wait`` will return).
   2. Ray will throw ``RayActorException`` when fetching the result for any worker, so the Trainer class will call ``ray.get`` on the "finished" training task.
@@ -398,23 +444,19 @@ During each ``train`` method, each parallel worker iterates through the dataset,
   5. If there are no available resources, the Trainer will apply an exponential backoff before retrying to create workers.
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
-Note that we assume the Trainer itself is not on a pre-emptible node. It is currently not possible to recover from a Trainer node failure.
-
-Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training dataset.
-
-.. code-block:: python
-
-    trainer.train(max_retries=N, checkpoint="auto")
-
+Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
 
 Advanced: Hyperparameter Tuning
 -------------------------------
 
-``TorchTrainer`` naturally integrates with Tune via the ``TorchTrainable`` interface. The same arguments to ``TorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
+``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
    :language: python
    :start-after: __torch_tune_example__
+   :end-before: __end_torch_tune_example__
+
+You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
 
 
 Simultaneous Multi-model Training
@@ -461,7 +503,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
         return discriminator_opt, generator_opt
 
     class CustomOperator(TrainingOperator):
-        def train_epoch(self, dataloader, info):
+        def train_epoch(self, iterator, info):
             result = {}
             for i, (model, optimizer) in enumerate(
                     zip(self.models, self.optimizers)):
@@ -469,17 +511,64 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
                     model=model,
                     criterion=self.criterion,
                     optimizer=optimizer,
-                    dataloader=dataloader)
+                    dataloader=iterator)
             return result
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.BCELoss,
         training_operator_cls=CustomOperator)
 
-    trainer.train()
+    stats = trainer.train()
+
+Benchmarks
+----------
+
+RaySGD TorchTrainer provides comparable or better performance than other existing solutions for parallel or distributed training.
+
+**Multi-GPU (Single Node) benchmarks**:
+
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instance.
+
+
+    Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
+    of GPUs                               + Apex        + Apex
+    =======  ============  =============  ============  ==============
+    1        355.5         356            776           770
+    2        656           701            1303          1346
+    4        1289          1401           2606          2695
+    8        2521          2795           4795          5862
+
+**Multi-node benchmarks**:
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instances.
+
+    Number   Horovod  Ray (PyTorch)  Horovod  Ray (PyTorch)
+    of GPUs                          + Apex   + Apex
+    =======  =======  =============  =======  ==============
+    1 * 8    2769.7   2962.7         5143     6172
+    2 * 8    5492.2   5886.1         9463     10052.8
+    4 * 8    10733.4  11705.9        18807    20319.5
+    8 * 8    21872.5  23317.9        36911.8  38642
+
+
+
+You can see more details in the `benchmarking README <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/benchmarks/README.rst>`_.
+
+DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
 
 
 Feature Requests
@@ -498,8 +587,14 @@ to contribute an example, feel free to create a `pull request here <https://gith
 - `Torch training example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/train_example.py>`__:
    Simple example of using Ray's TorchTrainer.
 
+- `TorchTrainer and RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`__:
+   Simple example of hyperparameter tuning with Ray's TorchTrainer.
+
 - `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__:
    Training a ResNet18 model on CIFAR10.
+
+- `CIFAR10 RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_pbt.py>`__:
+   Tuning a ResNet18 model on CIFAR10 with Population-based training on RayTune.
 
 - `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__:
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.
