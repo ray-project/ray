@@ -60,6 +60,8 @@ Test that it works by running the following commands from your local machine:
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
     # test ray setup
+    # enable conda environment
+    $ exec bash -l
     $ conda activate py37_tensorflow
     $ python -c 'import ray; ray.init()'
     $ exit
