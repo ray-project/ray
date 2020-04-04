@@ -265,7 +265,7 @@ def _configure_security_group(config):
         }]
 
         additional_IpPermissions = config["provider"].get(
-            "security_group", {}).get("IpPermissions", {})
+            "security_group", {}).get("IpPermissions", [])
         IpPermissions.extend(additional_IpPermissions)
 
         security_group.authorize_ingress(IpPermissions=IpPermissions)
