@@ -1,6 +1,4 @@
-from collections import OrderedDict
 import numpy as np
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.sac as sac
@@ -10,9 +8,8 @@ from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.numpy import fc
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
