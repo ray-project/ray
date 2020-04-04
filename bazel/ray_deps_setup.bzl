@@ -99,8 +99,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "bazel_common",
-        url = "https://github.com/google/bazel-common/archive/f1115e0f777f08c3cdb115526c4e663005bec69b.tar.gz",
-        sha256 = "50dea89af2e1334e18742f18c91c860446de8d1596947fe87e3cdb0d27b6f8f3",
+        url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
+        sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
     )
 
     auto_http_archive(
