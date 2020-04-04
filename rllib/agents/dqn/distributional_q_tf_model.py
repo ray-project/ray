@@ -26,7 +26,7 @@ class DistributionalQTFModel(TFModelV2):
             num_outputs,
             model_config,
             name,
-            dueling_hiddens=(256, ),
+            q_hiddens=(256, ),
             dueling=False,
             num_atoms=1,
             use_noisy=False,
@@ -41,7 +41,7 @@ class DistributionalQTFModel(TFModelV2):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            dueling_hiddens (List[int]): List of layer-sizes after(!) the
+            q_hiddens (List[int]): List of layer-sizes after(!) the
                 Advantages(A)/Value(V)-split. Hence, each of the A- and V-
                 branches will have this structure of Dense layers. To define
                 the NN before this A/V-split, use - as always -
@@ -70,23 +70,22 @@ class DistributionalQTFModel(TFModelV2):
             shape=(num_outputs, ), name="model_out")
 
         def build_action_value(model_out):
-            if dueling_hiddens:
+            if q_hiddens:
                 action_out = model_out
-                for i in range(len(dueling_hiddens)):
+                for i in range(len(q_hiddens)):
                     if use_noisy:
                         action_out = self._noisy_layer(
-                            "hidden_%d" % i, action_out, dueling_hiddens[i],
-                            sigma0)
+                            "hidden_%d" % i, action_out, q_hiddens[i], sigma0)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
-                            units=dueling_hiddens[i],
+                            units=q_hiddens[i],
                             activation=tf.nn.relu)(action_out)
                         action_out = \
                             tf.keras.layers.LayerNormalization()(
                                 action_out)
                     else:
                         action_out = tf.keras.layers.Dense(
-                            units=dueling_hiddens[i],
+                            units=q_hiddens[i],
                             activation=tf.nn.relu,
                             name="hidden_%d" % i)(action_out)
             else:
@@ -101,7 +100,7 @@ class DistributionalQTFModel(TFModelV2):
                     self.action_space.n * num_atoms,
                     sigma0,
                     non_linear=False)
-            elif dueling_hiddens:
+            elif q_hiddens:
                 action_scores = tf.keras.layers.Dense(
                     units=self.action_space.n * num_atoms,
                     activation=None)(action_out)
@@ -133,14 +132,14 @@ class DistributionalQTFModel(TFModelV2):
 
         def build_state_score(model_out):
             state_out = model_out
-            for i in range(len(dueling_hiddens)):
+            for i in range(len(q_hiddens)):
                 if use_noisy:
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
                                                   state_out,
-                                                  dueling_hiddens[i], sigma0)
+                                                  q_hiddens[i], sigma0)
                 else:
                     state_out = tf.keras.layers.Dense(
-                        units=dueling_hiddens[i],
+                        units=q_hiddens[i],
                         activation=tf.nn.relu)(state_out)
                     if add_layer_norm:
                         state_out = tf.keras.layers.LayerNormalization()(

@@ -32,7 +32,7 @@ DEFAULT_CONFIG = with_common_config({
     "dueling": True,
     # Dense-layer setup for each the advantage branch and the value branch
     # in a dueling architecture.
-    "dueling_hiddens": [256],
+    "hiddens": [256],
     # Whether to use double dqn
     "double_q": True,
     # N-step Q learning
@@ -122,7 +122,6 @@ DEFAULT_CONFIG = with_common_config({
     "softmax_temp": DEPRECATED_VALUE,
     "soft_q": DEPRECATED_VALUE,
     "parameter_noise": DEPRECATED_VALUE,
-    "hiddens": DEPRECATED_VALUE,
     "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
@@ -167,10 +166,6 @@ def validate_config_and_setup_param_noise(config):
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
-    if config.get("hiddens", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("hiddens", "dueling_hiddens")
-        config["dueling_hiddens"] = config.pop("hiddens")
-
     if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("grad_norm_clipping", "grad_clip")
         config["grad_clip"] = config.pop("grad_norm_clipping")

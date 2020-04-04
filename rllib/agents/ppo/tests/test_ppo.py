@@ -133,8 +133,7 @@ class TestPPO(unittest.TestCase):
                 [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
-        for fw, sess in framework_iterator(
-                config, frameworks=["eager", "tf", "torch"], session=True):
+        for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
@@ -164,10 +163,13 @@ class TestPPO(unittest.TestCase):
                 list(policy.model.parameters())
             if fw == "tf":
                 vars = policy.get_session().run(vars)
-            expected_shared_out = fc(train_batch[SampleBatch.CUR_OBS], vars[0],
-                                     vars[1])
-            expected_logits = fc(expected_shared_out, vars[2], vars[3])
-            expected_value_outs = fc(expected_shared_out, vars[4], vars[5])
+            expected_shared_out = fc(
+                train_batch[SampleBatch.CUR_OBS], vars[0], vars[1],
+                framework=fw)
+            expected_logits = fc(
+                expected_shared_out, vars[2], vars[3], framework=fw)
+            expected_value_outs = fc(
+                expected_shared_out, vars[4], vars[5], framework=fw)
 
             kl, entropy, pg_loss, vf_loss, overall_loss = \
                 self._ppo_loss_helper(
