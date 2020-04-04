@@ -51,18 +51,18 @@ def build_q_models(policy, obs_space, action_space, config):
             "Action space {} is not supported for DQN.".format(action_space))
 
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        action_space.n,  # num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=action_space.n,
+        model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
         name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        action_space.n,  # num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=action_space.n,
+        model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
         name=Q_TARGET_SCOPE)
 

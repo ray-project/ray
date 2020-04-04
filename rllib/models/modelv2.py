@@ -229,17 +229,27 @@ class ModelV2:
     def variables(self, as_dict=False):
         """Returns the list (or a dict) of variables for this model.
 
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
-                True) of all variables of this ModelV2:
+                True) of all variables of this ModelV2.
         """
         raise NotImplementedError
 
-    def trainable_variables(self):
+    def trainable_variables(self, as_dict=False):
         """Returns the list of trainable variables for this model.
 
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
         Returns:
-            List: The list of all trainable variables of this ModelV2.
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all trainable (tf)/requires_grad (torch) variables
+                of this ModelV2.
         """
         raise NotImplementedError
 

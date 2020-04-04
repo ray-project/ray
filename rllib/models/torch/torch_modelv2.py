@@ -81,6 +81,8 @@ class TorchModelV2(ModelV2):
         return list(self.parameters())
 
     @override(ModelV2)
-    def trainable_variables(self):
-        """Returns the list of trainable variables for this model."""
-        return [p for p in self.parameters() if p.requires_grad is True]
+    def trainable_variables(self, as_dict=False):
+        if as_dict:
+            return {k: v for k, v in self.variables(as_dict=True).items()
+                    if v.requires_grad}
+        return [v for v in self.variables() if v.requires_grad]

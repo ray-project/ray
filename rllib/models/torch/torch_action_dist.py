@@ -49,7 +49,7 @@ class TorchCategorical(TorchDistributionWrapper):
         if temperature != 1.0:
             assert temperature > 0.0, \
                 "Categorical `temperature` must be > 0.0!"
-        inputs /= temperature
+            inputs /= temperature
         super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(
             logits=self.inputs)

@@ -102,6 +102,8 @@ class TFModelV2(ModelV2):
         return list(self.var_list)
 
     @override(ModelV2)
-    def trainable_variables(self):
-        """Returns the list of trainable variables for this model."""
+    def trainable_variables(self, as_dict=False):
+        if as_dict:
+            return {k: v for k, v in self.variables(as_dict=True).items()
+                    if v.trainable}
         return [v for v in self.variables() if v.trainable]
