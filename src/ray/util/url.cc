@@ -58,17 +58,25 @@ std::string endpoint_to_url(
     bool include_scheme) {
   std::string result, scheme;
   switch (ep.protocol().family()) {
-  case AF_INET:
-  case AF_INET6: {
+  case AF_INET: {
     scheme = "tcp://";
-    boost::asio::ip::tcp protocol = ep.protocol().family() == AF_INET
-                                        ? boost::asio::ip::tcp::v4()
-                                        : boost::asio::ip::tcp::v6();
-    boost::asio::ip::tcp::endpoint e(protocol, 0);
+    boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
+    RAY_CHECK(e.size() == ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
+    *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
+    std::ostringstream ss;
+    ss << e;
+    result = ss.str();
+    break;
+  }
+  case AF_INET6: {
+    scheme = "tcp://";
+    boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
     RAY_CHECK(e.size() == ep.size());
-    memcpy(dst, src, ep.size());
+    const sockaddr *src = ep.data();
+    sockaddr *dst = e.data();
+    *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);
     std::ostringstream ss;
     ss << e;
     result = ss.str();
