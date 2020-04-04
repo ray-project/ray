@@ -164,7 +164,9 @@ class TestPPO(unittest.TestCase):
             if fw == "tf":
                 vars = policy.get_session().run(vars)
             expected_shared_out = fc(
-                train_batch[SampleBatch.CUR_OBS], vars[0], vars[1],
+                train_batch[SampleBatch.CUR_OBS],
+                vars[0],
+                vars[1],
                 framework=fw)
             expected_logits = fc(
                 expected_shared_out, vars[2], vars[3], framework=fw)

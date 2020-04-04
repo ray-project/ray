@@ -133,6 +133,7 @@ def fc(x, weights, biases=None, framework=None):
     Returns:
         The dense layer's output.
     """
+
     def map_(data, transpose=False):
         if torch:
             if isinstance(data, torch.Tensor):

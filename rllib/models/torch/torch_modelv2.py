@@ -83,6 +83,9 @@ class TorchModelV2(ModelV2):
     @override(ModelV2)
     def trainable_variables(self, as_dict=False):
         if as_dict:
-            return {k: v for k, v in self.variables(as_dict=True).items()
-                    if v.requires_grad}
+            return {
+                k: v
+                for k, v in self.variables(as_dict=True).items()
+                if v.requires_grad
+            }
         return [v for v in self.variables() if v.requires_grad]

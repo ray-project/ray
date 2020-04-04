@@ -104,6 +104,8 @@ class TFModelV2(ModelV2):
     @override(ModelV2)
     def trainable_variables(self, as_dict=False):
         if as_dict:
-            return {k: v for k, v in self.variables(as_dict=True).items()
-                    if v.trainable}
+            return {
+                k: v
+                for k, v in self.variables(as_dict=True).items() if v.trainable
+            }
         return [v for v in self.variables() if v.trainable]

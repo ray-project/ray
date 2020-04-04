@@ -81,7 +81,7 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
     if not isinstance(action_space, Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
-    
+
     if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
         num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
