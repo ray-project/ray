@@ -7,7 +7,7 @@ Tune: Scalable Hyperparameter Tuning
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
-  * Launch a multi-node `distributed hyperparameter sweep <tune-distributed.html>`_ in less than 10 lines of code.
+  * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
   * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
   * Natively `integrates with optimization libraries <tune-searchalg.html>`_ such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
   * Choose among `scalable algorithms <tune-schedulers.html>`_ such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
@@ -61,7 +61,7 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
     :scale: 20%
     :align: center
 
-Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for:
+Take a look at the :ref:`Distributed Experiments <tune-distributed>` documentation for:
 
  1. Setting up distributed experiments on your local cluster
  2. Using AWS and GCP

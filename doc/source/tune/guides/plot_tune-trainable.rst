@@ -1,8 +1,8 @@
-Trainable API Guide
-===================
+The Trainable API
+=================
 
-As mentioned in `Tune User Guide <tune-usage.html#Tune Training API>`_, Training can be done
-with either the `Trainable <tune-usage.html#trainable-api>`__ **Class API** or **function-based API**.
+As mentioned in :ref:`Tune User Guide <tune-user-guide>`_, Training can be done
+with either a **Class API** (``tune.Trainable``) < or **function-based API** (``track.log``).
 
 Comparably, ``Trainable`` is stateful, supports checkpoint/restore functionality, and provides more control to advanced algorithms.
 

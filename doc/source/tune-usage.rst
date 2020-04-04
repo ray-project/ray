@@ -1,3 +1,5 @@
+.. _tune-user-guide:
+
 Tune User Guide
 ===============
 
@@ -366,6 +368,8 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
         restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
         config={"env": "CartPole-v0"},
     )
+
+.. _tune-fault-tol:
 
 Fault Tolerance
 ---------------

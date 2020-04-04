@@ -1,21 +1,27 @@
+.. _tune-distributed:
+
 Tune Distributed Experiments
 ============================
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview:
 
   1. How to setup and launch a distributed experiment,
-  2. `commonly used commands <tune-distributed.html#common-commands>`_, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
+  2. :ref:`Commonly used commands <tune-distributed-common>`, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
 
 **Quick Summary**: To run a distributed experiment with Tune, you need to:
 
   1. Make sure your script has ``ray.init(address=...)`` to connect to the existing Ray cluster.
-  2. If a ray cluster does not exist, start a Ray cluster (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
+  2. If a ray cluster does not exist, start a Ray cluster.
   3. Run the script on the head node (or use ``ray submit``).
+
+.. contents::
+    :local:
+    :backlinks: none
 
 Running a distributed experiment
 --------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
@@ -29,9 +35,9 @@ One common approach to modifying an existing Tune experiment to go distributed i
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address")
+    parser.add_argument("--address")
     args = parser.parse_args()
-    ray.init(address=args.ray_address)
+    ray.init(address=args.address)
 
     tune.run(...)
 
@@ -50,6 +56,8 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 
     1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
+
+.. _tune-distributed-local:
 
 Local Cluster Setup
 -------------------
@@ -98,12 +106,14 @@ Then, you can run your Tune Python script on the head node like:
     # On the head node, execute using existing ray cluster
     $ python tune_script.py --ray-address=<address>
 
+.. tune-distributed-cloud:
+
 Launching a cloud cluster
 -------------------------
 
 .. tip::
 
-    If you have already have a list of nodes, go to the `Local Cluster Setup`_ section.
+    If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
 Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
 
@@ -230,9 +240,11 @@ To summarize, here are the commands to run:
     # wait a while until after all nodes have started
     ray kill-random-node tune-default.yaml --hard
 
-You should see Tune eventually continue the trials on a different worker node. See the `Save and Restore <tune-usage.html#save-and-restore>`__ section for more details.
+You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
 You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
+
+.. _tune-distributed-common:
 
 Common Commands
 ---------------
@@ -284,6 +296,3 @@ Sometimes, your program may freeze. Run this to restart the Ray cluster without 
 .. code-block:: bash
 
     $ ray up CLUSTER.YAML --restart-only
-
-
-..  Local Cluster Setup: tune-distributed.html#local-cluster-setup

@@ -71,7 +71,7 @@ Let's integrate an early stopping algorithm to our search - ASHA, a scalable alg
 How does it work? On a high level, it terminates trials that are less promising and
 allocates more time and resources to more promising trials. See `this blog post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
 
-We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
+We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See :ref:`tune-schedulers` for more details of available schedulers and library integrations.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -99,7 +99,7 @@ You can also use Tensorboard for visualizing results.
 Search Algorithms in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With Tune you can combine powerful hyperparameter search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_ and `Ax <https://ax.dev>`_ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See the `Search Algorithm section <tune-searchalg.html>`__ for more details of available algorithms and library integrations.
+With Tune you can combine powerful hyperparameter search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_ and `Ax <https://ax.dev>`_ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See :ref:`tune-search-alg` for more details of available algorithms and library integrations.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -120,4 +120,4 @@ You can evaluate best trained model using the Analysis object to retrieve the be
 
 Next Steps
 ----------
-Take a look at the `Usage Guide <tune-usage.html>`__ for more comprehensive overview of Tune features.
+Take a look at the :ref`tune-user-guide` for more comprehensive overview of Tune features.

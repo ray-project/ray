@@ -1,28 +1,24 @@
-Tune Advanced Tutorials
-=======================
+Guide to Population Based Training (PBT)
+========================================
 
-In this page, we will explore some advanced functionality in Tune with more examples.
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
+a :ref:`scheduler <tune-scheduler-pbt>`.
 
-On this page:
+.. image:: /images/tune_advanced_paper1.png
+
+
+PBT starts by training many neural networks in parallel with random hyperparameters, using information from the rest of the population to refine the
+hyperparameters and allocate resources to promising models. Let's walk through how to use this algorithm.
 
 .. contents::
     :local:
     :backlinks: none
 
 
-Trainable with Population Based Training (PBT)
-----------------------------------------------
+Trainable API with Population Based Training
+--------------------------------------------
 
-Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
-a scheduler `PopulationBasedTraining <tune-schedulers.html#Population Based Training (PBT)>`__ .
-
-PBT starts by training many neural networks in parallel with random hyperparameters. But instead of the
-networks training independently, it uses information from the rest of the population to refine the
-hyperparameters and direct computational resources to models which show promise.
-
-.. image:: images/tune_advanced_paper1.png
-
-This takes its inspiration from genetic algorithms where each member of the population
+PBT takes its inspiration from genetic algorithms where each member of the population
 can exploit information from the remainder of the population. For example, a worker might
 copy the model parameters from a better performing worker. It can also explore new hyperparameters by
 changing the current values randomly.
@@ -35,7 +31,7 @@ This means that PBT can quickly exploit good hyperparameters, can dedicate more 
 promising models and, crucially, can adapt the hyperparameter values throughout training,
 leading to automatic learning of the best configurations.
 
-First we define a Trainable that wraps a ConvNet model.
+First, we define a Trainable that wraps a ConvNet model.
 
 .. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python

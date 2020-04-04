@@ -8,8 +8,6 @@ Each hyperparameter configuration evaluation is called a *trial*, and multiple t
 
 .. image:: /images/tune-api.svg
 
-More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__. You can check out our `examples page <tune-examples.html>`__ for more code examples.
-
 
 .. customgalleryitem::
    :tooltip: Getting started with Tune.
@@ -17,15 +15,18 @@ More information about Tune's `search algorithms can be found here <tune-searcha
    :description: :doc:`plot_tune-tutorial`
 
 .. customgalleryitem::
-   :tooltip: Using the Tune Trainable API
+   :tooltip: A guide to the Tune Trainable API.
+   :figure: /images/tune.png
    :description: :doc:`plot_tune-trainable`
 
 .. customgalleryitem::
-   :tooltip: Getting started with Tune.
+   :tooltip: A simple guide to Population-based Training
+   :figure: /images/tune.png
    :description: :doc:`plot_tune-advanced-tutorial`
 
 .. customgalleryitem::
-   :tooltip: Getting started with Tune.
+   :tooltip: Distributed Tuning
+   :figure: /images/tune.png
    :description: :doc:`plot_tune-distributed`
 
 
@@ -33,6 +34,7 @@ More information about Tune's `search algorithms can be found here <tune-searcha
    :hidden:
 
    plot_tune-tutorial.rst
+   plot_tune-trainable.rst
    plot_tune-advanced-tutorial.rst
    plot_tune-distributed.rst
 

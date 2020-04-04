@@ -248,7 +248,7 @@ Getting Involved
    :caption: Tune
 
    tune.rst
-   Tune Guides/Tutorials <tune/generated_guides/overview.rst>
+   Tune Guides and Tutorials <tune/generated_guides/overview.rst>
    tune-usage.rst
    tune-schedulers.rst
    tune-searchalg.rst
