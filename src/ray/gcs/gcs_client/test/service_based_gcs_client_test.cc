@@ -21,7 +21,7 @@
 
 namespace ray {
 
-class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
+class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -46,7 +46,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Create gcs client.
+    // Create GCS client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
@@ -520,26 +520,26 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return worker_failure_data;
   }
 
-  // Gcs server
+  // GCS server.
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
   std::unique_ptr<boost::asio::io_service> io_service_;
 
-  // Gcs client
+  // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
 
-  // Timeout waiting for gcs server reply, default is 2s
+  // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestJobInfo) {
-  // Create job_table_data
+TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
+  // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(add_job_id);
 
-  // Subscribe
+  // Subscribe to finished jobs.
   std::atomic<int> finished_job_count(0);
   auto on_subscribe = [&finished_job_count](const JobID &job_id,
                                             const gcs::JobTableData &data) {
@@ -552,13 +552,13 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestJobInfo) {
   WaitPendingDone(finished_job_count, 1);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
-  // Create actor_table_data
+TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
+  // Create actor table data.
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data = GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
-  // Subscribe
+  // Subscribe to any update operations of an actor.
   std::atomic<int> actor_update_count(0);
   auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
                                             const gcs::ActorTableData &data) {
@@ -566,15 +566,15 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
   };
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
-  // Register actor
+  // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
   ASSERT_TRUE(GetActor(actor_id).state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
-  // Unsubscribe
+  // Cancel subscription to an actor.
   ASSERT_TRUE(UnsubscribeActor(actor_id));
 
-  // Update actor
+  // Update dynamic states of actor in GCS.
   actor_table_data->set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
@@ -583,8 +583,8 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
   WaitPendingDone(actor_update_count, 1);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
-  // Create actor checkpoint
+TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
+  // Create actor checkpoint data.
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data = GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
@@ -595,26 +595,26 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
   checkpoint->set_checkpoint_id(checkpoint_id.Binary());
   checkpoint->set_execution_dependency(checkpoint_id.Binary());
 
-  // Add checkpoint
+  // Add actor checkpoint data to GCS.
   ASSERT_TRUE(AddCheckpoint(checkpoint));
 
-  // Get Checkpoint
+  // Get actor checkpoint data from GCS.
   auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
   ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
 
-  // Get CheckpointID
+  // Get actor checkpoint id data from GCS.
   auto get_checkpoint_id_result = GetCheckpointID(actor_id);
   ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
   ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
-  // Create actor_table_data
+TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
+  // Create actor table data.
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data1 = GenActorTableData(job_id);
   auto actor_table_data2 = GenActorTableData(job_id);
 
-  // Subscribe all
+  // Subscribe to any register or update operations of actors.
   std::atomic<int> actor_update_count(0);
   auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
                                             const gcs::ActorTableData &data) {
@@ -622,18 +622,18 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
   };
   ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
-  // Register actor
+  // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data1));
   ASSERT_TRUE(RegisterActor(actor_table_data2));
   WaitPendingDone(actor_update_count, 2);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
-  // Create gcs node info
+TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
+  // Create gcs node info.
   ClientID node1_id = ClientID::FromRandom();
   auto gcs_node1_info = GenGcsNodeInfo(node1_id.Binary());
 
-  // Subscribe node change
+  // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
   auto on_subscribe = [&register_count, &unregister_count](const ClientID &node_id,
@@ -646,32 +646,33 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
   };
   ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
-  // Register self
+  // Register local node to GCS.
   ASSERT_TRUE(RegisterSelf(gcs_node1_info));
   sleep(1);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info.node_id());
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info.state());
 
-  // Register node
+  // Register a node to GCS.
   ClientID node2_id = ClientID::FromRandom();
   auto gcs_node2_info = GenGcsNodeInfo(node2_id.Binary());
   ASSERT_TRUE(RegisterNode(gcs_node2_info));
   WaitPendingDone(register_count, 2);
 
-  // Get node list
+  // Get information of all nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
-  // Unregister self
+  // Cancel registration of local node to GCS.
   ASSERT_TRUE(UnregisterSelf());
 
-  // Unregister node
+  // Cancel registration of a node to GCS.
   ASSERT_TRUE(UnregisterNode(node2_id));
   WaitPendingDone(unregister_count, 2);
 
+  // Get information of all nodes from GCS.
   node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
   EXPECT_EQ(node_list[0].state(),
@@ -681,8 +682,8 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
-  // Subscribe resources
+TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
+  // Subscribe to node resource changes.
   std::atomic<int> add_count(0);
   std::atomic<int> remove_count(0);
   auto on_subscribe = [&add_count, &remove_count](
@@ -696,7 +697,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   };
   ASSERT_TRUE(SubscribeToResources(on_subscribe));
 
-  // Update resources
+  // Update resources of node in GCS.
   ClientID node_id = ClientID::FromRandom();
   gcs::NodeInfoAccessor::ResourceMap resource_map;
   std::string key = "CPU";
@@ -707,14 +708,14 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   WaitPendingDone(add_count, 1);
   ASSERT_TRUE(GetResources(node_id).count(key));
 
-  // Delete resources
+  // Delete resources of a node from GCS.
   ASSERT_TRUE(DeleteResources(node_id, {key}));
   WaitPendingDone(remove_count, 1);
   ASSERT_TRUE(GetResources(node_id).empty());
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  // Subscribe batch heartbeat
+TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
+  // Subscribe batched state of all nodes from GCS.
   std::atomic<int> heartbeat_batch_count(0);
   auto on_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
@@ -722,7 +723,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
 
-  // Report heartbeat
+  // Report heartbeat of a node to GCS.
   ClientID node_id = ClientID::FromRandom();
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
@@ -730,38 +731,38 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   WaitPendingDone(heartbeat_batch_count, 1);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
+TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
 
-  // Subscribe task
+  // Subscribe to the event that the given task is added in GCS.
   std::atomic<int> task_count(0);
   auto task_subscribe = [&task_count](const TaskID &id,
                                       const rpc::TaskTableData &result) { ++task_count; };
   ASSERT_TRUE(SubscribeTask(task_id, task_subscribe));
 
-  // Add task
+  // Add a task to GCS.
   ASSERT_TRUE(AddTask(task_table_data));
   auto get_task_result = GetTask(task_id);
   ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
 
-  // Unsubscribe task
+  // Cancel subscription to a task.
   ASSERT_TRUE(UnsubscribeTask(task_id));
 
-  // Add task again
+  // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
 
-  // Assert unsubscribe success
+  // Assert unsubscribe succeeded.
   usleep(100 * 1000);
   EXPECT_EQ(task_count, 1);
 
-  // Delete task
+  // Delete tasks from GCS.
   std::vector<TaskID> task_ids = {task_id};
   ASSERT_TRUE(DeleteTask(task_ids));
 
-  // Subscribe task lease
+  // Subscribe to the event that the given task lease is added in GCS.
   std::atomic<int> task_lease_count(0);
   auto task_lease_subscribe = [&task_lease_count](
                                   const TaskID &id,
@@ -770,34 +771,34 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   };
   ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
 
-  // Add task lease
+  // Add a task lease to GCS.
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitPendingDone(task_lease_count, 2);
 
-  // Unsubscribe task lease
+  // Cancel subscription to a task lease.
   ASSERT_TRUE(UnsubscribeTaskLease(task_id));
 
-  // Add task lease again
+  // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
 
-  // Assert unsubscribe success
+  // Assert unsubscribe succeeded.
   usleep(100 * 1000);
   EXPECT_EQ(task_lease_count, 2);
 
-  // Attempt task reconstruction
+  // Attempt task reconstruction to GCS.
   auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestObjectInfo) {
+TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ObjectID object_id = ObjectID::FromRandom();
   ClientID node_id = ClientID::FromRandom();
 
-  // Subscribe object location
+  // Subscribe to any update of an object's location.
   std::atomic<int> object_add_count(0);
   std::atomic<int> object_remove_count(0);
   auto on_subscribe = [&object_add_count, &object_remove_count](
@@ -813,38 +814,40 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestObjectInfo) {
   };
   ASSERT_TRUE(SubscribeToLocations(object_id, on_subscribe));
 
-  // Add object location
+  // Add location of object to GCS.
   ASSERT_TRUE(AddLocation(object_id, node_id));
   WaitPendingDone(object_add_count, 1);
 
+  // Get object's locations from GCS.
   auto locations = GetLocations(object_id);
   ASSERT_EQ(locations.size(), 1);
   ASSERT_EQ(locations.back().manager(), node_id.Binary());
 
-  // Remove object location
+  // Remove location of object from GCS.
   ASSERT_TRUE(RemoveLocation(object_id, node_id));
   WaitPendingDone(object_remove_count, 1);
   ASSERT_TRUE(GetLocations(object_id).empty());
 
-  // Unsubscribe object location
+  // Cancel subscription to any update of an object's location.
   ASSERT_TRUE(UnsubscribeToLocations(object_id));
 
-  // Add object location again
+  // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));
 
-  // Assert unsubscribe success
+  // Assert unsubscribe succeeded.
   usleep(100 * 1000);
   ASSERT_EQ(object_add_count, 1);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestStats) {
+TEST_F(ServiceBasedGcsClientTest, TestStats) {
+  // Add profile data to GCS.
   ClientID node_id = ClientID::FromRandom();
   auto profile_table_data = GenProfileTableData(node_id);
   ASSERT_TRUE(AddProfileData(profile_table_data));
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestWorkerInfo) {
-  // Subscribe worker failure
+TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
+  // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
                                               const rpc::WorkerFailureData &result) {
@@ -852,23 +855,25 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestWorkerInfo) {
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
+  // Report a worker failure to GCS.
   auto worker_failure_data = GenWorkerFailureData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestErrorInfo) {
+TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
+  // Report a job error to GCS.
   JobID job_id = JobID::FromInt(1);
   auto error_table_data = GenErrorTableData(job_id);
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
-  // Create job_table_data
+TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
+  // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(add_job_id);
 
-  RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
+  RAY_LOG(INFO) << "GCS service init port = " << gcs_server_->GetPort();
   gcs_server_->Stop();
   thread_gcs_server_->join();
 
@@ -879,7 +884,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   while (gcs_server_->GetPort() == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  RAY_LOG(INFO) << "Gcs service restart success, port = " << gcs_server_->GetPort();
+  RAY_LOG(INFO) << "GCS service restart success, port = " << gcs_server_->GetPort();
 
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
@@ -887,7 +892,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   promise.get_future().get();
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
+TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TearDownTestCase();
 
@@ -896,7 +901,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
   auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
   std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
 
-  // Check if gcs server has exited.
+  // Check if GCS server has exited.
   RAY_CHECK(gcs_server_->IsStopped());
 }
 
