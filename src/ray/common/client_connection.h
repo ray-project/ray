@@ -245,13 +245,15 @@ class AsyncClient {
 
       bool is_connected = false;
       bool is_timeout = false;
-      socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this, _1,
+      socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this,
+                                                  boost::asio::placeholders::error,
                                                   boost::ref(is_connected)));
 
       // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
-      timer_.async_wait(
-          boost::bind(&AsyncClient::TimerHandle, this, _1, boost::ref(is_timeout)));
+      timer_.async_wait(boost::bind(&AsyncClient::TimerHandle, this,
+                                    boost::asio::placeholders::error,
+                                    boost::ref(is_timeout)));
 
       do {
         io_service_.run_one();
