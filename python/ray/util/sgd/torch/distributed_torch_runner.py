@@ -81,9 +81,10 @@ class DistributedTorchRunner(TorchRunner):
 
         if self.use_gpu and torch.cuda.is_available():
             # https://github.com/allenai/allennlp/issues/1090
-            self._set_cuda_device_id()
+            self.set_cuda_device_id()
 
-    def _set_cuda_device_id(self):
+    def set_cuda_device_id(self):
+        """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         self.device_ids = [0]
 
     def _setup_training(self):
@@ -242,7 +243,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
                     raise
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def _set_cuda_device_id(self):
+    def set_cuda_device_id(self):
         self.device_ids = [int(self.local_device)]
 
     def shutdown(self, cleanup=True):
