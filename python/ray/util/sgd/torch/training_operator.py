@@ -82,6 +82,7 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._device_ids = device_ids
         self._use_gpu = use_gpu and torch.cuda.is_available()
         self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
