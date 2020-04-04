@@ -3,7 +3,7 @@ cartpole-ppo-tf-multi-gpu:
     run: PPO
     stop:
         episode_reward_mean: 150
-        timesteps_total: 100000
+        timesteps_total: 50000
     config:
         gamma: 0.99
         lr: 0.0003

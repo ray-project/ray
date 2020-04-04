@@ -253,10 +253,10 @@ class TorchPolicy(Policy):
         assert alpha_var_before == alpha_var_1, (alpha_var_before, alpha_var_1)
 
 
-        self.critic_optim_2.zero_grad()
-        self.critic_loss[1].backward()
-        #grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
-        self.critic_optim_2.step()
+        #self.critic_optim_2.zero_grad()
+        #self.critic_loss[1].backward()
+        ##grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
+        #self.critic_optim_2.step()
 
         self.actor_optim.zero_grad()
         self.actor_loss.backward()

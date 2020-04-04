@@ -3,7 +3,7 @@ cartpole-sac-tf:
     run: SAC
     stop:
         episode_reward_mean: 150
-        timesteps_total: 100000
+        timesteps_total: 50000
     config:
         use_pytorch: false
         gamma: 0.95

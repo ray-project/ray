@@ -6,7 +6,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory
-from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
@@ -104,7 +104,7 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
-        print("TODO: detach alpha*log_pis_tp1? from critic loss?")
+        #print("TODO: detach alpha*log_pis_tp1? from critic loss?")
         q_tp1 -= alpha * log_pis_tp1
 
         # Actually selected Q-values (from the actions batch).
@@ -227,7 +227,7 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
 
     # save for stats function
     policy.q_t = q_t
-    policy.q_t_det_policy = q_t_det_policy
+    #policy.q_t_det_policy = q_t_det_policy
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
     policy.td_error = td_error
@@ -272,7 +272,7 @@ def stats(policy, train_batch):
         "alpha_value": torch.mean(policy.alpha_value),
         "log_alpha_value": torch.mean(policy.log_alpha_value),
         "target_entropy": policy.target_entropy,
-        "q_t_det_policy": torch.mean(policy.q_t_det_policy),
+        #"q_t_det_policy": torch.mean(policy.q_t_det_policy),
         "policy_t": torch.mean(policy.policy_t),
         "log_pis_t": torch.mean(policy.log_pis_t),
         "mean_q": torch.mean(policy.q_t),
@@ -316,11 +316,12 @@ def optimizer_fn(policy, config):
         lr=config["optimization"]["critic_learning_rate"],
         #eps=1e-9,
     )
-    policy.critic_optim_2 = torch.optim.Adam(
-        params=policy.model.q_variables()[6:],
-        lr=config["optimization"]["critic_learning_rate"],
-        #eps=1e-9,
-    )
+    if config["twin_q"]:
+        policy.critic_optim_2 = torch.optim.Adam(
+            params=policy.model.q_variables()[6:],
+            lr=config["optimization"]["critic_learning_rate"],
+            #eps=1e-9,
+        )
     policy.alpha_optim = torch.optim.Adam(
         params=[policy.model.log_alpha],
         lr=config["optimization"]["entropy_learning_rate"],
