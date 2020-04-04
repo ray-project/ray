@@ -331,6 +331,9 @@ install:
   - eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
 
 script:
+  - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+  - if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
   - export PATH="$HOME/miniconda/bin:$PATH"
 
   # raylet integration tests
