@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
-
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
@@ -22,12 +21,8 @@
 
 namespace ray {
 
-static std::string redis_server_executable;
-static std::string redis_client_executable;
-static std::string libray_redis_module_path;
-
 class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
- public:
+ protected:
   void SetUp() override {
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
@@ -51,7 +46,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Create gcs client
+    // Create gcs client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
@@ -67,6 +62,14 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     FlushAll();
   }
 
+  bool SubscribeToFinishedJobs(
+      const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
@@ -78,6 +81,31 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
         job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool SubscribeActor(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, subscribe,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool UnsubscribeActor(const ActorID &actor_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(
+        actor_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool SubscribeAllActors(
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -151,6 +179,14 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return actor_checkpoint_id_data;
   }
 
+  bool SubscribeToNodeChange(
+      const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
     Status status = gcs_client_->Nodes().RegisterSelf(local_node_info);
     return status.ok();
@@ -188,6 +224,15 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool SubscribeToResources(
+      const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
+          &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   gcs::NodeInfoAccessor::ResourceMap GetResources(const ClientID &node_id) {
     gcs::NodeInfoAccessor::ResourceMap resource_map;
     std::promise<bool> promise;
@@ -222,10 +267,35 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool SubscribeBatchHeartbeat(
+      const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool ReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> heartbeat) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
         heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool SubscribeTask(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(
+        task_id, subscribe,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool UnsubscribeTask(const TaskID &task_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(
+        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -258,6 +328,24 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool SubscribeTaskLease(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>
+          &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(
+        task_id, subscribe,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool UnsubscribeTaskLease(const TaskID &task_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(
+        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(
@@ -274,14 +362,90 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
- protected:
-  bool WaitReady(const std::future<bool> &future,
-                 const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready;
+  bool SubscribeToLocations(
+      const ObjectID &object_id,
+      const gcs::SubscribeCallback<ObjectID, gcs::ObjectChangeNotification> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncSubscribeToLocations(
+        object_id, subscribe,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void WaitPendingDone(int &current_count, int expected_count) {
+  bool UnsubscribeToLocations(const ObjectID &object_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(
+        object_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
+        object_id, node_id,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool RemoveLocation(const ObjectID &object_id, const ClientID &node_id) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncRemoveLocation(
+        object_id, node_id,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::vector<rpc::ObjectTableData> GetLocations(const ObjectID &object_id) {
+    std::promise<bool> promise;
+    std::vector<rpc::ObjectTableData> locations;
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(
+        object_id, [&locations, &promise](
+                       Status status, const std::vector<rpc::ObjectTableData> &result) {
+          locations = result;
+          promise.set_value(status.ok());
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return locations;
+  }
+
+  bool AddProfileData(const std::shared_ptr<rpc::ProfileTableData> &profile_table_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
+        profile_table_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool SubscribeToWorkerFailures(
+      const gcs::SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportWorkerFailure(
+      const std::shared_ptr<rpc::WorkerFailureData> &worker_failure_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
+        worker_failure_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
+    auto status = future.wait_for(timeout_ms);
+    return status == std::future_status::ready && future.get();
+  }
+
+  void WaitPendingDone(std::atomic<int> &current_count, int expected_count) {
     auto condition = [&current_count, expected_count]() {
       return current_count == expected_count;
     };
@@ -338,6 +502,24 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return task_lease_data;
   }
 
+  std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(const ClientID &node_id) {
+    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
+    profile_table_data->set_component_id(node_id.Binary());
+    return profile_table_data;
+  }
+
+  std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
+    auto error_table_data = std::make_shared<rpc::ErrorTableData>();
+    error_table_data->set_job_id(job_id.Binary());
+    return error_table_data;
+  }
+
+  std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
+    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
+    worker_failure_data->set_timestamp(std::time(nullptr));
+    return worker_failure_data;
+  }
+
   // Gcs server
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -357,18 +539,17 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestJobInfo) {
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(add_job_id);
 
-  std::promise<bool> promise;
-  auto on_subscribe = [&promise, add_job_id](const JobID &job_id,
-                                             const gcs::JobTableData &data) {
-    ASSERT_TRUE(add_job_id == job_id);
-    promise.set_value(true);
+  // Subscribe
+  std::atomic<int> finished_job_count(0);
+  auto on_subscribe = [&finished_job_count](const JobID &job_id,
+                                            const gcs::JobTableData &data) {
+    finished_job_count++;
   };
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(
-      on_subscribe, [](Status status) { RAY_CHECK_OK(status); }));
+  ASSERT_TRUE(SubscribeToFinishedJobs(on_subscribe));
 
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(add_job_id));
-  ASSERT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+  WaitPendingDone(finished_job_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
@@ -378,17 +559,12 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe
-  std::promise<bool> promise_subscribe;
-  std::atomic<int> subscribe_callback_count(0);
-  auto on_subscribe = [&subscribe_callback_count](const ActorID &actor_id,
-                                                  const gcs::ActorTableData &data) {
-    ++subscribe_callback_count;
+  std::atomic<int> actor_update_count(0);
+  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
+                                            const gcs::ActorTableData &data) {
+    ++actor_update_count;
   };
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(actor_id, on_subscribe,
-                                                    [&promise_subscribe](Status status) {
-                                                      RAY_CHECK_OK(status);
-                                                      promise_subscribe.set_value(true);
-                                                    }));
+  ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register actor
   ASSERT_TRUE(RegisterActor(actor_table_data));
@@ -396,13 +572,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Unsubscribe
-  std::promise<bool> promise_unsubscribe;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(
-      actor_id, [&promise_unsubscribe](Status status) {
-        RAY_CHECK_OK(status);
-        promise_unsubscribe.set_value(true);
-      }));
-  ASSERT_TRUE(WaitReady(promise_unsubscribe.get_future(), timeout_ms_));
+  ASSERT_TRUE(UnsubscribeActor(actor_id));
 
   // Update actor
   actor_table_data->set_state(
@@ -410,11 +580,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
   ASSERT_TRUE(GetActor(actor_id).state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  ASSERT_TRUE(WaitReady(promise_subscribe.get_future(), timeout_ms_));
-  auto condition = [&subscribe_callback_count]() {
-    return 1 == subscribe_callback_count;
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  WaitPendingDone(actor_update_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
@@ -449,26 +615,17 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
   auto actor_table_data2 = GenActorTableData(job_id);
 
   // Subscribe all
-  std::promise<bool> promise_subscribe_all;
-  std::atomic<int> subscribe_all_callback_count(0);
-  auto on_subscribe_all = [&subscribe_all_callback_count](
-                              const ActorID &actor_id, const gcs::ActorTableData &data) {
-    ++subscribe_all_callback_count;
+  std::atomic<int> actor_update_count(0);
+  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
+                                            const gcs::ActorTableData &data) {
+    ++actor_update_count;
   };
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
-      on_subscribe_all, [&promise_subscribe_all](Status status) {
-        RAY_CHECK_OK(status);
-        promise_subscribe_all.set_value(true);
-      }));
-  ASSERT_TRUE(WaitReady(promise_subscribe_all.get_future(), timeout_ms_));
+  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
   // Register actor
   ASSERT_TRUE(RegisterActor(actor_table_data1));
   ASSERT_TRUE(RegisterActor(actor_table_data2));
-  auto condition = [&subscribe_all_callback_count]() {
-    return 2 == subscribe_all_callback_count;
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  WaitPendingDone(actor_update_count, 2);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
@@ -476,18 +633,18 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
   ClientID node1_id = ClientID::FromRandom();
   auto gcs_node1_info = GenGcsNodeInfo(node1_id.Binary());
 
-  int register_count = 0;
-  int unregister_count = 0;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-      [&register_count, &unregister_count](const ClientID &node_id,
-                                           const rpc::GcsNodeInfo &data) {
-        if (data.state() == rpc::GcsNodeInfo::ALIVE) {
-          ++register_count;
-        } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
-          ++unregister_count;
-        }
-      },
-      nullptr));
+  // Subscribe node change
+  std::atomic<int> register_count(0);
+  std::atomic<int> unregister_count(0);
+  auto on_subscribe = [&register_count, &unregister_count](const ClientID &node_id,
+                                                           const rpc::GcsNodeInfo &data) {
+    if (data.state() == rpc::GcsNodeInfo::ALIVE) {
+      ++register_count;
+    } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
+      ++unregister_count;
+    }
+  };
+  ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
   // Register self
   ASSERT_TRUE(RegisterSelf(gcs_node1_info));
@@ -505,7 +662,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
   // Get node list
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(register_count, 2);
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
@@ -522,23 +678,23 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   EXPECT_EQ(node_list[1].state(),
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  EXPECT_EQ(unregister_count, 2);
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
-  int add_count = 0;
-  int remove_count = 0;
-  auto subscribe = [&add_count, &remove_count](
-                       const ClientID &id,
-                       const gcs::ResourceChangeNotification &notification) {
+  // Subscribe resources
+  std::atomic<int> add_count(0);
+  std::atomic<int> remove_count(0);
+  auto on_subscribe = [&add_count, &remove_count](
+                          const ClientID &id,
+                          const gcs::ResourceChangeNotification &notification) {
     if (notification.IsAdded()) {
       ++add_count;
     } else if (notification.IsRemoved()) {
       ++remove_count;
     }
   };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(subscribe, nullptr));
+  ASSERT_TRUE(SubscribeToResources(on_subscribe));
 
   // Update resources
   ClientID node_id = ClientID::FromRandom();
@@ -549,24 +705,22 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   resource_map[key] = resource;
   ASSERT_TRUE(UpdateResources(node_id, resource_map));
   WaitPendingDone(add_count, 1);
-  auto get_resources_result = GetResources(node_id);
-  ASSERT_TRUE(get_resources_result.count(key));
+  ASSERT_TRUE(GetResources(node_id).count(key));
 
   // Delete resources
   ASSERT_TRUE(DeleteResources(node_id, {key}));
   WaitPendingDone(remove_count, 1);
-  get_resources_result = GetResources(node_id);
-  ASSERT_TRUE(get_resources_result.empty());
+  ASSERT_TRUE(GetResources(node_id).empty());
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_batch_count = 0;
-  auto heartbeat_batch_subscribe =
+  // Subscribe batch heartbeat
+  std::atomic<int> heartbeat_batch_count(0);
+  auto on_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
         ++heartbeat_batch_count;
       };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
-      heartbeat_batch_subscribe, nullptr));
+  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
 
   // Report heartbeat
   ClientID node_id = ClientID::FromRandom();
@@ -581,41 +735,55 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
 
-  int task_count = 0;
+  // Subscribe task
+  std::atomic<int> task_count(0);
   auto task_subscribe = [&task_count](const TaskID &id,
                                       const rpc::TaskTableData &result) { ++task_count; };
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, task_subscribe, nullptr));
+  ASSERT_TRUE(SubscribeTask(task_id, task_subscribe));
 
   // Add task
   ASSERT_TRUE(AddTask(task_table_data));
-
   auto get_task_result = GetTask(task_id);
   ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
+
+  // Unsubscribe task
+  ASSERT_TRUE(UnsubscribeTask(task_id));
+
+  // Add task again
   ASSERT_TRUE(AddTask(task_table_data));
+
+  // Assert unsubscribe success
+  usleep(100 * 1000);
+  EXPECT_EQ(task_count, 1);
 
   // Delete task
   std::vector<TaskID> task_ids = {task_id};
   ASSERT_TRUE(DeleteTask(task_ids));
-  EXPECT_EQ(task_count, 1);
 
-  // Add task lease
-  int task_lease_count = 0;
+  // Subscribe task lease
+  std::atomic<int> task_lease_count(0);
   auto task_lease_subscribe = [&task_lease_count](
                                   const TaskID &id,
                                   const boost::optional<rpc::TaskLeaseData> &result) {
     ++task_lease_count;
   };
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
-                                                            nullptr));
+  ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
+
+  // Add task lease
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitPendingDone(task_lease_count, 2);
 
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
+  // Unsubscribe task lease
+  ASSERT_TRUE(UnsubscribeTaskLease(task_id));
+
+  // Add task lease again
   ASSERT_TRUE(AddTaskLease(task_lease));
+
+  // Assert unsubscribe success
+  usleep(100 * 1000);
   EXPECT_EQ(task_lease_count, 2);
 
   // Attempt task reconstruction
@@ -623,6 +791,76 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestObjectInfo) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Subscribe object location
+  std::atomic<int> object_add_count(0);
+  std::atomic<int> object_remove_count(0);
+  auto on_subscribe = [&object_add_count, &object_remove_count](
+                          const ObjectID &object_id,
+                          const gcs::ObjectChangeNotification &result) {
+    if (!result.GetData().empty()) {
+      if (result.IsAdded()) {
+        ++object_add_count;
+      } else if (result.IsRemoved()) {
+        ++object_remove_count;
+      }
+    }
+  };
+  ASSERT_TRUE(SubscribeToLocations(object_id, on_subscribe));
+
+  // Add object location
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+  WaitPendingDone(object_add_count, 1);
+
+  auto locations = GetLocations(object_id);
+  ASSERT_EQ(locations.size(), 1);
+  ASSERT_EQ(locations.back().manager(), node_id.Binary());
+
+  // Remove object location
+  ASSERT_TRUE(RemoveLocation(object_id, node_id));
+  WaitPendingDone(object_remove_count, 1);
+  ASSERT_TRUE(GetLocations(object_id).empty());
+
+  // Unsubscribe object location
+  ASSERT_TRUE(UnsubscribeToLocations(object_id));
+
+  // Add object location again
+  ASSERT_TRUE(AddLocation(object_id, node_id));
+
+  // Assert unsubscribe success
+  usleep(100 * 1000);
+  ASSERT_EQ(object_add_count, 1);
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestStats) {
+  ClientID node_id = ClientID::FromRandom();
+  auto profile_table_data = GenProfileTableData(node_id);
+  ASSERT_TRUE(AddProfileData(profile_table_data));
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestWorkerInfo) {
+  // Subscribe worker failure
+  std::atomic<int> worker_failure_count(0);
+  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
+                                              const rpc::WorkerFailureData &result) {
+    ++worker_failure_count;
+  };
+  ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
+
+  auto worker_failure_data = GenWorkerFailureData();
+  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
+  WaitPendingDone(worker_failure_count, 1);
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestErrorInfo) {
+  JobID job_id = JobID::FromInt(1);
+  auto error_table_data = GenErrorTableData(job_id);
+  ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
