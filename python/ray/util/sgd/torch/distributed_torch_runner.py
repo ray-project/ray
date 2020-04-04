@@ -180,6 +180,14 @@ class DistributedTorchRunner(TorchRunner):
         super(DistributedTorchRunner, self).shutdown()
 
 
+def _init_cuda_context():
+    # Force cuda initialization
+    # Inspired by https://github.com/pytorch/pytorch/blob/
+    # f050b16dd95b2bcce9853882fd3fb07a6fd80378/torch/testing/
+    # _internal/common_cuda.py
+    torch.cuda.is_available()
+
+
 class _DummyActor:
     def cuda_devices(self):
         return os.environ["CUDA_VISIBLE_DEVICES"]
@@ -204,7 +212,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-        self.local_device = 0
+        self.local_device = "0"
         global _dummy_actor
         if not self.is_actor() and _dummy_actor is None:
             _dummy_actor = ray.remote(
@@ -216,13 +224,22 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
             # This is a pretty annoying workaround. To enable SyncBatchNorm,
             # we need to signify that we are using only 1 CUDA device (via
-            # the DDP constructor). However, on the local worker,
-            # we set the CUDA_VISIBLE_DEVICES at runtime rather at process
-            # start. This means that we have to make sure that DDP knows which
-            # specific device we are using.
+            # the DDP constructor).
+            # However, on the local worker, we have to set the
+            # CUDA_VISIBLE_DEVICES at runtime rather at process start.
+
+            # You can only call setdevice(int > 0) after you've interacted with
+            # torch.cuda. But you can't guarantee that you _haven't_ interacted
+            # with it (user can do arbitrary things), so we force an
+            # interaction.
+            _init_cuda_context()
             os.environ["CUDA_VISIBLE_DEVICES"] = self.local_device
             if self.local_device:
-                torch.cuda.set_device(int(self.local_device))
+                try:
+                    torch.cuda.set_device(int(self.local_device))
+                except RuntimeError:
+                    logger.error("This happens if cuda is not initialized.")
+                    raise
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
     def _set_cuda_device_id(self):
