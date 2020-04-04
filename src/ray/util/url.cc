@@ -56,36 +56,39 @@ static std::string ScanToken(std::string::const_iterator &c_str, std::string for
 std::string endpoint_to_url(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
     bool include_scheme) {
-  std::string result;
+  std::string result, scheme;
   switch (ep.protocol().family()) {
   case AF_INET:
   case AF_INET6: {
+    scheme = "tcp://";
     boost::asio::ip::tcp protocol = ep.protocol().family() == AF_INET
                                         ? boost::asio::ip::tcp::v4()
                                         : boost::asio::ip::tcp::v6();
     boost::asio::ip::tcp::endpoint e(protocol, 0);
-    RAY_DCHECK(e.size() == ep.size());
-    memcpy(e.data(), ep.data(), ep.size());
+    const sockaddr *src = ep.data();
+    sockaddr *dst = e.data();
+    RAY_CHECK(e.size() == ep.size());
+    memcpy(dst, src, ep.size());
     std::ostringstream ss;
     ss << e;
     result = ss.str();
-    if (include_scheme) {
-      result.insert(0, "tcp://");
-    }
     break;
   }
-  case AF_UNIX: {
-    size_t path_offset = offsetof(sockaddr_un, sun_path);
-    result.append(reinterpret_cast<const char *>(ep.data()) + path_offset,
-                  ep.size() - path_offset);
-    if (include_scheme) {
-      result.insert(0, "unix://");
-    }
+  case AF_UNIX:
+    scheme = "unix://";
+#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+    result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
+                  ep.size() - offsetof(sockaddr_un, sun_path));
+#else
+    RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported";
+#endif
     break;
-  }
   default:
     RAY_LOG(FATAL) << "unsupported protocol family: " << ep.protocol().family();
     break;
+  }
+  if (include_scheme) {
+    result.insert(0, scheme);
   }
   return result;
 }
