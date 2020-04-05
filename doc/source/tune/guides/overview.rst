@@ -15,13 +15,8 @@ Each hyperparameter configuration evaluation is called a *trial*, and multiple t
    :description: :doc:`plot_tune-tutorial`
 
 .. customgalleryitem::
-   :tooltip: A guide to the Tune Trainable API.
-   :figure: /images/tune.png
-   :description: :doc:`plot_tune-trainable`
-
-.. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
-   :figure: /images/tune.png
+   :figure: /images/tune-pbt-small.png
    :description: :doc:`plot_tune-advanced-tutorial`
 
 .. customgalleryitem::
@@ -34,7 +29,6 @@ Each hyperparameter configuration evaluation is called a *trial*, and multiple t
    :hidden:
 
    plot_tune-tutorial.rst
-   plot_tune-trainable.rst
    plot_tune-advanced-tutorial.rst
    plot_tune-distributed.rst
 

@@ -135,7 +135,7 @@ Ray currently supports AWS and GCP. Follow the instructions below to launch node
 
     ray submit tune-default.yaml tune_script.py --start --args="--ray-address=localhost:6379"
 
-.. image:: images/tune-upload.png
+.. image:: /images/tune-upload.png
     :scale: 50%
     :align: center
 

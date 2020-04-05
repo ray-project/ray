@@ -85,7 +85,7 @@ You can run the below in a Jupyter notebook to visualize trial progress.
    :start-after: __plot_scheduler_begin__
    :end-before: __plot_scheduler_end__
 
-.. image:: images/tune-df-plot.png
+.. image:: /images/tune-df-plot.png
     :scale: 50%
     :align: center
 

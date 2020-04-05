@@ -112,7 +112,7 @@ Checking the accuracy:
 
     print('best config:', analysis.get_best_config("mean_accuracy"))
 
-.. image:: images/tune_advanced_plot1.png
+.. image:: /images/tune_advanced_plot1.png
 
 DCGAN with Trainable and PBT
 ----------------------------
@@ -161,9 +161,10 @@ We specify inception score as the metric and start the tuning:
 The trained Generator models can be loaded from log directory, and generate images
 from noise signals.
 
-.. image:: images/tune_advanced_dcgan_generated.gif
+Visualization
+~~~~~~~~~~~~~
 
-Visualize the increasing inception score from the training logs.
+Below, we visualize the increasing inception score from the training logs.
 
 .. code-block:: python
 
@@ -179,7 +180,7 @@ Visualize the increasing inception score from the training logs.
     plt.legend()
     plt.show()
 
-.. image:: images/tune_advanced_dcgan_inscore.png
+.. image:: /images/tune_advanced_dcgan_inscore.png
 
 And the Generator loss:
 
@@ -197,7 +198,7 @@ And the Generator loss:
     plt.legend()
     plt.show()
 
-.. image:: images/tune_advanced_dcgan_Gloss.png
+.. image:: /images/tune_advanced_dcgan_Gloss.png
 
 Training of the MNist Generator takes about several minutes. The example can be easily
 altered to generate images for other dataset, e.g. cifar10 or LSUN.
