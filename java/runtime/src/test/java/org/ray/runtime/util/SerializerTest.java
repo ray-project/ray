@@ -16,9 +16,9 @@ public class SerializerTest {
     {
       Object[] foo = new Object[]{"hello", (byte) 1, 2.0, (short) 3, 4, 5L,
           new String[]{"hello", "world"}};
-      Pair<byte[], MutableBoolean> serialized = Serializer.encode(foo);
+      Pair<byte[], Boolean> serialized = Serializer.encode(foo);
       Object[] bar = Serializer.decode(serialized.getLeft(), Object[].class);
-      Assert.assertTrue(serialized.getRight().toBoolean());
+      Assert.assertTrue(serialized.getRight());
       Assert.assertEquals(foo[0], bar[0]);
       Assert.assertEquals(((Number) foo[1]).byteValue(), ((Number) bar[1]).byteValue());
       Assert.assertEquals(foo[2], bar[2]);
@@ -32,9 +32,9 @@ public class SerializerTest {
       Assert.expectThrows(RuntimeException.class, () -> {
         Object[][] bar = Serializer.decode(Serializer.encode(foo).getLeft(), Integer[][].class);
       });
-      Pair<byte[], MutableBoolean> serialized = Serializer.encode(foo);
+      Pair<byte[], Boolean> serialized = Serializer.encode(foo);
       Object[][] bar = Serializer.decode(serialized.getLeft(), Object[][].class);
-      Assert.assertTrue(serialized.getRight().toBoolean());
+      Assert.assertTrue(serialized.getRight());
       Assert.assertEquals(((Number) foo[0][1]).intValue(), ((Number) bar[0][1]).intValue());
       Assert.assertEquals(foo[1][0], bar[1][0]);
     }
@@ -43,9 +43,9 @@ public class SerializerTest {
       ArrayList<String> foo = new ArrayList<>();
       foo.add("1");
       foo.add("2");
-      Pair<byte[], MutableBoolean> serialized = Serializer.encode(foo);
+      Pair<byte[], Boolean> serialized = Serializer.encode(foo);
       ArrayList<String> bar = Serializer.decode(serialized.getLeft(), String[].class);
-      Assert.assertFalse(serialized.getRight().toBoolean());
+      Assert.assertFalse(serialized.getRight());
       Assert.assertEquals(foo.get(0), bar.get(0));
     }
   }

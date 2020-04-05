@@ -2,7 +2,6 @@ package org.ray.runtime.object;
 
 import java.util.Arrays;
 
-import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayTaskException;
@@ -87,8 +86,8 @@ public class ObjectSerializer {
       byte[] serializedBytes = Serializer.encode(object).getLeft();
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
-      Pair<byte[], MutableBoolean> serialized = Serializer.encode(object);
-      return new NativeRayObject(serialized.getLeft(), serialized.getRight().isTrue() ?
+      Pair<byte[], Boolean> serialized = Serializer.encode(object);
+      return new NativeRayObject(serialized.getLeft(), serialized.getRight() ?
           OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
     }
   }

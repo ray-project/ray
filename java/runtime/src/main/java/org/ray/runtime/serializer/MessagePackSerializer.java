@@ -215,7 +215,7 @@ public class MessagePackSerializer {
     return unpackers.get(v.getValueType()).unpack(v, type, javaDeserializer);
   }
 
-  public static Pair<byte[], MutableBoolean> encode(Object obj) {
+  public static Pair<byte[], Boolean> encode(Object obj) {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     try {
       // Reserve MESSAGE_PACK_OFFSET bytes for MessagePack bytes length.
@@ -238,7 +238,7 @@ public class MessagePackSerializer {
       Preconditions.checkState(msgpackBytesLength.length <= MESSAGE_PACK_OFFSET);
       // Write MessagePack bytes length to reserved buffer.
       System.arraycopy(msgpackBytesLength, 0, msgpackBytes, 0, msgpackBytesLength.length);
-      return ImmutablePair.of(msgpackBytes, isCrossLanguage);
+      return ImmutablePair.of(msgpackBytes, isCrossLanguage.getValue());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

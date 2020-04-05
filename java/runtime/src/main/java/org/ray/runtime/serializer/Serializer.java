@@ -1,11 +1,10 @@
 package org.ray.runtime.serializer;
 
-import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.tuple.Pair;
 
 public class Serializer {
 
-  public static Pair<byte[], MutableBoolean> encode(Object obj) {
+  public static Pair<byte[], Boolean> encode(Object obj) {
     return MessagePackSerializer.encode(obj);
   }
 
