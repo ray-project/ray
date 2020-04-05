@@ -443,9 +443,15 @@ bool ReferenceCounter::SetDeleteCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end() || it->second.OutOfScope()) {
+  if (it == object_id_refs_.end()) {
+    return false;
+  } else if (it->second.OutOfScope() &&
+             !it->second.ShouldDelete(lineage_pinning_enabled_)) {
+    // The object has already gone out of scope but cannot be deleted yet. Do
+    // not set the deletion callback because it may never get called.
     return false;
   }
+
   RAY_CHECK(!it->second.on_delete) << object_id;
   it->second.on_delete = callback;
   return true;
