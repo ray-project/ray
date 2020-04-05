@@ -1,3 +1,5 @@
+from gym import Env
+from gym.spaces import Box
 import numpy as np
 import unittest
 
@@ -14,7 +16,50 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 tf = try_import_tf()
 
 
+class SimpleEnv(Env):
+    def __init__(self, config):
+        self.action_space = Box(-1.0, 1.0, (1, ))
+        self.observation_space = self.action_space
+        self.max_steps = config.get("max_steps", 100)
+        self.state = None
+        self.steps = None
+
+    def reset(self):
+        self.state = np.random.random(size=(1,))
+        self.steps = 0
+        return self.state
+
+    def step(self, action):
+        self.steps += 1
+        [r] = np.abs(action - self.state)
+        d = self.steps >= self.max_steps
+        self.state = np.random.random(size=(1,))
+        return self.state, r, d, {}
+
+
 class TestSAC(unittest.TestCase):
+    def test_sac_pytorch_learning_cont(self):
+        config = sac.DEFAULT_CONFIG.copy()
+        config["use_pytorch"] = True
+        config["num_workers"] = 0  # Run locally.
+        config["twin_q"] = False
+        config["normalize_actions"] = True
+        config["learning_starts"] = 0
+        #config["env"] = SimpleEnv
+        #config["optimization"]["critic_learning_rate"] = 0.1
+
+        #config["Q_model"]["fcnet_hiddens"] = [10]
+        #config["Q_model"]["fcnet_activation"] = "linear"
+        #config["policy_model"]["fcnet_hiddens"] = [10]
+        #config["policy_model"]["fcnet_activation"] = "linear"
+
+        num_iterations = 2000
+
+        trainer = sac.SACTrainer(config=config, env=SimpleEnv)
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+
     def test_sac_compilation(self):
         """Test whether an SACTrainer can be built with all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
@@ -31,10 +76,10 @@ class TestSAC(unittest.TestCase):
         #config["policy_model"]["fcnet_hiddens"] = [10]
         #config["policy_model"]["fcnet_activation"] = "linear"
 
-        num_iterations = 2000
+        num_iterations = 2
 
         # eager (discrete and cont. actions).
-        for _ in framework_iterator(config, ["tf", "eager"]):
+        for _ in framework_iterator(config):
             for env in [
                     "CartPole-v0",
                     "Pendulum-v0",

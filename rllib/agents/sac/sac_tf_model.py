@@ -30,7 +30,8 @@ class SACTFModel(TFModelV2):
                  critic_hidden_activation="relu",
                  critic_hiddens=(256, 256),
                  twin_q=False,
-                 initial_alpha=1.0):
+                 initial_alpha=1.0,
+                 target_entropy=None):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -48,13 +49,13 @@ class SACTFModel(TFModelV2):
         """
         super().__init__(
             obs_space, action_space, num_outputs, model_config, name)
-        self.discrete = False
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
             action_outs = q_outs = self.action_dim
         else:
             self.action_dim = np.product(action_space.shape)
+            self.discrete = False
             action_outs = 2 * self.action_dim
             q_outs = 1
 
@@ -116,6 +117,13 @@ class SACTFModel(TFModelV2):
         self.log_alpha = tf.Variable(
             np.log(initial_alpha), dtype=tf.float32, name="log_alpha")
         self.alpha = tf.exp(self.log_alpha)
+        # Auto-calculate the target entropy.
+        if target_entropy is None or target_entropy == "auto":
+            if self.discrete:
+                target_entropy = -action_space.n
+            else:
+                target_entropy = -np.prod(action_space.shape)
+        self.target_entropy = target_entropy
 
         self.register_variables([self.log_alpha])
 

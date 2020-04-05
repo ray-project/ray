@@ -126,7 +126,6 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
-        #print(torch.abs(torch.mean(policy_t)))
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
         policy_tp1 = action_dist_tp1.sample() if not deterministic else action_dist_tp1.deterministic_sample()
@@ -149,14 +148,11 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
         # Target q network evaluation.
         q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
                                                  policy_tp1)
-        #print("q_tp1={}".format(q_tp1[0]))
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
-            #print("twin_q_tp1={}".format(twin_q_tp1[0]))
             # Take min over both twin-NNs.
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
-        #print("q_tp1(min)={}".format(q_tp1[0]))
 
         q_t_selected = torch.squeeze(q_t, dim=-1)
         if policy.config["twin_q"]:
@@ -191,23 +187,13 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
         critic_loss.append(0.5 * torch.mean(torch.pow(
             q_t_selected_target - twin_q_t_selected, 2.0)))
 
-    # Auto-calculate the target entropy.
-    if policy.config["target_entropy"] == "auto":
-        if model.discrete:
-            target_entropy = -policy.action_space.n
-        else:
-            target_entropy = -np.prod(policy.action_space.shape)
-    else:
-        target_entropy = policy.config["target_entropy"]
-    target_entropy = torch.Tensor([target_entropy]).float()
-
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
     if model.discrete:
         weighted_log_alpha_loss = policy_t.detach() * (
-            -model.log_alpha * (log_pis_t + target_entropy).detach()
+            -model.log_alpha * (log_pis_t + model.target_entropy).detach()
         )
         # Sum up weighted terms and mean over all batch items.
         alpha_loss = torch.mean(torch.sum(weighted_log_alpha_loss, dim=-1))
@@ -220,10 +206,10 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
             dim=-1))
     else:
         alpha_loss = -torch.mean(
-            model.log_alpha * (log_pis_t + target_entropy).detach())
+            model.log_alpha * (log_pis_t + model.target_entropy).detach())
         #print("alpha_loss={}".format(alpha_loss))
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
-    #    #print("actor_loss={}".format(actor_loss))
+        #print("actor_loss={}".format(actor_loss))
 
     # save for stats function
     policy.q_t = q_t
@@ -236,7 +222,7 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
     policy.alpha_loss = alpha_loss
     policy.log_alpha_value = model.log_alpha
     policy.alpha_value = alpha
-    policy.target_entropy = target_entropy
+    policy.target_entropy = model.target_entropy
 
     # In a custom apply op we handle the losses separately, but return them
     # combined in one loss for now.

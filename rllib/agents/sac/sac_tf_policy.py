@@ -64,7 +64,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         critic_hidden_activation=config["Q_model"]["fcnet_activation"],
         critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -80,7 +81,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         critic_hidden_activation=config["Q_model"]["fcnet_activation"],
         critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
 
     return policy.model
 
@@ -170,13 +172,11 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.sample(
-        ) if not deterministic else action_dist_t.deterministic_sample()
+        policy_t = action_dist_t.sample() if not deterministic else action_dist_t.deterministic_sample()
         log_pis_t = tf.expand_dims(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.sample(
-        ) if not deterministic else action_dist_tp1.deterministic_sample()
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else action_dist_tp1.deterministic_sample()
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
@@ -237,15 +237,6 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
                 predictions=twin_q_t_selected,
                 weights=0.5))
 
-    # Auto-calculate the target entropy.
-    if policy.config["target_entropy"] == "auto":
-        if model.discrete:
-            target_entropy = np.array(-policy.action_space.n, dtype=np.float32)
-        else:
-            target_entropy = -np.prod(policy.action_space.shape)
-    else:
-        target_entropy = policy.config["target_entropy"]
-
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
@@ -255,7 +246,7 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
             tf.reduce_sum(
                 tf.multiply(
                     tf.stop_gradient(policy_t), -model.log_alpha *
-                    tf.stop_gradient(log_pis_t + target_entropy)),
+                    tf.stop_gradient(log_pis_t + model.target_entropy)),
                 axis=-1))
         actor_loss = tf.reduce_mean(
             tf.reduce_sum(
@@ -267,7 +258,8 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
                 axis=-1))
     else:
         alpha_loss = -tf.reduce_mean(
-            model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy))
+            model.log_alpha *
+            tf.stop_gradient(log_pis_t + model.target_entropy))
         actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
 
     # save for stats function
@@ -277,7 +269,7 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
     policy.alpha_value = model.alpha
-    policy.target_entropy = target_entropy
+    policy.target_entropy = model.target_entropy
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now

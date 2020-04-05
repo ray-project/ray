@@ -30,7 +30,8 @@ class SACTorchModel(TorchModelV2, nn.Module):
                  critic_hidden_activation="relu",
                  critic_hiddens=(256, 256),
                  twin_q=False,
-                 initial_alpha=1.0):
+                 initial_alpha=1.0,
+                 target_entropy=None):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -50,7 +51,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        self.discrete = False
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
@@ -58,6 +58,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             self.action_ins = None  # No action inputs for the discrete case.
         else:
             self.action_dim = np.product(action_space.shape)
+            self.discrete = False
             self.action_outs = 2 * self.action_dim
             self.action_ins = self.action_dim
             q_outs = 1
@@ -75,7 +76,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 self.action_model.add_module("action_activation_{}".format(i), nn.Tanh())
             ins = n
         self.action_model.add_module("action_out", nn.Linear(ins, self.action_outs))
-        #self.action_model = nn.ModuleList(self.action_model)
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name):
@@ -105,6 +105,17 @@ class SACTorchModel(TorchModelV2, nn.Module):
             data=[np.log(initial_alpha)],
             dtype=torch.float32,
             requires_grad=True)
+
+        # Auto-calculate the target entropy.
+        if target_entropy is None or target_entropy == "auto":
+            if self.discrete:
+                target_entropy = -action_space.n
+            else:
+                target_entropy = -np.prod(action_space.shape)
+        self.target_entropy = torch.tensor(
+            data = [target_entropy],
+            dtype=torch.float32,
+            requires_grad=False)
 
     def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.
