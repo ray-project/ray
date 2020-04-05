@@ -16,8 +16,22 @@ public class ObjectStoreTest extends BaseTest {
 
   @Test
   public void testPutAndGet() {
-    RayObject<Integer> obj = Ray.put(1);
-    Assert.assertEquals(1, (int) obj.get());
+    {
+      RayObject<Integer> obj = Ray.put(1);
+      Assert.assertEquals(1, (int) obj.get());
+    }
+
+    {
+      String s = null;
+      RayObject<String> obj = Ray.put(s);
+      Assert.assertNull(obj.get());
+    }
+
+    {
+      List<List<String>> l = ImmutableList.of(ImmutableList.of("abc"));
+      RayObject<List<List<String>>> obj = Ray.put(l);
+      Assert.assertEquals(obj.get(), l);
+    }
   }
 
   @Test
