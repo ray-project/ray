@@ -18,22 +18,23 @@ tf = try_import_tf()
 
 class SimpleEnv(Env):
     def __init__(self, config):
-        self.action_space = Box(-1.0, 1.0, (1, ))
-        self.observation_space = self.action_space
+        self.action_space = Box(0.0, 1.0, (1, ))
+        self.observation_space = Box(0.0, 1.0, (1, ))
         self.max_steps = config.get("max_steps", 100)
         self.state = None
         self.steps = None
 
     def reset(self):
-        self.state = np.random.random(size=(1,))
+        self.state = self.observation_space.sample()  #.random.random(size=(1,))
         self.steps = 0
         return self.state
 
     def step(self, action):
         self.steps += 1
-        [r] = np.abs(action - self.state)
+        # Reward is 1.0 - (action - state).
+        [r] = 1.0 - np.abs(action - self.state)
         d = self.steps >= self.max_steps
-        self.state = np.random.random(size=(1,))
+        self.state = self.observation_space.sample()  # np.random.random(size=(1,))
         return self.state, r, d, {}
 
 
@@ -55,7 +56,7 @@ class TestSAC(unittest.TestCase):
 
         num_iterations = 2000
 
-        trainer = sac.SACTrainer(config=config, env=SimpleEnv)
+        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
