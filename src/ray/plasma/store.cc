@@ -1162,7 +1162,7 @@ class PlasmaStoreRunner {
     plasma::PlasmaAllocator::Free(
         pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
-    int socket = BindIpcSock(socket_name, true);
+    int socket = ConnectOrListenIpcSock(socket_name, true);
     // TODO(pcm): Check return value.
     ARROW_CHECK(socket >= 0);
 
@@ -1198,9 +1198,11 @@ void HandleSignal(int signal) {
 
 void StartServer(char* socket_name, std::string plasma_directory, bool hugepages_enabled,
                  std::shared_ptr<ExternalStore> external_store) {
+#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
   // to a client that has already died, the store could die.
   signal(SIGPIPE, SIG_IGN);
+#endif
 
   g_runner.reset(new PlasmaStoreRunner());
   signal(SIGTERM, HandleSignal);
@@ -1311,11 +1313,18 @@ int main(int argc, char* argv[]) {
     ARROW_CHECK_OK(external_store->Connect(external_store_endpoint));
   }
   ARROW_LOG(DEBUG) << "starting server listening on " << socket_name;
+#ifdef _WINSOCKAPI_
+  WSADATA wsadata;
+  WSAStartup(MAKEWORD(2, 2), &wsadata);
+#endif
   plasma::StartServer(socket_name, plasma_directory, hugepages_enabled, external_store);
   plasma::g_runner->Shutdown();
   plasma::g_runner = nullptr;
 
   ArrowLog::UninstallSignalAction();
   ArrowLog::ShutDownArrowLog();
+#ifdef _WINSOCKAPI_
+  WSACleanup();
+#endif
   return 0;
 }

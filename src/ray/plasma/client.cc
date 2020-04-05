@@ -19,22 +19,24 @@
 
 #include "plasma/client.h"
 
-#ifdef _WIN32
-#include <Win32_Interop/win32_types.h>
-#endif
-
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <sys/ioctl.h>
+#ifdef _WIN32
+#include <Windows.h>
+#else
 #include <sys/mman.h>
+#endif
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <time.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <deque>
@@ -175,12 +177,20 @@ class ClientMmapTableEntry {
     // We subtract kMmapRegionsGap from the length that was added
     // in fake_mmap in malloc.h, to make map_size page-aligned again.
     length_ = map_size - kMmapRegionsGap;
+#ifdef _WIN32
+    pointer_ = reinterpret_cast<uint8_t*>(MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, length_));
+    // TODO(pcm): Don't fail here, instead return a Status.
+    if (pointer_ == NULL) {
+      ARROW_LOG(FATAL) << "mmap failed";
+    }
+#else
     pointer_ = reinterpret_cast<uint8_t*>(
         mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
     // TODO(pcm): Don't fail here, instead return a Status.
     if (pointer_ == MAP_FAILED) {
       ARROW_LOG(FATAL) << "mmap failed";
     }
+#endif
     close(fd);  // Closing this fd has an effect on performance.
   }
 
@@ -190,7 +200,12 @@ class ClientMmapTableEntry {
     // alive until it is destroyed.
     // We don't need to close the associated file, since it has
     // already been closed in the constructor.
-    int r = munmap(pointer_, length_);
+    int r;
+#ifdef _WIN32
+    r = UnmapViewOfFile(pointer_) ? 0 : -1;
+#else
+    r = munmap(pointer_, length_);
+#endif
     if (r != 0) {
       ARROW_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
     }
@@ -987,10 +1002,22 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
   int sock[2];
   // Create a non-blocking socket pair. This will only be used to send
   // notifications from the Plasma store to the client.
+#ifdef _WINSOCKAPI_
+  SOCKET sockets[2] = { INVALID_SOCKET, INVALID_SOCKET };
+  socketpair(AF_INET, SOCK_STREAM, 0, sockets);
+  sock[0] = fh_open(sockets[0], -1);
+  sock[1] = fh_open(sockets[1], -1);
+#else
   socketpair(AF_UNIX, SOCK_STREAM, 0, sock);
+#endif
   // Make the socket non-blocking.
+#ifdef _WINSOCKAPI_
+  unsigned long value = 1;
+  ARROW_CHECK(ioctlsocket(sock[1], FIONBIO, &value) == 0);
+#else
   int flags = fcntl(sock[1], F_GETFL, 0);
   ARROW_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
+#endif
   // Tell the Plasma store about the subscription.
   RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
   // Send the file descriptor that the Plasma store should use to push

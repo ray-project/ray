@@ -764,7 +764,11 @@ Status ReadDataRequest(uint8_t* data, size_t size, ObjectID* object_id, char** a
   DCHECK(VerifyFlatbuffer(message, data, size));
   DCHECK(message->object_id()->size() == sizeof(ObjectID));
   *object_id = ObjectID::from_binary(message->object_id()->str());
+#ifdef _WIN32
+  *address = _strdup(message->address()->c_str());
+#else
   *address = strdup(message->address()->c_str());
+#endif
   *port = message->port();
   return Status::OK();
 }

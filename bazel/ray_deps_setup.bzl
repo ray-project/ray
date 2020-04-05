@@ -166,15 +166,10 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
         sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
-        # patches = [
-        #     "//thirdparty/patches:arrow-headers-unused.patch",
-        #     "//thirdparty/patches:arrow-windows-export.patch",
-        #     "//thirdparty/patches:arrow-windows-nonstdc.patch",
-        #     "//thirdparty/patches:arrow-windows-sigpipe.patch",
-        #     "//thirdparty/patches:arrow-windows-socket.patch",
-        #     "//thirdparty/patches:arrow-windows-dlmalloc.patch",
-        #     "//thirdparty/patches:arrow-windows-tcp.patch",
-        # ],
+        patches = [
+            "//thirdparty/patches:arrow-windows-export.patch",
+            "//thirdparty/patches:arrow-windows-nonstdc.patch",
+        ],
     )
 
     auto_http_archive(

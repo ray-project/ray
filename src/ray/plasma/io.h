@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "arrow/status.h"
+#include "plasma/common.h"
 #include "plasma/compat.h"
 
 namespace plasma {
@@ -54,9 +55,7 @@ Status ReadBytes(int fd, uint8_t* cursor, size_t length);
 
 Status ReadMessage(int fd, flatbuf::MessageType* type, std::vector<uint8_t>* buffer);
 
-int BindIpcSock(const std::string& pathname, bool shall_listen);
-
-int ConnectIpcSock(const std::string& pathname);
+int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen);
 
 Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
                              int64_t timeout, int* fd);
