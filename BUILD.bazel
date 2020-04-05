@@ -248,7 +248,7 @@ cc_library(
 # TODO(mehrdadn): (How to) support dynamic linking?
 PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
 
-PLASMA_COPTS = [] + select({
+PLASMA_COPTS = COPTS + select({
     "@bazel_tools//src/conditions:windows": [
         "-D" + "WIN32_REPLACE_FD_APIS",
         "/FI" + "win32fd.h",
@@ -298,10 +298,10 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src/ray",
     deps = [
-        "@arrow//:arrow",
         ":common_fbs",
         ":plasma_fbs",
         ":platform_shims",
+        "@arrow",
         "@com_github_google_glog//:glog",
     ],
 )
@@ -314,8 +314,8 @@ cc_binary(
         ":jni.h",
         ":jni_md.h",
     ],
+    copts = PLASMA_COPTS,
     includes = [
-        ".",
         "src/ray",
     ],
     linkshared = 1,
@@ -463,6 +463,7 @@ cc_library(
         ":common_cc_proto",
         ":gcs_cc_proto",
         ":node_manager_fbs",
+        ":plasma_client",
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -471,7 +472,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@msgpack",
-        ":plasma_client",
     ],
 )
 
@@ -649,6 +649,7 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
         ":service_based_gcs_client_lib",
@@ -664,7 +665,6 @@ cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-        ":plasma_client",
     ],
 )
 
@@ -1198,10 +1198,10 @@ cc_library(
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
-        ":plasma_client",
     ],
 )
 
@@ -1272,13 +1272,13 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":plasma_client",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        ":plasma_client",
     ],
 )
 
@@ -1654,7 +1654,10 @@ cc_binary(
         "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
-    }),
+    }) + [
+        ":jni.h",
+        ":jni_md.h",
+    ],
     copts = COPTS,
     includes = [
         "src",
