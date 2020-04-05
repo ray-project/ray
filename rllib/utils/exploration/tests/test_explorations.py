@@ -68,7 +68,7 @@ def do_test_explorations(run,
             # Make sure actions drawn are different
             # (around some mean value), given constant observations.
             actions = []
-            for _ in range(50):
+            for _ in range(100):
                 actions.append(
                     trainer.compute_action(
                         observation=dummy_obs,

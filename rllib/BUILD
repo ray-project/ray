@@ -41,12 +41,23 @@
 # --------------------------------------------------------------------
 
 py_test(
-    name = "run_regression_tests",
+    name = "run_regression_tests_cartpole",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests"],
+    tags = ["learning_tests", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole*.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum*.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
