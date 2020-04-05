@@ -117,10 +117,10 @@ class ParameterNoise(Exploration):
             sub_exploration,
             framework=self.framework,
             action_space=self.action_space,
+            policy_config=self.policy_config,
+            model=self.model,
             **kwargs)
 
-        # Store the default setting for `explore`.
-        self.default_explore = policy_config["explore"]
         # Whether we need to call `self._delayed_on_episode_start` before
         # the forward pass.
         self.episode_started = False
@@ -131,13 +131,14 @@ class ParameterNoise(Exploration):
                                timestep=None,
                                explore=None,
                                tf_sess=None):
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
+
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
-            self._delayed_on_episode_start(tf_sess)
+            self._delayed_on_episode_start(explore, tf_sess)
 
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
         # Add noise if necessary.
         if explore and not self.weights_are_currently_noisy:
             self._add_stored_noise(tf_sess=tf_sess)
@@ -148,15 +149,13 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs,
-                               action_dist_class,
+                               action_distribution,
                                timestep,
                                explore=True):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            distribution_inputs=distribution_inputs,
-            action_dist_class=action_dist_class,
+            action_distribution=action_distribution,
             timestep=timestep,
             explore=explore)
 
@@ -173,9 +172,9 @@ class ParameterNoise(Exploration):
         # We don't want to update into a noisy net.
         self.episode_started = True
 
-    def _delayed_on_episode_start(self, tf_sess):
+    def _delayed_on_episode_start(self, explore, tf_sess):
         # Sample fresh noise and add to weights.
-        if self.default_explore:
+        if explore:
             self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
         # Only sample, don't apply anything to the weights.
         else:
@@ -227,7 +226,7 @@ class ParameterNoise(Exploration):
         if policy.dist_class is Categorical:
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
-        if not self.weights_are_currently_noisy:
+        if noisy_action_dist is None:
             noisy_action_dist = action_dist
         else:
             noise_free_action_dist = action_dist

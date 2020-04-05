@@ -106,9 +106,9 @@ class TorchPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
         with torch.no_grad():
+            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
             })
@@ -301,19 +301,15 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self,
-                         input_dict,
-                         state_batches,
-                         model,
-                         action_dist=None):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
         """Returns dict of extra info to include in experience batch.
 
-        Arguments:
+        Args:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
             model (TorchModelV2): Reference to the model.
-            action_dist (Distribution): Torch Distribution object to get
-                log-probs (e.g. for already sampled actions).
+            action_dist (TorchActionDistribution): Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
         """
         return {}
 

@@ -4,15 +4,13 @@ from tempfile import mkstemp
 
 from multiprocessing import cpu_count
 
-import numpy as np
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME)
 from ray.serve.global_state import GlobalState, ServeMaster
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.serve.utils import block_until_http_ready, expand
+from ray.serve.utils import block_until_http_ready
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
@@ -114,6 +112,10 @@ def init(
     if not ray.is_initialized():
         ray.init(**ray_init_kwargs)
 
+    # Register serialization context once
+    ray.register_custom_serializer(Query, Query.ray_serialize,
+                                   Query.ray_deserialize)
+
     # Try to get serve master actor if it exists
     try:
         ray.util.get_actor(SERVE_MASTER_NAME)
@@ -166,13 +168,9 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
             registered before returning
     """
     methods = [m.upper() for m in methods]
-    global_state.route_table.register_service(
-        route, endpoint_name, methods=methods)
-    http_proxy = global_state.get_http_proxy()
     ray.get(
-        http_proxy.set_route_table.remote(
-            global_state.route_table.list_service(
-                include_methods=True, include_headless=False)))
+        global_state.master_actor.create_endpoint.remote(
+            route, endpoint_name, methods))
 
 
 @_ensure_connected
@@ -371,26 +369,9 @@ def split(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    assert endpoint_name in expand(
-        global_state.route_table.list_service(include_headless=True).values())
-
-    assert isinstance(traffic_policy_dictionary,
-                      dict), "Traffic policy must be dictionary"
-    prob = 0
-    for backend, weight in traffic_policy_dictionary.items():
-        prob += weight
-        assert (backend in global_state.backend_table.list_backends()
-                ), "backend {} is not registered".format(backend)
-    assert np.isclose(
-        prob, 1,
-        atol=0.02), "weights must sum to 1, currently it sums to {}".format(
-            prob)
-
-    global_state.policy_table.register_traffic_policy(
-        endpoint_name, traffic_policy_dictionary)
-    router = global_state.get_router()
     ray.get(
-        router.set_traffic.remote(endpoint_name, traffic_policy_dictionary))
+        global_state.master_actor.split_traffic.remote(
+            endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -413,9 +394,7 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in expand(
-            global_state.route_table.list_service(
-                include_headless=True).values())
+        assert endpoint_name in global_state.get_all_endpoints()
 
     # Delay import due to it's dependency on global_state
     from ray.serve.handle import RayServeHandle

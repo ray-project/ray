@@ -101,16 +101,6 @@ Status RedisLogBasedActorInfoAccessor::AsyncUpdate(
                  << ", actor id: " << actor_id << ", log_length: " << log_length;
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
-    // If we successfully appended a record to the GCS table of the actor that
-    // has died, signal this to anyone receiving signals from this actor.
-    if (data.state() == ActorTableData::DEAD ||
-        data.state() == ActorTableData::RECONSTRUCTING) {
-      std::vector<std::string> args = {"XADD", actor_id.Hex(), "*", "signal",
-                                       "ACTOR_DIED_SIGNAL"};
-      auto redis_context = client->primary_context();
-      RAY_CHECK_OK(redis_context->RunArgvAsync(args));
-    }
-
     if (callback != nullptr) {
       callback(Status::OK());
     }
