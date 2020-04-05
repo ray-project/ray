@@ -1,8 +1,9 @@
 Installing Ray
 ==============
 
-Ray currently supports MacOS and Linux. Windows support
-is planned for the future.
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
+Ray currently supports MacOS and Linux. Windows support is planned for the future.
 
 Latest stable version
 ---------------------

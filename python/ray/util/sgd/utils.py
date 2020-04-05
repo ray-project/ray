@@ -192,7 +192,7 @@ class AverageMeterCollection:
         """Returns a dict of average and most recent values for each metric."""
         stats = {BATCH_COUNT: self._batch_count, NUM_SAMPLES: self.n}
         for metric, meter in self._meters.items():
-            stats["mean_" + str(metric)] = meter.avg
+            stats[str(metric)] = meter.avg
             stats["last_" + str(metric)] = meter.val
         return stats
 

@@ -17,6 +17,8 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
 .. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
 For more information, check out:
 
   * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.

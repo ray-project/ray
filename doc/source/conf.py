@@ -27,7 +27,7 @@ MOCK_MODULES = [
     "ray.core.generated", "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task", "scipy", "scipy.signal",
     "scipy.stats", "setproctitle", "tensorflow_probability", "tensorflow",
-    "tensorflow.contrib", "tensorflow.contrib.all_reduce",
+    "tensorflow.contrib", "tensorflow.contrib.all_reduce", "tree",
     "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
     "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
     "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
