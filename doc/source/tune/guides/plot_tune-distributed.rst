@@ -149,6 +149,8 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
+.. _tune-distributed-spot:
+
 Pre-emptible Instances (Cloud)
 ------------------------------
 

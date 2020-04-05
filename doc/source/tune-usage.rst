@@ -329,7 +329,7 @@ Tune will restore trials from the latest checkpoint, where available. In the dis
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
-Take a look at `an example <tune-distributed.html#example-for-using-spot-instances-aws>`_.
+Take a look at an example: :ref:`tune-distributed-spot`.
 
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
