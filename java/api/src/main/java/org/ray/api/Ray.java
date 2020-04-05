@@ -85,16 +85,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get an object by RayObject from the object store.
-   *
-   * @param object A RayObject to get.
-   * @return The Java object.
-   */
-  public static <T> T get(RayObject<T> object) {
-    return runtime.get(object.getId(), object.getType());
-  }
-
-  /**
    * Get a list of objects by RayObjects from the object store.
    *
    * @param objectList A list of RayObject to get.
