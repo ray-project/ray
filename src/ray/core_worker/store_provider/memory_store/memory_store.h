@@ -108,20 +108,6 @@ class CoreWorkerMemoryStore {
   /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
-  /// Get and delete the set of objects that were pinned on the given node.
-  /// This method should be called upon a node failure, to determine which
-  /// plasma objects were lost.
-  ///
-  /// \param[in] node_id The node whose object store has been removed.
-  /// \return The set of objects that were pinned on the given node.
-  std::vector<ObjectID> GetAndDeletePlasmaObjectsOnRemovedNode(const ClientID &node_id);
-
-  /// Return whether the object exists.
-  ///
-  /// \param[in] object_id The ID of the object to check.
-  /// \return Whether the object exists.
-  bool HasObject(const ObjectID &object_id) const;
-
   /// Check whether this store contains the object.
   ///
   /// \param[in] object_id The object to check.

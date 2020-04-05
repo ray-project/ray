@@ -171,6 +171,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   std::vector<ObjectID> direct_return_ids;
+  std::vector<ObjectID> plasma_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -178,8 +179,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
-      const auto pinned_at_node_id = ClientID::FromBinary(worker_addr.raylet_id());
-      RAY_CHECK(in_memory_store_->Put(RayObject(pinned_at_node_id), object_id));
+      RAY_CHECK(
+          in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
     } else {
       // NOTE(swang): If a direct object was promoted to plasma, then we do not
       // record the node ID that it was pinned at, which means that we will not

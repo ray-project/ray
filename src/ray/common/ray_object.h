@@ -39,15 +39,12 @@ class RayObject {
   /// \param[in] metadata Metadata of the ray object.
   /// \param[in] nested_ids ObjectIDs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
-  RayObject(
-      const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-      const std::vector<ObjectID> &nested_ids, bool copy_data = false,
-      const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
+  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
+            const std::vector<ObjectID> &nested_ids, bool copy_data = false)
       : data_(data),
         metadata_(metadata),
         nested_ids_(nested_ids),
-        has_data_copy_(copy_data),
-        pinned_at_raylet_id_(pinned_at_raylet_id) {
+        has_data_copy_(copy_data) {
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
@@ -66,8 +63,6 @@ class RayObject {
   }
 
   RayObject(rpc::ErrorType error_type);
-
-  RayObject(const ClientID &pinned_at_raylet_id);
 
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; }
@@ -98,19 +93,12 @@ class RayObject {
   /// large to return directly as part of a gRPC response).
   bool IsInPlasmaError() const;
 
-  /// The node that this object is pinned at.
-  const absl::optional<ClientID> &PinnedAtRayletId() const;
-
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
   const std::vector<ObjectID> nested_ids_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
-  // If this object is stored in plasma, and reference counting is enabled,
-  // then some raylet must be pinning the object value. This is the address of
-  // that raylet.
-  const absl::optional<ClientID> pinned_at_raylet_id_;
 };
 
 }  // namespace ray

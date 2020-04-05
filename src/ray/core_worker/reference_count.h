@@ -278,14 +278,38 @@ class ReferenceCounter {
                           const std::vector<ObjectID> &inner_ids,
                           const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
 
+  /// Update the pinned location of an object stored in plasma.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] raylet_id The raylet that is now pinning the object ID.
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const ClientID &raylet_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Check whether the object is pinned at a remote plasma store node.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \param[out] pinned Whether the object was pinned at a remote plasma store
+  /// node.
+  /// \return True if the object exists and is owned by us, false otherwise. We
+  /// return false here because a borrower should not know the pinned location
+  /// for an object.
+  bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) const
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get and reset the objects that were pinned on the given node.  This
+  /// method should be called upon a node failure, to determine which plasma
+  /// objects were lost. If a deletion callback was set for a lost object, it
+  /// will be invoked and reset.
+  ///
+  /// \param[in] node_id The node whose object store has been removed.
+  /// \return The set of objects that were pinned on the given node.
+  std::vector<ObjectID> ResetObjectsOnRemovedNode(const ClientID &raylet_id);
+
   /// Whether we have a reference to a particular ObjectID.
   ///
   /// \param[in] object_id The object ID to check for.
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
-
-  const bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned)
-      LOCKS_EXCLUDED(mutex_);
 
   /// Write the current reference table to the given proto.
   ///
@@ -364,6 +388,10 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    // If this object is owned by us and stored in plasma, and reference
+    // counting is enabled, then some raylet must be pinning the object value.
+    // This is the address of that raylet.
+    absl::optional<ClientID> pinned_at_raylet_id;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;

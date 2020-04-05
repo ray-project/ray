@@ -792,6 +792,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
+  /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we

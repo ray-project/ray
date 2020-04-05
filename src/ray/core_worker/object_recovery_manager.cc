@@ -20,7 +20,8 @@ namespace ray {
 
 Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
-  bool owned_by_us = reference_counter_->GetOwner(object_id);
+  bool pinned = false;
+  bool owned_by_us = reference_counter_->IsPlasmaObjectPinned(object_id, &pinned);
   if (!owned_by_us) {
     return Status::Invalid(
         "Object reference no longer exists or is not owned by us. Either lineage pinning "
@@ -28,7 +29,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   bool already_pending_recovery = true;
-  if (!in_memory_store_->HasObject(object_id)) {
+  if (!pinned) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
@@ -115,7 +116,9 @@ Status ObjectRecoveryManager::PinExistingObjectCopy(
         if (status.ok()) {
           // TODO(swang): Make sure that the node is still alive when
           // marking the object as pinned.
-          RAY_CHECK(in_memory_store_->Put(RayObject(node_id), object_id));
+          RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                          object_id));
+          reference_counter_->UpdateObjectPinnedAtRaylet(object_id, node_id);
         } else {
           RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
                         << ", trying again";

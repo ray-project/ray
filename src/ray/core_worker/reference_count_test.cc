@@ -1800,6 +1800,11 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
 
     // The task finishes but is retryable.
     rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+    // We should fail to set the deletion callback because the object has
+    // already gone out of scope.
+    ASSERT_FALSE(rc->SetDeleteCallback(
+        id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
+
     ASSERT_EQ(out.size(), 1);
     out.clear();
     ASSERT_TRUE(lineage_deleted.empty());
@@ -1850,6 +1855,44 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->HasReference(id));
   ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
+  auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
+  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+
+  ObjectID borrowed_id = ObjectID::FromRandom();
+  rc->AddLocalReference(borrowed_id, "");
+  bool pinned = false;
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned));
+
+  ObjectID id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(pinned);
+
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
+
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  auto objects = rc->ResetObjectsOnRemovedNode(node_id);
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
 }
 
 }  // namespace ray

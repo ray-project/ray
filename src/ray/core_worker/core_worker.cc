@@ -403,9 +403,12 @@ void CoreWorker::RunIOService() {
 void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   const auto node_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(INFO) << "Node failure " << node_id;
-  const auto lost_objects =
-      memory_store_->GetAndDeletePlasmaObjectsOnRemovedNode(node_id);
-  reference_counter_->ResetDeleteCallbacks(lost_objects);
+  const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
+  // Delete the objects from the in-memory store to indicate that they are not
+  // available. The object recovery manager will guarantee that a new value
+  // will eventually be stored for the objects (either an
+  // UnreconstructableError or a value reconstructed from lineage).
+  memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
     // The lost object must have been owned by us.

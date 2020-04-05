@@ -159,9 +159,8 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
 
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  auto object_entry =
-      std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                  object.GetNestedIds(), true, object.PinnedAtRayletId());
+  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
+                                                  object.GetNestedIds(), true);
   bool stored_in_direct_memory = true;
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
@@ -462,30 +461,6 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
     }
   }
   return item;
-}
-
-std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedNode(
-    const ClientID &node_id) {
-  std::vector<ObjectID> lost_objects;
-  absl::MutexLock lock(&mu_);
-  for (const auto &it : objects_) {
-    if (it.second->IsInPlasmaError()) {
-      RAY_LOG(DEBUG) << "Plasma object " << it.first << " pinned at "
-                    << it.second->PinnedAtRayletId().value_or(ClientID::Nil());
-      if (it.second->PinnedAtRayletId().value_or(ClientID::Nil()) == node_id) {
-        lost_objects.push_back(it.first);
-      }
-    }
-  }
-  for (const auto &obj : lost_objects) {
-    objects_.erase(obj);
-  }
-  return lost_objects;
-}
-
-bool CoreWorkerMemoryStore::HasObject(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mu_);
-  return objects_.count(object_id) > 0;
 }
 
 }  // namespace ray
