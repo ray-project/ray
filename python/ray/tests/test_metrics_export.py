@@ -10,7 +10,7 @@ from ray.dashboard.metrics_exporter.schema import (AuthResponse, BaseModel,
                                                    ValidationError, Field)
 
 MOCK_DASHBOARD_ID = "1234"
-MOCK_DASHBOARD_ADDRESS = "127.0.0.1:9081"
+MOCK_DASHBOARD_ADDRESS = "http://127.0.0.1:9081"
 MOCK_ACCESS_TOKEN = "1234"
 
 
@@ -63,12 +63,14 @@ def test_client_invalid_request_status_returned(auth_request, mock_controller):
 @patch("ray.dashboard.metrics_exporter.api.authentication_request")
 def test_authentication(auth_request, mock_controller):
     auth_request.return_value = AuthResponse(
-        dashboard_url=MOCK_DASHBOARD_ADDRESS, access_token=MOCK_ACCESS_TOKEN)
+        access_token_dashboard=MOCK_ACCESS_TOKEN,
+        access_token_ingest=MOCK_ACCESS_TOKEN)
     exporter, client = _setup_client_and_exporter(mock_controller)
 
     assert client.enabled is False
     client._authenticate()
-    assert client.dashboard_url == MOCK_DASHBOARD_ADDRESS
+    assert client.dashboard_url == "{address}/dashboard/{access_token}".format(
+        address=MOCK_DASHBOARD_ADDRESS, access_token=MOCK_ACCESS_TOKEN)
     assert client.enabled is True
 
 
@@ -82,7 +84,8 @@ def test_start_exporting_metrics_without_authentication(
         are not authenticated.
     """
     auth_request.return_value = AuthResponse(
-        dashboard_url=MOCK_DASHBOARD_ADDRESS, access_token=MOCK_ACCESS_TOKEN)
+        access_token_dashboard=MOCK_ACCESS_TOKEN,
+        access_token_ingest=MOCK_ACCESS_TOKEN)
     exporter, client = _setup_client_and_exporter(mock_controller)
 
     # start_exporting_metrics should succeed.
@@ -102,7 +105,8 @@ def test_start_exporting_metrics_with_authentication(auth_request,
        should not authenticate users.
     """
     auth_request.return_value = AuthResponse(
-        dashboard_url=MOCK_DASHBOARD_ADDRESS, access_token=MOCK_ACCESS_TOKEN)
+        access_token_dashboard=MOCK_ACCESS_TOKEN,
+        access_token_ingest=MOCK_ACCESS_TOKEN)
     exporter, client = _setup_client_and_exporter(mock_controller)
     # Already authenticated.
     client._authenticate()
@@ -121,7 +125,8 @@ def test_start_exporting_metrics_with_authentication(auth_request,
 @patch("ray.dashboard.metrics_exporter.api.authentication_request")
 def test_start_exporting_metrics_succeed(auth_request, mock_controller, start):
     auth_request.return_value = AuthResponse(
-        dashboard_url=MOCK_DASHBOARD_ADDRESS, access_token=MOCK_ACCESS_TOKEN)
+        access_token_dashboard=MOCK_ACCESS_TOKEN,
+        access_token_ingest=MOCK_ACCESS_TOKEN)
     exporter, client = _setup_client_and_exporter(mock_controller)
 
     result, error = client.start_exporting_metrics()
