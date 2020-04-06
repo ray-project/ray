@@ -40,26 +40,20 @@ class GcsTablePubSubTest : public RedisServiceManagerForTest {
   }
 
   template <typename TABLE_PUB_SUB, typename ID, typename Data>
-  bool Subscribe(TABLE_PUB_SUB &table_pub_sub, const ID &id, std::vector<Data> &result) {
-    std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
+  void Subscribe(TABLE_PUB_SUB &table_pub_sub, const ID &id, std::vector<Data> &result) {
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(data);
     };
-    RAY_CHECK_OK(table_pub_sub.Subscribe(id, subscribe, done));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(table_pub_sub.Subscribe(id, subscribe));
   }
 
   template <typename TABLE_PUB_SUB, typename ID, typename Data>
-  bool SubscribeAll(TABLE_PUB_SUB &table_pub_sub,
+  void SubscribeAll(TABLE_PUB_SUB &table_pub_sub,
                     std::vector<std::pair<ID, Data>> &result) {
-    std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK(table_pub_sub.SubscribeAll(subscribe, done));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(table_pub_sub.SubscribeAll(subscribe));
   }
 
   template <typename TABLE_PUB_SUB, typename ID>
@@ -106,9 +100,9 @@ TEST_F(GcsTablePubSubTest, TestJobTablePubSubApi) {
   job_table_data.set_job_id(job_id_.Binary());
 
   std::vector<std::pair<JobID, rpc::JobTableData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::JobTableData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, job_id_, result));
+  Subscribe(table_pub_sub, job_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, job_id_, job_table_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -126,9 +120,9 @@ TEST_F(GcsTablePubSubTest, TestActorTablePubSubApi) {
   actor_table_data.set_actor_id(actor_id.Binary());
 
   std::vector<std::pair<ActorID, rpc::ActorTableData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::ActorTableData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, actor_id, result));
+  Subscribe(table_pub_sub, actor_id, result);
   ASSERT_TRUE(Publish(table_pub_sub, actor_id, actor_table_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -149,9 +143,9 @@ TEST_F(GcsTablePubSubTest, TestTaskTablePubSubApi) {
   task_table_data.mutable_task()->CopyFrom(task);
 
   std::vector<std::pair<TaskID, rpc::TaskTableData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::TaskTableData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, task_id_, result));
+  Subscribe(table_pub_sub, task_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, task_id_, task_table_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -167,9 +161,9 @@ TEST_F(GcsTablePubSubTest, TestTaskLeaseTablePubSubApi) {
   task_lease_data.set_task_id(task_id_.Binary());
 
   std::vector<std::pair<TaskID, rpc::TaskLeaseData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::TaskLeaseData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, task_id_, result));
+  Subscribe(table_pub_sub, task_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, task_id_, task_lease_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -190,9 +184,9 @@ TEST_F(GcsTablePubSubTest, TestObjectTablePubSubApi) {
   object_change.mutable_data()->CopyFrom(object_table_data);
 
   std::vector<std::pair<ObjectID, rpc::ObjectChange>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::ObjectChange> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, object_id, result));
+  Subscribe(table_pub_sub, object_id, result);
   ASSERT_TRUE(Publish(table_pub_sub, object_id, object_change));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -208,9 +202,9 @@ TEST_F(GcsTablePubSubTest, TestNodeTablePubSubApi) {
   gcs_node_info.set_node_id(node_id_.Binary());
 
   std::vector<std::pair<ClientID, rpc::GcsNodeInfo>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::GcsNodeInfo> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, node_id_, result));
+  Subscribe(table_pub_sub, node_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, node_id_, gcs_node_info));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -231,9 +225,9 @@ TEST_F(GcsTablePubSubTest, TestNodeResourceTablePubSubApi) {
   resource_change.mutable_data()->CopyFrom(resource_map);
 
   std::vector<std::pair<ClientID, rpc::ResourceChange>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::ResourceChange> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, node_id_, result));
+  Subscribe(table_pub_sub, node_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, node_id_, resource_change));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -249,9 +243,9 @@ TEST_F(GcsTablePubSubTest, TestHeartbeatTablePubSubApi) {
   heartbeat_table_data.set_client_id(node_id_.Binary());
 
   std::vector<std::pair<ClientID, rpc::HeartbeatTableData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::HeartbeatTableData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, node_id_, result));
+  Subscribe(table_pub_sub, node_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, node_id_, heartbeat_table_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -267,9 +261,9 @@ TEST_F(GcsTablePubSubTest, TestHeartbeatBatchTablePubSubApi) {
   heartbeat_batch_table_data.add_batch()->set_client_id(node_id_.Binary());
 
   std::vector<std::pair<ClientID, rpc::HeartbeatBatchTableData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::HeartbeatBatchTableData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, node_id_, result));
+  Subscribe(table_pub_sub, node_id_, result);
   ASSERT_TRUE(Publish(table_pub_sub, node_id_, heartbeat_batch_table_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
@@ -286,9 +280,9 @@ TEST_F(GcsTablePubSubTest, TestWorkerFailureTablePubSubApi) {
   worker_failure_data.set_timestamp(std::time(nullptr));
 
   std::vector<std::pair<WorkerID, rpc::WorkerFailureData>> all_result;
-  ASSERT_TRUE(SubscribeAll(table_pub_sub, all_result));
+  SubscribeAll(table_pub_sub, all_result);
   std::vector<rpc::WorkerFailureData> result;
-  ASSERT_TRUE(Subscribe(table_pub_sub, worker_id, result));
+  Subscribe(table_pub_sub, worker_id, result);
   ASSERT_TRUE(Publish(table_pub_sub, worker_id, worker_failure_data));
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);

@@ -64,16 +64,16 @@ class GcsTablePubSub {
   ///
   /// \param id The id of message to be subscribed from redis.
   /// \param subscribe Callback that will be called when a subscription message is
-  /// received. \param done Callback that will be called when subscription is complete.
+  /// received.
   /// \return Status
-  Status Subscribe(const ID &id, const Callback &subscribe, const StatusCallback &done);
+  Status Subscribe(const ID &id, const Callback &subscribe);
 
   /// Subscribe to messages with the specified channel.
   ///
   /// \param subscribe Callback that will be called when a subscription message is
-  /// received. \param done Callback that will be called when subscription is complete.
+  /// received.
   /// \return Status
-  Status SubscribeAll(const Callback &subscribe, const StatusCallback &done);
+  Status SubscribeAll(const Callback &subscribe);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
@@ -86,13 +86,16 @@ class GcsTablePubSub {
   TablePubsub pub_sub_channel_;
 
  private:
-  Status Subscribe(const boost::optional<ID> &id, const Callback &subscribe,
-                   const StatusCallback &done);
+  Status Subscribe(const boost::optional<ID> &id, const Callback &subscribe);
 
   std::string GenChannelPattern(const boost::optional<ID> &id = boost::none);
 
   std::shared_ptr<RedisClient> redis_client_;
   std::unordered_map<std::string, int64_t> subscribe_callback_index_;
+
+  /// When the redis unsubscribe is completed, the corresponding subscribe callback will
+  /// be called. So we saved the callback of unsubscribe and called it in the callback of
+  /// subscribe.
   std::unordered_map<std::string, StatusCallback> unsubscribe_callbacks_;
 };
 
