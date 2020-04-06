@@ -1,10 +1,8 @@
 from datetime import timedelta
-import collections
 import logging
 import os
 
 import torch
-import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
@@ -12,7 +10,7 @@ from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 import ray
-from ray.util.sgd.torch.torch_runner import TorchRunner, _remind_gpu_usage
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
 
@@ -44,25 +42,20 @@ class DistributedTorchRunner(TorchRunner):
         self.backend = backend
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
+        self.world_rank = None
 
-    def setup(self, url, world_rank, world_size):
-        """Connects to the distributed PyTorch backend and initializes the model.
+    def setup_process_group(self, url, world_rank, world_size):
+        """Connects the distributed PyTorch backend.
 
         Args:
             url (str): the URL used to connect to distributed PyTorch.
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
-        _remind_gpu_usage(self.use_gpu, is_chief=world_rank == 0)
-        self._setup_distributed_pytorch(url, world_rank, world_size)
-        self.setup_components()
-
-    def _setup_distributed_pytorch(self, url, world_rank, world_size):
         self.world_rank = world_rank
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
-
         if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
             logger.debug(
                 "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
@@ -77,51 +70,26 @@ class DistributedTorchRunner(TorchRunner):
             world_size=world_size,
             timeout=timeout)
 
-        self.device_ids = None
-
-        if self.use_gpu and torch.cuda.is_available():
-            # https://github.com/allenai/allennlp/issues/1090
-            self.set_cuda_device_id()
-
-    def set_cuda_device_id(self):
-        """Needed for SyncBatchNorm, which needs 1 GPU per process."""
-        self.device_ids = [0]
-
-    def setup_components(self):
-        logger.debug("Loading data.")
-        self._initialize_dataloaders()
-        logger.debug("Creating model")
-        self.models = self.model_creator(self.config)
-        if not isinstance(self.models, collections.Iterable):
-            self.models = [self.models]
-        assert all(isinstance(model, nn.Module) for model in self.models), (
-            "All models must be PyTorch models: {}.".format(self.models))
-        if self.use_gpu and torch.cuda.is_available():
-            self.models = [model.cuda() for model in self.models]
-
-        logger.debug("Creating optimizer.")
-        self.optimizers = self.optimizer_creator(self.given_models,
-                                                 self.config)
-        if not isinstance(self.optimizers, collections.Iterable):
-            self.optimizers = [self.optimizers]
-
-        self._create_schedulers_if_available()
-        self._try_setup_apex()
-        self._create_loss()
-
     def setup_ddp_and_operator(self):
-        """This happens after the creator functions are called.
+        """Runs distributed coordination components.
 
-        This helps avoid timeouts due to creator functions downloading data.
+        This helps avoid timeouts due to creator functions (perhaps
+        downloading data or models).
         """
+        device_ids = None
+        if self.use_gpu and torch.cuda.is_available():
+            device_ids = self.get_device_ids()
+
+        # Wrap dataloaders
+        self._wrap_dataloaders()
+
         training_models = self.models
         if self.wrap_ddp:
             # This needs to happen after apex
             training_models = [
-                DistributedDataParallel(model, device_ids=self.device_ids)
+                DistributedDataParallel(model, device_ids=device_ids)
                 for model in self.models
             ]
-
         self.training_operator = self.training_operator_cls(
             self.config,
             models=training_models,
@@ -131,14 +99,16 @@ class DistributedTorchRunner(TorchRunner):
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
             schedulers=self.schedulers,
-            device_ids=self.device_ids,
+            device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm)
 
-    def _initialize_dataloaders(self):
-        super(DistributedTorchRunner, self)._initialize_dataloaders()
+    def get_device_ids(self):
+        """Needed for SyncBatchNorm, which needs 1 GPU per process."""
+        return [0]
 
+    def _wrap_dataloaders(self):
         def with_sampler(loader):
             # Automatically set the DistributedSampler
             data_loader_args = {
@@ -238,16 +208,18 @@ class LocalDistributedRunner(DistributedTorchRunner):
             # interaction.
             _init_cuda_context()
             os.environ["CUDA_VISIBLE_DEVICES"] = self.local_device
+
             if self.local_device:
                 try:
                     torch.cuda.set_device(int(self.local_device))
                 except RuntimeError:
                     logger.error("This happens if cuda is not initialized.")
                     raise
+
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def set_cuda_device_id(self):
-        self.device_ids = [int(self.local_device)]
+    def get_device_ids(self):
+        return [int(self.local_device)]
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
