@@ -13,14 +13,7 @@
 // limitations under the License.
 
 #include "gcs_table_pub_sub.h"
-#include "ray/common/common_protocol.h"
-#include "ray/common/constants.h"
-#include "ray/common/id.h"
-#include "ray/common/status.h"
-#include "ray/gcs/callback.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/protobuf/gcs.pb.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
