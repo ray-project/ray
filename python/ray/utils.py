@@ -5,6 +5,7 @@ import inspect
 import logging
 import numpy as np
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -516,6 +517,8 @@ def detect_fate_sharing_support_win32():
             kernel32.SetInformationJobObject.restype = BOOL
             kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
             kernel32.AssignProcessToJobObject.restype = BOOL
+            kernel32.IsDebuggerPresent.argtypes = ()
+            kernel32.IsDebuggerPresent.restype = BOOL
         except (AttributeError, TypeError, ImportError):
             kernel32 = None
         job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
@@ -557,14 +560,18 @@ def detect_fate_sharing_support_win32():
                     ("PeakJobMemoryUsed", ctypes.c_size_t),
                 ]
 
+            debug = kernel32.IsDebuggerPresent()
+
             # Defined in <WinNT.h>; also available here:
             # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
             JobObjectExtendedLimitInformation = 9
             JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
             buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
             buf.BasicLimitInformation.LimitFlags = (
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
                 | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
             infoclass = JobObjectExtendedLimitInformation
             if not kernel32.SetInformationJobObject(
@@ -634,6 +641,17 @@ def set_kill_child_on_death_win32(child_proc):
                           "AssignProcessToJobObject() failed")
     else:
         assert False, "AssignProcessToJobObject used despite being unavailable"
+
+
+def set_sigterm_handler(sigterm_handler):
+    """Registers a handler for SIGTERM in a platform-compatible manner."""
+    if sys.platform == "win32":
+        # Note that these signal handlers only work for console applications.
+        # TODO(mehrdadn): implement graceful process termination mechanism
+        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
+        signal.signal(signal.SIGBREAK, sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
 
 def try_make_directory_shared(directory_path):

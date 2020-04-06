@@ -37,7 +37,7 @@ class Worker {
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
   Worker(const WorkerID &worker_id, const Language &language, int port,
-         std::shared_ptr<LocalClientConnection> connection,
+         std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -64,7 +64,7 @@ class Worker {
   const ActorID &GetActorId() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
-  const std::shared_ptr<LocalClientConnection> Connection() const;
+  const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
@@ -104,7 +104,7 @@ class Worker {
   /// If port <= 0, this indicates that the worker will not listen to a port.
   int port_;
   /// Connection state of a worker.
-  std::shared_ptr<LocalClientConnection> connection_;
+  std::shared_ptr<ClientConnection> connection_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.

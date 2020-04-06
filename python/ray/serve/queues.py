@@ -2,7 +2,7 @@ import asyncio
 import copy
 from collections import defaultdict
 from typing import DefaultDict, List
-import pickle
+import ray.cloudpickle as pickle
 
 # Note on choosing blist instead of stdlib heapq
 # 1. pop operation should be O(1) (amortized)
@@ -22,12 +22,13 @@ class Query:
                  request_kwargs,
                  request_context,
                  request_slo_ms,
-                 call_method="__call__"):
+                 call_method="__call__",
+                 async_future=None):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
         self.request_context = request_context
 
-        self.async_future = asyncio.get_event_loop().create_future()
+        self.async_future = async_future
 
         # Service level objective in milliseconds. This is expected to be the
         # absolute time since unix epoch.
@@ -41,14 +42,14 @@ class Query:
         # replica worker the async_future is still needed to retrieve the final
         # result. Therefore we need a way to pass the information to replica
         # worker without removing async_future.
-        clone = copy.copy(self)
-        clone.async_future = None
-        # We can't use cloudpickle due to a recursion issue
-        return pickle.dumps(clone)
+        clone = copy.copy(self).__dict__
+        clone.pop("async_future")
+        return pickle.dumps(clone, protocol=5)
 
     @staticmethod
     def ray_deserialize(value):
-        return pickle.loads(value)
+        kwargs = pickle.loads(value)
+        return Query(**kwargs)
 
     # adding comparator fn for maintaining an
     # ascending order sorted list w.r.t request_slo_ms
@@ -169,24 +170,25 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
-    async def enqueue_request(self, request_in_object, *request_args,
+    async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
-        service = request_in_object.service
+        service = request_meta.service
         logger.debug("Received a request for service {}".format(service))
 
         # check if the slo specified is directly the
         # wall clock time
-        if request_in_object.absolute_slo_ms is not None:
-            request_slo_ms = request_in_object.absolute_slo_ms
+        if request_meta.absolute_slo_ms is not None:
+            request_slo_ms = request_meta.absolute_slo_ms
         else:
-            request_slo_ms = request_in_object.adjust_relative_slo_ms()
-        request_context = request_in_object.request_context
+            request_slo_ms = request_meta.adjust_relative_slo_ms()
+        request_context = request_meta.request_context
         query = Query(
             request_args,
             request_kwargs,
             request_context,
             request_slo_ms,
-            call_method=request_in_object.call_method)
+            call_method=request_meta.call_method,
+            async_future=asyncio.get_event_loop().create_future())
         await self.service_queues[service].put(query)
         await self.flush()
 

@@ -6,6 +6,7 @@ import traceback
 import time
 import datetime
 import grpc
+import socket
 import subprocess
 import sys
 from concurrent import futures
@@ -91,7 +92,7 @@ class Reporter:
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = os.uname().nodename
+        self.hostname = socket.gethostname()
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -149,7 +150,11 @@ class Reporter:
         ]
 
     def get_load_avg(self):
-        load = os.getloadavg()
+        if sys.platform == "win32":
+            cpu_percent = psutil.cpu_percent()
+            load = (cpu_percent, cpu_percent, cpu_percent)
+        else:
+            load = os.getloadavg()
         per_cpu_load = tuple((round(x / self.cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 

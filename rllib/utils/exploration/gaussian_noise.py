@@ -79,11 +79,11 @@ class GaussianNoise(Exploration):
                                explore: bool = True):
         # Adds IID Gaussian noise for exploration, TD3-style.
         if self.framework == "torch":
-            return self._get_torch_exploration_action(
-                action_distribution, explore, timestep)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore, timestep)
         else:
-            return self._get_tf_exploration_action_op(
-                action_distribution, explore, timestep)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore, timestep)
 
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         ts = timestep if timestep is not None else self.last_timestep

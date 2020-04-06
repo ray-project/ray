@@ -6,7 +6,6 @@ from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 from ray.rllib.utils.experimental_dsl import (
@@ -58,11 +57,6 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_config": {
         "explore": False,
     },
-
-    # TODO(sven): Make Exploration class for parameter noise.
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    "parameter_noise": False,
 
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
@@ -127,6 +121,7 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": DEPRECATED_VALUE,
     "softmax_temp": DEPRECATED_VALUE,
     "soft_q": DEPRECATED_VALUE,
+    "parameter_noise": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -221,48 +216,26 @@ def validate_config_and_setup_param_noise(config):
             "type": "SoftQ",
             "temperature": config.get("softmax_temp", 1.0)
         }
+    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("parameter_noise", "exploration_config={"
+                            "type=ParameterNoise"
+                            "}")
+
+    if config["exploration_config"]["type"] == "ParameterNoise":
+        if config["batch_mode"] != "complete_episodes":
+            logger.warning(
+                "ParameterNoise Exploration requires `batch_mode` to be "
+                "'complete_episodes'. Setting batch_mode=complete_episodes.")
+            config["batch_mode"] = "complete_episodes"
+        if config.get("noisy", False):
+            raise ValueError(
+                "ParameterNoise Exploration and `noisy` network cannot be "
+                "used at the same time!")
 
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["rollout_fragment_length"],
                               config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
-
-    # Setup parameter noise.
-    if config.get("parameter_noise", False):
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("Exploration with parameter space noise requires "
-                             "batch_mode to be complete_episodes.")
-        if config.get("noisy", False):
-            raise ValueError("Exploration with parameter space noise and "
-                             "noisy network cannot be used at the same time.")
-
-        start_callback = config["callbacks"].get("on_episode_start")
-
-        def on_episode_start(info):
-            # as a callback function to sample and pose parameter space
-            # noise on the parameters of network
-            policies = info["policy"]
-            for pi in policies.values():
-                pi.add_parameter_noise()
-            if start_callback is not None:
-                start_callback(info)
-
-        config["callbacks"]["on_episode_start"] = on_episode_start
-
-        end_callback = config["callbacks"].get("on_episode_end")
-
-        def on_episode_end(info):
-            # as a callback function to monitor the distance
-            # between noisy policy and original policy
-            policies = info["policy"]
-            episode = info["episode"]
-            model = policies[DEFAULT_POLICY_ID].model
-            if hasattr(model, "pi_distance"):
-                episode.custom_metrics["policy_distance"] = model.pi_distance
-            if end_callback is not None:
-                end_callback(info)
-
-        config["callbacks"]["on_episode_end"] = on_episode_end
 
 
 def get_initial_state(config):

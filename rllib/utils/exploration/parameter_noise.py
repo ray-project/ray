@@ -119,10 +119,10 @@ class ParameterNoise(Exploration):
             sub_exploration,
             framework=self.framework,
             action_space=self.action_space,
+            policy_config=self.policy_config,
+            model=self.model,
             **kwargs)
 
-        # Store the default setting for `explore`.
-        self.default_explore = policy_config["explore"]
         # Whether we need to call `self._delayed_on_episode_start` before
         # the forward pass.
         self.episode_started = False
@@ -133,13 +133,14 @@ class ParameterNoise(Exploration):
                                timestep=None,
                                explore=None,
                                tf_sess=None):
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
+
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
-            self._delayed_on_episode_start(tf_sess)
+            self._delayed_on_episode_start(explore, tf_sess)
 
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
         # Add noise if necessary.
         if explore and not self.weights_are_currently_noisy:
             self._add_stored_noise(tf_sess=tf_sess)
@@ -173,9 +174,9 @@ class ParameterNoise(Exploration):
         # We don't want to update into a noisy net.
         self.episode_started = True
 
-    def _delayed_on_episode_start(self, tf_sess):
+    def _delayed_on_episode_start(self, explore, tf_sess):
         # Sample fresh noise and add to weights.
-        if self.default_explore:
+        if explore:
             self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
         # Only sample, don't apply anything to the weights.
         else:
@@ -200,7 +201,7 @@ class ParameterNoise(Exploration):
         # Also see [1] for details.
         # TODO(sven): Find out whether this can be scrapped by simply using
         #  the `sample_batch` to get the noisy/noise-free action dist.
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -208,11 +209,11 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, (Categorical, TorchCategorical)):
-            action_dist = softmax(distribution.inputs)
+        if policy.dist_class in [Categorical, TorchCategorical]:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         # Deterministic (Gaussian actions, e.g. DDPG).
-        elif isinstance(distribution, (Deterministic, TorchDeterministic)):
-            action_dist = distribution.inputs
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
         else:
             raise NotImplementedError  # TODO(sven): Other action-dist cases.
 
@@ -221,24 +222,27 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
             explore=not self.weights_are_currently_noisy)
 
-        if isinstance(distribution, Categorical):
-            action_dist = softmax(distribution.inputs)
-        elif isinstance(distribution, (Deterministic, TorchDeterministic)):
-            action_dist = distribution.inputs
+        # Categorical case (e.g. DQN).
+        if policy.dist_class in [Categorical, TorchCategorical]:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
+            # Deterministic (Gaussian actions, e.g. DDPG).
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
 
-        if not self.weights_are_currently_noisy:
+        if noisy_action_dist is None:
             noisy_action_dist = action_dist
         else:
             noise_free_action_dist = action_dist
 
         delta = distance = None
-        if isinstance(distribution, Categorical):
+        # Categorical case (e.g. DQN).
+        if policy.dist_class in [Categorical, TorchCategorical]:
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).
@@ -252,7 +256,7 @@ class ParameterNoise(Exploration):
                 current_epsilon = tf_sess.run(current_epsilon)
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
-        elif isinstance(distribution, Deterministic):
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
             current_scale = self.sub_exploration.get_info()["cur_scale"]

@@ -1,7 +1,6 @@
 import numpy as np
 from gym.spaces import Box
 from scipy.stats import norm
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
@@ -9,7 +8,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, softmax
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -54,9 +53,7 @@ class TestDistributions(unittest.TestCase):
         input_lengths = [num_categories] * num_sub_distributions
         inputs_split = np.split(inputs, num_sub_distributions, axis=1)
 
-        for fw in ["tf", "eager", "torch"]:
-            print("framework={}".format(fw))
-
+        for fw in framework_iterator():
             # Create the correct distribution object.
             cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
             multi_categorical = cls(inputs, None, input_lengths)
@@ -101,7 +98,8 @@ class TestDistributions(unittest.TestCase):
 
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussia ActionDistribution (tf-eager only)."""
-        with eager_mode():
+        for fw, sess in framework_iterator(
+                frameworks=["tf", "eager"], session=True):
             input_space = Box(-1.0, 1.0, shape=(200, 10))
             low, high = -2.0, 1.0
 
@@ -122,13 +120,17 @@ class TestDistributions(unittest.TestCase):
                 inputs, {}, low=low, high=high)
             expected = ((np.tanh(means) + 1.0) / 2.0) * (high - low) + low
             values = squashed_distribution.sample()
+            if sess:
+                values = sess.run(values)
             self.assertTrue(np.max(values) < high)
             self.assertTrue(np.min(values) > low)
 
             check(np.mean(values), expected.mean(), decimals=1)
 
             # Test log-likelihood outputs.
-            sampled_action_logp = squashed_distribution.sampled_action_logp()
+            sampled_action_logp = squashed_distribution.logp(values)
+            if sess:
+                sampled_action_logp = sess.run(sampled_action_logp)
             # Convert to parameters for distr.
             stds = np.exp(
                 np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
@@ -166,12 +168,15 @@ class TestDistributions(unittest.TestCase):
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
 
-            out = squashed_distribution.logp(values)
-            check(out, log_prob)
+            outs = squashed_distribution.logp(values)
+            if sess:
+                outs = sess.run(outs)
+            check(outs, log_prob)
 
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""
-        with eager_mode():
+        for fw, sess in framework_iterator(
+                frameworks=["tf", "eager"], session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
@@ -191,6 +196,8 @@ class TestDistributions(unittest.TestCase):
             gumbel_softmax = GumbelSoftmax(inputs, {}, temperature=1.0)
             expected_mean = np.mean(np.argmax(inputs, -1)).astype(np.float32)
             outs = gumbel_softmax.sample()
+            if sess:
+                outs = sess.run(outs)
             check(np.mean(np.argmax(outs, -1)), expected_mean, rtol=0.08)
 
 

@@ -115,7 +115,7 @@ class EpsilonGreedy(Exploration):
         """Torch method to produce an epsilon exploration action.
 
         Args:
-            q_values (Tensor): The Q-values coming from some q-model.
+            q_values (Tensor): The Q-values coming from some Q-model.
 
         Returns:
             torch.Tensor: The exploration-action.

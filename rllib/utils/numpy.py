@@ -1,7 +1,8 @@
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
+tf = try_import_tf()
 torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
@@ -45,7 +46,10 @@ def softmax(x, axis=-1):
     Returns:
         np.ndarray: The softmax over x.
     """
+    # x_exp = np.maximum(np.exp(x), SMALL_NUMBER)
     x_exp = np.exp(x)
+    # return x_exp /
+    #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
     return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
 
 
@@ -123,9 +127,19 @@ def fc(x, weights, biases=None):
     Returns:
         The dense layer's output.
     """
+
     # Torch stores matrices in transpose (faster for backprop).
-    if torch and isinstance(weights, torch.Tensor):
-        weights = np.transpose(weights.numpy())
+    if torch:  # and isinstance(weights, torch.Tensor):
+        x = x.detach().numpy() if isinstance(x, torch.Tensor) else x
+        weights = np.transpose(weights.detach().numpy()) if \
+            isinstance(weights, torch.Tensor) else weights
+        biases = biases.detach().numpy() if \
+            isinstance(biases, torch.Tensor) else biases
+    if tf and tf.executing_eagerly():
+        x = x.numpy() if isinstance(x, tf.Variable) else x
+        weights = weights.numpy() if isinstance(weights, tf.Variable) else \
+            weights
+        biases = biases.numpy() if isinstance(biases, tf.Variable) else biases
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 

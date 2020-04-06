@@ -128,8 +128,6 @@ class FunctionActorManager:
         Args:
             remote_function: the RemoteFunction object.
         """
-        if self._worker.mode == ray.worker.LOCAL_MODE:
-            return
         if self._worker.load_code_from_local:
             return
 
@@ -348,8 +346,9 @@ class FunctionActorManager:
         #    finish before the task finished, and still uses Ray API
         #    after that.
         assert not self._worker.current_job_id.is_nil(), (
-            "You might have started a background thread in a non-actor task, "
-            "please make sure the thread finishes before the task finishes.")
+            "You might have started a background thread in a non-actor "
+            "task, please make sure the thread finishes before the "
+            "task finishes.")
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())

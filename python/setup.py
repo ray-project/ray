@@ -42,6 +42,8 @@ optional_ray_files = []
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/azure/azure-vm-template.json",
+    "ray/autoscaler/azure/azure-config-template.json",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
@@ -74,7 +76,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "debug": [],
-    "dashboard": [],
+    "dashboard": ["requests"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
@@ -191,7 +193,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.29"],
+    setup_requires=["cython >= 0.29.14", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

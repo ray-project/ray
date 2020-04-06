@@ -128,9 +128,6 @@ def optimizer_creator(models, config):
 
 class GANOperator(TrainingOperator):
     def setup(self, config):
-        self.device = torch.device("cuda"
-                                   if torch.cuda.is_available() else "cpu")
-
         self.classifier = LeNet()
         self.classifier.load_state_dict(
             torch.load(config["classification_model_path"]))
@@ -183,6 +180,7 @@ class GANOperator(TrainingOperator):
 
         # Compute a discriminator update for real images
         discriminator.zero_grad()
+        # self.device is set automatically
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
         label = torch.full((batch_size, ), real_label, device=self.device)
@@ -242,16 +240,13 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        backend="nccl" if use_gpu else "gloo",
         use_tqdm=True)
 
     from tabulate import tabulate
     pbar = trange(5, unit="epoch")
     for itr in pbar:
         stats = trainer.train(info=dict(epoch_idx=itr, num_epochs=5))
-        pbar.set_postfix(
-            dict(loss_g=stats["mean_loss_g"], loss_d=stats["mean_loss_d"]))
-
+        pbar.set_postfix(dict(loss_g=stats["loss_g"], loss_d=stats["loss_d"]))
         formatted = tabulate([stats], headers="keys")
         if itr > 0:  # Get the last line of the stats.
             formatted = formatted.split("\n")[-1]

@@ -13,6 +13,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
 
 tf = try_import_tf()
@@ -37,43 +38,13 @@ class DDPGPostprocessing:
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-#        if self.config["parameter_noise"]:
-#            # adjust the sigma of parameter space noise
-#            states, noisy_actions = [
-#                list(x) for x in sample_batch.columns(
-#                    [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
-#            ]
-#            self.sess.run(self.remove_parameter_noise_op)
-
-#            # TODO(sven): This won't work if exploration != Noise, which is
-#            #  probably fine as parameter_noise will soon be its own
-#            #  Exploration class.
-#            clean_actions, cur_noise_scale = self.sess.run(
-#                [self.output_actions,
-#                 self.exploration.get_info()],
-#                feed_dict={
-#                    self.cur_observations: states,
-#                    self._is_exploring: False,
-#                })
-#            distance_in_action_space = np.sqrt(
-#                np.mean(np.square(clean_actions - noisy_actions)))
-#            self.pi_distance = distance_in_action_space
-#            if distance_in_action_space < \
-#                    self.config["exploration_config"].get("ou_sigma", 0.2) * \
-#                    cur_noise_scale:
-#                # multiplying the sampled OU noise by noise scale is
-#                # equivalent to multiplying the sigma of OU by noise scale
-#                self.parameter_noise_sigma_val *= 1.01
-#            else:
-#                self.parameter_noise_sigma_val /= 1.01
-#            self.parameter_noise_sigma.load(
-#                self.parameter_noise_sigma_val, session=self.sess)
-
         return postprocess_nstep_and_prio(self, sample_batch)
 
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
+        self.observation_space = observation_space
+        self.action_space = action_space
         config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
@@ -106,26 +77,24 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             name="cur_obs")
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            policy_out, self.policy_model = self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
+            self._distribution_inputs, self.policy_model = \
+                self._build_policy_network(
+                    self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
-
-        ## Noise vars for P network except for layer normalization vars
-        #if self.config["parameter_noise"]:
-        #    self._build_parameter_noise([
-        #        var for var in self.policy_vars if "LayerNorm" not in var.name
-        #    ])
+        self.model = self.policy_model
 
         # Create exploration component.
-        self.exploration = self._create_exploration(action_space, config)
+        self.exploration = self._create_exploration()
         explore = tf.placeholder_with_default(True, (), name="is_exploring")
-        # Action outputs
+        # Action outputs.
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model, timestep,
-                explore)
+                action_distribution=Deterministic(self._distribution_inputs,
+                                                  self.model),
+                timestep=timestep,
+                explore=explore)
 
-        # Replay inputs
+        # Replay inputs.
         self.obs_t = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -289,6 +258,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops,
             explore=explore,
+            dist_inputs=self._distribution_inputs,
+            dist_class=Deterministic,
             timestep=timestep)
         self.sess.run(tf.global_variables_initializer())
 
@@ -406,16 +377,10 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
-            #if self.config["parameter_noise"]:
-            #    import tensorflow.contrib.layers as layers
-            #    action_out = layers.fully_connected(
-            #        action_out,
-            #        num_outputs=hidden,
-            #        activation_fn=activation,
-            #        normalizer_fn=layers.layer_norm)
-            #else:
             action_out = tf.layers.dense(
                 action_out, units=hidden, activation=activation)
+            if isinstance(self.exploration, ParameterNoise):
+                action_out = tf.keras.layers.LayerNormalization()(action_out)
         action_out = tf.layers.dense(
             action_out, units=action_space.shape[0], activation=None)
 
@@ -477,44 +442,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         actor_loss = -tf.reduce_mean(q_t_det_policy)
         return critic_loss, actor_loss, td_error
 
-    #def _build_parameter_noise(self, pnet_params):
-    #    self.parameter_noise_sigma_val = \
-    #        self.config["exploration_config"].get("ou_sigma", 0.2)
-    #    self.parameter_noise_sigma = tf.get_variable(
-    #        initializer=tf.constant_initializer(
-    #            self.parameter_noise_sigma_val),
-    #        name="parameter_noise_sigma",
-    #        shape=(),
-    #        trainable=False,
-    #        dtype=tf.float32)
-    #    self.parameter_noise = list()
-    #    # No need to add any noise on LayerNorm parameters
-    #    for var in pnet_params:
-    #        noise_var = tf.get_variable(
-    #            name=var.name.split(":")[0] + "_noise",
-    #            shape=var.shape,
-    #            initializer=tf.constant_initializer(.0),
-    #            trainable=False)
-    #        self.parameter_noise.append(noise_var)
-    #    remove_noise_ops = list()
-    #    for var, var_noise in zip(pnet_params, self.parameter_noise):
-    #        remove_noise_ops.append(tf.assign_add(var, -var_noise))
-    #    self.remove_parameter_noise_op = tf.group(*tuple(remove_noise_ops))
-    #    generate_noise_ops = list()
-    #    for var_noise in self.parameter_noise:
-    #        generate_noise_ops.append(
-    #            tf.assign(
-    #                var_noise,
-    #                tf.random_normal(
-    #                    shape=var_noise.shape,
-    #                    stddev=self.parameter_noise_sigma)))
-    #    with tf.control_dependencies(generate_noise_ops):
-    #        add_noise_ops = list()
-    #        for var, var_noise in zip(pnet_params, self.parameter_noise):
-    #            add_noise_ops.append(tf.assign_add(var, var_noise))
-    #        self.add_noise_op = tf.group(*tuple(add_noise_ops))
-    #    self.pi_distance = None
-
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
         td_err = self.sess.run(
@@ -528,10 +455,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
                 self.importance_weights: importance_weights
             })
         return td_err
-
-    #def add_parameter_noise(self):
-    #    if self.config["parameter_noise"]:
-    #        self.sess.run(self.add_noise_op)
 
     # support both hard and soft sync
     def update_target(self, tau=None):
