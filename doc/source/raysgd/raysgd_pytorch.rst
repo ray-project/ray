@@ -454,6 +454,9 @@ Advanced: Hyperparameter Tuning
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
    :language: python
    :start-after: __torch_tune_example__
+   :end-before: __end_torch_tune_example__
+
+You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
 
 
 Simultaneous Multi-model Training
@@ -584,8 +587,14 @@ to contribute an example, feel free to create a `pull request here <https://gith
 - `Torch training example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/train_example.py>`__:
    Simple example of using Ray's TorchTrainer.
 
+- `TorchTrainer and RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`__:
+   Simple example of hyperparameter tuning with Ray's TorchTrainer.
+
 - `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__:
    Training a ResNet18 model on CIFAR10.
+
+- `CIFAR10 RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_pbt.py>`__:
+   Tuning a ResNet18 model on CIFAR10 with Population-based training on RayTune.
 
 - `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__:
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.
