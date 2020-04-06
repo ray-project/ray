@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.a3c import A3CTrainer
-from ray.rllib.agents.dqn.dqn_policy import _adjust_nstep
+from ray.rllib.agents.dqn.dqn_tf_policy import _adjust_nstep
 from ray.tune.registry import register_env
 
 

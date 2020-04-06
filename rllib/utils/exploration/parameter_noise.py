@@ -65,18 +65,21 @@ class ParameterNoise(Exploration):
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
         self.model_variables = [
-            v for v in self.model.variables() if "LayerNorm" not in v.name
+            v for k, v in self.model.variables(as_dict=True).items()
+            if "LayerNorm" not in k
         ]
         # Our noise to be added to the weights. Each item in `self.noise`
         # corresponds to one Model variable and holding the Gaussian noise to
         # be added to that variable (weight).
         self.noise = []
         for var in self.model_variables:
+            name_ = var.name.split(":")[0] + "_noisy" if var.name else ""
             self.noise.append(
                 get_variable(
                     np.zeros(var.shape, dtype=np.float32),
                     framework=self.framework,
-                    tf_name=var.name.split(":")[0] + "_noisy"))
+                    tf_name=name_,
+                    torch_tensor=True))
 
         # tf-specific ops to sample, assign and remove noise.
         if self.framework == "tf" and not tf.executing_eagerly():
@@ -214,7 +217,7 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if policy.dist_class in [Categorical, TorchCategorical]:
+        if policy.dist_class in (Categorical, TorchCategorical):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         # Deterministic (Gaussian actions, e.g. DDPG).
         elif policy.dist_class in [Deterministic, TorchDeterministic]:
@@ -234,7 +237,7 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if policy.dist_class in [Categorical, TorchCategorical]:
+        if policy.dist_class in (Categorical, TorchCategorical):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
             # Deterministic (Gaussian actions, e.g. DDPG).
         elif policy.dist_class in [Deterministic, TorchDeterministic]:
@@ -247,7 +250,7 @@ class ParameterNoise(Exploration):
 
         delta = distance = None
         # Categorical case (e.g. DQN).
-        if policy.dist_class in [Categorical, TorchCategorical]:
+        if policy.dist_class in (Categorical, TorchCategorical):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).
@@ -295,7 +298,7 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    0.0, self.stddev, size=self.noise[i].size)
+                    0.0, self.stddev, size=self.noise[i].size())
 
     def _tf_sample_new_noise_op(self):
         added_noises = []
@@ -345,7 +348,7 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 # Add noise to weights in-place.
-                torch.add_(self.model_variables[i], self.noise[i])
+                self.model_variables[i].add_(self.noise[i])
 
         self.weights_are_currently_noisy = True
 
@@ -384,7 +387,7 @@ class ParameterNoise(Exploration):
             # Removes the stored noise from the model's parameters.
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
-                torch.add_(var, -noise)
+                var.add_(-noise)
 
         self.weights_are_currently_noisy = False
 

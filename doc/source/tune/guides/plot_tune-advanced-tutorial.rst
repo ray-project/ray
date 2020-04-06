@@ -1,80 +1,24 @@
-Tune Advanced Tutorials
-=======================
+Guide to Population Based Training (PBT)
+========================================
 
-In this page, we will explore some advanced functionality in Tune with more examples.
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
+a :ref:`scheduler <tune-scheduler-pbt>`.
 
-On this page:
+.. image:: /images/tune_advanced_paper1.png
+
+
+PBT starts by training many neural networks in parallel with random hyperparameters, using information from the rest of the population to refine these
+hyperparameters and allocate resources to promising models. Let's walk through how to use this algorithm.
 
 .. contents::
     :local:
     :backlinks: none
 
-A native example of Trainable
------------------------------
-As mentioned in `Tune User Guide <tune-usage.html#Tune Training API>`_, Training can be done
-with either the `Trainable <tune-usage.html#trainable-api>`__ **Class API** or
-**function-based API**. Comparably, ``Trainable`` is stateful, supports checkpoint/restore functionality,
-and is preferable for advanced algorithms.
 
-A naive example for ``Trainable`` is a simple number guesser:
+Trainable API with Population Based Training
+--------------------------------------------
 
-.. code-block:: python
-
-    import ray
-    from ray import tune
-    from ray.tune import Trainable
-
-    class Guesser(Trainable):
-        def _setup(self, config):
-            self.config = config
-            self.password = 1024
-
-        def _train(self):
-            result_dict = {"diff": abs(self.config['guess'] - self.password)}
-            return result_dict
-
-    ray.init()
-    analysis = tune.run(
-        Guesser,
-        stop={
-            "training_iteration": 1,
-        },
-        num_samples=10,
-        config={
-            "guess": tune.randint(1, 10000)
-        })
-
-    print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
-
-The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
-As a subclass of ``ray.tune.Trainable``, Tune will convert ``Guesser`` into a Ray actor, which
-runs on a separate process on a worker. ``_setup`` function is invoked once for each Actor for custom
-initialization.
-
-``_train`` execute one logical iteration of training in the tuning process,
-which may include several iterations of actual training (see the next example). As a rule of
-thumb, the execution time of one train call should be large enough to avoid overheads
-(i.e. more than a few seconds), but short enough to report progress periodically
-(i.e. at most a few minutes).
-
-We only implemented ``_setup`` and ``_train`` methods for simplification, usually it's also required
-to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
-
-Next, we train a Pytorch convolution model with Trainable and PBT.
-
-Trainable with Population Based Training (PBT)
-----------------------------------------------
-
-Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
-a scheduler `PopulationBasedTraining <tune-schedulers.html#Population Based Training (PBT)>`__ .
-
-PBT starts by training many neural networks in parallel with random hyperparameters. But instead of the
-networks training independently, it uses information from the rest of the population to refine the
-hyperparameters and direct computational resources to models which show promise.
-
-.. image:: images/tune_advanced_paper1.png
-
-This takes its inspiration from genetic algorithms where each member of the population
+PBT takes its inspiration from genetic algorithms where each member of the population
 can exploit information from the remainder of the population. For example, a worker might
 copy the model parameters from a better performing worker. It can also explore new hyperparameters by
 changing the current values randomly.
@@ -87,9 +31,9 @@ This means that PBT can quickly exploit good hyperparameters, can dedicate more 
 promising models and, crucially, can adapt the hyperparameter values throughout training,
 leading to automatic learning of the best configurations.
 
-First we define a Trainable that wraps a ConvNet model.
+First, we define a Trainable that wraps a ConvNet model.
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __trainable_begin__
    :end-before: __trainable_end__
@@ -103,7 +47,7 @@ with ``reuse_actors=True``.
 
 Then, we define a PBT scheduler:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -123,7 +67,7 @@ Some of the most important parameters are:
 
 Now we can kick off the tuning process by invoking tune.run:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
@@ -168,7 +112,7 @@ Checking the accuracy:
 
     print('best config:', analysis.get_best_config("mean_accuracy"))
 
-.. image:: images/tune_advanced_plot1.png
+.. image:: /images/tune_advanced_plot1.png
 
 DCGAN with Trainable and PBT
 ----------------------------
@@ -184,7 +128,7 @@ Complete code example at `github <https://github.com/ray-project/ray/tree/master
 
 We define the Generator and Discriminator with standard Pytorch API:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
    :language: python
    :start-after: __GANmodel_begin__
    :end-before: __GANmodel_end__
@@ -194,7 +138,7 @@ the model candidates. For a GAN network, inception score is arguably the most
 commonly used metric. We trained a mnist classification model (LeNet) and use
 it to inference the generated images and evaluate the image quality.
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
    :language: python
    :start-after: __INCEPTION_SCORE_begin__
    :end-before: __INCEPTION_SCORE_end__
@@ -202,14 +146,14 @@ it to inference the generated images and evaluate the image quality.
 The ``Trainable`` class includes a Generator and a Discriminator, each with an
 independent learning rate and optimizer.
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
    :language: python
    :start-after: __Trainable_begin__
    :end-before: __Trainable_end__
 
 We specify inception score as the metric and start the tuning:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
@@ -217,9 +161,10 @@ We specify inception score as the metric and start the tuning:
 The trained Generator models can be loaded from log directory, and generate images
 from noise signals.
 
-.. image:: images/tune_advanced_dcgan_generated.gif
+Visualization
+~~~~~~~~~~~~~
 
-Visualize the increasing inception score from the training logs.
+Below, we visualize the increasing inception score from the training logs.
 
 .. code-block:: python
 
@@ -235,7 +180,7 @@ Visualize the increasing inception score from the training logs.
     plt.legend()
     plt.show()
 
-.. image:: images/tune_advanced_dcgan_inscore.png
+.. image:: /images/tune_advanced_dcgan_inscore.png
 
 And the Generator loss:
 
@@ -253,7 +198,7 @@ And the Generator loss:
     plt.legend()
     plt.show()
 
-.. image:: images/tune_advanced_dcgan_Gloss.png
+.. image:: /images/tune_advanced_dcgan_Gloss.png
 
-Training of the MNist Generator takes about several minutes. The example can be easily
-altered to generate images for other dataset, e.g. cifar10 or LSUN.
+Training of the MNist Generator takes a couple of minutes. The example can be easily
+altered to generate images for other datasets, e.g. cifar10 or LSUN.
