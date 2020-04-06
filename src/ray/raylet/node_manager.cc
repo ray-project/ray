@@ -1216,7 +1216,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                     << "been disconnected.";
-      return;              
+      return;
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
