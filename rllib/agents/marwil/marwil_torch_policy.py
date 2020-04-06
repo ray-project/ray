@@ -11,7 +11,6 @@ torch, _ = try_import_torch()
 
 class ValueNetworkMixin:
     def __init__(self):
-
         def value(ob, prev_action, prev_reward, *state):
             model_out, _ = self.model({
                 SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
@@ -41,16 +40,18 @@ def marwil_loss(policy, model, dist_class, train_batch):
     # Advantage estimation.
     adv = advantages - state_values
     # Update averaged advantage norm.
-    policy.ma_adv_norm.add_(1e-6 * (torch.mean(torch.pow(adv, 2.0)) - policy.ma_adv_norm))
+    policy.ma_adv_norm.add_(
+        1e-6 * (torch.mean(torch.pow(adv, 2.0)) - policy.ma_adv_norm))
     # #xponentially weighted advantages.
-    exp_advs = torch.exp(
-        policy.config["beta"] * (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5))))
+    exp_advs = torch.exp(policy.config["beta"] *
+                         (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5))))
     # log\pi_\theta(a|s)
     logprobs = action_dist.logp(actions)
     policy.p_loss = -1.0 * torch.mean(exp_advs.detach() * logprobs)
 
     # Combine both losses.
-    policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * policy.v_loss
+    policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
+        policy.v_loss
     explained_var = explained_variance(
         advantages, state_values, framework="torch")
     policy.explained_variance = torch.mean(explained_var)
@@ -70,9 +71,7 @@ def stats(policy, train_batch):
 def setup_mixins(policy, obs_space, action_space, config):
     # Create a var.
     policy.ma_adv_norm = torch.tensor(
-        [100.0],
-        dtype=torch.float32,
-        requires_grad=False)
+        [100.0], dtype=torch.float32, requires_grad=False)
     # Setup Value branch of our NN.
     ValueNetworkMixin.__init__(policy)
 
