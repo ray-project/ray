@@ -1,5 +1,5 @@
-Package Reference
-=================
+RaySGD API Documentation
+========================
 
 .. _ref-torch-trainer:
 
@@ -19,12 +19,14 @@ PyTorch TrainingOperator
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
     :members:
 
+.. _BaseTorchTrainable-doc:
 
-TorchTrainable
---------------
+BaseTorchTrainable
+------------------
 
-.. autoclass:: ray.util.sgd.torch.TorchTrainable
+.. autoclass:: ray.util.sgd.torch.BaseTorchTrainable
     :members:
+    :private-members:
 
 TFTrainer
 ---------

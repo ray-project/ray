@@ -53,6 +53,16 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
 
+/// This callback is used to receive a large amount of results.
+/// \param status Status indicates whether the scan was successful.
+/// \param has_more Whether more data will be called back.
+/// If `has_more == true`, there are more data to be received. This callback will
+/// be called again.
+/// \param result The items returned by storage.
+template <typename Data>
+using SegmentedCallback =
+    std::function<void(Status status, bool has_more, const std::vector<Data> &result)>;
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -70,7 +70,19 @@ class CallbackReply {
   /// Read this reply data as a string array.
   const std::vector<std::string> &ReadAsStringArray() const;
 
+  /// Read this reply data as a scan array.
+  ///
+  /// \param array The result array of scan.
+  /// \return size_t The next cursor for scan.
+  size_t ReadAsScanArray(std::vector<std::string> *array) const;
+
  private:
+  /// Parse redis reply as string array or scan array.
+  void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
+
+  /// Parse redis reply as string array.
+  void ParseAsStringArray(redisReply *redis_reply);
+
   /// Flag indicating the type of reply this represents.
   int reply_type_;
 
@@ -84,8 +96,11 @@ class CallbackReply {
   std::string string_reply_;
 
   /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
-  /// Note this is used when get actor table data.
+  /// Represent the reply of StringArray or ScanArray.
   std::vector<std::string> string_array_reply_;
+
+  /// Represent the reply of SCanArray, means the next scan cursor for scan request.
+  size_t next_scan_cursor_reply_{0};
 };
 
 /// Every callback should take in a vector of the results from the Redis
@@ -204,8 +219,10 @@ class RedisContext {
   /// Run an arbitrary Redis command without a callback.
   ///
   /// \param args The vector of command args to pass to Redis.
+  /// \param redis_callback The Redis callback function.
   /// \return Status.
-  Status RunArgvAsync(const std::vector<std::string> &args);
+  Status RunArgvAsync(const std::vector<std::string> &args,
+                      const RedisCallback &redis_callback = nullptr);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
@@ -231,6 +248,8 @@ class RedisContext {
     RAY_CHECK(async_redis_subscribe_context_);
     return *async_redis_subscribe_context_;
   }
+
+  boost::asio::io_service &io_service() { return io_service_; }
 
  private:
   boost::asio::io_service &io_service_;

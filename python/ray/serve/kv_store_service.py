@@ -225,13 +225,13 @@ class RoutingTable:
 
         This method is used for two purpose:
 
-        1. Make sure HTTP server has started and healthy. Incremented request
-           count means HTTP server is actively fetching routing table.
+        1. Make sure HTTP proxy has started and healthy. Incremented request
+           count means HTTP proxy is actively fetching routing table.
 
-        2. Make sure HTTP server does not have stale routing table. This number
+        2. Make sure HTTP proxy does not have stale routing table. This number
            should be incremented every HTTP_ROUTER_CHECKER_INTERVAL_S seconds.
            Supervisor should check this number as indirect indicator of http
-           server's health.
+           proxy's health.
         """
         return self.request_count
 

@@ -49,9 +49,6 @@ def rollout_test(algo, env="CartPole-v0"):
 
 
 class TestRollout(unittest.TestCase):
-    def test_a2c(self):
-        rollout_test("A2C")
-
     def test_a3c(self):
         rollout_test("A3C")
 
@@ -78,9 +75,6 @@ class TestRollout(unittest.TestCase):
 
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
-
-    def test_td3(self):
-        rollout_test("TD3", env="Pendulum-v0")
 
 
 if __name__ == "__main__":

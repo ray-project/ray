@@ -62,7 +62,11 @@ const slice = createSlice({
         tuneAvailability: TuneAvailabilityResponse;
       }>,
     ) => {
-      state.tuneAvailability = action.payload.tuneAvailability["available"];
+      const tuneAvailability =
+        action.payload.tuneAvailability === null
+          ? false
+          : action.payload.tuneAvailability["available"];
+      state.tuneAvailability = tuneAvailability;
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {

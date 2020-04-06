@@ -98,9 +98,13 @@ matrix:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
+        # readthedocs has an antiquated build env.
+        # This is a best effort to reproduce it locally to avoid doc build failures
+        # and hidden errors.
+        - pip install -r requirements-rtd.txt
         - pip install -r requirements-doc.txt
         - pip install yapf==0.23.0
-        - sphinx-build -q -W -b html -d _build/doctrees source _build/html
+        - sphinx-build -q -W -E -T -b html source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
@@ -144,13 +148,13 @@ matrix:
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the `$MOUNT_BAZEL_CACHE` part.
 
-        - ./ci/suppress_output docker run -e TRAVIS_COMMIT=$TRAVIS_COMMIT --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:ARROW-5631 /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -e TRAVIS_COMMIT=$TRAVIS_COMMIT -ti rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
 
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
 
         # Explicitly sleep 60 seconds for logs to go through
-        - ./ci/travis/test-wheels.sh || cat /tmp/ray/session_latest/logs/* || (sleep 60 && false)
+        - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
       cache: false
 
     # Build MacOS wheels.
@@ -168,7 +172,7 @@ matrix:
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
         # Explicitly sleep 60 seconds for logs to go through
-        - ./ci/travis/test-wheels.sh || cat /tmp/ray/session_latest/logs/* || (sleep 60 && false)
+        - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
 
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
@@ -188,7 +192,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed rllib/...
+        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
@@ -209,7 +213,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed rllib/...
+        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
