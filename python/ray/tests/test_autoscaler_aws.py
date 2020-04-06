@@ -433,7 +433,7 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     config = ray.autoscaler.aws.config.bootstrap_aws(config)
 
     # expect config to show different head and worker security groups residing
-    # on the same subnet
+    # on different subnets
     assert config["head_node"]["SecurityGroupIds"] == [DEFAULT_SG["GroupId"]]
     assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
     assert config["worker_nodes"]["SecurityGroupIds"] == [AUX_SG["GroupId"]]

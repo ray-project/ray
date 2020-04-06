@@ -35,8 +35,8 @@ provider:
           # as value lists for each distinct target type. Valid target types
           # include "cidr_ips", "cidr_ipv6s", "prefix_list_ids", and
           # "security_group_ids". Any sources present in this list but not in
-          # your worker node security group rules will be authorized. Any
-          # sources not in this list but present in your worker node security
+          # your head node security group rules will be authorized. Any
+          # sources not in this list but present in your head node security
           # group rules will be revoked.
           targets:
               cidr_ips:

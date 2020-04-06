@@ -518,11 +518,12 @@ def _get_required_channel_rules(sg, channel_rules, sgids):
             "security_group_ids": set(sgids)
         }
     }
-    ssh_rules_exist = _target_exists(channel_rules.get(SSH_CHANNEL, {})) or \
-        any(_ for _ in sg.ip_permissions if _match_ipp_channel(SSH_CHANNEL, _))
-    if not ssh_rules_exist:
-        default_ssh_targets = {"cidr_ips": ["0.0.0.0/0"]}
-        required_channel_rules[SSH_CHANNEL] = default_ssh_targets
+    for channel in DEFAULT_INBOUND_CHANNELS:
+        rules_exist = _target_exists(channel_rules.get(channel, {})) or \
+            any(_ for _ in sg.ip_permissions if _match_ipp_channel(channel, _))
+        if not rules_exist:
+            default_targets = {"cidr_ips": ["0.0.0.0/0"]}
+            required_channel_rules[channel] = default_targets
     return required_channel_rules
 
 
