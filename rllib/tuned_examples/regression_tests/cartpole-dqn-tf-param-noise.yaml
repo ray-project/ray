@@ -1,0 +1,18 @@
+cartpole-dqn-tf-w-param-noise:
+    env: CartPole-v0
+    run: DQN
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 300000
+    config:
+        use_pytorch: false
+        exploration_config:
+            type: ParameterNoise
+            random_timesteps: 10000
+            initial_stddev: 1.0
+        batch_mode: complete_episodes
+        lr: 0.0008
+        num_workers: 0
+        model:
+            fcnet_hiddens: [32, 32]
+            fcnet_activation: tanh
