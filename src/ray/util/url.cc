@@ -16,64 +16,125 @@
 
 #include <stdlib.h>
 
+#ifdef _WIN32
+#include <afunix.h>
+#else
+#include <sys/un.h>
+#endif
+
 #include <algorithm>
-#include <boost/asio/ip/address.hpp>
-#include <boost/asio/ip/tcp.hpp>
+#include <sstream>
 #include <string>
 
-#include "ray/util/logging.h"
+#include <boost/asio/generic/stream_protocol.hpp>
+#ifndef _WIN32
+#include <boost/asio/local/stream_protocol.hpp>
+#endif
+#include <boost/asio/ip/tcp.hpp>
 
-boost::asio::ip::tcp::endpoint parse_ip_tcp_endpoint(const std::string &endpoint,
-                                                     int default_port) {
-  const std::string scheme_sep = "://";
-  size_t scheme_begin = 0, scheme_end = endpoint.find(scheme_sep, scheme_begin);
-  size_t host_begin;
-  if (scheme_end < endpoint.size()) {
-    host_begin = scheme_end + scheme_sep.size();
-  } else {
-    scheme_end = scheme_begin;
-    host_begin = scheme_end;
+#include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
+#include "ray/util/util.h"
+
+namespace ray {
+
+/// Uses sscanf() to read a token matching from the string, advancing the iterator.
+/// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
+/// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
+/// \return The scanned prefix of the string, if any.
+static std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+  int i = 0;
+  std::string result;
+  format += "%n";
+  if (static_cast<size_t>(sscanf(&*c_str, format.c_str(), &i)) <= 1) {
+    result.insert(result.end(), c_str, c_str + i);
+    c_str += i;
   }
-  std::string scheme = endpoint.substr(scheme_begin, scheme_end - scheme_begin);
-  RAY_CHECK(scheme_end == host_begin || scheme == "tcp");
-  size_t port_end = endpoint.find('/', host_begin);
-  if (port_end >= endpoint.size()) {
-    port_end = endpoint.size();
-  }
-  size_t host_end, port_begin;
-  if (endpoint.find('[', host_begin) == host_begin) {
-    // IPv6 with brackets (optional ports)
-    ++host_begin;
-    host_end = endpoint.find(']', host_begin);
-    if (host_end < port_end) {
-      port_begin = endpoint.find(':', host_end + 1);
-      if (port_begin < port_end) {
-        ++port_begin;
-      } else {
-        port_begin = port_end;
-      }
-    } else {
-      host_end = port_end;
-      port_begin = host_end;
-    }
-  } else if (std::count(endpoint.begin() + static_cast<ptrdiff_t>(host_begin),
-                        endpoint.begin() + static_cast<ptrdiff_t>(port_end), ':') > 1) {
-    // IPv6 without brackets (no ports)
-    port_begin = port_end;
-    host_end = port_begin;
-  } else {
-    // IPv4
-    host_end = endpoint.find(':', host_begin);
-    if (host_end < port_end) {
-      port_begin = host_end + 1;
-    } else {
-      host_end = port_end;
-      port_begin = host_end;
-    }
-  }
-  std::string host = endpoint.substr(host_begin, host_end - host_begin);
-  std::string port_str = endpoint.substr(port_begin, port_end - port_begin);
-  boost::asio::ip::address address = boost::asio::ip::make_address(host);
-  int port = port_str.empty() ? default_port : atoi(port_str.c_str());
-  return boost::asio::ip::tcp::endpoint(address, port);
+  return result;
 }
+
+std::string endpoint_to_url(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme) {
+  std::string result, scheme;
+  switch (ep.protocol().family()) {
+  case AF_INET: {
+    scheme = "tcp://";
+    boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
+    RAY_CHECK(e.size() == ep.size());
+    const sockaddr *src = ep.data();
+    sockaddr *dst = e.data();
+    *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
+    std::ostringstream ss;
+    ss << e;
+    result = ss.str();
+    break;
+  }
+  case AF_INET6: {
+    scheme = "tcp://";
+    boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
+    RAY_CHECK(e.size() == ep.size());
+    const sockaddr *src = ep.data();
+    sockaddr *dst = e.data();
+    *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);
+    std::ostringstream ss;
+    ss << e;
+    result = ss.str();
+    break;
+  }
+  case AF_UNIX:
+    scheme = "unix://";
+#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+    result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
+                  ep.size() - offsetof(sockaddr_un, sun_path));
+#else
+    RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported";
+#endif
+    break;
+  default:
+    RAY_LOG(FATAL) << "unsupported protocol family: " << ep.protocol().family();
+    break;
+  }
+  if (include_scheme) {
+    result.insert(0, scheme);
+  }
+  return result;
+}
+
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+parse_url_endpoint(const std::string &endpoint, int default_port) {
+  // Syntax reference: https://en.wikipedia.org/wiki/URL#Syntax
+  // Note that we're a bit more flexible, to allow parsing "127.0.0.1" as a URL.
+  boost::asio::generic::stream_protocol::endpoint result;
+  std::string address = endpoint, scheme;
+  if (address.find("unix://") == 0) {
+    scheme = "unix://";
+    address.erase(0, scheme.size());
+  } else if (address.size() > 0 && ray::IsDirSep(address[0])) {
+    scheme = "unix://";
+  } else if (address.find("tcp://") == 0) {
+    scheme = "tcp://";
+    address.erase(0, scheme.size());
+  } else {
+    scheme = "tcp://";
+  }
+  if (scheme == "unix://") {
+#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+    result = boost::asio::local::stream_protocol::endpoint(address);
+#else
+    RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported: " << endpoint;
+#endif
+  } else if (scheme == "tcp://") {
+    std::string::const_iterator i = address.begin();
+    std::string host = ScanToken(i, "[%*[^][/]]");
+    host = host.empty() ? ScanToken(i, "%*[^/:]") : host.substr(1, host.size() - 2);
+    std::string port_str = ScanToken(i, ":%*d");
+    int port = port_str.empty() ? default_port : std::stoi(port_str.substr(1));
+    result = boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(host), port);
+  } else {
+    RAY_LOG(FATAL) << "Unable to parse socket endpoint: " << endpoint;
+  }
+  return result;
+}
+
+}  // namespace ray

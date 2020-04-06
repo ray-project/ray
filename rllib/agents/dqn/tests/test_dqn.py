@@ -97,36 +97,16 @@ class TestDQN(unittest.TestCase):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
 
-            if eager_mode_ctx:
-                eager_mode_ctx.__exit__(None, None, None)
-
     def test_dqn_parameter_noise_exploration(self):
         """Tests, whether a DQN Agent works with ParameterNoise."""
         obs = np.array(0)
+        core_config = dqn.DEFAULT_CONFIG.copy()
+        core_config["num_workers"] = 0  # Run locally.
+        core_config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
 
-        for fw in ["eager", "tf", "torch"]:
-            if fw == "torch":
-                continue
-            print("framework={}".format(fw))
-
-            core_config = dqn.DEFAULT_CONFIG.copy()
-            core_config["num_workers"] = 0  # Run locally.
-            core_config["env_config"] = {
-                "is_slippery": False,
-                "map_name": "4x4"
-            }
-            core_config["eager"] = fw == "eager"
-            core_config["use_pytorch"] = fw == "torch"
+        for fw in framework_iterator(core_config, ["tf", "eager"]):
 
             config = core_config.copy()
-
-            eager_mode_ctx = None
-            if fw == "tf":
-                assert not tf.executing_eagerly()
-            elif fw == "eager":
-                eager_mode_ctx = eager_mode()
-                eager_mode_ctx.__enter__()
-                assert tf.executing_eagerly()
 
             # DQN with ParameterNoise exploration (config["explore"]=True).
             # ----
@@ -257,9 +237,6 @@ class TestDQN(unittest.TestCase):
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
-
-            if eager_mode_ctx:
-                eager_mode_ctx.__exit__(None, None, None)
 
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.

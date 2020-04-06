@@ -27,7 +27,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
-               std::shared_ptr<LocalClientConnection> connection,
+               std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
@@ -104,9 +104,7 @@ void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
 
 bool Worker::IsDetachedActor() const { return is_detached_actor_; }
 
-const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
-  return connection_;
-}
+const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
