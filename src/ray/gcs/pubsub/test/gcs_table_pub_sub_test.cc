@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gtest/gtest.h"
-//#include "ray/common/status.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/pubsub/gcs_table_pub_sub.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_context.h"
+#include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 
 namespace ray {
 
