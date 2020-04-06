@@ -1,6 +1,6 @@
 import ray
 from ray.serve.backend_config import BackendConfig
-from ray.serve.constants import (SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
+from ray.serve.constants import ASYNC_CONCURRENCY
 from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
@@ -232,31 +232,3 @@ class ServeMaster:
                 ), "Backend {} is not registered.".format(backend_tag)
         backend_config_dict = self.backend_table.get_info(backend_tag)
         return BackendConfig(**backend_config_dict)
-
-
-class GlobalState:
-    """Encapsulate all global state in the serving system.
-
-    The information is fetch lazily from
-        1. A collection of namespaced key value stores
-        2. A actor supervisor service
-    """
-
-    def __init__(self, master_actor=None):
-        # Get actor nursery handle.
-        if master_actor is None:
-            master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
-        self.master_actor = master_actor
-
-    def get_router(self):
-        return ray.get(self.master_actor.get_router.remote())[0]
-
-    def get_metric_monitor(self):
-        return ray.get(self.master_actor.get_metric_monitor.remote())[0]
-
-    def get_traffic_policy(self, endpoint_name):
-        return ray.get(
-            self.master_actor.get_traffic_policy.remote(endpoint_name))
-
-    def get_all_endpoints(self):
-        return ray.get(self.master_actor.get_all_endpoints.remote())
