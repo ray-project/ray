@@ -67,6 +67,9 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
+    # Whether to fake GPUs (using CPUs).
+    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
+    "_fake_gpus": False,
     # Use PyTorch as framework?
     "use_pytorch": False
 })
@@ -92,7 +95,8 @@ def choose_policy_optimizer(workers, config):
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        shuffle_sequences=config["shuffle_sequences"])
+        shuffle_sequences=config["shuffle_sequences"],
+        _fake_gpus=config["_fake_gpus"])
 
 
 def update_kl(trainer, fetches):
