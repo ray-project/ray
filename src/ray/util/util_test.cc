@@ -73,10 +73,9 @@ TEST(UtilTest, CreateCommandLineTest) {
       ArgList({R"(!)"}),
       ArgList({R"(@)"}),
       ArgList({R"(`)"}),
-      ArgList({R"(^)"}),
       ArgList({R"(&)"}),
       ArgList({R"(|)"}),
-      ArgList({R"(a")", R"('x)", R"(?^'"{)", R"(]))", R"(!)", R"(~`\)"}),
+      ArgList({R"(a")", R"('x)", R"(?'"{)", R"(]))", R"(!)", R"(~`\)"}),
   });
   for (CommandLineSyntax syn : all) {
     for (const ArgList &arglist : test_cases) {
@@ -99,12 +98,11 @@ TEST(UtilTest, CreateCommandLineTest) {
       proc = syn == posix ? popen(test_command.c_str(), "r") : NULL;
 #endif
       if (proc) {
-        ASSERT_TRUE(fgets(&*buf.begin(), static_cast<int>(buf.size()), proc));
-        buf = std::string(buf.c_str());  // remove trailing nulls
-        ASSERT_TRUE(!buf.empty());
-        ASSERT_EQ(buf.back(), '\n');
-        buf.pop_back();
-        ASSERT_EQ(ParseCommandLine(cmdline, syn), arglist);
+        std::vector<std::string> lines;
+        while (fgets(&*buf.begin(), static_cast<int>(buf.size()), proc)) {
+          lines.push_back(buf.substr(0, buf.find_first_of(std::string({'\0', '\n'}))));
+        }
+        ASSERT_EQ(lines, arglist);
         fclose(proc);
       }
     }
@@ -118,7 +116,7 @@ int main(int argc, char **argv) {
   int result = 0;
   if (argc > 1 && strcmp(argv[1], "--println") == 0) {
     // If we're given this special command, emit each argument on a new line
-    for (int i = 1; i < argc; ++i) {
+    for (int i = 2; i < argc; ++i) {
       fprintf(stdout, "%s\n", argv[i]);
     }
   } else {
