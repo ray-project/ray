@@ -1,6 +1,7 @@
 import ray
 from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import (SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
+from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
@@ -193,6 +194,39 @@ class ServeMaster:
         [router] = self.get_router()
         ray.get(
             router.set_backend_config.remote(backend_tag, backend_config_dict))
+        self.scale_replicas(backend_tag, backend_config_dict["num_replicas"])
+
+    def set_backend_config(self, backend_tag, backend_config):
+        assert (backend_tag in self.backend_table.list_backends()
+                ), "Backend {} is not registered.".format(backend_tag)
+        assert isinstance(backend_config,
+                          BackendConfig), ("backend_config must be"
+                                           " of instance BackendConfig")
+        backend_config_dict = dict(backend_config)
+        old_backend_config_dict = self.backend_table.get_info(backend_tag)
+
+        if (not old_backend_config_dict["has_accept_batch_annotation"]
+                and backend_config.max_batch_size is not None):
+            raise batch_annotation_not_found
+
+        self.backend_table.register_info(backend_tag, backend_config_dict)
+
+        # Inform the router about change in configuration
+        # (particularly for setting max_batch_size).
+        [router] = self.get_router()
+        ray.get(
+            router.set_backend_config.remote(backend_tag, backend_config_dict))
+
+        # Restart replicas if there is a change in the backend config related
+        # to restart_configs.
+        need_to_restart_replicas = any(
+            old_backend_config_dict[k] != backend_config_dict[k]
+            for k in BackendConfig.restart_on_change_fields)
+        if need_to_restart_replicas:
+            # Kill all the replicas for restarting with new configurations.
+            self.scale_replicas(backend_tag, 0)
+
+        # Scale the replicas with the new configuration.
         self.scale_replicas(backend_tag, backend_config_dict["num_replicas"])
 
 
