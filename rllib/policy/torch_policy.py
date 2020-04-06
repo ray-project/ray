@@ -241,8 +241,21 @@ class TorchPolicy(Policy):
         critic_var_before = self.model.q_variables()[1][0].detach().numpy().copy()
         actor_var_before = self.model.policy_variables()[1][0].detach().numpy().copy()
         alpha_var_before = self.model.log_alpha.detach().numpy().copy()
+
         self.critic_optim.zero_grad()
         self.critic_loss[0].backward()
+        self.actor_optim.zero_grad()
+        self.actor_loss.backward()
+        self.alpha_optim.zero_grad()
+        self.alpha_loss.backward()
+
+        # Check and process grads.
+        info = {}
+        info.update(self.extra_grad_process())
+        assert all(v.grad is not None for v in self.model.q_variables())
+        assert all(v.grad is not None for v in self.model.policy_variables())
+        assert self.model.log_alpha.grad
+
         grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
         self.critic_optim.step()
         critic_var_1 = self.model.q_variables()[1][0].detach().numpy().copy()
@@ -252,14 +265,11 @@ class TorchPolicy(Policy):
         assert actor_var_before == actor_var_1, (actor_var_before, actor_var_1)
         assert alpha_var_before == alpha_var_1, (alpha_var_before, alpha_var_1)
 
-
         #self.critic_optim_2.zero_grad()
         #self.critic_loss[1].backward()
         ##grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
         #self.critic_optim_2.step()
 
-        self.actor_optim.zero_grad()
-        self.actor_loss.backward()
         grd_actor = self.model.policy_variables()[1].grad[0].numpy().copy()
         self.actor_optim.step()
         critic_var_2 = self.model.q_variables()[1][0].detach().numpy().copy()
@@ -269,8 +279,6 @@ class TorchPolicy(Policy):
         #check(actor_var_2, actor_var_1 - self.actor_optim.param_groups[0]["lr"] * grd_actor, rtol=0.00001)
         assert alpha_var_1 == alpha_var_2, (alpha_var_1, alpha_var_2)
 
-        self.alpha_optim.zero_grad()
-        self.alpha_loss.backward()
         grd_alpha = self.model.log_alpha.grad.numpy().copy()
         self.alpha_optim.step()
         critic_var_3 = self.model.q_variables()[1][0].detach().numpy().copy()
@@ -289,9 +297,6 @@ class TorchPolicy(Policy):
         #self._optimizer.opts[2].zero_grad()
         #self.alpha_loss.backward()
         #self._optimizer.opts[2].step()
-
-        info = {}
-        info.update(self.extra_grad_process())
 
         if self.distributed_world_size:
             grads = []
@@ -312,9 +317,8 @@ class TorchPolicy(Policy):
                     p.grad /= self.distributed_world_size
             info["allreduce_latency"] = time.time() - start
 
-        #self.critic_optim.step()
-        #self.actor_optim.step()
         #self._optimizer.step()
+
         info.update(self.extra_grad_info(train_batch))
 
         return dict({

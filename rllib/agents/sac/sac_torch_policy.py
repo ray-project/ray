@@ -234,6 +234,9 @@ def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
 
 def apply_grad_clipping(policy):
     info = {}
+    policy.mean_grad_actor = np.mean([np.mean(v.grad.detach().numpy()) for v in policy.model.policy_variables()])
+    policy.mean_grad_critic = np.mean([np.mean(v.grad.detach().numpy()) for v in policy.model.q_variables()[:6]])
+    policy.mean_grad_alpha = policy.model.log_alpha.grad[0].detach().numpy()
     if policy.config["grad_norm_clipping"]:
         info["grad_gnorm_policy"] = nn.utils.clip_grad_norm_(
             policy.model.policy_variables(),
@@ -253,8 +256,11 @@ def stats(policy, train_batch):
     return {
         "td_error": torch.mean(policy.td_error),
         "actor_loss": torch.mean(policy.actor_loss),
+        "mean_grads_actor": policy.mean_grad_actor,
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
+        "mean_grads_critic": policy.mean_grad_critic,
         "alpha_loss": torch.mean(policy.alpha_loss),
+        "mean_grads_alpha": policy.mean_grad_alpha,
         "alpha_value": torch.mean(policy.alpha_value),
         "log_alpha_value": torch.mean(policy.log_alpha_value),
         "target_entropy": policy.target_entropy,
@@ -314,7 +320,7 @@ def optimizer_fn(policy, config):
         #eps=1e-9,
     )
 
-    return torch.optim.Adam([
+    return None  #torch.optim.Adam([
         #{
         #    "params": policy.model.policy_variables(),
         #    "lr": config["optimization"]["actor_learning_rate"],
@@ -323,11 +329,11 @@ def optimizer_fn(policy, config):
         #    "params": policy.model.q_variables(),
         #    "lr": config["optimization"]["critic_learning_rate"],
         #},
-        {
-            "params": [policy.model.log_alpha],
-            "lr": config["optimization"]["entropy_learning_rate"],
-        }
-    ])
+        #{
+        #    "params": [policy.model.log_alpha],
+        #    "lr": config["optimization"]["entropy_learning_rate"],
+        #}
+    #])
 
     # Joint optimizer for the different models using different learning rates.
     #return Opt(

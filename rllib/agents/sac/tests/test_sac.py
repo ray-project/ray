@@ -7,6 +7,7 @@ import ray.rllib.agents.sac as sac
 from ray.rllib.agents.sac.sac_tf_policy import actor_critic_loss as loss_tf
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
     loss_torch
+from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -46,17 +47,18 @@ class TestSAC(unittest.TestCase):
         config["twin_q"] = False
         config["normalize_actions"] = True
         config["learning_starts"] = 0
+        config["initial_alpha"] = 0.1
         #config["env"] = SimpleEnv
         #config["optimization"]["critic_learning_rate"] = 0.1
 
-        #config["Q_model"]["fcnet_hiddens"] = [10]
+        config["Q_model"]["fcnet_hiddens"] = [32]
         #config["Q_model"]["fcnet_activation"] = "linear"
-        #config["policy_model"]["fcnet_hiddens"] = [10]
+        config["policy_model"]["fcnet_hiddens"] = [32]
         #config["policy_model"]["fcnet_activation"] = "linear"
 
         num_iterations = 2000
 
-        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
+        trainer = sac.SACTrainer(config=config, env=SimpleEnv)
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
@@ -99,22 +101,25 @@ class TestSAC(unittest.TestCase):
         config["learning_starts"] = 0
         config["twin_q"] = False
         config["gamma"] = 0.99
-        # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
-        config["Q_model"]["fcnet_hiddens"] = []
+        # Use very simple nets.
+        config["Q_model"]["fcnet_hiddens"] = [10]
         config["Q_model"]["fcnet_activation"] = "linear"
-        config["policy_model"]["fcnet_hiddens"] = []
+        config["policy_model"]["fcnet_hiddens"] = [10]
         config["policy_model"]["fcnet_activation"] = "linear"
 
         batch_size = 100
-        for env in ["Pendulum-v0"]:  #, "CartPole-v0"]:
-            if env == "CartPole-v0":
+        for env in [SimpleEnv]:  #"Pendulum-v0"]:  #, "CartPole-v0"]:
+            if env is SimpleEnv:
+                obs_size = (batch_size, 1)
+                actions = np.random.random(size=(batch_size, 1))
+            elif env == "CartPole-v0":
                 obs_size = (batch_size, 4)
                 actions = np.random.randint(0, 2, size=(batch_size,))
             else:
                 obs_size = (batch_size, 3)
                 actions = np.random.random(size=(batch_size, 1))
 
-            # Batch of size=1000.
+            # Batch of size=n.
             input_ = {
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
@@ -124,51 +129,61 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size)
             }
 
-            # Simply compare outputs of all frameworks with each other.
-            #prev_fw_loss = None
-            for fw in ["torch", "tf", "eager"]:
-                if fw == "eager":
-                    continue
-
-                print("framework={}".format(fw))
-                config["use_pytorch"] = fw == "torch"
-                config["eager"] = fw == "eager"
-    
+            # Simply compare loss values AND grads of all frameworks with each
+            # other.
+            prev_fw_loss = weights_dict = None
+            for fw in framework_iterator(config):
                 # Generate Trainer and get its default Policy object.
                 trainer = sac.SACTrainer(config=config, env=env)
                 policy = trainer.get_policy()
-                trainer.train()
-                weights = policy.model.variables() + \
-                    policy.target_model.variables()
+                # Set all weights (of all nets) to fixed values.
+                if weights_dict is None:
+                    weights_dict = policy.get_weights()
+                else:
+                    policy.set_weights(weights_dict)
+
+                #trainer.train()
+
+                #weights = policy.model.variables() + \
+                #    policy.target_model.variables()
                 if fw == "torch":
                     input_ = policy._lazy_tensor_dict(input_)
                     input_ = {k: input_[k] for k in input_.keys()}
                     alpha = np.exp(policy.model.log_alpha.detach().numpy())
                 elif fw == "tf":
-                    weights = policy.get_session().run(weights)
-                    # Pop out alpha to make weights same as torch weights.
-                    alpha = weights.pop(4)
+                #    weights = policy.get_session().run(weights)
+                #    # Pop out alpha to make weights same as torch weights.
+                    alpha = weights_dict["default_policy/log_alpha"]
+
                 # Get actual out and compare to previous framework.
-                total_loss = (loss_torch if fw == "torch" else
-                       loss_tf)(policy, policy.model, None, input_, deterministic=True)
-                loss = (
-                    policy.actor_loss, policy.critic_loss, policy.alpha_loss)
-                expected_loss = self._sac_loss_helper(input_, weights, alpha)
+                if fw == "torch":
+                    loss_torch(
+                        policy, policy.model, None, input_, deterministic=True)
+                    c, a, e = policy.critic_loss, policy.actor_loss, policy.alpha_loss
+                else:
+                    c, a, e = policy.get_session().run([
+                        policy.critic_loss,
+                        policy.actor_loss,
+                        policy.alpha_loss],
+                        feed_dict=policy._get_loss_inputs_dict(input_,
+                                                               shuffle=False))
+                #loss = (
+                #    policy.actor_loss, policy.critic_loss, policy.alpha_loss)
+                expected_loss = self._sac_loss_helper(input_, weights_dict, alpha, fw)
                 check(loss, expected_loss)
 
-    def _sac_loss_helper(self, train_batch, weights, alpha):
+    def _sac_loss_helper(self, train_batch, weights, alpha, fw):
+        cls = TorchSquashedGaussian if fw == "torch" else SquashedGaussian
         model_out_t = train_batch[SampleBatch.CUR_OBS]
         model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
         target_model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
-    
-        action_dist_t = TorchSquashedGaussian(
-            # get_policy_output
-            fc(model_out_t, weights[0], weights[1]), None)
+
+        # get_policy_output
+        action_dist_t = cls(fc(model_out_t, weights[0], weights[1]), None)
         policy_t = action_dist_t.deterministic_sample().detach().numpy()
         log_pis_t = np.expand_dims(action_dist_t.sampled_action_logp().detach().numpy(),
                                    -1)
-        action_dist_tp1 = TorchSquashedGaussian(
-            fc(model_out_tp1, weights[0], weights[1]), None)
+        action_dist_tp1 = cls(fc(model_out_tp1, weights[0], weights[1]), None)
         policy_tp1 = action_dist_tp1.deterministic_sample().detach().numpy()
         log_pis_tp1 = np.expand_dims(
             action_dist_tp1.sampled_action_logp().detach().numpy(), -1)
