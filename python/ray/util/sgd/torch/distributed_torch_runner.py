@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_IN_SECONDS
+from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner, _remind_gpu_usage
@@ -26,15 +26,23 @@ class DistributedTorchRunner(TorchRunner):
         backend (str): Backend used by distributed PyTorch.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
         kwargs: Keyword arguments for TorchRunner.
 
     """
 
-    def __init__(self, *args, backend="gloo", add_dist_sampler=True, **kwargs):
+    def __init__(self,
+                 *args,
+                 backend="gloo",
+                 add_dist_sampler=True,
+                 wrap_ddp=False,
+                 **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         if backend not in ("gloo", "nccl"):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
+        self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
 
     def setup(self, url, world_rank, world_size):
@@ -61,7 +69,7 @@ class DistributedTorchRunner(TorchRunner):
                 "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
             os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
-        timeout = timedelta(seconds=NCCL_TIMEOUT_IN_SECONDS)
+        timeout = timedelta(seconds=NCCL_TIMEOUT_S)
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
@@ -73,9 +81,10 @@ class DistributedTorchRunner(TorchRunner):
 
         if self.use_gpu and torch.cuda.is_available():
             # https://github.com/allenai/allennlp/issues/1090
-            self._set_cuda_device_id()
+            self.set_cuda_device_id()
 
-    def _set_cuda_device_id(self):
+    def set_cuda_device_id(self):
+        """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         self.device_ids = [0]
 
     def _setup_training(self):
@@ -99,23 +108,27 @@ class DistributedTorchRunner(TorchRunner):
         self._create_schedulers_if_available()
         self._try_setup_apex()
 
-        # This needs to happen after apex
-        self.models = [
-            DistributedDataParallel(model, device_ids=self.device_ids)
-            for model in self.models
-        ]
-
         self._create_loss()
+
+        training_models = self.models
+
+        if self.wrap_ddp:
+            # This needs to happen after apex
+            training_models = [
+                DistributedDataParallel(model, device_ids=self.device_ids)
+                for model in self.models
+            ]
 
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=self.models,
+            models=training_models,
             optimizers=self.optimizers,
             criterion=self.criterion,
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
             schedulers=self.schedulers,
+            device_ids=self.device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm)
@@ -158,17 +171,6 @@ class DistributedTorchRunner(TorchRunner):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
-    def _get_model_state_dicts(self):
-        """Fetch state from ``model.module`` instead of ``model``.
-
-        This is needed for PyTorch DistributedDataParallel models.
-        """
-        return [model.module.state_dict() for model in self.models]
-
-    def _set_model_state_dicts(self, model_state_dicts):
-        for model, model_state_dict in zip(self.models, model_state_dicts):
-            model.module.load_state_dict(model_state_dict)
-
     def shutdown(self):
         """Attempts to shut down the worker."""
         # However, it seems to be harmless to remove permanently
@@ -177,6 +179,14 @@ class DistributedTorchRunner(TorchRunner):
         # the stable Pytorch docs.
         dist.destroy_process_group()
         super(DistributedTorchRunner, self).shutdown()
+
+
+def _init_cuda_context():
+    # Force cuda initialization
+    # Inspired by https://github.com/pytorch/pytorch/blob/
+    # f050b16dd95b2bcce9853882fd3fb07a6fd80378/torch/testing/
+    # _internal/common_cuda.py
+    torch.cuda.is_available()
 
 
 class _DummyActor:
@@ -203,7 +213,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-
+        self.local_device = "0"
         global _dummy_actor
         if not self.is_actor() and _dummy_actor is None:
             _dummy_actor = ray.remote(
@@ -215,16 +225,25 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
             # This is a pretty annoying workaround. To enable SyncBatchNorm,
             # we need to signify that we are using only 1 CUDA device (via
-            # the DDP constructor). However, on the local worker,
-            # we set the CUDA_VISIBLE_DEVICES at runtime rather at process
-            # start. This means that we have to make sure that DDP knows which
-            # specific device we are using.
+            # the DDP constructor).
+            # However, on the local worker, we have to set the
+            # CUDA_VISIBLE_DEVICES at runtime rather at process start.
+
+            # You can only call setdevice(int > 0) after you've interacted with
+            # torch.cuda. But you can't guarantee that you _haven't_ interacted
+            # with it (user can do arbitrary things), so we force an
+            # interaction.
+            _init_cuda_context()
             os.environ["CUDA_VISIBLE_DEVICES"] = self.local_device
             if self.local_device:
-                torch.cuda.set_device(int(self.local_device))
+                try:
+                    torch.cuda.set_device(int(self.local_device))
+                except RuntimeError:
+                    logger.error("This happens if cuda is not initialized.")
+                    raise
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def _set_cuda_device_id(self):
+    def set_cuda_device_id(self):
         self.device_ids = [int(self.local_device)]
 
     def shutdown(self, cleanup=True):
