@@ -13,11 +13,15 @@ class TestDDPG(unittest.TestCase):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        config["exploration_config"] = {
+            "type": "ParameterNoise",
+            "random_timesteps": 1000,
+        }
 
         # Test against all frameworks.
         for _ in framework_iterator(config, "tf"):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
-            num_iterations = 2
+            num_iterations = 2000
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
