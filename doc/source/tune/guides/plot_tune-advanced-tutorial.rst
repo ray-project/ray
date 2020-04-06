@@ -200,5 +200,5 @@ And the Generator loss:
 
 .. image:: /images/tune_advanced_dcgan_Gloss.png
 
-Training of the MNist Generator takes about several minutes. The example can be easily
-altered to generate images for other dataset, e.g. cifar10 or LSUN.
+Training of the MNist Generator takes a couple of minutes. The example can be easily
+altered to generate images for other datasets, e.g. cifar10 or LSUN.

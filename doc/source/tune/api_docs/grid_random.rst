@@ -81,7 +81,7 @@ To sample multiple times/run multiple trials, specify ``tune.run(num_samples=N``
 
 
 
-Note that grid and random search primitives are inter-operable. Each can be used independently or in combination with each other.
+Note that grid search and random search primitives are inter-operable. Each can be used independently or in combination with each other.
 
 .. code-block:: python
 

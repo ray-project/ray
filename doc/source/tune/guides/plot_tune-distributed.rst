@@ -62,7 +62,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 Local Cluster Setup
 -------------------
 
-If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
+If you already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
@@ -244,7 +244,7 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
+You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-distributed-common:
 
