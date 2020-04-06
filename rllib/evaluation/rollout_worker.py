@@ -255,7 +255,10 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         policy_config = policy_config or {}
         if (tf and policy_config.get("eager")
                 and not policy_config.get("no_eager_on_workers")):
-            tf.enable_eager_execution()
+            # This check is necessary for certain all-framework tests that
+            # use tf's eager_mode() context generator.
+            if not tf.executing_eagerly():
+                tf.enable_eager_execution()
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)

@@ -185,7 +185,7 @@ def build_tf_policy(name,
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
-                # auto-add empty learner stats dict if needed
+                # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}
                 }, **extra_learn_fetches_fn(self))
