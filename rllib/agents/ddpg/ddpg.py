@@ -206,5 +206,6 @@ DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
+    get_policy_class=None,
     validate_config=validate_config,
 )

@@ -46,7 +46,7 @@ py_test(
     tags = ["learning_tests", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/cartpole*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
@@ -57,7 +57,7 @@ py_test(
     tags = ["learning_tests", "learning_tests_pendulum"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/pendulum*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/pendulum-*.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
@@ -85,12 +85,18 @@ py_test(
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
-# DQNTrainer
+# DQNTrainer/SimpleQTrainer
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+py_test(
+    name = "test_simple_q",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # APEXTrainer

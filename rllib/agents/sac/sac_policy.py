@@ -5,7 +5,7 @@ import ray
 import ray.experimental.tf_utils
 from gym.spaces import Box, Discrete
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.models import ModelCatalog

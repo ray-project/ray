@@ -10,13 +10,23 @@ tf = try_import_tf()
 
 class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
-        """Test whether a DQNTrainer can be built with both frameworks."""
+        """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks=["tf", "eager"]):
+        for fw in framework_iterator(config):
+            # double-dueling DQN.
+            plain_config = config.copy()
+            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+
             # Rainbow.
+            # TODO(sven): Add torch once DQN-torch supports distributional-Q.
+            if fw == "torch":
+                continue
             rainbow_config = config.copy()
             rainbow_config["num_atoms"] = 10
             rainbow_config["noisy"] = True
@@ -24,13 +34,6 @@ class TestDQN(unittest.TestCase):
             rainbow_config["dueling"] = True
             rainbow_config["n_step"] = 5
             trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-
-            # double-dueling DQN.
-            plain_config = config.copy()
-            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
@@ -43,7 +46,7 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, ["tf", "eager"]):
+        for _ in framework_iterator(config):
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.
@@ -61,14 +64,14 @@ class TestDQN(unittest.TestCase):
             # (but no epsilon exploration).
             config["exploration_config"] = {
                 "type": "SoftQ",
-                "temperature": 0.001
+                "temperature": 0.000001
             }
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Due to the low temp, always expect the same action.
-            a_ = trainer.compute_action(obs)
+            actions = [trainer.compute_action(obs)]
             for _ in range(50):
-                a = trainer.compute_action(obs)
-                check(a, a_)
+                actions.append(trainer.compute_action(obs))
+            check(np.std(actions), 0.0, decimals=3)
 
             # Higher softmax temperature.
             config["exploration_config"]["temperature"] = 1.0
