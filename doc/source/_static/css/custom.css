@@ -14,3 +14,7 @@
     color: #2980B9;
     text-transform: uppercase
 }
+
+.rst-content .section ol p, .rst-content .section ul p {
+    margin-bottom: 0px;
+}
