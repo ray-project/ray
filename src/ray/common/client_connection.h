@@ -18,12 +18,12 @@
 #include <deque>
 #include <memory>
 
+#include <boost/asio.hpp>
 #include <boost/asio/basic_stream_socket.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
-#include <boost/asio.hpp>
-#include <boost/asio/deadline_timer.hpp>
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/enable_shared_from_this.hpp>
