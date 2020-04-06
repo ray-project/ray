@@ -40,7 +40,8 @@ class ReweightedImitationLoss:
         # update averaged advantage norm
         update_adv_norm = tf.assign_add(
             ref=policy._ma_adv_norm,
-            value=1e-6 * (tf.reduce_mean(tf.square(adv)) - policy._ma_adv_norm))
+            value=1e-6 *
+            (tf.reduce_mean(tf.square(adv)) - policy._ma_adv_norm))
 
         # exponentially weighted advantages
         with tf.control_dependencies([update_adv_norm]):
@@ -95,8 +96,8 @@ class MARWILLoss:
 
     def _build_policy_loss(self, policy, state_values, cum_rwds, actions,
                            action_dist, beta):
-        return ReweightedImitationLoss(policy, state_values, cum_rwds,
-                                       actions, action_dist, beta)
+        return ReweightedImitationLoss(policy, state_values, cum_rwds, actions,
+                                       action_dist, beta)
 
 
 def marwil_loss(policy, model, dist_class, train_batch):
