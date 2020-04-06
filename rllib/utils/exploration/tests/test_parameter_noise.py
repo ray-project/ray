@@ -147,16 +147,25 @@ class TestParameterNoise(unittest.TestCase):
             noise_after = self._get_current_noise(policy, fw)
             check(noise, noise_after)
 
-            # Switch off EpsilonGreedy underlying exploration.
+            # Switch off underlying exploration entirely.
             # ----
             config = core_config.copy()
+            if trainer_cls is dqn.DQNTrainer:
+                sub_config = {
+                    "type": "EpsilonGreedy",
+                    "initial_epsilon": 0.0,  # <- no randomness whatsoever
+                    "final_epsilon": 0.0,
+                }
+            else:
+                sub_config = {
+                    "type": "OrnsteinUhlenbeckNoise",
+                    "initial_scale": 0.0,  # <- no randomness whatsoever
+                    "final_scale": 0.0,
+                    "random_timesteps": 0,
+                }
             config["exploration_config"] = {
                 "type": "ParameterNoise",
-                "sub_exploration": {
-                    "type": "EpsilonGreedy",
-                    "action_space": trainer.get_policy().action_space,
-                    "initial_epsilon": 0.0,  # <- no randomness whatsoever
-                }
+                "sub_exploration": sub_config,
             }
             config["explore"] = True
             trainer = trainer_cls(config=config, env=env)
