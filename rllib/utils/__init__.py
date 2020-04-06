@@ -1,8 +1,8 @@
 from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.framework import (try_import_tf, try_import_tfp,
-                                       try_import_torch, check_framework)
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
+    try_import_torch, check_framework
 from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
     renamed_class, renamed_function
 from ray.rllib.utils.filter_manager import FilterManager
@@ -11,9 +11,8 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
-from ray.rllib.utils.schedules import (LinearSchedule, PiecewiseSchedule,
-                                       PolynomialSchedule, ExponentialSchedule,
-                                       ConstantSchedule)
+from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
+    PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
