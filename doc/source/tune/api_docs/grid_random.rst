@@ -5,9 +5,9 @@ Grid/Random Search
 Overview
 --------
 
-Tune has a native interface for specifying a grid or random search. You can specify the search space via ``tune.run(config=...)``.
+Tune has a native interface for specifying a grid search or random search. You can specify the search space via ``tune.run(config=...)``.
 
-You can use ``tune.grid_search`` primitive to specify an axis of a grid search.
+Thereby, you can either use the ``tune.grid_search`` primitive to specify an axis of a grid search...
 
 .. code-block:: python
 
@@ -16,7 +16,7 @@ You can use ``tune.grid_search`` primitive to specify an axis of a grid search.
         config={"bar": tune.grid_search([True, False])})
 
 
-Or one of the random sampling primitives to specify distributions (:ref:`tune-sample-docs`):
+... or one of the random sampling primitives to specify distributions (:ref:`tune-sample-docs`):
 
 .. code-block:: python
 
@@ -35,7 +35,7 @@ Or one of the random sampling primitives to specify distributions (:ref:`tune-sa
     interface, as the search algorithm may require a different search space declaration.
 
 
-To sample multiple times/run multiple trials, specify ``tune.run(num_samples=N``. If ``grid_search`` is provided as an argument, the *same* grid will be repeated ``N`` of times.
+To sample multiple times/run multiple trials, specify ``tune.run(num_samples=N``. If ``grid_search`` is provided as an argument, the *same* grid will be repeated ``N`` times.
 
 .. code-block:: python
 

@@ -7,7 +7,7 @@ a :ref:`scheduler <tune-scheduler-pbt>`.
 .. image:: /images/tune_advanced_paper1.png
 
 
-PBT starts by training many neural networks in parallel with random hyperparameters, using information from the rest of the population to refine the
+PBT starts by training many neural networks in parallel with random hyperparameters, using information from the rest of the population to refine these
 hyperparameters and allocate resources to promising models. Let's walk through how to use this algorithm.
 
 .. contents::

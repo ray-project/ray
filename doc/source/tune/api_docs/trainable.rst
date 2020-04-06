@@ -5,7 +5,7 @@ Training (tune.Trainable, tune.track)
 
 Training can be done with either a **Class API** (``tune.Trainable``) < or **function-based API** (``track.log``).
 
-You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control to advanced algorithms.
+You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control for advanced algorithms.
 
 Function-based API
 ------------------
@@ -68,15 +68,15 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
 
     print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
 
-As a subclass of ``tune.Trainable``, Tune will create ``Guesser`` object on a separate process (using the Ray Actor API).
+As a subclass of ``tune.Trainable``, Tune will create a ``Guesser`` object on a separate process (using the Ray Actor API).
 
-  1. ``_setup`` function is invoked once when training starts.
+  1. ``_setup`` function is invoked once training starts.
   2. ``_train`` is invoked **multiple times**. Each time, the Guesser object executes one logical iteration of training in the tuning process, which may include one or more iterations of actual training.
   3. ``_stop`` is invoked when training is finished.
 
 .. tip:: As a rule of thumb, the execution time of ``_train`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
-In this example, we only implemented ``_setup`` and ``_train`` methods for simplification. Next, we'll implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
+In this example, we only implemented the ``_setup`` and ``_train`` methods for simplification. Next, we'll implement ``_save`` and ``_restore`` for checkpoint and fault tolerance.
 
 Save and Restore
 ~~~~~~~~~~~~~~~~
@@ -112,7 +112,7 @@ Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors before exec
 Advanced: Reusing Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Your Trainable can often take a long time to start. To avoid this, you can use ``tune.run(reuse_actors=True)`` to reuse the same Trainable Python process and object for multiple hyperparameters.
+Your Trainable can often take a long time to start. To avoid this, you can do ``tune.run(reuse_actors=True)`` to reuse the same Trainable Python process and object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters. It is up to the user to correctly update the hyperparameters of your trainable.
 

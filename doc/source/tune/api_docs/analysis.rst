@@ -4,7 +4,7 @@ Analysis/Logging (tune.analysis / tune.logger)
 Analyzing Results
 -----------------
 
-You can use the ``ExperimentAnalysis`` object for analyzing results. It is returned automatically from calling ``tune.run``.
+You can use the ``ExperimentAnalysis`` object for analyzing results. It is returned automatically when calling ``tune.run``.
 
 .. code-block:: python
 
@@ -105,4 +105,3 @@ MLFLowLogger
 Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found `mlflow_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mlflow_example.py>`__. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
 
 .. autoclass:: ray.tune.logger.MLFLowLogger
-
