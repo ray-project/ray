@@ -945,17 +945,30 @@ def _start_redis_instance(executable,
             if " " in password:
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
-        command += (
-            ["--port", str(port), "--loglevel", "warning"] + load_module_args)
+        command += ["--port", str(port), "--loglevel", "warning"]
+        command += ["--supervised", "upstart"]
+        command += load_module_args
+        wait_for_sigstop = sys.platform != "win32"
+        env_updates = {}
+        if wait_for_sigstop:
+            env_updates.update(UPSTART_JOB="")
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
+            env_updates=env_updates,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
-        time.sleep(0.1)
-        # Check if Redis successfully started (or at least if it the executable
-        # did not exit within 0.1 seconds).
+        if wait_for_sigstop:
+            # Redis signals when it's ready by pausing itself; wait for it
+            status = os.waitpid(process_info.process.pid, os.WUNTRACED)[1]
+            if os.WIFEXITED(status):
+                break
+            process_info.process.send_signal(signal.SIGCONT)
+        else:
+            # Wait a bit before checking to see if the executable hasn't exited
+            time.sleep(0.1)
+        # Check if Redis started successfully
         if process_info.process.poll() is None:
             break
         port = new_port()
