@@ -886,7 +886,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
 }
 
-void NodeManager::ProcessNewClient(LocalClientConnection &client) {
+void NodeManager::ProcessNewClient(ClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
 }
@@ -955,9 +955,9 @@ void NodeManager::DispatchTasks(
   }
 }
 
-void NodeManager::ProcessClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
+                                       int64_t message_type,
+                                       const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
@@ -1071,7 +1071,7 @@ void NodeManager::ProcessClientMessage(
 }
 
 void NodeManager::ProcessRegisterClientRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
   flatbuffers::FlatBufferBuilder fbb;
   auto reply =
@@ -1170,8 +1170,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   }
 }
 
-void NodeManager::HandleWorkerAvailable(
-    const std::shared_ptr<LocalClientConnection> &client) {
+void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1202,7 +1201,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
+    const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1346,7 +1345,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   std::vector<ObjectID> required_object_ids;
   for (int64_t i = 0; i < message->object_ids()->size(); ++i) {
@@ -1375,7 +1374,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessWaitRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
@@ -1428,7 +1427,7 @@ void NodeManager::ProcessWaitRequestMessage(
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message =
       flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
@@ -1470,7 +1469,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 }
 
 void NodeManager::ProcessPrepareActorCheckpointRequest(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointRequest>(message_data);
   ActorID actor_id = from_flatbuf<ActorID>(*message->actor_id());
@@ -1797,9 +1796,9 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   Status status;
-  if (worker) {
-    leased_workers_.erase(worker_id);
+  leased_workers_.erase(worker_id);
 
+  if (worker) {
     if (request.disconnect_worker()) {
       ProcessDisconnectClientMessage(worker->Connection());
     } else {
@@ -1841,7 +1840,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
 }
 
 void NodeManager::ProcessSetResourceRequest(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the SetResource message
   auto message = flatbuffers::GetRoot<protocol::SetResourceRequest>(message_data);
 
@@ -2234,10 +2233,19 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   TaskID task_id = worker->GetAssignedTaskId();
+
+  // First, always release task dependencies. This ensures we don't leak resources even
+  // if we don't need to unblock the worker below.
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+
+  if (!worker->IsBlocked()) {
+    return;  // Don't need to unblock the worker.
+  }
+
   Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
   const ResourceSet cpu_resources = required_resources.GetNumCpus();
@@ -2258,13 +2266,12 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
         << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
   }
   worker->MarkUnblocked();
-  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
 }
 
-void NodeManager::AsyncResolveObjects(
-    const std::shared_ptr<LocalClientConnection> &client,
-    const std::vector<ObjectID> &required_object_ids, const TaskID &current_task_id,
-    bool ray_get, bool mark_worker_blocked) {
+void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
+                                      const std::vector<ObjectID> &required_object_ids,
+                                      const TaskID &current_task_id, bool ray_get,
+                                      bool mark_worker_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -2317,7 +2324,7 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id,
+    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
     bool was_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
@@ -3153,7 +3160,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
   if (associated_worker == nullptr) {
     associated_worker = worker_pool_.GetRegisteredDriver(client);
@@ -3478,12 +3485,11 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
-std::string FormatMemoryInfo(
-    std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> node_stats) {
+std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply->workers_stats()) {
+    for (const auto &worker_stats : reply.workers_stats()) {
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (object_ref.object_size() > 0) {
@@ -3506,12 +3512,16 @@ std::string FormatMemoryInfo(
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply->workers_stats()) {
+    for (const auto &worker_stats : reply.workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
             object_ref.contained_in_owned_size() == 0) {
+          continue;
+        }
+        if (obj_id.IsNil()) {
           continue;
         }
         if (!pid_printed) {
@@ -3522,7 +3532,6 @@ std::string FormatMemoryInfo(
           }
           pid_printed = true;
         }
-        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
         // TODO(ekl) we could convey more information about the reference status.
         if (object_ref.pinned_in_memory()) {
@@ -3557,23 +3566,43 @@ std::string FormatMemoryInfo(
 void NodeManager::HandleFormatGlobalMemoryInfo(
     const rpc::FormatGlobalMemoryInfoRequest &request,
     rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> replies;
-
+  auto replies = std::make_shared<std::vector<rpc::GetNodeStatsReply>>();
   auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
   auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
   local_request->set_include_memory_info(true);
 
-  // TODO(ekl): for (const auto &entry : remote_node_manager_clients_) {}
-  // to handle remote nodes
+  unsigned int num_nodes = remote_node_manager_clients_.size() + 1;
+  rpc::GetNodeStatsRequest stats_req;
+  stats_req.set_include_memory_info(true);
 
-  HandleGetNodeStats(*local_request, local_reply.get(),
-                     [local_request, local_reply, replies, reply, send_reply_callback](
-                         Status status, std::function<void()> success,
-                         std::function<void()> failure) mutable {
-                       replies.push_back(local_reply);
-                       reply->set_memory_summary(FormatMemoryInfo(replies));
-                       send_reply_callback(Status::OK(), nullptr, nullptr);
-                     });
+  auto store_reply = [replies, reply, num_nodes,
+                      send_reply_callback](const rpc::GetNodeStatsReply &local_reply) {
+    replies->push_back(local_reply);
+    if (replies->size() >= num_nodes) {
+      reply->set_memory_summary(FormatMemoryInfo(*replies));
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
+  };
+
+  // Fetch from remote nodes.
+  for (const auto &entry : remote_node_manager_clients_) {
+    entry.second->GetNodeStats(
+        stats_req, [replies, store_reply](const ray::Status &status,
+                                          const rpc::GetNodeStatsReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to get remote node stats: " << status.ToString();
+          }
+          store_reply(r);
+        });
+  }
+
+  // Fetch from the local node.
+  HandleGetNodeStats(
+      stats_req, local_reply.get(),
+      [local_reply, store_reply](Status status, std::function<void()> success,
+                                 std::function<void()> failure) mutable {
+        store_reply(*local_reply);
+      });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,

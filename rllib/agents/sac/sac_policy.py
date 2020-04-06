@@ -1,19 +1,19 @@
-from gym.spaces import Box, Discrete
 import logging
-import numpy as np
 
+import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_model import SACModel
+from gym.spaces import Box, Discrete
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -100,31 +100,21 @@ def get_dist_class(config, action_space):
     return action_dist_class
 
 
-def get_log_likelihood(policy, model, actions, input_dict, obs_space,
-                       action_space, config):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
+def get_distribution_inputs_and_class(policy,
+                                      model,
+                                      obs_batch,
+                                      *,
+                                      explore=True,
+                                      **kwargs):
+    # Get base-model output.
+    model_out, state_out = model({
+        "obs": obs_batch,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
+    # Get action model output from base-model output.
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-    return action_dist_class(distribution_inputs, model).logp(actions)
-
-
-def build_action_output(policy, model, input_dict, obs_space, action_space,
-                        explore, config, timestep):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
-    distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            distribution_inputs, action_dist_class, model, timestep, explore)
-
-    return policy.output_actions, policy.sampled_action_logp
+    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    return distribution_inputs, action_dist_class, state_out
 
 
 def actor_critic_loss(policy, model, _, train_batch):
@@ -477,8 +467,7 @@ SACTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
-    action_sampler_fn=build_action_output,
-    log_likelihood_fn=get_log_likelihood,
+    action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,

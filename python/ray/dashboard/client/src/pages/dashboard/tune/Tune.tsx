@@ -1,46 +1,49 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import {
+  createStyles,
+  Tab,
+  Tabs,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
+import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { getTuneInfo } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import Typography from "@material-ui/core/Typography";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
-import Tab from "@material-ui/core/Tab";
-import Tabs from "@material-ui/core/Tabs";
 import TuneTable from "./TuneTable";
 import TuneTensorBoard from "./TuneTensorBoard";
 
 const styles = (theme: Theme) =>
   createStyles({
     root: {
-      backgroundColor: theme.palette.background.paper
+      backgroundColor: theme.palette.background.paper,
     },
     tabs: {
       borderBottomColor: theme.palette.divider,
       borderBottomStyle: "solid",
-      borderBottomWidth: 1
+      borderBottomWidth: 1,
     },
     warning: {
-      fontSize: "0.8125rem"
+      fontSize: "0.8125rem",
     },
     warningIcon: {
       fontSize: "1.25em",
-      verticalAlign: "text-bottom"
-    }
+      verticalAlign: "text-bottom",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tuneInfo: state.dashboard.tuneInfo
+  tuneInfo: state.dashboard.tuneInfo,
 });
 
 const mapDispatchToProps = dashboardActions;
 
-interface State {
+type State = {
   tabIndex: number;
-}
+};
 
 class Tune extends React.Component<
   WithStyles<typeof styles> &
@@ -51,7 +54,7 @@ class Tune extends React.Component<
   timeout: number = 0;
 
   state: State = {
-    tabIndex: 0
+    tabIndex: 0,
   };
 
   refreshTuneInfo = async () => {
@@ -75,7 +78,7 @@ class Tune extends React.Component<
 
   handleTabChange = (event: React.ChangeEvent<{}>, value: number) => {
     this.setState({
-      tabIndex: value
+      tabIndex: value,
     });
   };
 
@@ -86,7 +89,7 @@ class Tune extends React.Component<
 
     const tabs = [
       { label: "Table", component: TuneTable },
-      { label: "TensorBoard", component: TuneTensorBoard }
+      { label: "TensorBoard", component: TuneTensorBoard },
     ];
 
     const SelectedComponent = tabs[tabIndex].component;
@@ -115,5 +118,5 @@ class Tune extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(Tune));

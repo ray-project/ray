@@ -193,6 +193,9 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
+        CRayObject(const shared_ptr[CBuffer] &data,
+                   const shared_ptr[CBuffer] &metadata,
+                   const c_vector[CObjectID] &nested_ids)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const

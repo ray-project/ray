@@ -151,6 +151,9 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            # Call the Policy's Exploration's postprocess method.
+            policy.exploration.postprocess_trajectory(
+                policy, post_batches[agent_id], getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(
@@ -159,8 +162,6 @@ class MultiAgentSampleBatchBuilder:
 
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
-            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
-                post_batch)
             if self.postp_callback:
                 self.postp_callback({
                     "episode": episode,
@@ -169,6 +170,8 @@ class MultiAgentSampleBatchBuilder:
                     "post_batch": post_batch,
                     "all_pre_batches": pre_batches,
                 })
+            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
+                post_batch)
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()
