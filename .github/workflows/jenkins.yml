@@ -1,0 +1,29 @@
+name: Jenkins Integration
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+on: [push, pull_request]
+
+jobs:
+  jenkins:
+    name: docker integration
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-flag:
+          - "--run-tune"
+          - "--run-doc"
+          - "--run-sgd"
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+      - name: Run Jenkins Tests ${{matrix.test-flag}}
+        continue-on-error: false
+        shell: bash
+        env:
+          RUN_ARG: ${{matrix.test-flag}}
+        run: HOME=$(pwd) ./ci/jenkins_tests/entry_point.sh $RUN_ARG
