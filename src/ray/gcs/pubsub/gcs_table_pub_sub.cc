@@ -33,21 +33,18 @@ Status GcsTablePubSub<ID, Data>::Publish(const ID &id, const Data &data,
     }
   };
 
-  auto status = redis_client_->GetPrimaryContext()->PublishAsync(
+  return redis_client_->GetPrimaryContext()->PublishAsync(
       GenChannelPattern(id), message.SerializeAsString(), on_done);
-  return status;
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Subscribe(const ID &id, const Callback &subscribe,
-                                           const StatusCallback &done) {
-  return Subscribe(boost::optional<ID>(id), subscribe, done);
+Status GcsTablePubSub<ID, Data>::Subscribe(const ID &id, const Callback &subscribe) {
+  return Subscribe(boost::optional<ID>(id), subscribe);
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::SubscribeAll(const Callback &subscribe,
-                                              const StatusCallback &done) {
-  return Subscribe(boost::none, subscribe, done);
+Status GcsTablePubSub<ID, Data>::SubscribeAll(const Callback &subscribe) {
+  return Subscribe(boost::none, subscribe);
 }
 
 template <typename ID, typename Data>
@@ -60,12 +57,9 @@ Status GcsTablePubSub<ID, Data>::Unsubscribe(const ID &id, const StatusCallback 
 
 template <typename ID, typename Data>
 Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
-                                           const Callback &subscribe,
-                                           const StatusCallback &done) {
+                                           const Callback &subscribe) {
   std::string pattern = GenChannelPattern(id);
-  auto context = redis_client_->GetPrimaryContext();
-  RedisCallback redis_callback = [this, pattern,
-                                  subscribe](std::shared_ptr<CallbackReply> reply) {
+  auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
     if (!reply->IsNil()) {
       if (reply->GetMessageType() == "punsubscribe") {
         if (unsubscribe_callbacks_.count(pattern)) {
@@ -75,28 +69,23 @@ Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
         ray::gcs::RedisCallbackManager::instance().remove(
             subscribe_callback_index_[pattern]);
       } else {
-        const auto data = reply->ReadAsPubsubData();
-        if (!data.empty()) {
-          if (subscribe != nullptr) {
-            rpc::GcsMessage message;
-            message.ParseFromString(data);
-            Data data;
-            data.ParseFromString(message.data());
-            subscribe(ID::FromBinary(message.id()), data);
-          }
+        const auto reply_data = reply->ReadAsPubsubData();
+        if (!reply_data.empty()) {
+          rpc::GcsMessage message;
+          message.ParseFromString(reply_data);
+          Data data;
+          data.ParseFromString(message.data());
+          subscribe(ID::FromBinary(message.id()), data);
         }
       }
     }
   };
 
-  int64_t callback_index;
-  auto status = context->PSubscribeAsync(pattern, redis_callback, &callback_index);
+  int64_t out_callback_index;
+  auto status = redis_client_->GetPrimaryContext()->PSubscribeAsync(pattern, callback,
+                                                                    &out_callback_index);
   if (id) {
-    subscribe_callback_index_[pattern] = callback_index;
-  }
-
-  if (done) {
-    done(status);
+    subscribe_callback_index_[pattern] = out_callback_index;
   }
   return status;
 }
