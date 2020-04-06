@@ -31,6 +31,8 @@ fi
 
 echo "Using Docker image" $DOCKER_SHA
 
+docker system prune --all --force --volumes
+
 ######################## EXAMPLE TESTS #################################
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
@@ -101,6 +103,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 
 ######################## TUNE TESTS #################################
+docker system prune --all --force --volumes
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     pytest /ray/python/ray/tune/tests/test_actor_reuse.py
