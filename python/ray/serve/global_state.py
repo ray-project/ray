@@ -32,9 +32,6 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_monitor = None
 
-    def get_kv_store_connector(self):
-        return self.kv_store_connector
-
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
 
@@ -72,14 +69,16 @@ class ServeMaster:
             "Metric monitor not started yet.")
         return [self.metric_monitor]
 
+    def _list_replicas(self, backend_tag):
+        return self.backend_table.list_replicas(backend_tag)
+
     def scale_replicas(self, backend_tag, num_replicas):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
 
-        current_num_replicas = len(
-            self.backend_table.list_replicas(backend_tag))
+        current_num_replicas = len(self._list_replicas(backend_tag))
         delta_num_replicas = num_replicas - current_num_replicas
 
         if delta_num_replicas > 0:
@@ -119,10 +118,9 @@ class ServeMaster:
     def _remove_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
-        assert (
-            len(self.backend_table.list_replicas(backend_tag)) > 0
-        ), "Backend {} does not have enough replicas to be removed.".format(
-            backend_tag)
+        assert (len(self._list_replicas(backend_tag)) >
+                0), "Tried to remove replica from empty backend ({}).".format(
+                    backend_tag)
 
         replica_tag = self.backend_table.remove_replica(backend_tag)
         assert replica_tag in self.tag_to_actor_handles
@@ -249,11 +247,6 @@ class GlobalState:
         if master_actor is None:
             master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
         self.master_actor = master_actor
-
-        # Connect to all the tables.
-        kv_store_connector = ray.get(
-            self.master_actor.get_kv_store_connector.remote())
-        self.backend_table = BackendTable(kv_store_connector)
 
     def get_router(self):
         return ray.get(self.master_actor.get_router.remote())[0]
