@@ -853,7 +853,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
 }
 
-void NodeManager::ProcessNewClient(LocalClientConnection &client) {
+void NodeManager::ProcessNewClient(ClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
 }
@@ -921,9 +921,9 @@ void NodeManager::DispatchTasks(
   }
 }
 
-void NodeManager::ProcessClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
+                                       int64_t message_type,
+                                       const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
@@ -1036,7 +1036,7 @@ void NodeManager::ProcessClientMessage(
 }
 
 void NodeManager::ProcessRegisterClientRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
   flatbuffers::FlatBufferBuilder fbb;
   auto reply =
@@ -1137,8 +1137,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   }
 }
 
-void NodeManager::HandleWorkerAvailable(
-    const std::shared_ptr<LocalClientConnection> &client) {
+void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1168,7 +1167,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
+    const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1301,7 +1300,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   std::vector<ObjectID> required_object_ids;
   for (int64_t i = 0; i < message->object_ids()->size(); ++i) {
@@ -1330,7 +1329,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessWaitRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
@@ -1386,7 +1385,7 @@ void NodeManager::ProcessWaitRequestMessage(
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message =
       flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
@@ -1428,7 +1427,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 }
 
 void NodeManager::ProcessPrepareActorCheckpointRequest(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointRequest>(message_data);
   ActorID actor_id = from_flatbuf<ActorID>(*message->actor_id());
@@ -1749,7 +1748,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
 }
 
 void NodeManager::ProcessSetResourceRequest(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the SetResource message
   auto message = flatbuffers::GetRoot<protocol::SetResourceRequest>(message_data);
 
@@ -2186,10 +2185,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
   worker->MarkUnblocked();
 }
 
-void NodeManager::AsyncResolveObjects(
-    const std::shared_ptr<LocalClientConnection> &client,
-    const std::vector<ObjectID> &required_object_ids, const TaskID &current_task_id,
-    bool ray_get, bool mark_worker_blocked) {
+void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
+                                      const std::vector<ObjectID> &required_object_ids,
+                                      const TaskID &current_task_id, bool ray_get,
+                                      bool mark_worker_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -2242,7 +2241,7 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id,
+    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
     bool was_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
@@ -3055,7 +3054,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
   if (associated_worker == nullptr) {
     associated_worker = worker_pool_.GetRegisteredDriver(client);

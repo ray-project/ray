@@ -19,7 +19,7 @@ class DQNTorchModel(TorchModelV2):
             name,
             *,
             dueling=False,
-            dueling_hiddens=(256, ),
+            q_hiddens=(256, ),
             dueling_activation="relu",
             use_noisy=False,
             sigma0=0.5,
@@ -35,7 +35,7 @@ class DQNTorchModel(TorchModelV2):
                 for DDQN. If True, Q-values are calculated as:
                 Q = (A - mean[A]) + V. If False, raw NN output is interpreted
                 as Q-values.
-            dueling_hiddens (List[int]): List of layer-sizes after(!) the
+            q_hiddens (List[int]): List of layer-sizes after(!) the
                 Advantages(A)/Value(V)-split. Hence, each of the A- and V-
                 branches will have this structure of Dense layers. To define
                 the NN before this A/V-split, use - as always -
@@ -58,7 +58,7 @@ class DQNTorchModel(TorchModelV2):
         value_module = None
         if self.dueling:
             value_module = nn.Sequential()
-            for i, n in enumerate(dueling_hiddens):
+            for i, n in enumerate(q_hiddens):
                 advantage_module.add_module("dueling_A_{}".format(i),
                                             nn.Linear(ins, n))
                 value_module.add_module("dueling_V_{}".format(i),

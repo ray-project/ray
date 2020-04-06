@@ -82,7 +82,13 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    num_outputs = action_space.n
+    if config["hiddens"]:
+        # try to infer the last layer size, otherwise fall back to 256
+        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        config["model"]["no_final_linear"] = True
+    else:
+        num_outputs = action_space.n
+
     # TODO(sven): Move option to add LayerNorm after each Dense
     #  generically into ModelCatalog.
     add_layer_norm = (
@@ -90,15 +96,15 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_SCOPE,
         dueling=config["dueling"],
-        dueling_hiddens=config["dueling_hiddens"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
@@ -108,15 +114,15 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
     policy.q_func_vars = policy.q_model.variables()
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_TARGET_SCOPE,
         dueling=config["dueling"],
-        dueling_hiddens=config["dueling_hiddens"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense

@@ -9,8 +9,6 @@ TorchTrainer
 .. autoclass:: ray.util.sgd.torch.TorchTrainer
     :members:
 
-    .. automethod:: __init__
-
 .. _ref-torch-operator:
 
 PyTorch TrainingOperator
