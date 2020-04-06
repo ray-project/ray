@@ -30,6 +30,8 @@ build --host_copt="-Wno-inconsistent-missing-override"
 build --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
+# Don't generate warnings about kernel features we don't need https://github.com/ray-project/ray/issues/6832
+build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR_MANYLINUX1"
 build --http_timeout_scaling=5.0
 build:iwyu --experimental_action_listener=//:iwyu_cpp
 
