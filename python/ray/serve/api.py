@@ -293,24 +293,9 @@ def create_backend(func_or_class,
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
-    backend_config_dict = dict(backend_config)
-
-    # save creator which starts replicas
-    global_state.backend_table.register_backend(backend_tag, creator)
-
-    # save information about configurations needed to start the replicas
-    global_state.backend_table.register_info(backend_tag, backend_config_dict)
-
-    # save the initial arguments needed by replicas
-    global_state.backend_table.save_init_args(backend_tag, arg_list)
-
-    # set the backend config inside the router
-    # particularly for max-batch-size
-    router = global_state.get_router()
-    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
     ray.get(
-        global_state.master_actor.scale_replicas.remote(
-            backend_tag, backend_config_dict["num_replicas"]))
+        global_state.master_actor.create_backend.remote(
+            backend_tag, creator, backend_config, arg_list))
 
 
 @_ensure_connected

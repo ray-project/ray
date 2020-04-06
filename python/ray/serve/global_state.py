@@ -176,6 +176,25 @@ class ServeMaster:
                 self.route_table.list_service(
                     include_methods=True, include_headless=False)))
 
+    def create_backend(self, backend_tag, creator, backend_config, arg_list):
+        backend_config_dict = dict(backend_config)
+
+        # Save creator which starts replicas.
+        self.backend_table.register_backend(backend_tag, creator)
+
+        # Save information about configurations needed to start the replicas.
+        self.backend_table.register_info(backend_tag, backend_config_dict)
+
+        # Save the initial arguments needed by replicas.
+        self.backend_table.save_init_args(backend_tag, arg_list)
+
+        # Set the backend config inside the router
+        # (particularly for max-batch-size).
+        [router] = self.get_router()
+        ray.get(
+            router.set_backend_config.remote(backend_tag, backend_config_dict))
+        self.scale_replicas(backend_tag, backend_config_dict["num_replicas"])
+
 
 class GlobalState:
     """Encapsulate all global state in the serving system.
