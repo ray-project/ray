@@ -64,7 +64,7 @@ class TestPG(unittest.TestCase):
             vars = policy.model.trainable_variables()
             if fw == "tf":
                 vars = policy.get_session().run(vars)
-    
+
             # Post-process (calculate simple (non-GAE) advantages) and attach
             # to train_batch dict.
             # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
@@ -75,7 +75,7 @@ class TestPG(unittest.TestCase):
 
             # Check Advantage values.
             check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
-    
+
             # Actual loss results.
             if fw == "tf":
                 results = policy.get_session().run(
@@ -83,17 +83,22 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(
                         train_batch, shuffle=False))
             else:
-                results = (pg.pg_tf_loss if fw == "eager" else
-                           pg.pg_torch_loss)(
-                    policy,
-                    policy.model,
-                    dist_class=dist_cls,
-                    train_batch=train_batch)
-    
+                results = (pg.pg_tf_loss
+                           if fw == "eager" else pg.pg_torch_loss)(
+                               policy,
+                               policy.model,
+                               dist_class=dist_cls,
+                               train_batch=train_batch)
+
             # Calculate expected results.
             expected_logits = fc(
-                fc(train_batch[SampleBatch.CUR_OBS], vars[0], vars[1],
-                   framework=fw), vars[2], vars[3], framework=fw)
+                fc(train_batch[SampleBatch.CUR_OBS],
+                   vars[0],
+                   vars[1],
+                   framework=fw),
+                vars[2],
+                vars[3],
+                framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
                 train_batch[SampleBatch.ACTIONS])
             if sess:
