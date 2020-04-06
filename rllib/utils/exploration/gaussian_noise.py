@@ -163,4 +163,5 @@ class GaussianNoise(Exploration):
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
-        return self.scale_schedule(self.last_timestep)
+        scale = self.scale_schedule(self.last_timestep)
+        return {"cur_scale": scale}

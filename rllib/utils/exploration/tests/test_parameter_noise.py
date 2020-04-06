@@ -12,25 +12,31 @@ tf = try_import_tf()
 class TestParameterNoise(unittest.TestCase):
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {})
+            ddpg.DDPGTrainer,
+            ddpg.DEFAULT_CONFIG,
+            "Pendulum-v0", {},
+            np.array([1.0, 0.0, -1.0]),
+            fws="tf")
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v0",
-            {"is_slippery": False, "map_name": "4x4"})
+            dqn.DQNTrainer,
+            dqn.DEFAULT_CONFIG,
+            "FrozenLake-v0", {
+                "is_slippery": False,
+                "map_name": "4x4"
+            },
+            np.array(0),
+            fws=("tf", "eager"))
 
-    def do_test_parameter_noise_exploration(self,
-                                            trainer_cls,
-                                            config,
-                                            env,
-                                            env_config):
+    def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
+                                            env_config, obs, fws):
         """Tests, whether an Agent works with ParameterNoise."""
-        obs = np.array(0)
         core_config = config.copy()
         core_config["num_workers"] = 0  # Run locally.
         core_config["env_config"] = env_config
-        
-        for fw in framework_iterator(core_config, ["tf", "eager"]):
+
+        for fw in framework_iterator(core_config, fws):
 
             config = core_config.copy()
 
@@ -38,14 +44,14 @@ class TestParameterNoise(unittest.TestCase):
             # ----
             config["exploration_config"] = {"type": "ParameterNoise"}
             config["explore"] = True
-            
+
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
             check(noise_before, 0.0)
             initial_weights = self._get_current_weight(policy, fw)
-            
+
             # Pseudo-start an episode and compare the weights before and after.
             policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
@@ -55,7 +61,7 @@ class TestParameterNoise(unittest.TestCase):
             # the episode, only one step later.
             check(noise_after_ep_start, noise_before)
             check(initial_weights, weights_after_ep_start)
-            
+
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
@@ -71,7 +77,7 @@ class TestParameterNoise(unittest.TestCase):
                 check(self._get_current_weight(policy, fw), initial_weights)
                 self.assertFalse(
                     policy.exploration.weights_are_currently_noisy)
-            
+
             # Explore=None (default: True) should return different actions.
             # However, this is only due to the underlying epsilon-greedy
             # exploration.
@@ -85,13 +91,13 @@ class TestParameterNoise(unittest.TestCase):
                 check(current_weight, initial_weights, false=True)
                 check(current_weight, initial_weights + noise)
             check(np.std(actions), 0.0, false=True)
-            
+
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
             policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
-            
+
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
             config = core_config.copy()
@@ -101,23 +107,23 @@ class TestParameterNoise(unittest.TestCase):
             policy = trainer.get_policy()
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
-            
+
             # Noise before anything (should be 0.0, no episode started yet).
             noise = self._get_current_noise(policy, fw)
             check(noise, 0.0)
-            
+
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
             policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
-            
+
             # Should be the same, as we don't do anything at the beginning of
             # the episode, only one step later.
             noise = self._get_current_noise(policy, fw)
             check(noise, 0.0)
             noisy_weights = self._get_current_weight(policy, fw)
             check(initial_weights, noisy_weights)
-            
+
             # Setting explore=False or None should always return the same
             # action.
             a_ = trainer.compute_action(obs, explore=False)
@@ -129,7 +135,7 @@ class TestParameterNoise(unittest.TestCase):
                 check(a, a_)
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
-            
+
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones (no noise permanently
             # applied throughout the episode).
@@ -140,7 +146,7 @@ class TestParameterNoise(unittest.TestCase):
             # beginning of episode).
             noise_after = self._get_current_noise(policy, fw)
             check(noise, noise_after)
-            
+
             # Switch off EpsilonGreedy underlying exploration.
             # ----
             config = core_config.copy()
@@ -163,25 +169,25 @@ class TestParameterNoise(unittest.TestCase):
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
-    
+
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.
         if policy.exploration.noise is None:
             return 0.0
-    
+
         noise = policy.exploration.noise[0][0][0]
         if fw == "tf":
             noise = policy.get_session().run(noise)
         else:
             noise = noise.numpy()
         return noise
-    
+
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
         key = 0 if fw == "eager" else list(weights.keys())[0]
         return weights[key][0][0]
-    
-    
+
+
 if __name__ == "__main__":
     import pytest
     import sys

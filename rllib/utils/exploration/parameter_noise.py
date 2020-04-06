@@ -1,4 +1,4 @@
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -109,6 +109,11 @@ class ParameterNoise(Exploration):
                                       (random_timesteps + 2, 0.01)],
                         "outside_value": 0.01
                     }
+                }
+            elif isinstance(self.action_space, Box):
+                sub_exploration = {
+                    "type": "OrnsteinUhlenbeckNoise",
+                    "random_timesteps": random_timesteps,
                 }
             # TODO(sven): Implement for any action space.
             else:
@@ -257,13 +262,14 @@ class ParameterNoise(Exploration):
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
         elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
             current_scale = self.sub_exploration.get_info()["cur_scale"]
             if tf_sess is not None:
                 current_scale = tf_sess.run(current_scale)
-            delta  = self.config["exploration_config"].get("ou_sigma", 0.2) * \
-                current_scale
+            delta = self.policy_config["exploration_config"].get(
+                "ou_sigma", 0.2) * current_scale
 
         # Adjust stddev according to the calculated action-distance.
         if distance <= delta:
