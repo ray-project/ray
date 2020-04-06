@@ -191,7 +191,7 @@ def _load_aws_security_group_example_config():
 
 
 def _mock_path_exists_key_pair(path):
-    key_name, key_path = key_pair(0, "us-west-2")
+    key_name, key_path = key_pair(0, "us-west-2", DEFAULT_KEY_PAIR["KeyName"])
     # This return ternary ensures that we both:
     # 1) Mock key path existence.
     # 2) Properly respond to config cache file existence checks.
