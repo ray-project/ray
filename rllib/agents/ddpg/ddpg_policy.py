@@ -3,6 +3,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.agents.ddpg.ddpg_action_model import DDPGActionModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -78,7 +79,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             name="cur_obs")
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            self._distribution_inputs, self.policy_model = \
+            #self._distribution_inputs,
+            self.policy_model = \
                 self._build_policy_network(
                     self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
@@ -373,48 +375,56 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         else:
             default_model = NoopModel
             #num_outputs = int(np.product(obs_space.shape))
-    
+
+        #self.config["model"]["no_final_linear"] = True
         #if self.config["use_state_preprocessor"]:
-        inputs = tf.keras.layers.Input(obs_space.shape)
-        action_out = ModelCatalog.get_model_v2(
+        #inputs = tf.keras.layers.Input(obs_space.shape)
+        model = ModelCatalog.get_model_v2(
         #{
         #    "obs": obs,
         #    "is_training": self._get_is_training_placeholder(),
         #},
             obs_space=obs_space,
             action_space=action_space,
-            num_outputs=1,
+            num_outputs=self.config["model"]["fcnet_hiddens"][-1],
             model_config=self.config["model"],
             framework="tf",
             default_model=default_model,
-            name="policy_model"
-        )(inputs)
+            model_interface=DDPGActionModel,
+            name="policy_model",
+            # Extra agrs for DDPGActionModel.
+            actor_hiddens=self.config["actor_hiddens"],
+            actor_hidden_activation=self.config["actor_hidden_activation"],
+            add_layer_norm=(self.config["exploration_config"].get("type") ==
+                            "ParameterNoise"),
+        )
         #action_out = model.last_layer
         #else:
         #    model = None
         #    action_out = obs
 
-        activation = getattr(tf.nn, self.config["actor_hidden_activation"])
-        for hidden in self.config["actor_hiddens"]:
-            action_out = tf.keras.layers.Dense(
-                units=hidden, activation=activation)(action_out)
-            if self.config["exploration_config"].get("type") == \
-                    "ParameterNoise":
-                action_out = tf.keras.layers.LayerNormalization()(action_out)
-        action_out = tf.keras.layers.Dense(
-            units=action_space.shape[0], activation=None)(action_out)
+        #activation = getattr(tf.nn, self.config["actor_hidden_activation"])
+        #for hidden in self.config["actor_hiddens"]:
+        #    action_out = tf.keras.layers.Dense(
+        #        units=hidden, activation=activation)(action_out)
+        #    if self.config["exploration_config"].get("type") == \
+        #            "ParameterNoise":
+        #        action_out = tf.keras.layers.LayerNormalization()(action_out)
+        #action_out = tf.keras.layers.Dense(
+        #    units=action_space.shape[0], activation=None)(action_out)
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
-        sigmoid_out = tf.nn.sigmoid(2 * action_out)
+        #sigmoid_out = tf.nn.sigmoid(2 * action_out)
         # Rescale to actual env policy scale
         # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
         # get same dims)
-        action_range = (action_space.high - action_space.low)[None]
-        low_action = action_space.low[None]
-        actions = action_range * sigmoid_out + low_action
+        #action_range = (action_space.high - action_space.low)[None]
+        #low_action = action_space.low[None]
+        #actions = action_range * sigmoid_out + low_action
 
-        return actions, model
+        #return actions, model
+        return model
 
     def _build_actor_critic_loss(self,
                                  q_t,
