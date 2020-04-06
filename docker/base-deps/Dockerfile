@@ -17,7 +17,7 @@ RUN apt-get update \
     && /bin/bash /tmp/anaconda.sh -b -p /opt/conda \
     && rm /tmp/anaconda.sh \
     && /opt/conda/bin/conda install -y \
-        libgcc python=3.6.9 opencv \
+        libgcc python=3.6.9 opencv-python \
     && /opt/conda/bin/conda clean -y --all \
     && /opt/conda/bin/pip install \
         flatbuffers \

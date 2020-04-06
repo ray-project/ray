@@ -15,6 +15,5 @@ jobs:
         with:
           fetch-depth: 1
       - name: Run Jenkins Tests
-        continue-on-error: false
-        shell: bash
+        shell: bash -e -o pipefail -l {0}
         run: HOME=$(pwd) ./ci/jenkins_tests/entry_point.sh
