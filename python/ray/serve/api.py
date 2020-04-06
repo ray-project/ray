@@ -210,10 +210,13 @@ def set_backend_config(backend_tag, backend_config):
         for k in BackendConfig.restart_on_change_fields)
     if need_to_restart_replicas:
         # kill all the replicas for restarting with new configurations
-        _scale(backend_tag, 0)
+        ray.get(
+            global_state.master_actor.scale_replicas.remote(backend_tag, 0))
 
     # scale the replicas with new configuration
-    _scale(backend_tag, backend_config_dict["num_replicas"])
+    ray.get(
+        global_state.master_actor.scale_replicas.remote(
+            backend_tag, backend_config_dict["num_replicas"]))
 
 
 @_ensure_connected
@@ -305,36 +308,9 @@ def create_backend(func_or_class,
     # particularly for max-batch-size
     router = global_state.get_router()
     ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
-    _scale(backend_tag, backend_config_dict["num_replicas"])
-
-
-@_ensure_connected
-def _scale(backend_tag, num_replicas):
-    """Set the number of replicas for backend_tag.
-
-    Args:
-        backend_tag (str): A registered backend.
-        num_replicas (int): Desired number of replicas
-    """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert num_replicas >= 0, ("Number of replicas must be"
-                               " greater than or equal to 0.")
-
-    replicas = global_state.backend_table.list_replicas(backend_tag)
-    current_num_replicas = len(replicas)
-    delta_num_replicas = num_replicas - current_num_replicas
-
-    if delta_num_replicas > 0:
-        for _ in range(delta_num_replicas):
-            ray.get(
-                global_state.master_actor.start_backend_replica.remote(
-                    backend_tag))
-    elif delta_num_replicas < 0:
-        for _ in range(-delta_num_replicas):
-            ray.get(
-                global_state.master_actor.remove_backend_replica.remote(
-                    backend_tag))
+    ray.get(
+        global_state.master_actor.scale_replicas.remote(
+            backend_tag, backend_config_dict["num_replicas"]))
 
 
 @_ensure_connected

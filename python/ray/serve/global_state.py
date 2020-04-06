@@ -71,7 +71,24 @@ class ServeMaster:
             "Metric monitor not started yet.")
         return [self.metric_monitor]
 
-    def start_backend_replica(self, backend_tag):
+    def scale_replicas(self, backend_tag, num_replicas):
+        assert (backend_tag in self.backend_table.list_backends()
+                ), "Backend {} is not registered.".format(backend_tag)
+        assert num_replicas >= 0, ("Number of replicas must be"
+                                   " greater than or equal to 0.")
+
+        current_num_replicas = len(
+            self.backend_table.list_replicas(backend_tag))
+        delta_num_replicas = num_replicas - current_num_replicas
+
+        if delta_num_replicas > 0:
+            for _ in range(delta_num_replicas):
+                self._start_backend_replica(backend_tag)
+        elif delta_num_replicas < 0:
+            for _ in range(-delta_num_replicas):
+                self._remove_backend_replica(backend_tag)
+
+    def _start_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
 
@@ -98,7 +115,7 @@ class ServeMaster:
         self.backend_table.add_replica(backend_tag, replica_tag)
         self.get_metric_monitor()[0].add_target.remote(runner_handle)
 
-    def remove_backend_replica(self, backend_tag):
+    def _remove_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
         assert (
