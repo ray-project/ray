@@ -101,12 +101,6 @@ struct EnumClassHash {
   }
 };
 
-/// Uses sscanf() to read a token matching from the string, advancing the iterator.
-/// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
-/// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
-/// \return The scanned prefix of the string, if any.
-std::string ScanToken(std::string::const_iterator &c_str, std::string format);
-
 /// unordered_map for enum class type.
 template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
