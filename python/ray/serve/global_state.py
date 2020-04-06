@@ -229,6 +229,12 @@ class ServeMaster:
         # Scale the replicas with the new configuration.
         self.scale_replicas(backend_tag, backend_config_dict["num_replicas"])
 
+    def get_backend_config(self, backend_tag):
+        assert (backend_tag in self.backend_table.list_backends()
+                ), "Backend {} is not registered.".format(backend_tag)
+        backend_config_dict = self.backend_table.get_info(backend_tag)
+        return BackendConfig(**backend_config_dict)
+
 
 class GlobalState:
     """Encapsulate all global state in the serving system.

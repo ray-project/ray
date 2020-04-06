@@ -187,15 +187,13 @@ def set_backend_config(backend_tag, backend_config):
 
 @_ensure_connected
 def get_backend_config(backend_tag):
-    """get the backend configuration for a backend tag
+    """Get the backend configuration for a backend tag.
 
     Args:
         backend_tag(str): A registered backend.
     """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    backend_config_dict = global_state.backend_table.get_info(backend_tag)
-    return BackendConfig(**backend_config_dict)
+    return ray.get(
+        global_state.master_actor.get_backend_config.remote(backend_tag))
 
 
 def _backend_accept_batch(func_or_class):
