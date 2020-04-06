@@ -320,6 +320,7 @@ class TorchTrainer:
 
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
+            # Runs the creator functions.
             remote_setups = [
                 worker.setup.remote(address, i + 1, num_workers)
                 for i, worker in enumerate(self.remote_workers)
@@ -327,6 +328,14 @@ class TorchTrainer:
             self.local_worker.setup(address, 0, num_workers)
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_setups)
+
+            # Runs code that requires all creator functions to have run.
+            remote_operator_setups = [
+                worker.setup_ddp_and_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_ddp_and_operator()
+            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,

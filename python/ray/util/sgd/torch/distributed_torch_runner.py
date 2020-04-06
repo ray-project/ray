@@ -55,7 +55,7 @@ class DistributedTorchRunner(TorchRunner):
         """
         _remind_gpu_usage(self.use_gpu, is_chief=world_rank == 0)
         self._setup_distributed_pytorch(url, world_rank, world_size)
-        self._setup_training()
+        self.setup_components()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
         self.world_rank = world_rank
@@ -87,7 +87,7 @@ class DistributedTorchRunner(TorchRunner):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         self.device_ids = [0]
 
-    def _setup_training(self):
+    def setup_components(self):
         logger.debug("Loading data.")
         self._initialize_dataloaders()
         logger.debug("Creating model")
@@ -107,11 +107,14 @@ class DistributedTorchRunner(TorchRunner):
 
         self._create_schedulers_if_available()
         self._try_setup_apex()
-
         self._create_loss()
 
-        training_models = self.models
+    def setup_ddp_and_operator(self):
+        """This happens after the creator functions are called.
 
+        This helps avoid timeouts due to creator functions downloading data.
+        """
+        training_models = self.models
         if self.wrap_ddp:
             # This needs to happen after apex
             training_models = [

@@ -14,6 +14,11 @@ import ray.util.sgd.torch.examples.segmentation.utils as utils
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd import TorchTrainer
 
+try:
+    from apex import amp
+except ImportError:
+    amp = None
+
 
 def get_dataset(name,
                 image_set,
@@ -36,12 +41,17 @@ def get_dataset(name,
 
     if download == "auto" and os.path.exists(p):
         download = False
-
-    ds = ds_fn(p, download=download, image_set=image_set, transforms=transform)
+    try:
+        ds = ds_fn(
+            p, download=download, image_set=image_set, transforms=transform)
+    except RuntimeError:
+        print("data loading failed. Retrying this.")
+        ds = ds_fn(p, download=True, image_set=image_set, transforms=transform)
     return ds, num_classes
 
 
 def data_creator(config):
+    # Within a machine, this code runs synchronously.
     dataset, num_classes = get_dataset(
         args.dataset, "train", get_transform(train=True))
     config["num_classes"] = num_classes
@@ -92,27 +102,18 @@ def criterion(inputs, target):
 
 
 class SegOperator(TrainingOperator):
-    def setup(self, config):
-        pass
-        # Currently, this LR scheduler is broken due to
-        # https://github.com/pytorch/pytorch/issues/32639. But theoretically,
-        # other LR schedulers should work.
-        # datalen = len(self.train_dataloader)
-        # args = config["args"]
-        # self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     self.optimizer,
-        #     lambda x: (1 - x / (datalen * args.epochs))**0.9
-        # )
-
     def train_batch(self, batch, batch_info):
         image, target = batch
         image, target = image.to(self.device), target.to(self.device)
         output = self.model(image)
         loss = criterion(output, target)
         self.optimizer.zero_grad()
-        loss.backward()
+        if self.use_fp16 and amp:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
         self.optimizer.step()
-        # self.scheduler.step()
         lr = self.optimizer.param_groups[0]["lr"]
         return {"loss": loss.item(), "lr": lr, "num_samples": len(batch)}
 
@@ -168,10 +169,6 @@ def model_creator(config):
         num_classes=config["num_classes"],
         aux_loss=args.aux_loss,
         pretrained=args.pretrained)
-    # We usually don't need to do this, but we're enabling batch norm
-    # so we want to convert everything to GPU tensors first.
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
     if config["num_workers"] > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     return model
@@ -189,6 +186,7 @@ def main(args):
         optimizer_creator=optimizer_creator,
         training_operator_cls=SegOperator,
         use_tqdm=True,
+        use_fp16=True,
         num_workers=config["num_workers"],
         config=config,
         use_gpu=torch.cuda.is_available())
