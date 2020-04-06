@@ -3,6 +3,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
@@ -366,23 +367,42 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
     def _build_policy_network(self, obs, obs_space, action_space):
         if self.config["use_state_preprocessor"]:
-            model = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
-            action_out = model.last_layer
+            default_model = None  # catalog decides
+            #num_outputs = 256  # arbitrary
+            #config["model"]["no_final_linear"] = True
         else:
-            model = None
-            action_out = obs
+            default_model = NoopModel
+            #num_outputs = int(np.product(obs_space.shape))
+    
+        #if self.config["use_state_preprocessor"]:
+        inputs = tf.keras.layers.Input(obs_space.shape)
+        action_out = ModelCatalog.get_model_v2(
+        #{
+        #    "obs": obs,
+        #    "is_training": self._get_is_training_placeholder(),
+        #},
+            obs_space=obs_space,
+            action_space=action_space,
+            num_outputs=1,
+            model_config=self.config["model"],
+            framework="tf",
+            default_model=default_model,
+            name="policy_model"
+        )(inputs)
+        #action_out = model.last_layer
+        #else:
+        #    model = None
+        #    action_out = obs
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
-            action_out = tf.layers.dense(
-                action_out, units=hidden, activation=activation)
-            if isinstance(self.exploration, ParameterNoise):
+            action_out = tf.keras.layers.Dense(
+                units=hidden, activation=activation)(action_out)
+            if self.config["exploration_config"].get("type") == \
+                    "ParameterNoise":
                 action_out = tf.keras.layers.LayerNormalization()(action_out)
-        action_out = tf.layers.dense(
-            action_out, units=action_space.shape[0], activation=None)
+        action_out = tf.keras.layers.Dense(
+            units=action_space.shape[0], activation=None)(action_out)
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
