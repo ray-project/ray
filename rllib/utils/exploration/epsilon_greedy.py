@@ -64,11 +64,11 @@ class EpsilonGreedy(Exploration):
 
         q_values = action_distribution.inputs
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(
-                q_values, explore, timestep)
+            return self._get_tf_exploration_action_op(q_values, explore,
+                                                      timestep)
         else:
-            return self._get_torch_exploration_action(
-                q_values, explore, timestep)
+            return self._get_torch_exploration_action(q_values, explore,
+                                                      timestep)
 
     def _get_tf_exploration_action_op(self, q_values, explore, timestep):
         """TF method to produce the tf op for an epsilon exploration action.

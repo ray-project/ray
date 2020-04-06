@@ -1,0 +1,14 @@
+pendulum-ddpg:
+    env: Pendulum-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: -800
+        timesteps_total: 100000
+    config:
+        use_huber: True
+        clip_rewards: False
+        exploration_config:
+            type: ParameterNoise
+            random_timesteps: 10000
+            initial_stddev: 1.0
+        batch_mode: complete_episodes

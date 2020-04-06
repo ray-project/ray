@@ -15,7 +15,6 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
 
 tf = try_import_tf()
@@ -79,11 +78,15 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             name="cur_obs")
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            #self._distribution_inputs,
             self.policy_model = \
-                self._build_policy_network(
-                    self.cur_observations, observation_space, action_space)
+                self._build_policy_network(observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
+            # Action distribution inputs.
+            self._distribution_inputs = \
+                self.policy_model.get_policy_out(self.policy_model({
+                    "obs": self.cur_observations,
+                    "is_training": self._get_is_training_placeholder()
+                }))
         self.model = self.policy_model
 
         # Create exploration component.
@@ -114,17 +117,26 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # policy network evaluation
         with tf.variable_scope(POLICY_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            self.policy_t, _ = self._build_policy_network(
-                self.obs_t, observation_space, action_space)
+            self.policy_t = \
+                self.policy_model.get_policy_out(self.policy_model({
+                    "obs": self.obs_t,
+                    "is_training": self._get_is_training_placeholder()
+                }))
             policy_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
 
         # target policy network evaluation
         with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
-            policy_tp1, _ = self._build_policy_network(
-                self.obs_tp1, observation_space, action_space)
+            self.target_policy_model = self._build_policy_network(
+                observation_space, action_space)
             target_policy_vars = scope_vars(scope.name)
+            policy_tp1 = \
+                self.target_policy_model.get_policy_out(
+                    self.target_policy_model({
+                        "obs": self.obs_tp1,
+                        "is_training": self._get_is_training_placeholder()
+                    }))
 
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
@@ -367,26 +379,16 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         return q_values, q_model
 
-    def _build_policy_network(self, obs, obs_space, action_space):
+    def _build_policy_network(self, obs_space, action_space):
         if self.config["use_state_preprocessor"]:
             default_model = None  # catalog decides
-            #num_outputs = 256  # arbitrary
-            #config["model"]["no_final_linear"] = True
         else:
             default_model = NoopModel
-            #num_outputs = int(np.product(obs_space.shape))
 
-        #self.config["model"]["no_final_linear"] = True
-        #if self.config["use_state_preprocessor"]:
-        #inputs = tf.keras.layers.Input(obs_space.shape)
         model = ModelCatalog.get_model_v2(
-        #{
-        #    "obs": obs,
-        #    "is_training": self._get_is_training_placeholder(),
-        #},
             obs_space=obs_space,
             action_space=action_space,
-            num_outputs=self.config["model"]["fcnet_hiddens"][-1],
+            num_outputs=obs_space.shape[0],
             model_config=self.config["model"],
             framework="tf",
             default_model=default_model,
@@ -398,32 +400,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             add_layer_norm=(self.config["exploration_config"].get("type") ==
                             "ParameterNoise"),
         )
-        #action_out = model.last_layer
-        #else:
-        #    model = None
-        #    action_out = obs
-
-        #activation = getattr(tf.nn, self.config["actor_hidden_activation"])
-        #for hidden in self.config["actor_hiddens"]:
-        #    action_out = tf.keras.layers.Dense(
-        #        units=hidden, activation=activation)(action_out)
-        #    if self.config["exploration_config"].get("type") == \
-        #            "ParameterNoise":
-        #        action_out = tf.keras.layers.LayerNormalization()(action_out)
-        #action_out = tf.keras.layers.Dense(
-        #    units=action_space.shape[0], activation=None)(action_out)
-
-        # Use sigmoid to scale to [0,1], but also double magnitude of input to
-        # emulate behaviour of tanh activation used in DDPG and TD3 papers.
-        #sigmoid_out = tf.nn.sigmoid(2 * action_out)
-        # Rescale to actual env policy scale
-        # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
-        # get same dims)
-        #action_range = (action_space.high - action_space.low)[None]
-        #low_action = action_space.low[None]
-        #actions = action_range * sigmoid_out + low_action
-
-        #return actions, model
         return model
 
     def _build_actor_critic_loss(self,

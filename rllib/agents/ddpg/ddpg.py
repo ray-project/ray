@@ -10,7 +10,6 @@ from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
 
 logger = logging.getLogger(__name__)
 
-
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
