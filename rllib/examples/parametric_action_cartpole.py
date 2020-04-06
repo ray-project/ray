@@ -172,7 +172,7 @@ if __name__ == "__main__":
             # from being further processed in DistributionalQModel, which
             # would mess up the masking. It is possible to support these if we
             # defined a a custom DistributionalQModel that is aware of masking.
-            "dueling_hiddens": [],
+            "hiddens": [],
             "dueling": False,
         }
     else:
