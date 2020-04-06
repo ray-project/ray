@@ -30,7 +30,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/url.h"
+#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -62,7 +62,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    if (!conn_.connect(parse_url_endpoint(raylet_socket), ec)) {
+    if (!conn_.connect(ParseUrlEndpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {

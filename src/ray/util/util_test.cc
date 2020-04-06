@@ -2,11 +2,41 @@
 
 #include <stdio.h>
 
+#include <boost/asio/generic/basic_endpoint.hpp>
+
 #include "gtest/gtest.h"
 
 static const char *argv0 = NULL;
 
 namespace ray {
+
+template <class T>
+static std::string to_str(const T &obj, bool include_scheme) {
+  return EndpointToUrl(obj, include_scheme);
+}
+
+TEST(UtilTest, UrlIpTcpParseTest) {
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]:1/", 0), false), "[::1]:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]/", 0), false), "[::1]:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]:1", 0), false), "[::1]:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]", 0), false), "[::1]:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1:1/", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1/", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1:1", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://127.0.0.1", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]:1/", 0), false), "[::1]:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]/", 0), false), "[::1]:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]:1", 0), false), "[::1]:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("[::1]", 0), false), "[::1]:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1:1/", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1/", 0), false), "127.0.0.1:0");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1:1", 0), false), "127.0.0.1:1");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("127.0.0.1", 0), false), "127.0.0.1:0");
+#ifndef _WIN32
+  ASSERT_EQ(to_str(ParseUrlEndpoint("unix:///tmp/sock"), false), "/tmp/sock");
+  ASSERT_EQ(to_str(ParseUrlEndpoint("/tmp/sock"), false), "/tmp/sock");
+#endif
+}
 
 TEST(UtilTest, ParseCommandLineTest) {
   typedef std::vector<std::string> ArgList;

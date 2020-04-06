@@ -24,6 +24,24 @@
 #include <thread>
 #include <unordered_map>
 
+// Boost forward-declarations (to avoid forcing slow header inclusions)
+namespace boost {
+
+namespace asio {
+
+namespace generic {
+
+template <class Protocol>
+class basic_endpoint;
+
+class stream_protocol;
+
+}  // namespace generic
+
+}  // namespace asio
+
+}  // namespace boost
+
 enum class CommandLineSyntax { System, POSIX, Windows };
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -65,6 +83,20 @@ std::vector<std::string> ParseCommandLine(
 /// \return The command-line string, including any necessary escape sequences.
 std::string CreateCommandLine(const std::vector<std::string> &args,
                               CommandLineSyntax syntax = CommandLineSyntax::System);
+
+/// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
+/// \param include_scheme Whether to include the scheme prefix (such as tcp://).
+///                       This is recommended to avoid later ambiguity when parsing.
+std::string EndpointToUrl(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme = true);
+
+/// Parses the endpoint socket address of a URL.
+/// If a scheme:// prefix is absent, the address family is guessed automatically.
+/// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
+/// For UNIX domain sockets, the endpoint comprises the socket path.
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 
 class InitShutdownRAII {
  public:
