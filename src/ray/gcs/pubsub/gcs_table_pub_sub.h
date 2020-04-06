@@ -16,9 +16,7 @@
 #define RAY_GCS_GCS_TABLE_PUB_SUB_H_
 
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
