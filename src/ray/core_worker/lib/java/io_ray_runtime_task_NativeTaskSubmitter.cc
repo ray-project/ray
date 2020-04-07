@@ -122,7 +122,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
     JNIEnv *env, jclass p, jobject functionDescriptor, jobject args, jint numReturns,
     jobject callOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
@@ -141,7 +141,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
     JNIEnv *env, jclass p, jobject functionDescriptor, jobject args,
     jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
@@ -158,7 +158,7 @@ Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
 }
 
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jbyteArray actorId, jobject functionDescriptor, jobject args,
     jint numReturns, jobject callOptions) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);

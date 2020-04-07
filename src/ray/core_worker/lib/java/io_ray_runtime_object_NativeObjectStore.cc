@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__Lorg_ray_runtime_object_NativeRayObject_2(
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jobject obj) {
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
@@ -35,7 +35,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__Lorg_ray_runtime_object
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut___3BLorg_ray_runtime_object_NativeRayObject_2(
+Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
@@ -44,7 +44,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut___3BLorg_ray_runtime_obj
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGet(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(
     JNIEnv *env, jclass, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
@@ -59,7 +59,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGe
       env, results, NativeRayObjectToJavaNativeRayObject);
 }
 
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWait(
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
     JNIEnv *env, jclass, jobject objectIds, jint numObjects, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
@@ -75,7 +75,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
   });
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
+JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *env, jclass, jobject objectIds, jboolean localOnly,
     jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;

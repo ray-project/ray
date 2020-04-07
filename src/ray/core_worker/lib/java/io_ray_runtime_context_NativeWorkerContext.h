@@ -27,7 +27,7 @@ extern "C" {
  * Signature: ()I
  */
 JNIEXPORT jint JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
                                                                           jclass);
 
 /*
@@ -36,7 +36,7 @@ Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass);
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
@@ -44,7 +44,7 @@ Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass);
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
@@ -52,7 +52,7 @@ Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *,
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
                                                                           jclass);
 
 /*
@@ -61,7 +61,7 @@ Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *,
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *,
                                                                          jclass);
 
 #ifdef __cplusplus

@@ -38,7 +38,7 @@ extern "C" {
 #endif
 
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
@@ -127,19 +127,19 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
   ray::CoreWorkerProcess::Initialize(options);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
     JNIEnv *env, jclass o, jobject javaTaskExecutor) {
   java_task_executor = javaTaskExecutor;
   ray::CoreWorkerProcess::RunTaskExecutionLoop();
   java_task_executor = nullptr;
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
                                                                             jclass o) {
   ray::CoreWorkerProcess::Shutdown();
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
     JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
   const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
@@ -150,7 +150,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
     JNIEnv *env, jclass, jbyteArray actorId, jboolean noReconstruction) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
       JavaByteArrayToId<ActorID>(env, actorId),
@@ -158,7 +158,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
     JNIEnv *env, jclass, jbyteArray workerId) {
   const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
   ray::CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);

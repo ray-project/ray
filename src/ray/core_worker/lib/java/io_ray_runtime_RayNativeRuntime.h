@@ -22,12 +22,12 @@
 extern "C" {
 #endif
 /*
- * Class:     org_ray_runtime_RayNativeRuntime
+ * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeInitialize
  * Signature:
  * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
     jint, jstring, jobject);
 
@@ -37,14 +37,14 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
  * Signature: (Lorg/ray/runtime/task/TaskExecutor;)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jobject);
+Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jobject);
 
 /*
- * Class:     org_ray_runtime_RayNativeRuntime
+ * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeShutdown
  * Signature: ()V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
                                                                             jclass);
 
 /*
@@ -52,7 +52,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIE
  * Method:    nativeSetResource
  * Signature: (Ljava/lang/String;D[B)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
     JNIEnv *, jclass, jstring, jdouble, jbyteArray);
 
 /*
@@ -60,18 +60,18 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
  * Method:    nativeKillActor
  * Signature: ([BZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
                                                                              jclass,
                                                                              jbyteArray,
                                                                              jboolean);
 
 /*
- * Class:     org_ray_runtime_RayNativeRuntime
+ * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeSetCoreWorker
  * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
+Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
 
 #ifdef __cplusplus
 }
