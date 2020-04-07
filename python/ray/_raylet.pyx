@@ -75,7 +75,6 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
-from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 
 import ray
@@ -98,7 +97,6 @@ cimport cpython
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
-include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
@@ -647,16 +645,17 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port):
-
+                  node_ip_address, node_manager_port, local_mode):
+        use_driver = is_driver or local_mode
         self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
+            WORKER_TYPE_DRIVER if use_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, gc_collect,
-            get_py_stack, True))
+            get_py_stack, True, local_mode))
+        self.is_local_mode = local_mode
 
     def run_task_loop(self):
         with nogil:
@@ -740,6 +739,7 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            c_vector[CObjectID] c_object_id_vector
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
@@ -750,12 +750,19 @@ cdef class CoreWorker:
 
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
-            with nogil:
-                # Using custom object IDs is not supported because we can't
-                # track their lifecycle, so don't pin the object in that case.
-                check_status(
-                    self.core_worker.get().Seal(
-                        c_object_id, pin_object and object_id is None))
+            if self.is_local_mode:
+                c_object_id_vector.push_back(c_object_id)
+                check_status(self.core_worker.get().Put(
+                        CRayObject(data, metadata, c_object_id_vector),
+                        c_object_id_vector, c_object_id))
+            else:
+                with nogil:
+                    # Using custom object IDs is not supported because we can't
+                    # track their lifecycle, so we don't pin the object in this
+                    # case.
+                    check_status(self.core_worker.get().Seal(
+                                    c_object_id,
+                                    pin_object and object_id is None))
 
         return c_object_id.Binary()
 
@@ -1059,6 +1066,7 @@ cdef class CoreWorker:
             c_vector[size_t] data_sizes
             c_vector[shared_ptr[CBuffer]] metadatas
             c_vector[c_vector[CObjectID]] contained_ids
+            c_vector[CObjectID] return_ids_vector
 
         if return_ids.size() == 0:
             return
@@ -1088,6 +1096,15 @@ cdef class CoreWorker:
             if returns[0][i].get() != NULL:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
+                if self.is_local_mode:
+                    return_ids_vector.push_back(return_ids[i])
+                    check_status(
+                        self.core_worker.get().Put(
+                            CRayObject(returns[0][i].get().GetData(),
+                                       returns[0][i].get().GetMetadata(),
+                                       return_ids_vector),
+                            return_ids_vector, return_ids[i]))
+                    return_ids_vector.clear()
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:

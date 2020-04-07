@@ -102,16 +102,12 @@ class RayServeHandle:
             method_name=method_name,
         )
 
-    def get_traffic_policy(self):
-        policy_table = serve.api._get_global_state().policy_table
-        all_services = policy_table.list_traffic_policy()
-        return all_services[self.endpoint_name]
-
     def get_http_endpoint(self):
         return DEFAULT_HTTP_ADDRESS
 
     def _ensure_backend_unique(self, backend_tag=None):
-        traffic_policy = self.get_traffic_policy()
+        global_state = serve.api._get_global_state()
+        traffic_policy = global_state.get_traffic_policy(self.endpoint_name)
         if backend_tag is None:
             assert len(traffic_policy) == 1, (
                 "Multiple backends detected. "

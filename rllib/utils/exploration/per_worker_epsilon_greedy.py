@@ -10,7 +10,7 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
     See Ape-X paper.
     """
 
-    def __init__(self, action_space, *, num_workers, worker_index, framework,
+    def __init__(self, action_space, *, framework, num_workers, worker_index,
                  **kwargs):
         """Create a PerWorkerEpsilonGreedy exploration class.
 

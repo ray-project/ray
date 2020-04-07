@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -54,6 +54,7 @@ class DDPGPostprocessing:
                 feed_dict={
                     self.cur_observations: states,
                     self._is_exploring: False,
+                    self._timestep: self.global_timestep,
                 })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
@@ -74,6 +75,8 @@ class DDPGPostprocessing:
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
+        self.observation_space = observation_space
+        self.action_space = action_space
         config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
@@ -106,9 +109,11 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             name="cur_obs")
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            policy_out, self.policy_model = self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
+            self._distribution_inputs, self.policy_model = \
+                self._build_policy_network(
+                    self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
+        self.model = self.policy_model
 
         # Noise vars for P network except for layer normalization vars
         if self.config["parameter_noise"]:
@@ -117,15 +122,17 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             ])
 
         # Create exploration component.
-        self.exploration = self._create_exploration(action_space, config)
+        self.exploration = self._create_exploration()
         explore = tf.placeholder_with_default(True, (), name="is_exploring")
-        # Action outputs
+        # Action outputs.
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model, timestep,
-                explore)
+                action_distribution=Deterministic(self._distribution_inputs,
+                                                  self.model),
+                timestep=timestep,
+                explore=explore)
 
-        # Replay inputs
+        # Replay inputs.
         self.obs_t = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -289,6 +296,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops,
             explore=explore,
+            dist_inputs=self._distribution_inputs,
+            dist_class=Deterministic,
             timestep=timestep)
         self.sess.run(tf.global_variables_initializer())
 
@@ -406,16 +415,10 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
+            action_out = tf.layers.dense(
+                action_out, units=hidden, activation=activation)
             if self.config["parameter_noise"]:
-                import tensorflow.contrib.layers as layers
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hidden,
-                    activation_fn=activation,
-                    normalizer_fn=layers.layer_norm)
-            else:
-                action_out = tf.layers.dense(
-                    action_out, units=hidden, activation=activation)
+                action_out = tf.keras.layers.LayerNormalization()(action_out)
         action_out = tf.layers.dense(
             action_out, units=action_space.shape[0], activation=None)
 

@@ -44,7 +44,15 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            list of np.array objects, if any
+            List[np.ndarray]: List of np.array objects containing the initial
+                hidden state of an RNN, if applicable.
+
+        Examples:
+            >>> def get_initial_state(self):
+            >>>    return [
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>        np.zeros(self.cell_size, np.float32),
+            >>>    ]
         """
         return []
 
@@ -76,7 +84,11 @@ class ModelV2:
         raise NotImplementedError
 
     def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
+        """Returns the value function output for the most recent forward pass.
+
+        Note that a `forward` call has to be performed first, before this
+        methods can return anything and thus that calling this method does not
+        cause an extra forward pass through the network.
 
         Returns:
             value estimate tensor of shape [BATCH].
@@ -213,6 +225,33 @@ class ModelV2:
     def context(self):
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
+
+    def variables(self, as_dict=False):
+        """Returns the list (or a dict) of variables for this model.
+
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
+        Returns:
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all variables of this ModelV2.
+        """
+        raise NotImplementedError
+
+    def trainable_variables(self, as_dict=False):
+        """Returns the list of trainable variables for this model.
+
+        Args:
+            as_dict(bool): Whether variables should be returned as dict-values
+                (using descriptive keys).
+
+        Returns:
+            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
+                True) of all trainable (tf)/requires_grad (torch) variables
+                of this ModelV2.
+        """
+        raise NotImplementedError
 
 
 class NullContextManager:

@@ -4,9 +4,9 @@ from gym.spaces import Discrete
 import logging
 
 import ray
-from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -20,15 +20,6 @@ logger = logging.getLogger(__name__)
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
-
-
-class ParameterNoiseMixin:
-    def __init__(self, obs_space, action_space, config):
-        pass
-
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
 
 
 class TargetNetworkMixin:
@@ -59,73 +50,58 @@ def build_q_models(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    if config["hiddens"]:
-        num_outputs = 256
-        config["model"]["no_final_linear"] = True
-    else:
-        num_outputs = action_space.n
-
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        name=Q_SCOPE,
-        model_interface=SimpleQModel,
-        q_hiddens=config["hiddens"])
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=action_space.n,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
+        name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        name=Q_TARGET_SCOPE,
-        model_interface=SimpleQModel,
-        q_hiddens=config["hiddens"])
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=action_space.n,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
+        name=Q_TARGET_SCOPE)
+
+    policy.q_func_vars = policy.q_model.variables()
+    policy.target_q_func_vars = policy.target_q_model.variables()
 
     return policy.q_model
 
 
-def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
-                       action_space, config):
-    # Action Q network.
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space)
+def get_distribution_inputs_and_class(policy,
+                                      q_model,
+                                      obs_batch,
+                                      *,
+                                      explore=True,
+                                      is_training=True,
+                                      **kwargs):
+    q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-    action_dist = Categorical(q_vals, q_model)
-    return action_dist.logp(actions)
 
-
-def simple_sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                        action_space, explore, config,
-                                        timestep):
-    # Action Q network.
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space)
-    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-    policy.q_func_vars = q_model.variables()
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            policy.q_values, Categorical, q_model, timestep, explore)
-
-    return policy.output_actions, policy.sampled_action_logp
+    policy.q_values = q_vals
+    return policy.q_values,\
+        TorchCategorical if policy.config["use_pytorch"] else Categorical,\
+        []  # state-outs
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
     # q network evaluation
-    q_t = _compute_q_values(policy, policy.q_model,
-                            train_batch[SampleBatch.CUR_OBS],
-                            policy.observation_space, policy.action_space)
+    q_t = compute_q_values(
+        policy,
+        policy.q_model,
+        train_batch[SampleBatch.CUR_OBS],
+        explore=False)
 
     # target q network evalution
-    q_tp1 = _compute_q_values(policy, policy.target_q_model,
-                              train_batch[SampleBatch.NEXT_OBS],
-                              policy.observation_space, policy.action_space)
+    q_tp1 = compute_q_values(
+        policy,
+        policy.target_q_model,
+        train_batch[SampleBatch.NEXT_OBS],
+        explore=False)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
@@ -155,33 +131,28 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def _compute_q_values(policy, model, obs, obs_space, action_space):
-    input_dict = {
-        "obs": obs,
-        "is_training": policy._get_is_training_placeholder(),
-    }
-    model_out, _ = model(input_dict, [], None)
-    return model.get_q_values(model_out)
+def compute_q_values(policy, model, obs, explore, is_training=None):
+    model_out, _ = model({
+        SampleBatch.CUR_OBS: obs,
+        "is_training": is_training
+        if is_training is not None else policy._get_is_training_placeholder(),
+    }, [], None)
 
-
-def setup_early_mixins(policy, obs_space, action_space, config):
-    ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
+    return model_out
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-SimpleQPolicy = build_tf_policy(
-    name="SimpleQPolicy",
+SimpleQTFPolicy = build_tf_policy(
+    name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
-    action_sampler_fn=simple_sample_action_from_q_network,
-    log_likelihood_fn=get_log_likelihood,
+    action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    mixins=[ParameterNoiseMixin, TargetNetworkMixin])
+    mixins=[TargetNetworkMixin])

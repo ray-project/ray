@@ -1129,6 +1129,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
+    # TODO(sang): Add a URL validation.
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
 
     try:

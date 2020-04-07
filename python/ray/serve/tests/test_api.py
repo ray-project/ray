@@ -5,7 +5,6 @@ import requests
 from ray import serve
 from ray.serve import BackendConfig
 import ray
-from ray.serve.constants import NO_ROUTE_KEY
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 
@@ -13,8 +12,6 @@ from ray.serve.handle import RayServeHandle
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
-    result = serve.api._get_global_state().route_table.list_service()
-    assert result["/api"] == "endpoint"
 
     retry_count = 5
     timeout_sleep = 0.5
@@ -62,13 +59,6 @@ def test_route_decorator(serve_instance):
 
 def test_no_route(serve_instance):
     serve.create_endpoint("noroute-endpoint")
-    global_state = serve.api._get_global_state()
-
-    result = global_state.route_table.list_service(include_headless=True)
-    assert result[NO_ROUTE_KEY] == ["noroute-endpoint"]
-
-    without_headless_result = global_state.route_table.list_service()
-    assert NO_ROUTE_KEY not in without_headless_result
 
     def func(_, i=1):
         return 1
@@ -202,8 +192,8 @@ def test_killing_replicas(serve_instance):
     serve.set_backend_config("simple:v1", bnew_config)
     new_replica_tag_list = global_state.backend_table.list_replicas(
         "simple:v1")
-    global_state.refresh_actor_handle_cache()
-    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+    new_all_tag_list = list(
+        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 
     # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
@@ -236,8 +226,8 @@ def test_not_killing_replicas(serve_instance):
     serve.set_backend_config("bsimple:v1", bnew_config)
     new_replica_tag_list = global_state.backend_table.list_replicas(
         "bsimple:v1")
-    global_state.refresh_actor_handle_cache()
-    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+    new_all_tag_list = list(
+        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 
     # the old and new replica tag list should be identical
     # and should be subset of all_tag_list
