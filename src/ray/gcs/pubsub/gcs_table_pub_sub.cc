@@ -38,13 +38,15 @@ Status GcsTablePubSub<ID, Data>::Publish(const ID &id, const Data &data,
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Subscribe(const ID &id, const Callback &subscribe) {
-  return Subscribe(boost::optional<ID>(id), subscribe);
+Status GcsTablePubSub<ID, Data>::Subscribe(const ID &id, const Callback &subscribe,
+                                           const StatusCallback &done) {
+  return Subscribe(boost::optional<ID>(id), subscribe, done);
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::SubscribeAll(const Callback &subscribe) {
-  return Subscribe(boost::none, subscribe);
+Status GcsTablePubSub<ID, Data>::SubscribeAll(const Callback &subscribe,
+                                              const StatusCallback &done) {
+  return Subscribe(boost::none, subscribe, done);
 }
 
 template <typename ID, typename Data>
@@ -57,7 +59,8 @@ Status GcsTablePubSub<ID, Data>::Unsubscribe(const ID &id, const StatusCallback 
 
 template <typename ID, typename Data>
 Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
-                                           const Callback &subscribe) {
+                                           const Callback &subscribe,
+                                           const StatusCallback &done) {
   std::string pattern = GenChannelPattern(id);
   auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
     if (!reply->IsNil()) {
@@ -86,6 +89,9 @@ Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
                                                                     &out_callback_index);
   if (id) {
     subscribe_callback_index_[pattern] = out_callback_index;
+  }
+  if (done) {
+    done(status);
   }
   return status;
 }

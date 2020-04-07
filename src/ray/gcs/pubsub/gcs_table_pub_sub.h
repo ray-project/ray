@@ -65,15 +65,17 @@ class GcsTablePubSub {
   /// \param id The id of message to be subscribed from redis.
   /// \param subscribe Callback that will be called when a subscription message is
   /// received.
+  /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status Subscribe(const ID &id, const Callback &subscribe);
+  Status Subscribe(const ID &id, const Callback &subscribe, const StatusCallback &done);
 
   /// Subscribe to messages with the specified channel.
   ///
   /// \param subscribe Callback that will be called when a subscription message is
   /// received.
+  /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status SubscribeAll(const Callback &subscribe);
+  Status SubscribeAll(const Callback &subscribe, const StatusCallback &done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
@@ -86,7 +88,8 @@ class GcsTablePubSub {
   TablePubsub pub_sub_channel_;
 
  private:
-  Status Subscribe(const boost::optional<ID> &id, const Callback &subscribe);
+  Status Subscribe(const boost::optional<ID> &id, const Callback &subscribe,
+                   const StatusCallback &done);
 
   std::string GenChannelPattern(const boost::optional<ID> &id = boost::none);
 
