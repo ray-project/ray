@@ -192,9 +192,9 @@ class TorchPolicy(Policy):
                 SampleBatch.CUR_OBS: obs_batch,
                 SampleBatch.ACTIONS: actions
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
@@ -317,13 +317,12 @@ class TorchPolicy(Policy):
                     p.grad /= self.distributed_world_size
             info["allreduce_latency"] = time.time() - start
 
-        #self._optimizer.step()
+        self._optimizer.step()
 
         info.update(self.extra_grad_info(train_batch))
-
-        return dict({
+        return {
             LEARNER_STATS_KEY: info
-        }, **self.extra_grad_info(train_batch))
+        }
 
     #@override(Policy)
     #def compute_gradients(self, postprocessed_batch):

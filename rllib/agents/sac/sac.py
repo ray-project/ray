@@ -100,12 +100,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config):
-    """Checks and updates the config based on settings."""
-    # Override from DQN.
-    pass
-
-
 def get_policy_class(config):
     if config.get("use_pytorch") is True:
         from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
@@ -118,6 +112,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
     default_policy=SACTFPolicy,
-    validate_config=validate_config,
     get_policy_class=get_policy_class,
 )

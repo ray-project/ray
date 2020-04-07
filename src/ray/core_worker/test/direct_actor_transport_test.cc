@@ -233,7 +233,7 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id, int64_t count
 class MockWorkerContext : public WorkerContext {
  public:
   MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, job_id) {
+      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
     current_actor_is_direct_call_ = true;
   }
 };

@@ -90,7 +90,7 @@ class ObjectStoreNotificationManager {
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
-  local_stream_protocol::socket socket_;
+  local_stream_socket socket_;
 
   /// Flag to indicate whether or not to exit the process when received socket
   /// error. When it is false, socket error will be ignored. This flag is needed

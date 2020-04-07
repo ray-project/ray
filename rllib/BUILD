@@ -41,12 +41,23 @@
 # --------------------------------------------------------------------
 
 py_test(
-    name = "run_regression_tests",
+    name = "run_regression_tests_cartpole",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests"],
+    tags = ["learning_tests", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum-*.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
@@ -102,6 +113,14 @@ py_test(
     tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
+)
+
+# MARWILTrainer
+py_test(
+    name = "test_marwil",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
 # PGTrainer
@@ -562,8 +581,9 @@ py_test(
 # MARWIL
 
 py_test(
-    name = "test_marwil_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
+    name = "test_marwil_cartpole_v0_tf",
+    main = "train.py",
+    srcs = ["train.py"],
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
@@ -573,6 +593,22 @@ py_test(
         "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        ]
+)
+
+py_test(
+    name = "test_marwil_cartpole_v0_torch",
+    main = "train.py",
+    srcs = ["train.py"],
+    tags = ["quick_train", "external_files"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "MARWIL",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"use_pytorch\": true, \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
 

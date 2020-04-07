@@ -5,16 +5,16 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
-from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
@@ -131,7 +131,7 @@ def build_q_model(policy, obs_space, action_space, config):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    if config["dueling_hiddens"]:
+    if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
         num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
         config["model"]["no_final_linear"] = True
@@ -139,16 +139,16 @@ def build_q_model(policy, obs_space, action_space, config):
         num_outputs = action_space.n
 
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="tf",
         model_interface=DistributionalQTFModel,
         name=Q_SCOPE,
         num_atoms=config["num_atoms"],
-        dueling_hiddens=config["dueling_hiddens"],
         dueling=config["dueling"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
@@ -160,16 +160,16 @@ def build_q_model(policy, obs_space, action_space, config):
         or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="tf",
         model_interface=DistributionalQTFModel,
         name=Q_TARGET_SCOPE,
         num_atoms=config["num_atoms"],
-        dueling_hiddens=config["dueling_hiddens"],
         dueling=config["dueling"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
