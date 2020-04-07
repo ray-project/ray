@@ -745,6 +745,15 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "object_locator_test",
+    srcs = ["src/ray/gcs/gcs_server/test/object_locator_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
