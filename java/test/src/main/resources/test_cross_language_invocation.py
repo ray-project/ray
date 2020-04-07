@@ -13,7 +13,7 @@ def py_func(value):
 @ray.remote
 def py_func_call_java_function(value):
     assert isinstance(value, bytes)
-    f = ray.java_function("CrossLanguageInvocationTest",
+    f = ray.java_function("io.ray.api.test.CrossLanguageInvocationTest",
                           "bytesEcho")
     r = f.remote(value)
     return b"[Python]py_func -> " + ray.get(r)
@@ -23,7 +23,7 @@ def py_func_call_java_function(value):
 def py_func_call_java_actor(value):
     assert isinstance(value, bytes)
     c = ray.java_actor_class(
-        "CrossLanguageInvocationTest$TestActor")
+        "io.ray.api.test.CrossLanguageInvocationTest$TestActor")
     java_actor = c.remote(b"Counter")
     r = java_actor.concat.remote(value)
     return ray.get(r)
@@ -48,7 +48,7 @@ def py_func_call_python_actor_from_handle(value):
 @ray.remote
 def py_func_pass_python_actor_handle():
     counter = Counter.remote(2)
-    f = ray.java_function("CrossLanguageInvocationTest",
+    f = ray.java_function("io.ray.api.test.CrossLanguageInvocationTest",
                           "callPythonActorHandle")
     r = f.remote(counter._serialization_helper()[0])
     return ray.get(r)
