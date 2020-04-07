@@ -321,4 +321,7 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
+
+  // Indicates that an object has been canceled.
+  TASK_CANCELLED = 5;
 }

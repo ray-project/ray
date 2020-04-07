@@ -35,6 +35,8 @@ class TaskFinisherInterface {
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
+  virtual void CancelTask(const TaskID &task_id) = 0;
+
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
@@ -107,6 +109,8 @@ class TaskManager : public TaskFinisherInterface {
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
+
+  void CancelTask(const TaskID &task_id);
 
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;

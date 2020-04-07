@@ -241,11 +241,13 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
     while (start != queue_entry->second.end()) {
       if (start->TaskId() == task_spec.TaskId()) {
         queue_entry->second.erase(start);
+        task_finisher_->CancelTask(task_spec.TaskId());
         if (queue_entry->second.size() == 0) {
           task_queues_.erase(scheduling_key);
         }
         return Status::OK();
       }
+      start++;
     }
   }
   auto rpc_client = sent_tasks_.find(task_spec.TaskId());
@@ -258,8 +260,7 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   // Set requqest options
-  return client->second->KillTask(request, nullptr);  // Maybe pass back more?
-  // client->second->KillTask();
+  return client->second->KillTask(request, nullptr);
 }
 
 };  // namespace ray

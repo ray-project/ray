@@ -202,6 +202,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
+void TaskManager::CancelTask(const TaskID &task_id) {
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end()) {
+      it->second.num_retries_left = 0;
+    }
+  }
+  PendingTaskFailed(task_id, rpc::ErrorType::TASK_CANCELLED);
+}
+
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                     Status *status) {
   // Note that this might be the __ray_terminate__ task, so we don't log

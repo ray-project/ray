@@ -92,7 +92,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
              std::function<void(std::string *)> get_lang_stack = nullptr,
-             bool ref_counting_enabled = false, std::function<void()> kill_main=nullptr);
+             bool ref_counting_enabled = false,
+             std::function<void()> kill_main = nullptr);
 
   virtual ~CoreWorker();
 

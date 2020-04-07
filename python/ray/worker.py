@@ -1681,7 +1681,7 @@ def kill(id):
         if id.task_id().actor_id().hex() in ray.actors().keys():
             raise ValueError(
                 "Please use ray.kill(ActorHandle) to kill an actor task")
-        worker.core_worker.kill_task(id, True)
+        worker.core_worker.kill_task(id)
     else:
         raise ValueError("ray.kill() only supported for actors and objects. "
                          "Got: {}.".format(type(id)))

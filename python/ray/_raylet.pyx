@@ -18,6 +18,7 @@ import os
 import pickle
 import sys
 import _thread
+import setproctitle
 
 from libc.stdint cimport (
     int32_t,
@@ -552,9 +553,8 @@ cdef void async_plasma_callback(CObjectID object_id,
 
 cdef void kill_main_task() nogil:
     with gil:
-        print("Going to interrupt main")
-        _thread.interrupt_main()
-        print("Interrupting now")
+        if setproctitle.getproctitle() != "ray::IDLE":
+            _thread.interrupt_main()
 
 
 cdef CRayStatus check_signals() nogil:
@@ -936,7 +936,7 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().KillActor(
                   c_actor_id, True, no_reconstruction))
 
-    def kill_task(self, ObjectID object_id, c_bool no_reconstruction):
+    def kill_task(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
 

@@ -8,13 +8,9 @@ from ray import ray_constants, JobID
 import ray.utils
 from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
-from ray.exceptions import (
-    PlasmaObjectNotAvailable,
-    RayTaskError,
-    RayActorError,
-    RayWorkerError,
-    UnreconstructableError,
-)
+from ray.exceptions import (PlasmaObjectNotAvailable, RayTaskError,
+                            RayActorError, RayWorkerError,
+                            UnreconstructableError, RayCancellationError)
 from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 logger = logging.getLogger(__name__)
@@ -288,6 +284,8 @@ class SerializationContext:
                 return RayWorkerError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
+            elif error_type == ErrorType.Value("TASK_CANCELLED"):
+                return RayCancellationError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return UnreconstructableError(ray.ObjectID(object_id.binary()))
             else:

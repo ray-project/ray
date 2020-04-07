@@ -357,10 +357,10 @@ void CoreWorker::RunIOService() {
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
-  main_thread_task_id_ = task_id;
   bool not_actor_task = false;
   {
     absl::MutexLock lock(&mutex_);
+    main_thread_task_id_ = task_id;
     not_actor_task = actor_id_.IsNil();
   }
   if (not_actor_task && task_id.IsNil()) {
@@ -375,7 +375,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-// If the raylet fails, we will be reassigned to init (PID=1).
+  // If the raylet fails, we will be reassigned to init (PID=1).
   if (getppid() == 1) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
@@ -898,12 +898,17 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id) {
+  // Remove ActorCreation Tasks!?
+
   auto task_id = object_id.TaskId();
   RAY_LOG(ERROR) << "Killing Task under actor id: " << task_id.ActorId();
   if (task_manager_->IsTaskPending(task_id)) {
     RAY_LOG(ERROR) << "Pending task";
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+    RAY_LOG(ERROR) << "Got Task spec";
+    // for returnID in task_spec, create Object failed !
     return direct_task_submitter_->KillTask(task_spec);
+    // Do some cleanup
   } else {
     // Already finished :'(
     return Status::OK();
@@ -1411,13 +1416,11 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   RAY_LOG(ERROR) << "Asking to kill: " << intended_task_id
                  << " Currently running: " << GetCurrentTaskId()
                  << " And also at main thread: " << main_thread_task_id_;
+  absl::MutexLock lock(&mutex_);
   if (main_thread_task_id_ == intended_task_id) {
     RAY_LOG(ERROR) << "Attempting to interrupt main";
     kill_main_thread_();
   }
-  // if (GetCurrentTaskId() == request
-  // If runnning interrupt main
-  // Remove from scheduling Queue
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
