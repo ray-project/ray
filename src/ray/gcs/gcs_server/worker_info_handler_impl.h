@@ -16,6 +16,7 @@
 #define RAY_GCS_WORKER_INFO_HANDLER_IMPL_H
 
 #include "gcs_actor_manager.h"
+#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -26,8 +27,9 @@ namespace rpc {
 class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  public:
   explicit DefaultWorkerInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                    gcs::GcsActorManager &gcs_actor_manager)
-      : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager) {}
+                                    gcs::GcsActorManager &gcs_actor_manager,
+                                    const std::shared_ptr<gcs::RedisClient> &redis_client)
+      : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager), worker_failure_pub_(redis_client) {}
 
   void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                  ReportWorkerFailureReply *reply,
@@ -40,6 +42,7 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  private:
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsActorManager &gcs_actor_manager_;
+  gcs::GcsWorkerFailureTablePubSub worker_failure_pub_;
 };
 
 }  // namespace rpc

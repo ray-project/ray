@@ -29,6 +29,9 @@ void DefaultErrorInfoHandler::HandleReportJobError(
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report job error, job id = " << job_id
                      << ", type = " << type;
+    } else {
+      RAY_LOG(DEBUG) << "Finished reporting job error, job id = " << job_id
+                     << ", type = " << type;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

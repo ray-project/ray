@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_OBJECT_INFO_HANDLER_IMPL_H
 #define RAY_GCS_OBJECT_INFO_HANDLER_IMPL_H
 
+#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -24,8 +25,9 @@ namespace rpc {
 /// This implementation class of `ObjectInfoHandler`.
 class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
  public:
-  explicit DefaultObjectInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultObjectInfoHandler(gcs::RedisGcsClient &gcs_client,
+                                    const std::shared_ptr<gcs::RedisClient> &redis_client)
+      : gcs_client_(gcs_client), object_pub_(redis_client) {}
 
   void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
                                 GetObjectLocationsReply *reply,
@@ -41,6 +43,7 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
+  gcs::GcsObjectTablePubSub object_pub_;
 };
 
 }  // namespace rpc

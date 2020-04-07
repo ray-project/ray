@@ -21,7 +21,7 @@ namespace gcs {
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
-      job_sub_executor_(client_impl->GetRedisGcsClient().job_table()) {}
+      job_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
@@ -69,8 +69,10 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
       subscribe(job_id, job_data);
     }
   };
-  Status status =
-      job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+  Status status = job_sub_.SubscribeAll(on_subscribe);
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished subscribing finished job.";
   return status;
 }
@@ -79,7 +81,7 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : subscribe_id_(ClientID::FromRandom()),
       client_impl_(client_impl),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
+      actor_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -179,7 +181,10 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status = actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto status = actor_sub_.SubscribeAll(subscribe);
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
   return status;
 }
@@ -190,8 +195,10 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
-  auto status =
-      actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
+  auto status = actor_sub_.Subscribe(actor_id, subscribe);
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
                  << actor_id;
   return status;
@@ -200,7 +207,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                        const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
-  auto status = actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+  auto status = actor_sub_.Unsubscribe(actor_id, done);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id;
   return status;
@@ -282,10 +289,10 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
-      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()),
-      heartbeat_sub_executor_(client_impl->GetRedisGcsClient().heartbeat_table()),
-      heartbeat_batch_sub_executor_(
-          client_impl->GetRedisGcsClient().heartbeat_batch_table()) {}
+      node_sub_(client_impl->GetRedisGcsClient().GetRedisClient()),
+      node_resource_sub_(client_impl->GetRedisGcsClient().GetRedisClient()),
+      heartbeat_sub_(client_impl->GetRedisGcsClient().GetRedisClient()),
+      heartbeat_batch_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
@@ -391,19 +398,51 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node change.";
   RAY_CHECK(subscribe != nullptr);
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  auto status = client_table.SubscribeToNodeChange(subscribe, done);
+  auto on_subscribe = [this, subscribe](const ClientID &node_id,
+                                        const GcsNodeInfo &node_info) {
+    HandleNotification(node_info);
+  };
+
+  // Callback to request notifications from the client table once we've
+  // successfully subscribed.
+  auto on_done = [this, subscribe, done](Status status) {
+    RAY_CHECK_OK(status);
+    if (done != nullptr) {
+      done(status);
+    }
+    // Register node change callbacks after RequestNotification finishes.
+    RegisterNodeChangeCallback(subscribe);
+  };
+
+  auto status = node_sub_.SubscribeAll(on_subscribe);
+  on_done(status);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }
 
+void ServiceBasedNodeInfoAccessor::RegisterNodeChangeCallback(
+    const NodeChangeCallback &callback) {
+  RAY_CHECK(node_change_callback_ == nullptr);
+  node_change_callback_ = callback;
+  // Call the callback for any added clients that are cached.
+  for (const auto &entry : node_cache_) {
+    if (!entry.first.IsNil()) {
+      RAY_CHECK(entry.second.state() == GcsNodeInfo::ALIVE ||
+                entry.second.state() == GcsNodeInfo::DEAD);
+      node_change_callback_(entry.first, entry.second);
+    }
+  }
+}
+
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const ClientID &node_id) const {
-  GcsNodeInfo node_info;
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  bool found = client_table.GetClient(node_id, &node_info);
+  RAY_CHECK(!node_id.IsNil());
+  auto entry = node_cache_.find(node_id);
+  auto found = (entry != node_cache_.end());
+
   boost::optional<GcsNodeInfo> optional_node;
   if (found) {
+    GcsNodeInfo node_info = entry->second;
     optional_node = std::move(node_info);
   }
   return optional_node;
@@ -411,13 +450,11 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.GetAllClients();
+  return node_cache_;
 }
 
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.IsRemoved(node_id);
+  return removed_nodes_.count(node_id) == 1;
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
@@ -501,8 +538,21 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const rpc::ResourceChange &resource_change) {
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> data;
+    auto it = resource_change.data().items().begin();
+    while (it != resource_change.data().items().end()) {
+      data[it->first] = std::make_shared<rpc::ResourceTableData>(it->second);
+      ++it;
+    }
+    gcs::ResourceChangeNotification notification(resource_change.change_mode(), data);
+    subscribe(node_id, notification);
+  };
+  auto status = node_resource_sub_.SubscribeAll(on_subscribe);
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return status;
 }
@@ -553,18 +603,65 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
                                   const HeartbeatBatchTableData &data) {
     subscribe(data);
   };
-  auto status = heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(),
-                                                                on_subscribe, done);
+  auto status = heartbeat_batch_sub_.SubscribeAll(on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
   return status;
+}
+
+void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
+  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
+  // It's possible to get duplicate notifications from the client table, so
+  // check whether this notification is new.
+  auto entry = node_cache_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the client
+    // was alive and is now dead or resources have been updated.
+    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+    // Once a client with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the client was deleted, check
+    // that this new notification is not an insertion.
+    if (!was_alive) {
+      RAY_CHECK(!is_alive)
+          << "Notification for addition of a client that was already removed:" << node_id;
+    }
+  }
+
+  // Add the notification to our cache. Notifications are idempotent.
+  RAY_LOG(INFO) << "[ClientTableNotification] ClientTable Insertion/Deletion "
+                   "notification for client id "
+                << node_id << ". IsAlive: " << is_alive
+                << ". Setting the client cache to data.";
+  node_cache_[node_id] = node_info;
+
+  // If the notification is new, call any registered callbacks.
+  GcsNodeInfo &cache_data = node_cache_[node_id];
+  if (is_notif_new) {
+    if (is_alive) {
+      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
+    } else {
+      // NOTE(swang): The node should be added to this data structure before
+      // the callback gets called, in case the callback depends on the data
+      // structure getting updated.
+      removed_nodes_.insert(node_id);
+    }
+    if (node_change_callback_ != nullptr) {
+      node_change_callback_(node_id, cache_data);
+    }
+  }
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
       subscribe_id_(ClientID::FromRandom()),
-      task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()),
-      task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
+      task_sub_(client_impl->GetRedisGcsClient().GetRedisClient()),
+      task_lease_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
@@ -628,8 +725,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto status =
-      task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto status = task_sub_.Subscribe(task_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
 }
@@ -637,7 +733,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                       const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
-  auto status = task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status = task_sub_.Unsubscribe(task_id, done);
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -669,8 +765,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto status =
-      task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto status = task_lease_sub_.Subscribe(task_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
@@ -678,7 +773,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
     const TaskID &task_id, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
-  auto status = task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status = task_lease_sub_.Unsubscribe(task_id, done);
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
@@ -709,7 +804,7 @@ ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
       subscribe_id_(ClientID::FromRandom()),
-      object_sub_executor_(client_impl->GetRedisGcsClient().object_table()) {}
+      object_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
     const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
@@ -792,8 +887,15 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto status =
-      object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  auto on_subscribe = [subscribe](const ObjectID &object_id,
+                                  const rpc::ObjectChanges &object_changes) {
+    auto object_data_vector = std::vector<rpc::ObjectTableData>();
+    object_data_vector.emplace_back(object_changes.data());
+    gcs::ObjectChangeNotification notification(object_changes.change_mode(),
+                                               object_data_vector);
+    subscribe(object_id, notification);
+  };
+  auto status = object_sub_.Subscribe(object_id, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
@@ -801,7 +903,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
-  auto status = object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+  auto status = object_sub_.Unsubscribe(object_id, done);
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }
@@ -858,16 +960,14 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
-      worker_failure_sub_executor_(
-          client_impl->GetRedisGcsClient().worker_failure_table()) {}
+      worker_failure_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto status = worker_failure_sub_.SubscribeAll(subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
   return status;
 }

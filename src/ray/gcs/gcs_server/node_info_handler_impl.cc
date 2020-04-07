@@ -21,13 +21,17 @@ namespace rpc {
 void DefaultNodeInfoHandler::HandleRegisterNode(
     const rpc::RegisterNodeRequest &request, rpc::RegisterNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
+  GcsNodeInfo node_info = request.node_info();
+  ClientID node_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
   gcs_node_manager_.AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, node_id, node_info, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register node info: " << status.ToString()
                      << ", node id = " << node_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished registering node info, node id = " << node_id;
+      RAY_CHECK_OK(node_pub_.Publish(node_id, node_info, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -46,10 +50,17 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
   gcs_node_manager_.RemoveNode(node_id);
 
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, node_id, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to unregister node info: " << status.ToString()
                      << ", node id = " << node_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
+      //      rpc::GcsNodeInfo node_info(*result);
+      // TODO(ffbin): get result
+      rpc::GcsNodeInfo node_info;
+      node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+      RAY_CHECK_OK(node_pub_.Publish(node_id, node_info, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -58,7 +69,6 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
 }
 
 void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
@@ -71,6 +81,7 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
       for (const rpc::GcsNodeInfo &node_info : result) {
         reply->add_node_info_list()->CopyFrom(node_info);
       }
+      RAY_LOG(DEBUG) << "Finished getting all node info.";
     } else {
       RAY_LOG(ERROR) << "Failed to get all nodes info: " << status.ToString();
     }
@@ -81,7 +92,6 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
   if (!status.ok()) {
     on_done(status, std::vector<rpc::GcsNodeInfo>());
   }
-  RAY_LOG(DEBUG) << "Finished getting all node info.";
 }
 
 void DefaultNodeInfoHandler::HandleReportHeartbeat(
@@ -89,23 +99,26 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
+  auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat_data->CopyFrom(request.heartbeat());
+  auto on_done = [this, node_id, heartbeat_data, reply,
+                  send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report heartbeat: " << status.ToString()
                      << ", node id = " << node_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
+      RAY_CHECK_OK(heartbeat_pub_.Publish(node_id, *heartbeat_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat_data->CopyFrom(request.heartbeat());
   gcs_node_manager_.HandleHeartbeat(node_id, *heartbeat_data);
 
   Status status = gcs_client_.Nodes().AsyncReportHeartbeat(heartbeat_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
 }
 
 void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &request,
@@ -123,6 +136,7 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
           (*reply->mutable_resources())[resource.first] = *resource.second;
         }
       }
+      RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
     } else {
       RAY_LOG(ERROR) << "Failed to get node resources: " << status.ToString()
                      << ", node id = " << node_id;
@@ -134,8 +148,6 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
   if (!status.ok()) {
     on_done(status, boost::none);
   }
-
-  RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
 }
 
 void DefaultNodeInfoHandler::HandleUpdateResources(
@@ -153,6 +165,8 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to update node resources: " << status.ToString()
                      << ", node id = " << node_id;
+    } else {
+      // TODO(ffbin): publish
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -176,6 +190,8 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete node resources: " << status.ToString()
                      << ", node id = " << node_id;
+    } else {
+      // TODO(ffbin): publish
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

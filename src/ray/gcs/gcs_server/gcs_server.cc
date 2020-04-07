@@ -137,23 +137,23 @@ void GcsServer::InitGcsActorManager() {
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(*redis_gcs_client_));
+  return std::unique_ptr<rpc::DefaultJobInfoHandler>(new rpc::DefaultJobInfoHandler(
+      *redis_gcs_client_, redis_gcs_client_->GetRedisClient()));
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
   return std::unique_ptr<rpc::DefaultActorInfoHandler>(
-      new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
+      new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
 }
 
 std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
-  return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
-      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_, *gcs_node_manager_));
+  return std::unique_ptr<rpc::DefaultNodeInfoHandler>(new rpc::DefaultNodeInfoHandler(
+      *redis_gcs_client_, *gcs_node_manager_, redis_gcs_client_->GetRedisClient()));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
-  return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
-      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+  return std::unique_ptr<rpc::DefaultObjectInfoHandler>(new rpc::DefaultObjectInfoHandler(
+      *redis_gcs_client_, redis_gcs_client_->GetRedisClient()));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -170,8 +170,8 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
-  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
+  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(new rpc::DefaultTaskInfoHandler(
+      *redis_gcs_client_, redis_gcs_client_->GetRedisClient()));
 }
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
@@ -186,7 +186,7 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
   return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
 }
 
 }  // namespace gcs

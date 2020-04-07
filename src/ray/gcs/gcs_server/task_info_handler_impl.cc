@@ -25,10 +25,15 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   RAY_LOG(DEBUG) << "Adding task, job id = " << job_id << ", task id = " << task_id;
   auto task_table_data = std::make_shared<TaskTableData>();
   task_table_data->CopyFrom(request.task_data());
-  auto on_done = [job_id, task_id, request, reply, send_reply_callback](Status status) {
+  auto on_done = [this, job_id, task_id, task_table_data, request, reply,
+                  send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task, job id = " << job_id
                      << ", task id = " << task_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
+                     << ", task id = " << task_id;
+      RAY_CHECK_OK(task_pub_.Publish(task_id, *task_table_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -37,8 +42,6 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
-                 << ", task id = " << task_id;
 }
 
 void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
@@ -52,6 +55,8 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
     if (status.ok()) {
       RAY_DCHECK(result);
       reply->mutable_task_data()->CopyFrom(*result);
+      RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
+                     << ", task id = " << task_id;
     } else {
       RAY_LOG(ERROR) << "Failed to get task, job id = " << task_id.JobId()
                      << ", task id = " << task_id;
@@ -63,8 +68,6 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
   if (!status.ok()) {
     on_done(status, boost::none);
   }
-  RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
-                 << ", task id = " << task_id;
 }
 
 void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request,
@@ -74,10 +77,21 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   JobID job_id = task_ids.empty() ? JobID::Nil() : task_ids[0].JobId();
   RAY_LOG(DEBUG) << "Deleting tasks, job id = " << job_id
                  << ", task id list size = " << task_ids.size();
-  auto on_done = [job_id, task_ids, request, reply, send_reply_callback](Status status) {
+
+  // TODO(ffbin): get tasks
+  std::unordered_map<TaskID, TaskTableData> tasks;
+
+  auto on_done = [this, tasks, job_id, task_ids, request, reply,
+                  send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
                      << ", task id list size = " << task_ids.size();
+    } else {
+      RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
+                     << ", task id list size = " << task_ids.size();
+      for (auto &task : tasks) {
+        RAY_CHECK_OK(task_pub_.Publish(task.first, task.second, nullptr));
+      }
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -86,8 +100,6 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
-                 << ", task id list size = " << task_ids.size();
 }
 
 void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
@@ -99,10 +111,16 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
                  << ", task id = " << task_id << ", node id = " << node_id;
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->CopyFrom(request.task_lease_data());
-  auto on_done = [task_id, node_id, request, reply, send_reply_callback](Status status) {
+  auto on_done = [this, task_id, node_id, task_lease_data, request, reply,
+                  send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
+      RAY_CHECK_OK(task_lease_pub_.Publish(task_id, *task_lease_data, nullptr));
+    } else {
+      RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
+                     << ", task id = " << task_id << ", node id = " << node_id;
+      RAY_CHECK_OK(task_lease_pub_.Publish(task_id, *task_lease_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -111,8 +129,6 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
-                 << ", task id = " << task_id << ", node id = " << node_id;
 }
 
 void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
@@ -133,6 +149,11 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
                      << ", task id = " << task_id << ", reconstructions num = "
                      << request.task_reconstruction().num_reconstructions()
                      << ", node id = " << node_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished reconstructing task, job id = " << task_id.JobId()
+                     << ", task id = " << task_id << ", reconstructions num = "
+                     << request.task_reconstruction().num_reconstructions()
+                     << ", node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -142,10 +163,6 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished reconstructing task, job id = " << task_id.JobId()
-                 << ", task id = " << task_id << ", reconstructions num = "
-                 << request.task_reconstruction().num_reconstructions()
-                 << ", node id = " << node_id;
 }
 
 }  // namespace rpc

@@ -31,6 +31,8 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
       for (const rpc::ObjectTableData &object_table_data : result) {
         reply->add_object_table_data_list()->CopyFrom(object_table_data);
       }
+      RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id;
     } else {
       RAY_LOG(ERROR) << "Failed to get object locations: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
@@ -43,9 +45,6 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
   if (!status.ok()) {
     on_done(status, std::vector<rpc::ObjectTableData>());
   }
-
-  RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id;
 }
 
 void DefaultObjectInfoHandler::HandleAddObjectLocation(
@@ -56,10 +55,18 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
+  auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
+    if (status.ok()) {
+      RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
+                     << ", node id = " << node_id;
+      ObjectTableData object_table_data;
+      object_table_data.set_manager(node_id.Binary());
+      ObjectChange object_change;
+      object_change.set_change_mode(GcsChangeMode::APPEND_OR_ADD);
+      object_change.mutable_data()->CopyFrom(object_table_data);
+      RAY_CHECK_OK(object_pub_.Publish(object_id, object_change, nullptr));
+    } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
-                     << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -69,10 +76,6 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-
-  RAY_LOG(DEBUG) << "Finished adding object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
 }
 
 void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
@@ -83,8 +86,19 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
+  auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
+    if (status.ok()) {
+      RAY_LOG(DEBUG) << "Finished removing object location, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id
+                     << ", node id = " << node_id;
+
+      ObjectTableData object_table_data;
+      object_table_data.set_manager(node_id.Binary());
+      ObjectChange object_change;
+      object_change.set_change_mode(GcsChangeMode::REMOVE);
+      object_change.mutable_data()->CopyFrom(object_table_data);
+      RAY_CHECK_OK(object_pub_.Publish(object_id, object_change, nullptr));
+    } else {
       RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
@@ -96,10 +110,6 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-
-  RAY_LOG(DEBUG) << "Finished removing object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
 }
 
 }  // namespace rpc

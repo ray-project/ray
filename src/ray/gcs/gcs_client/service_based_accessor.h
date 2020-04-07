@@ -17,6 +17,7 @@
 
 #include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 
@@ -45,9 +46,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
-  JobSubscriptionExecutor job_sub_executor_;
+  GcsJobTablePubSub job_sub_;
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -101,9 +100,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
-      ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
+  GcsActorTablePubSub actor_sub_;
 
   Sequencer<ActorID> sequencer_;
 };
@@ -173,22 +170,36 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
+  using NodeChangeCallback =
+      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
+
+  /// Handle a client table notification.
+  void HandleNotification(const GcsNodeInfo &node_info);
+
+  /// Register a callback to call when a new node is added or a node is removed.
+  ///
+  /// \param callback The callback to register.
+  void RegisterNodeChangeCallback(const NodeChangeCallback &callback);
+
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
-      DynamicResourceSubscriptionExecutor;
-  DynamicResourceSubscriptionExecutor resource_sub_executor_;
+  GcsNodeTablePubSub node_sub_;
+  GcsNodeResourceTablePubSub node_resource_sub_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
+  GcsHeartbeatTablePubSub heartbeat_sub_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
-      HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+  GcsHeartbeatBatchTablePubSub heartbeat_batch_sub_;
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
+
+  /// A cache for information about all nodes.
+  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<ClientID> removed_nodes_;
 
   Sequencer<ClientID> sequencer_;
 };
@@ -237,13 +248,9 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   ClientID subscribe_id_;
 
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
+  GcsTaskTablePubSub task_sub_;
 
-  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
-      TaskLeaseSubscriptionExecutor;
-  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
+  GcsTaskLeaseTablePubSub task_lease_sub_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -278,9 +285,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   ClientID subscribe_id_;
 
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
-      ObjectSubscriptionExecutor;
-  ObjectSubscriptionExecutor object_sub_executor_;
+  GcsObjectTablePubSub object_sub_;
 
   Sequencer<ObjectID> sequencer_;
 };
@@ -341,9 +346,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
-      WorkerFailureSubscriptionExecutor;
-  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
+  GcsWorkerFailureTablePubSub worker_failure_sub_;
 };
 
 }  // namespace gcs

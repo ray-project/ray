@@ -16,6 +16,7 @@
 #define RAY_GCS_NODE_INFO_HANDLER_IMPL_H
 
 #include "gcs_node_manager.h"
+#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -27,8 +28,14 @@ namespace rpc {
 class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
  public:
   explicit DefaultNodeInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                  gcs::GcsNodeManager &gcs_node_manager)
-      : gcs_client_(gcs_client), gcs_node_manager_(gcs_node_manager) {}
+                                  gcs::GcsNodeManager &gcs_node_manager,
+                                  const std::shared_ptr<gcs::RedisClient> &redis_client)
+      : gcs_client_(gcs_client),
+        gcs_node_manager_(gcs_node_manager),
+        node_pub_(redis_client),
+        node_resource_pub_(redis_client),
+        heartbeat_pub_(redis_client),
+        heartbeat_batch_pub_(redis_client) {}
 
   void HandleRegisterNode(const RegisterNodeRequest &request, RegisterNodeReply *reply,
                           SendReplyCallback send_reply_callback) override;
@@ -59,6 +66,10 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
  private:
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsNodeManager &gcs_node_manager_;
+  gcs::GcsNodeTablePubSub node_pub_;
+  gcs::GcsNodeResourceTablePubSub node_resource_pub_;
+  gcs::GcsHeartbeatTablePubSub heartbeat_pub_;
+  gcs::GcsHeartbeatBatchTablePubSub heartbeat_batch_pub_;
 };
 
 }  // namespace rpc
