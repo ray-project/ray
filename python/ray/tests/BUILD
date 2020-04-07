@@ -291,15 +291,6 @@ py_test(
 )
 
 py_test(
-    name = "test_monitors",
-    size = "small",
-    srcs = ["test_monitors.py"],
-    # TODO(ekl) tasks() and objects() are different in direct call mode.
-    tags = ["exclusive", "manual"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_multiprocessing",
     size = "medium",
     srcs = ["test_multiprocessing.py"],

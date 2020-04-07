@@ -4,6 +4,7 @@ import traceback
 import time
 
 from ray.dashboard.metrics_exporter import api
+from ray.dashboard.metrics_exporter.actions import ActionHandler
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,8 @@ class MetricsExportClient:
     multiple threads that export the same metrics.
 
     Args:
-        address(str): Address to export metrics
+        address(str): Address to export metrics.
+            This should include a web protocol.
         dashboard_controller(BaseDashboardController): Dashboard controller to
             run dashboard business logic.
         dashboard_id(str): Unique dashboard ID.
@@ -24,6 +26,7 @@ class MetricsExportClient:
 
     def __init__(self, address, dashboard_controller, dashboard_id, exporter):
         self.dashboard_id = dashboard_id
+        self.address = address
         self.auth_url = "{}/auth".format(address)
         self.dashboard_controller = dashboard_controller
         self.exporter = exporter
@@ -43,7 +46,9 @@ class MetricsExportClient:
         """
         self.auth_info = api.authentication_request(self.auth_url,
                                                     self.dashboard_id)
-        self._dashboard_url = self.auth_info.dashboard_url
+        self._dashboard_url = "{address}/dashboard/{access_token}".format(
+            address=self.address,
+            access_token=self.auth_info.access_token_dashboard)
         self.is_authenticated = True
 
     @property
@@ -76,7 +81,7 @@ class MetricsExportClient:
                 logger.error(error)
                 return False, error
 
-        self.exporter.access_token = self.auth_info.access_token
+        self.exporter.access_token = self.auth_info.access_token_ingest
         self.exporter.start()
         self.is_exporting_started = True
         return True, None
@@ -102,6 +107,7 @@ class Exporter(threading.Thread):
 
         self.dashboard_id = dashboard_id
         self.dashboard_controller = dashboard_controller
+        self.action_handler = ActionHandler(dashboard_controller)
         self.export_address = "{}/ingest".format(address)
         self.update_frequency = update_frequency
         self._access_token = None
@@ -118,10 +124,11 @@ class Exporter(threading.Thread):
 
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
-        api.ingest_request(self.export_address, self.dashboard_id,
-                           self.access_token, ray_config, node_info,
-                           raylet_info, tune_info, tune_availability)
-        # TODO(sang): Add piggybacking response handler.
+        ingest_response = api.ingest_request(
+            self.export_address, self.access_token, ray_config, node_info,
+            raylet_info, tune_info, tune_availability)
+        actions = ingest_response.actions
+        self.action_handler.handle_actions(actions)
 
     def run(self):
         assert self.access_token is not None, (

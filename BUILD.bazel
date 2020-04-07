@@ -74,7 +74,10 @@ python_grpc_compile(
 proto_library(
     name = "gcs_service_proto",
     srcs = ["src/ray/protobuf/gcs_service.proto"],
-    deps = [":gcs_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
 )
 
 cc_proto_library(
@@ -756,6 +759,15 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "object_locator_test",
+    srcs = ["src/ray/gcs/gcs_server/test/object_locator_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
@@ -902,6 +914,73 @@ cc_library(
 alias(
     name = "hiredis",
     actual = "@com_github_antirez_redis//:hiredis",
+)
+
+cc_library(
+    name = "redis_client",
+    srcs = [
+        "src/ray/gcs/asio.cc",
+        "src/ray/gcs/redis_async_context.cc",
+        "src/ray/gcs/redis_client.cc",
+        "src/ray/gcs/redis_context.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/asio.h",
+        "src/ray/gcs/redis_async_context.h",
+        "src/ray/gcs/redis_client.h",
+        "src/ray/gcs/redis_context.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":hiredis",
+        ":ray_common",
+        ":ray_util",
+        ":stats_lib",
+        "@boost//:asio",
+    ],
+)
+
+cc_library(
+    name = "redis_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/redis_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/redis_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_client",
+    ],
+)
+
+cc_library(
+    name = "store_client_test_lib",
+    hdrs = [
+        "src/ray/gcs/store_client/test/store_client_test_base.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_store_client",
+    ],
+)
+
+cc_test(
+    name = "redis_store_client_test",
+    srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli)"],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":redis_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

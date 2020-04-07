@@ -99,19 +99,52 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
       string_reply_ = std::string(message->str, message->len);
       RAY_CHECK(!string_reply_.empty()) << "Empty message received on subscribe channel.";
     } else {
-      string_array_reply_.reserve(redis_reply->elements);
-      for (size_t i = 0; i < redis_reply->elements; ++i) {
-        auto *entry = redis_reply->element[i];
-        RAY_CHECK(REDIS_REPLY_STRING == entry->type)
-            << "Unexcepted type: " << entry->type;
-        string_array_reply_.emplace_back(std::string(entry->str, entry->len));
-      }
+      // Array replies are used for scan or get.
+      ParseAsStringArrayOrScanArray(redis_reply);
     }
     break;
   }
   default: {
     RAY_LOG(WARNING) << "Encountered unexpected redis reply type: " << reply_type_;
   }
+  }
+}
+
+void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
+  const auto array_size = static_cast<size_t>(redis_reply->elements);
+  if (array_size == 2) {
+    auto *cursor_entry = redis_reply->element[0];
+    auto *array_entry = redis_reply->element[1];
+    if (REDIS_REPLY_ARRAY == array_entry->type) {
+      // Parse as a scan array
+      RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
+      std::string cursor_str(cursor_entry->str, cursor_entry->len);
+      next_scan_cursor_reply_ = std::stoi(cursor_str);
+      const auto scan_array_size = array_entry->elements;
+      string_array_reply_.reserve(scan_array_size);
+      for (size_t i = 0; i < scan_array_size; ++i) {
+        auto *entry = array_entry->element[i];
+        RAY_CHECK(REDIS_REPLY_STRING == entry->type)
+            << "Unexcepted type: " << entry->type;
+        string_array_reply_.push_back(std::string(entry->str, entry->len));
+        RAY_LOG(DEBUG) << "Element index is " << i << ", element length is "
+                       << entry->len;
+      }
+      return;
+    }
+  }
+  ParseAsStringArray(redis_reply);
+}
+
+void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
+  const auto array_size = static_cast<size_t>(redis_reply->elements);
+  string_array_reply_.reserve(array_size);
+  for (size_t i = 0; i < array_size; ++i) {
+    auto *entry = redis_reply->element[i];
+    RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
+    string_array_reply_.push_back(std::string(entry->str, entry->len));
   }
 }
 
@@ -135,6 +168,12 @@ const std::string &CallbackReply::ReadAsString() const {
 const std::string &CallbackReply::ReadAsPubsubData() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
   return string_reply_;
+}
+
+size_t CallbackReply::ReadAsScanArray(std::vector<std::string> *array) const {
+  RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
+  *array = string_array_reply_;
+  return next_scan_cursor_reply_;
 }
 
 const std::vector<std::string> &CallbackReply::ReadAsStringArray() const {
@@ -302,7 +341,8 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   return callback_reply;
 }
 
-Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
+Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
+                                  const RedisCallback &redis_callback) {
   RAY_CHECK(redis_async_context_);
   // Build the arguments.
   std::vector<const char *> argv;
@@ -311,9 +351,12 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }
+  int64_t callback_index =
+      RedisCallbackManager::instance().add(redis_callback, false, io_service_);
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
-      nullptr, nullptr, args.size(), argv.data(), argc.data());
+      reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
   return status;
 }
 

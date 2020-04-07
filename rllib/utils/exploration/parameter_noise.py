@@ -4,6 +4,7 @@ import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -48,11 +49,12 @@ class ParameterNoise(Exploration):
                 None for auto-detection/setup.
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
-
-        # TODO(sven): Move these to base-Exploration class.
-        self.policy_config = policy_config,
-        self.model = model,
+        super().__init__(
+            action_space,
+            policy_config=policy_config,
+            model=model,
+            framework=framework,
+            **kwargs)
 
         self.stddev = get_variable(
             initial_stddev, framework=self.framework, tf_name="stddev")
@@ -62,18 +64,21 @@ class ParameterNoise(Exploration):
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
         self.model_variables = [
-            v for v in self.model.variables() if "LayerNorm" not in v.name
+            v for k, v in self.model.variables(as_dict=True).items()
+            if "LayerNorm" not in k
         ]
         # Our noise to be added to the weights. Each item in `self.noise`
         # corresponds to one Model variable and holding the Gaussian noise to
         # be added to that variable (weight).
         self.noise = []
         for var in self.model_variables:
+            name_ = var.name.split(":")[0] + "_noisy" if var.name else ""
             self.noise.append(
                 get_variable(
                     np.zeros(var.shape, dtype=np.float32),
                     framework=self.framework,
-                    tf_name=var.name.split(":")[0] + "_noisy"))
+                    tf_name=name_,
+                    torch_tensor=True))
 
         # tf-specific ops to sample, assign and remove noise.
         if self.framework == "tf" and not tf.executing_eagerly():
@@ -116,10 +121,10 @@ class ParameterNoise(Exploration):
             sub_exploration,
             framework=self.framework,
             action_space=self.action_space,
+            policy_config=self.policy_config,
+            model=self.model,
             **kwargs)
 
-        # Store the default setting for `explore`.
-        self.default_explore = policy_config["explore"]
         # Whether we need to call `self._delayed_on_episode_start` before
         # the forward pass.
         self.episode_started = False
@@ -130,13 +135,14 @@ class ParameterNoise(Exploration):
                                timestep=None,
                                explore=None,
                                tf_sess=None):
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
+
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
-            self._delayed_on_episode_start(tf_sess)
+            self._delayed_on_episode_start(explore, tf_sess)
 
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
         # Add noise if necessary.
         if explore and not self.weights_are_currently_noisy:
             self._add_stored_noise(tf_sess=tf_sess)
@@ -147,15 +153,13 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs,
-                               action_dist_class,
+                               action_distribution,
                                timestep,
                                explore=True):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            distribution_inputs=distribution_inputs,
-            action_dist_class=action_dist_class,
+            action_distribution=action_distribution,
             timestep=timestep,
             explore=explore)
 
@@ -172,9 +176,9 @@ class ParameterNoise(Exploration):
         # We don't want to update into a noisy net.
         self.episode_started = True
 
-    def _delayed_on_episode_start(self, tf_sess):
+    def _delayed_on_episode_start(self, explore, tf_sess):
         # Sample fresh noise and add to weights.
-        if self.default_explore:
+        if explore:
             self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
         # Only sample, don't apply anything to the weights.
         else:
@@ -197,7 +201,7 @@ class ParameterNoise(Exploration):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -205,8 +209,8 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
-            action_dist = softmax(distribution.inputs)
+        if policy.dist_class in (Categorical, TorchCategorical):
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
 
@@ -215,7 +219,7 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        distribution = policy.compute_action_distribution(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -223,16 +227,16 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
-            action_dist = softmax(distribution.inputs)
+        if policy.dist_class in (Categorical, TorchCategorical):
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
-        if not self.weights_are_currently_noisy:
+        if noisy_action_dist is None:
             noisy_action_dist = action_dist
         else:
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if isinstance(distribution, Categorical):
+        if policy.dist_class in (Categorical, TorchCategorical):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).
@@ -269,7 +273,7 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    0.0, self.stddev, size=self.noise[i].size)
+                    0.0, self.stddev, size=self.noise[i].size())
 
     def _tf_sample_new_noise_op(self):
         added_noises = []
@@ -319,7 +323,7 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 # Add noise to weights in-place.
-                torch.add_(self.model_variables[i], self.noise[i])
+                self.model_variables[i].add_(self.noise[i])
 
         self.weights_are_currently_noisy = True
 
@@ -358,7 +362,7 @@ class ParameterNoise(Exploration):
             # Removes the stored noise from the model's parameters.
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
-                torch.add_(var, -noise)
+                var.add_(-noise)
 
         self.weights_are_currently_noisy = False
 
