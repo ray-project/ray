@@ -1,3 +1,14 @@
+from typing import List, Tuple
+
+import ray
+from ray.util.iter import LocalIterator
+from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.common import SampleBatchType, \
+    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
+    APPLY_GRADS_TIMER, WORKER_UPDATE_TIMER, _get_global_vars
+
+
 class TrainOneStep:
     """Callable that improves the policy and updates workers.
 

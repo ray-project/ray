@@ -13,7 +13,6 @@ from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
 from ray.rllib.evaluation.metrics import collect_episodes, \
     summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.compression import pack_if_needed

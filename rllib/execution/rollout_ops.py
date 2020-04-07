@@ -1,3 +1,18 @@
+from typing import List, Tuple
+import time
+
+import ray
+from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter_metrics import SharedMetrics
+from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.rollout_worker import get_global_worker
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.common import GradientType, SampleBatchType, \
+    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
+    GRAD_WAIT_TIMER
+from ray.rllib.policy.sample_batch import SampleBatch
+
+
 def ParallelRollouts(workers: WorkerSet, mode="bulk_sync",
                      async_queue_depth=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
