@@ -1,8 +1,9 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, ConcatBatches, TrainOneStep, StandardMetricsReporting)
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 # yapf: disable
 # __sphinx_doc_begin__
