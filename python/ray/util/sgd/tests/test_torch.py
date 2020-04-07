@@ -46,6 +46,17 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     assert val_metrics[BATCH_COUNT] == 1
     trainer.shutdown()
 
+def test_resize(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=1)
+    trainer.train(num_steps=1)
+    trainer.max_replicas = 2
+    results = trainer.train(num_steps=1, reduce_results=False)
+    assert len(results) == 2
 
 def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(
