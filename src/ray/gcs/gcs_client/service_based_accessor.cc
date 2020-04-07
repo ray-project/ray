@@ -69,10 +69,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
       subscribe(job_id, job_data);
     }
   };
-  Status status = job_sub_.SubscribeAll(on_subscribe);
-  if (done) {
-    done(status);
-  }
+  Status status = job_sub_.SubscribeAll(on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing finished job.";
   return status;
 }
@@ -181,10 +178,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status = actor_sub_.SubscribeAll(subscribe);
-  if (done) {
-    done(status);
-  }
+  auto status = actor_sub_.SubscribeAll(subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
   return status;
 }
@@ -195,10 +189,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
-  auto status = actor_sub_.Subscribe(actor_id, subscribe);
-  if (done) {
-    done(status);
-  }
+  auto status = actor_sub_.Subscribe(actor_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
                  << actor_id;
   return status;
@@ -321,17 +312,19 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
+  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
-      request,
-      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      request, [this, node_id, &promise](const Status &status,
+                                         const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
         RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
+        promise.set_value(status);
       });
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
@@ -414,8 +407,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     RegisterNodeChangeCallback(subscribe);
   };
 
-  auto status = node_sub_.SubscribeAll(on_subscribe);
-  on_done(status);
+  auto status = node_sub_.SubscribeAll(on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }
@@ -549,10 +541,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     gcs::ResourceChangeNotification notification(resource_change.change_mode(), data);
     subscribe(node_id, notification);
   };
-  auto status = node_resource_sub_.SubscribeAll(on_subscribe);
-  if (done) {
-    done(status);
-  }
+  auto status = node_resource_sub_.SubscribeAll(on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return status;
 }
@@ -888,10 +877,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
   auto on_subscribe = [subscribe](const ObjectID &object_id,
-                                  const rpc::ObjectChanges &object_changes) {
+                                  const rpc::ObjectChange &object_change) {
     auto object_data_vector = std::vector<rpc::ObjectTableData>();
-    object_data_vector.emplace_back(object_changes.data());
-    gcs::ObjectChangeNotification notification(object_changes.change_mode(),
+    object_data_vector.emplace_back(object_change.data());
+    gcs::ObjectChangeNotification notification(object_change.change_mode(),
                                                object_data_vector);
     subscribe(object_id, notification);
   };

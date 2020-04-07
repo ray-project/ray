@@ -21,6 +21,7 @@
 #include <ray/rpc/client_call.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
 
 namespace ray {
 namespace gcs {
@@ -129,6 +130,8 @@ class GcsNodeManager {
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
+
+  gcs::GcsHeartbeatBatchTablePubSub heartbeat_batch_pub_;
 };
 
 }  // namespace gcs

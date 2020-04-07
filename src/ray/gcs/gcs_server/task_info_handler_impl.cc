@@ -116,7 +116,6 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
-      RAY_CHECK_OK(task_lease_pub_.Publish(task_id, *task_lease_data, nullptr));
     } else {
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
