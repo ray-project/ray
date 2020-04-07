@@ -2,9 +2,8 @@ package io.ray.api;
 
 import java.io.Serializable;
 import java.util.function.Supplier;
-import io.ray.api.runtime.RayRuntime;
-import io.ray.runtime.AbstractRayRuntime;
-import io.ray.runtime.RayMultiWorkerNativeRuntime;
+import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
 import org.testng.Assert;
 import org.testng.SkipException;
