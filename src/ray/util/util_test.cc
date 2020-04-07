@@ -126,7 +126,7 @@ TEST(UtilTest, CreateCommandLineTest) {
       proc = syn == win32 ? _popen(test_command.c_str(), "r") : NULL;
 #else
 #ifdef __APPLE__
-      proc = NULL;  // Don't run on Mac; there appears to be a gtest bug affecting popen()
+      proc = NULL;  // Don't run on Mac; there appears to be a bug in popen()
 #else
       proc = syn == posix ? popen(test_command.c_str(), "r") : NULL;
 #endif
