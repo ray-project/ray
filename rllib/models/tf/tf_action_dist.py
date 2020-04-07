@@ -46,7 +46,6 @@ class Categorical(TFActionDistribution):
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-        self.n = inputs.shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
@@ -104,8 +103,7 @@ class MultiCategorical(TFActionDistribution):
     @override(ActionDistribution)
     def deterministic_sample(self):
         return tf.stack(
-            [cat.deterministic_sample() for cat in self.cats],
-            axis=1)
+            [cat.deterministic_sample() for cat in self.cats], axis=1)
 
     @override(ActionDistribution)
     def logp(self, actions):
@@ -340,8 +338,8 @@ class Deterministic(TFActionDistribution):
         return self.inputs
 
     @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        return 0.0
+    def logp(self, x):
+        return tf.zeros_like(self.inputs)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):

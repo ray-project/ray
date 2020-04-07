@@ -1,3 +1,5 @@
+.. _tune-search-alg:
+
 Tune Search Algorithms
 ======================
 
@@ -46,7 +48,7 @@ The ``search_alg`` will suggest new configurations to try, and the ``Repeater``
 will run ``repeat`` trials of the configuration. It will then average the
 ``search_alg.metric`` from the final results of each repeated trial.
 
-See `Repeater <tune-package-ref.html#ray.tune.suggest.Repeater>`_ docstring for more details.
+See the API documentation (:ref:`repeater-doc`) for more details.
 
 .. code-block:: python
 
@@ -149,7 +151,7 @@ In order to use this search algorithm, you will need to install Nevergrad via th
 
 Keep in mind that ``nevergrad`` is a Python 3.6+ library.
 
-This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.md#Choosing-an-optimizer>`__ section. You can use ``NevergradSearch`` like follows:
+This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer>`__ section. You can use ``NevergradSearch`` like follows:
 
 .. code-block:: python
 
@@ -172,7 +174,7 @@ In order to use this search algorithm, you will need to install Scikit-Optimize 
 
     $ pip install scikit-optimize
 
-This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/notebooks/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows: 
+This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/stable/auto_examples/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
 
 .. code-block:: python
 

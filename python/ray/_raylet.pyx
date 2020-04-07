@@ -75,7 +75,6 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
-from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 
 import ray
@@ -98,7 +97,6 @@ cimport cpython
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
-include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
@@ -297,22 +295,6 @@ cdef void prepare_args(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)))))
 
-cdef deserialize_args(
-        const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectID] &arg_reference_ids):
-    if c_args.empty():
-        return [], {}
-
-    args = ray.worker.global_worker.deserialize_objects(
-             RayObjectsToDataMetadataPairs(c_args),
-             VectorToObjectIDs(arg_reference_ids))
-
-    for arg in args:
-        if isinstance(arg, RayError):
-            raise arg
-
-    return ray.signature.recover_args(args)
-
 
 cdef execute_task(
         CTaskType task_type,
@@ -331,7 +313,7 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
-        CFiberEvent fiber_event
+        CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -410,13 +392,13 @@ cdef execute_task(
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
 
                 def callback(future):
-                    fiber_event.Notify()
+                    task_done_event.Notify()
                     monitor_state.unregister_coroutine(coroutine)
 
                 future.add_done_callback(callback)
                 with nogil:
                     (core_worker.core_worker.get()
-                        .YieldCurrentFiber(fiber_event))
+                        .YieldCurrentFiber(task_done_event))
 
                 return future.result()
 
@@ -431,7 +413,30 @@ cdef execute_task(
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
-                args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
+                if c_args.empty():
+                    args, kwargs = [], {}
+                else:
+                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                    object_ids = VectorToObjectIDs(c_arg_reference_ids)
+
+                    if core_worker.current_actor_is_asyncio():
+                        # We deserialize objects in event loop thread to
+                        # prevent segfaults. See #7799
+                        def deserialize_args():
+                            return (ray.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_ids))
+                        args = core_worker.run_function_in_event_loop(
+                            deserialize_args)
+                    else:
+                        args = ray.worker.global_worker.deserialize_objects(
+                            metadata_pairs, object_ids)
+
+                    for arg in args:
+                        if isinstance(arg, RayError):
+                            raise arg
+                    args, kwargs = ray.signature.recover_args(args)
+
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
                 class_name = actor.__class__.__name__
@@ -446,7 +451,6 @@ cdef execute_task(
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
-
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -641,16 +645,17 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port):
-
+                  node_ip_address, node_manager_port, local_mode):
+        use_driver = is_driver or local_mode
         self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
+            WORKER_TYPE_DRIVER if use_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, gc_collect,
-            get_py_stack, True))
+            get_py_stack, True, local_mode))
+        self.is_local_mode = local_mode
 
     def run_task_loop(self):
         with nogil:
@@ -734,6 +739,7 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            c_vector[CObjectID] c_object_id_vector
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
@@ -744,12 +750,19 @@ cdef class CoreWorker:
 
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
-            with nogil:
-                # Using custom object IDs is not supported because we can't
-                # track their lifecycle, so don't pin the object in that case.
-                check_status(
-                    self.core_worker.get().Seal(
-                        c_object_id, pin_object and object_id is None))
+            if self.is_local_mode:
+                c_object_id_vector.push_back(c_object_id)
+                check_status(self.core_worker.get().Put(
+                        CRayObject(data, metadata, c_object_id_vector),
+                        c_object_id_vector, c_object_id))
+            else:
+                with nogil:
+                    # Using custom object IDs is not supported because we can't
+                    # track their lifecycle, so we don't pin the object in this
+                    # case.
+                    check_status(self.core_worker.get().Seal(
+                                    c_object_id,
+                                    pin_object and object_id is None))
 
         return c_object_id.Binary()
 
@@ -828,7 +841,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, True, c_resources)
+                num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -870,7 +883,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, True, max_concurrency,
+                        max_reconstructions, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
@@ -897,7 +910,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, False, c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -1053,6 +1066,7 @@ cdef class CoreWorker:
             c_vector[size_t] data_sizes
             c_vector[shared_ptr[CBuffer]] metadatas
             c_vector[c_vector[CObjectID]] contained_ids
+            c_vector[CObjectID] return_ids_vector
 
         if return_ids.size() == 0:
             return
@@ -1082,6 +1096,15 @@ cdef class CoreWorker:
             if returns[0][i].get() != NULL:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
+                if self.is_local_mode:
+                    return_ids_vector.push_back(return_ids[i])
+                    check_status(
+                        self.core_worker.get().Put(
+                            CRayObject(returns[0][i].get().GetData(),
+                                       returns[0][i].get().GetMetadata(),
+                                       return_ids_vector),
+                            return_ids_vector, return_ids[i]))
+                    return_ids_vector.clear()
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
@@ -1106,6 +1129,18 @@ cdef class CoreWorker:
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def run_function_in_event_loop(self, func):
+        cdef:
+            CFiberEvent event
+        loop = self.create_or_get_event_loop()
+        coroutine = sync_to_async(func)()
+        future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        future.add_done_callback(lambda _: event.Notify())
+        with nogil:
+            (self.core_worker.get()
+                .YieldCurrentFiber(event))
+        return future.result()
 
     def destory_event_loop_if_exists(self):
         if self.async_event_loop is not None:

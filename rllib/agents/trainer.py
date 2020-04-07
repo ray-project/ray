@@ -4,7 +4,6 @@ import logging
 import math
 import os
 import pickle
-import six
 import time
 import tempfile
 
@@ -420,7 +419,8 @@ class Trainer(Trainable):
         config = config or {}
 
         if tf and config.get("eager"):
-            tf.enable_eager_execution()
+            if not tf.executing_eagerly():
+                tf.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 "True" if config.get("eager_tracing") else "False"))
 
@@ -629,6 +629,7 @@ class Trainer(Trainable):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+
         return checkpoint_path
 
     @override(Trainable)
@@ -868,6 +869,25 @@ class Trainer(Trainable):
             export_dir, filename_prefix, policy_id)
 
     @DeveloperAPI
+    def import_policy_model_from_h5(self,
+                                    import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        """Imports a policy's model with given policy_id from a local h5 file.
+
+        Arguments:
+            import_file (str): The h5 file to import from.
+            policy_id (string): Optional policy id to import into.
+
+        Example:
+            >>> trainer = MyTrainer()
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
+            >>> for _ in range(10):
+            >>>     trainer.train()
+        """
+        self.workers.local_worker().import_policy_model_from_h5(
+            import_file, policy_id)
+
+    @DeveloperAPI
     def collect_metrics(self, selected_workers=None):
         """Collects metrics from the remote workers of this agent.
 
@@ -1004,6 +1024,31 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         return exported
 
+    def import_model(self, import_file):
+        """Imports a model from import_file.
+
+        Note: Currently, only h5 files are supported.
+
+        Args:
+            import_file (str): The file to import the model from.
+
+        Returns:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        # Check for existence.
+        if not os.path.exists(import_file):
+            raise FileNotFoundError(
+                "`import_file` '{}' does not exist! Can't import Model.".
+                format(import_file))
+        # Get the format of the given file.
+        import_format = "h5"  # TODO(sven): Support checkpoint loading.
+
+        ExportFormat.validate([import_format])
+        if import_format != ExportFormat.H5:
+            raise NotImplementedError
+        else:
+            return self.import_policy_model_from_h5(import_file)
+
     def __getstate__(self):
         state = {}
         if hasattr(self, "workers"):
@@ -1022,7 +1067,7 @@ class Trainer(Trainable):
             self.optimizer.restore(state["optimizer"])
 
     def _register_if_needed(self, env_object):
-        if isinstance(env_object, six.string_types):
+        if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__

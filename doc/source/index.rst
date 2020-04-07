@@ -248,15 +248,12 @@ Getting Involved
    :caption: Tune
 
    tune.rst
-   tune-tutorial.rst
-   tune-advanced-tutorial.rst
+   Tune Guides and Tutorials <tune/generated_guides/overview.rst>
    tune-usage.rst
-   tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-design.rst
    tune-examples.rst
-   tune-package-ref.rst
+   tune/api_docs/overview.rst
    tune-contrib.rst
 
 .. toctree::

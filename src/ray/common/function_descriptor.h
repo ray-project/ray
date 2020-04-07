@@ -153,6 +153,44 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::PythonFunctionDescriptor *typed_message_;
 };
 
+class CppFunctionDescriptor : public FunctionDescriptorInterface {
+ public:
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit CppFunctionDescriptor(rpc::FunctionDescriptor message)
+      : FunctionDescriptorInterface(std::move(message)) {
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kCppFunctionDescriptor);
+    typed_message_ = &(message_->cpp_function_descriptor());
+  }
+
+  virtual size_t Hash() const {
+    return std::hash<int>()(ray::FunctionDescriptorType::kCppFunctionDescriptor) ^
+           std::hash<std::string>()(typed_message_->lib_name()) ^
+           std::hash<std::string>()(typed_message_->function_offset()) ^
+           std::hash<std::string>()(typed_message_->exec_function_offset());
+  }
+
+  virtual std::string ToString() const {
+    return "{type=CppFunctionDescriptor, lib_name=" + typed_message_->lib_name() +
+           ", function_offset=" + typed_message_->function_offset() +
+           ", exec_function_offset=" + typed_message_->exec_function_offset() + "}";
+  }
+
+  std::string LibName() const { return typed_message_->lib_name(); }
+
+  std::string FunctionOffset() const { return typed_message_->function_offset(); }
+
+  std::string ExecFunctionOffset() const {
+    return typed_message_->exec_function_offset();
+  }
+
+ private:
+  const rpc::CppFunctionDescriptor *typed_message_;
+};
+
 typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
@@ -189,6 +227,13 @@ class FunctionDescriptorBuilder {
                                         const std::string &class_name,
                                         const std::string &function_name,
                                         const std::string &function_hash);
+
+  /// Build a CppFunctionDescriptor.
+  ///
+  /// \return a ray::CppFunctionDescriptor
+  static FunctionDescriptor BuildCpp(const std::string &lib_name,
+                                     const std::string &function_offset,
+                                     const std::string &exec_function_offset);
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///

@@ -80,9 +80,12 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
+
+    # TODO(sven): Move to Exploration API's (ParameterNoise class).
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
@@ -190,5 +193,6 @@ DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
+    get_policy_class=None,
     validate_config=validate_config,
 )

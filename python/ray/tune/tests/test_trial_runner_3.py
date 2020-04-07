@@ -250,7 +250,7 @@ class TrialRunnerTest3(unittest.TestCase):
                     break
 
                 if self._index > 4:
-                    self._finished = True
+                    self.set_finished()
                 return trials
 
             def suggest(self, trial_id):

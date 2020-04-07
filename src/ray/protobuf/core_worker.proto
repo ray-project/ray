@@ -48,11 +48,8 @@ message ActorHandle {
   // TODO: Remove this once scheduling is done by task counter only.
   bytes actor_cursor = 7;
 
-  // Whether direct actor call is used.
-  bool is_direct_call = 8;
-
   // An extension field that is used for storing app-language-specific data.
-  bytes extension_data = 9;
+  bytes extension_data = 8;
 }
 
 message AssignTaskRequest {
@@ -101,7 +98,6 @@ message PushTaskRequest {
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
-  // This mode of behaviour is used for direct task submission only.
   int64 sequence_number = 4;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server

@@ -1,6 +1,6 @@
 import logging
 
-from ray.tune.track.session import TrackSession
+from ray.tune.track.session import TrackSession as _TrackSession
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def init(ignore_reinit_error=True, **session_kwargs):
         else:
             raise ValueError(reinit_msg)
 
-    _session = TrackSession(**session_kwargs)
+    _session = _TrackSession(**session_kwargs)
 
 
 def shutdown():
@@ -50,7 +50,25 @@ def shutdown():
 
 
 def log(**kwargs):
-    """Applies TrackSession.log to the trial in the current context."""
+    """Logs all keyword arguments.
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+        from ray.tune import track
+
+        def run_me(config):
+            for iter in range(100):
+                time.sleep(1)
+                track.log(hello="world", ray="tune")
+
+        analysis = tune.run(run_me)
+
+    Args:
+        **kwargs: Any key value pair to be logged by Tune. Any of these
+            metrics can be used for early stopping or optimization.
+    """
     _session = get_session()
     return _session.log(**kwargs)
 
@@ -83,6 +101,5 @@ def trial_id():
 
 
 __all__ = [
-    "TrackSession", "session", "log", "trial_dir", "init", "shutdown",
-    "trial_name", "trial_id"
+    "session", "log", "trial_dir", "init", "shutdown", "trial_name", "trial_id"
 ]
