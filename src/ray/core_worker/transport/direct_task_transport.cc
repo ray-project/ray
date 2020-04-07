@@ -76,9 +76,37 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     // because this is the only place tasks are removed from it.
     if (queue_entry->second.empty()) {
       task_queues_.erase(queue_entry);
+      RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
+      CancelWorkerLeaseIfNeeded(scheduling_key);
     }
   }
   RequestNewWorkerIfNeeded(scheduling_key);
+}
+
+void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
+    const SchedulingKey &scheduling_key) {
+  auto queue_entry = task_queues_.find(scheduling_key);
+  if (queue_entry != task_queues_.end()) {
+    // There are still pending tasks, so let the worker lease request succeed.
+    return;
+  }
+
+  auto it = pending_lease_requests_.find(scheduling_key);
+  if (it != pending_lease_requests_.end()) {
+    auto &lease_client = it->second.first;
+    auto &lease_id = it->second.second;
+    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
+    RAY_UNUSED(lease_client->CancelWorkerLease(
+        lease_id, [this, lease_id, scheduling_key](
+                      const Status &status, const rpc::CancelWorkerLeaseReply &reply) {
+          absl::MutexLock lock(&mu_);
+          if (!status.ok() || reply.success()) {
+            RequestNewWorkerIfNeeded(scheduling_key);
+          } else {
+            CancelWorkerLeaseIfNeeded(scheduling_key);
+          }
+        }));
+  }
 }
 
 std::shared_ptr<WorkerLeaseInterface>
@@ -120,14 +148,24 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
+  RAY_LOG(DEBUG) << "Lease requested " << task_id;
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
-      [this, lease_client, task_id, scheduling_key](
-          const Status &status, const rpc::RequestWorkerLeaseReply &reply) mutable {
+      [this, scheduling_key](const Status &status,
+                             const rpc::RequestWorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
-        pending_lease_requests_.erase(scheduling_key);
+
+        auto it = pending_lease_requests_.find(scheduling_key);
+        RAY_CHECK(it != pending_lease_requests_.end());
+        auto lease_client = std::move(it->second.first);
+        const auto task_id = it->second.second;
+        pending_lease_requests_.erase(it);
+
         if (status.ok()) {
-          if (!reply.worker_address().raylet_id().empty()) {
+          if (reply.canceled()) {
+            RAY_LOG(DEBUG) << "Lease canceled " << task_id;
+            RequestNewWorkerIfNeeded(scheduling_key);
+          } else if (!reply.worker_address().raylet_id().empty()) {
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
@@ -147,7 +185,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (!status.ok()) {
     RetryLeaseRequest(status, lease_client, scheduling_key);
   }
-  pending_lease_requests_.insert(scheduling_key);
+  pending_lease_requests_.emplace(scheduling_key,
+                                  std::make_pair(std::move(lease_client), task_id));
 }
 
 void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(

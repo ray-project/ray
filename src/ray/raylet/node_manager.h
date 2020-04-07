@@ -577,6 +577,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReturnWorker` request.
+  void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                               rpc::CancelWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,

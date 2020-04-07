@@ -372,6 +372,14 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
+ray::Status raylet::RayletClient::CancelWorkerLease(
+    const TaskID &task_id,
+    const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_task_id(task_id.Binary());
+  return grpc_client_->CancelWorkerLease(request, callback);
+}
+
 Status raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
