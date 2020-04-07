@@ -74,7 +74,10 @@ python_grpc_compile(
 proto_library(
     name = "gcs_service_proto",
     srcs = ["src/ray/protobuf/gcs_service.proto"],
-    deps = [":gcs_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
 )
 
 cc_proto_library(

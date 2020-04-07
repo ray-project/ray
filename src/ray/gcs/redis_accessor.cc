@@ -747,6 +747,30 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
 
+Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
+  std::vector<std::string> args;
+  args.emplace_back("HMSET");
+  if (worker_type == rpc::WorkerType::DRIVER) {
+    args.emplace_back("Drivers:" + worker_id.Binary());
+  } else {
+    args.emplace_back("Workers:" + worker_id.Binary());
+  }
+  for (const auto &entry : worker_info) {
+    args.push_back(entry.first);
+    args.push_back(entry.second);
+  }
+
+  auto status = client_impl_->primary_context()->RunArgvAsync(args);
+  if (callback) {
+    // TODO (kfstorm): Invoke the callback asynchronously.
+    callback(status);
+  }
+  return status;
+}
+
 }  // namespace gcs
 
 }  // namespace ray
