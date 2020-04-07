@@ -684,6 +684,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Try to kill a task multiple times.
+  void TryKillTask(const TaskID &task_id, int num_tries);
+
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
 
@@ -748,6 +751,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
+
+  boost::asio::steady_timer kill_retry_timer_;
 
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;

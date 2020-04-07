@@ -708,27 +708,6 @@ def test_wait_makes_object_local(ray_start_cluster):
     assert ray.worker.global_worker.core_worker.object_exists(x_id)
 
 
-def test_task_cancellation(shutdown_only):
-    # import ray, time
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def micro_sleep_for(t):
-        for _ in range(t * 1000):
-            time.sleep(1 / 1000)
-        return t
-
-    obj1 = micro_sleep_for.remote(100)
-    ray.kill(obj1)
-    ray.get(obj1, 1)
-    obj2 = micro_sleep_for.remote(200)
-    obj3 = micro_sleep_for.remote(300)
-    ray.kill(obj3)
-    ray.get(obj3)
-    ray.kill(obj2)
-    ray.get(obj2)
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -18,7 +18,9 @@ class RayConnectionError(RayError):
 
 class RayCancellationError(RayError):
     """Raised when this task or a dependency is cancelled"""
-    pass
+
+    def __str__(self):
+        return "This task was canceled"
 
 
 class RayTaskError(RayError):

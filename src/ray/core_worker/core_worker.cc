@@ -99,6 +99,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
+      kill_retry_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
@@ -1400,21 +1401,32 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_id,
                                             owner_address, ref_removed_callback);
 }
+
+void CoreWorker::TryKillTask(const TaskID &task_id, int num_tries) {
+  if (num_tries == 0) {
+    RAY_LOG(WARNING) << "Failed to Kill Task: " << task_id;
+    return;
+  }
+  {
+    absl::MutexLock lock(&mutex_);
+    if (main_thread_task_id_ == task_id) {
+      RAY_LOG(INFO) << "Interrupting main: " << main_thread_task_id_;
+      kill_main_thread_();
+      return;
+    }
+  }
+  kill_retry_timer_.expires_from_now(boost::asio::chrono::milliseconds(50));
+  kill_retry_timer_.async_wait(
+      boost::bind(&CoreWorker::TryKillTask, this, task_id, num_tries - 1));
+}
+
 void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
                                 rpc::KillTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  TaskID intended_task_id = TaskID::FromBinary(request.intended_task_id());
-  // Retry a few times to avoid the KillTask RPC getting processed before the actual task
-  for (int i = 0; i < 3; i++) {
-    {
-      absl::MutexLock lock(&mutex_);
-      if (main_thread_task_id_ == intended_task_id) {
-        kill_main_thread_();
-        return;
-      }
-    }
-    usleep(5 * 1000);
-  }
+  TaskID task_id = TaskID::FromBinary(request.intended_task_id());
+  // Try to kill the task immediately, if it fails, it will try again twice. This it to
+  // avoid the situation where a cancellation RPC is processed before the execute RPC.
+  TryKillTask(task_id, 3);
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
