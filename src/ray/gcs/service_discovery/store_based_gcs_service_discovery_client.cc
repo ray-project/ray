@@ -6,16 +6,21 @@ namespace gcs {
 
 StoreBasedGcsServiceDiscoveryClient::StoreBasedGcsServiceDiscoveryClient(
     const GcsServiceDiscoveryClientOptions &options,
+    std::shared_ptr<IOServicePool> io_service_pool,
     std::shared_ptr<GcsServerInfoTable> gcs_server_table)
-    : GcsServiceDiscoveryClient(options), gcs_server_table_(std::move(gcs_server_table)) {
+
+    : GcsServiceDiscoveryClient(options, std::move(io_service_pool)),
+      gcs_server_table_(std::move(gcs_server_table)) {
   RAY_CHECK(gcs_server_table_);
   RAY_CHECK(!options_.target_gcs_service_name_.empty());
 }
 
 StoreBasedGcsServiceDiscoveryClient::~StoreBasedGcsServiceDiscoveryClient() {}
 
-Status StoreBasedGcsServiceDiscoveryClient::Init(boost::asio::io_service &io_service) {
-  query_store_timer_.reset(new boost::asio::deadline_timer(io_service));
+Status StoreBasedGcsServiceDiscoveryClient::Init() {
+  boost::asio::io_service *io_service = io_service_pool_->Get();
+  query_store_timer_.reset(new boost::asio::deadline_timer(*io_service));
+  return Status::OK();
 }
 
 void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
@@ -28,12 +33,10 @@ void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
   }
 }
 
-Status StoreBasedGcsServiceDiscoveryClient::RegisterService(
-    const rpc::GcsServerInfo &service_info) {
-  // TODO(micafan) StoreClient派生类支持string类型
-  return gcs_server_table_->Put(options_.target_gcs_service_name_,
-                                options_.target_gcs_service_name_,
-                                service_info.SerializeToString());
+Status StoreBasedGcsServiceDiscoveryClient::AsyncRegisterService(
+    const rpc::GcsServerInfo &service_info,
+    const StatusCallback &callback) {
+  return gcs_server_table_->AsyncPut(GcsServerID::Nil(), service_info, callback);
 }
 
 void StoreBasedGcsServiceDiscoveryClient::RegisterServiceWatcher(
@@ -57,7 +60,7 @@ StoreBasedGcsServiceDiscoveryClient::GetGcsServiceInfo() {
   boost::optional<rpc::GcsServerInfo> opt_service_info;
   {
     absl::MutexLock lock(&mutex_);
-    if (!received_gcs_service_info_.gcs_server_address_.empty()) {
+    if (!received_gcs_service_info_.gcs_server_address().empty()) {
       *opt_service_info = received_gcs_service_info_;
     }
   }
@@ -65,16 +68,16 @@ StoreBasedGcsServiceDiscoveryClient::GetGcsServiceInfo() {
 }
 
 void StoreBasedGcsServiceDiscoveryClient::OnReceiveGcsServiceInfo(
-    const GcsServerInfo &cur_service_info) {
+    const rpc::GcsServerInfo &cur_service_info) {
   bool changed = false;
-  if (cur_service_info.gcs_server_address_.empty()) {
+  if (cur_service_info.gcs_server_address().empty()) {
     RAY_LOG(DEBUG) << "Receive empty gcs service info.";
     return;
   }
 
   {
     absl::MutexLock lock(&mutex_);
-    if (received_gcs_service_info_ != cur_service_info) {
+    if (received_gcs_service_info_.gcs_server_id() != cur_service_info.gcs_server_id()) {
       received_gcs_service_info_ = cur_service_info;
       changed = true;
     }
@@ -89,30 +92,26 @@ void StoreBasedGcsServiceDiscoveryClient::OnReceiveGcsServiceInfo(
 
 void StoreBasedGcsServiceDiscoveryClient::RunQueryStoreTimer() {
   auto on_get_callback =
-      [this](Status status, const boost::optional<std::string> &result) {
-        if (status.OK() && result) {
-          GcsServerInfo cur_service_info;
-          RAY_DCHECK(cur_service_info.ParseFromString(*result));
-          OnReceiveGcsServiceInfo(cur_service_info);
+      [this](Status status, const boost::optional<rpc::GcsServerInfo> &result) {
+        if (status.ok() && result) {
+          OnReceiveGcsServiceInfo(*result);
         }
-        if (!status.OK()) {
-          // TODO(micafan) Change RAY_LOG to LOG_EVERY_N.
+        if (!status.ok()) {
+          // TODO(micafan) Change RAY_LOG to RAY_LOG_EVERY_N.
           RAY_LOG(INFO) << "Get gcs service info from storage failed, status "
                         << status.ToString();
         }
 
         auto query_period = boost::posix_time::milliseconds(100);
-        query_store_timer_.expires_from_now(query_period);
-        query_store_timer_.async_wait([this](const boost::system::error_code &error) {
+        query_store_timer_->expires_from_now(query_period);
+        query_store_timer_->async_wait([this](const boost::system::error_code &error) {
           RAY_CHECK(!error);
           RunQueryStoreTimer();
         });
-      }
+      };
 
-  // TODO(micafan) StoreClient派生类支持string类型
   Status status =
-      gcs_server_table_->AsyncGet(options_.target_gcs_service_name_,
-                                  options_.target_gcs_service_name_, on_get_callback);
+      gcs_server_table_->AsyncGet(GcsServerID::Nil(), on_get_callback);
   RAY_CHECK_OK(status);
 }
 

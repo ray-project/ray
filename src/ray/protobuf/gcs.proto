@@ -331,5 +331,5 @@ message GcsServerInfo {
   int32 gcs_server_port = 3;
   // Pubsub server address and port.
   string pubsub_server_address = 4;
-  int pubsub_server_port = 5;
+  int32 pubsub_server_port = 5;
 }

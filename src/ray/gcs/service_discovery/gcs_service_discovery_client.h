@@ -7,6 +7,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
 #include "ray/protobuf/gcs.pb.h"
+#include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -17,7 +18,9 @@ namespace gcs {
 /// This class includes all
 class GcsServiceDiscoveryClientOptions {
  public:
-  GcsServiceDiscoveryClientOptions()
+  GcsServiceDiscoveryClientOptions(const std::string &target_gcs_service_name,
+                                   const std::string &discovery_server_address,
+                                   int discovery_server_port)
       : target_gcs_service_name_(target_gcs_service_name),
         discovery_server_address_(discovery_server_address),
         discovery_server_port_(discovery_server_port) {}
@@ -43,18 +46,19 @@ class GcsServiceDiscoveryClient {
   ///
   /// \param io_service The event loop for this client.
   /// \return Status
-  Status Init(boost::asio::io_service &io_service) = 0;
+  virtual Status Init() = 0;
 
   /// Shutdown this client.
-  void Shutdown() = 0;
+  virtual void Shutdown() = 0;
 
-  /// Register gcs service information to discovery service synchronously.
+  /// Register gcs service information to discovery service asynchronously.
   /// This interface is used for GCS Server to register as a service.
   ///
   /// \param service_info The information of gcs service that will be registered.
+  /// \param callback The callback that will be called after the register finishes.
   /// \return Status
-  // TODO(micafan) Maybe change it to asynchronous method.
-  Status RegisterService(const rpc::GcsServerInfo &service_info) = 0;
+  virtual Status AsyncRegisterService(const rpc::GcsServerInfo &service_info,
+                                      const StatusCallback &callback) = 0;
 
   /// This callback is used to receive notifications of service info.
   using ServiceWatcherCallback =
@@ -64,14 +68,18 @@ class GcsServiceDiscoveryClient {
   /// This interface is used for GCS Client to discover service.
   ///
   /// \param callback The callback that will be called when gcs service info changes.
-  void RegisterServiceWatcher(const ServiceWatcherCallback &callback) = 0;
+  virtual void RegisterServiceWatcher(const ServiceWatcherCallback &callback) = 0;
 
  protected:
-  GcsServiceDiscoveryClient(const GcsServiceDiscoveryOptions &options)
-      : options_(options) {}
+  GcsServiceDiscoveryClient(const GcsServiceDiscoveryClientOptions &options,
+                            std::shared_ptr<IOServicePool> io_service_pool)
+      : options_(options),
+        io_service_pool_(std::move(io_service_pool)) {}
 
   /// Options of this client.
   GcsServiceDiscoveryClientOptions options_;
+
+  std::shared_ptr<IOServicePool> io_service_pool_;
 
   /// The callback that registered to watch gcs service information.
   ServiceWatcherCallback service_watcher_callback_{nullptr};

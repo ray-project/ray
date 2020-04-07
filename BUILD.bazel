@@ -918,19 +918,24 @@ cc_library(
 )
 
 cc_library(
-    name = "redis_store_client",
+    name = "store_client",
     srcs = [
         "src/ray/gcs/store_client/redis_store_client.cc",
+        "src/ray/gcs/store_client/store_tables.cc",
     ],
     hdrs = [
         "src/ray/gcs/callback.h",
         "src/ray/gcs/store_client/redis_store_client.h",
         "src/ray/gcs/store_client/store_client.h",
+        "src/ray/gcs/store_client/store_tables.h",
     ],
     copts = COPTS,
     deps = [
-        "redis_client",
-    ],
+        ":gcs_cc_proto",
+        ":ray_common",
+        ":ray_util",
+        ":redis_client"
+    ]
 )
 
 cc_library(
@@ -940,7 +945,7 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        "redis_store_client",
+        "store_client",
     ],
 )
 
@@ -954,9 +959,21 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
-        ":redis_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gcs_service_discovery_client",
+    srcs = ["src/ray/gcs/service_discovery/store_based_gcs_service_discovery_client.cc"],
+    hdrs = [
+        "src/ray/gcs/service_discovery/gcs_service_discovery_client.h",
+        "src/ray/gcs/service_discovery/store_based_gcs_service_discovery_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "store_client",
     ],
 )
 

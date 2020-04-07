@@ -99,6 +99,8 @@ class StoreClient {
   StoreClient() = default;
 };
 
+typedef StoreClient<GcsServerID, rpc::GcsServerInfo, GcsServerID> GcsServerInfoTableImpl;
+
 }  // namespace gcs
 
 }  // namespace ray
