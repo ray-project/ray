@@ -125,11 +125,7 @@ TEST(UtilTest, CreateCommandLineTest) {
 #ifdef _WIN32
       proc = syn == win32 ? _popen(test_command.c_str(), "r") : NULL;
 #else
-#ifdef __APPLE__
-      proc = NULL;  // Don't run on Mac; there appears to be a bug in popen()
-#else
       proc = syn == posix ? popen(test_command.c_str(), "r") : NULL;
-#endif
 #endif
       if (proc) {
         std::vector<std::string> lines;
@@ -137,7 +133,11 @@ TEST(UtilTest, CreateCommandLineTest) {
           lines.push_back(buf.substr(0, buf.find_first_of(std::string({'\0', '\n'}))));
         }
         ASSERT_EQ(lines, arglist);
-        fclose(proc);
+#ifdef _WIN32
+        _pclose(proc);
+#else
+        pclose(proc);
+#endif
       }
     }
   }
