@@ -11,8 +11,8 @@ import org.ray.runtime.generated.Common.Language;
  */
 public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
 
-  NativeRayPyActor(long nativeCoreWorkerPointer, byte[] actorId) {
-    super(nativeCoreWorkerPointer, actorId);
+  NativeRayPyActor(byte[] actorId) {
+    super(actorId, Language.PYTHON);
   }
 
   /**
@@ -24,12 +24,12 @@ public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
 
   @Override
   public String getModuleName() {
-    return nativeGetActorCreationTaskFunctionDescriptor(nativeCoreWorkerPointer, actorId).get(0);
+    return nativeGetActorCreationTaskFunctionDescriptor(actorId).get(0);
   }
 
   @Override
   public String getClassName() {
-    return nativeGetActorCreationTaskFunctionDescriptor(nativeCoreWorkerPointer, actorId).get(1);
+    return nativeGetActorCreationTaskFunctionDescriptor(actorId).get(1);
   }
 
   @Override

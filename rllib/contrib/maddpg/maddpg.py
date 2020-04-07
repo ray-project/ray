@@ -172,6 +172,7 @@ MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="MADDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=MADDPGTFPolicy,
+    get_policy_class=None,
     before_init=None,
     before_train_step=set_global_timestep,
     make_policy_optimizer=make_optimizer,

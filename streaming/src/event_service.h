@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "channel.h"
+#include "ray/core_worker/core_worker.h"
 #include "ring_buffer.h"
 #include "util/streaming_util.h"
 
@@ -127,6 +128,7 @@ class EventService {
   void LoopThreadHandler();
 
  private:
+  WorkerID worker_id_;
   std::unordered_map<EventType, Handle, EnumTypeHash> event_handle_map_;
   std::shared_ptr<EventQueue> event_queue_;
   std::shared_ptr<std::thread> loop_thread_;

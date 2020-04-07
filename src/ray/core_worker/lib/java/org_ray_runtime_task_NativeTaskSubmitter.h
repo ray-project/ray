@@ -25,33 +25,32 @@ extern "C" {
  * Class:     org_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitTask
  * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
+ * (Lorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jobject, jobject, jint, jobject);
+    JNIEnv *, jclass, jobject, jobject, jint, jobject);
 
 /*
  * Class:     org_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeCreateActor
  * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)[B
+ * (Lorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jlong,
-                                                                jobject, jobject,
-                                                                jobject);
+Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jobject,
+                                                                jobject, jobject);
 
 /*
  * Class:     org_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitActorTask
  * Signature:
- * (J[BLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
+ * ([BLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
-                                                                    jlong, jbyteArray,
-                                                                    jobject, jobject,
-                                                                    jint, jobject);
+                                                                    jbyteArray, jobject,
+                                                                    jobject, jint,
+                                                                    jobject);
 
 #ifdef __cplusplus
 }

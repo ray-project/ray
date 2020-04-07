@@ -239,19 +239,12 @@ class TorchRunner:
             self.timers.disable()
         self.training_operator._set_timers(self.timers)
 
-    def _get_model_state_dicts(self):
-        return [model.state_dict() for model in self.models]
-
-    def _set_model_state_dicts(self, models_state_dicts):
-        for model, state_dict in zip(self.models, models_state_dicts):
-            model.load_state_dict(state_dict)
-
     def state_dict(self):
         """Returns the state of the runner."""
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
-            "models": self._get_model_state_dicts(),
+            "models": [model.state_dict() for model in self.models],
             "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
         if self.schedulers:
@@ -267,7 +260,8 @@ class TorchRunner:
 
     def load_state_dict(self, state):
         """Sets the state of the model."""
-        self._set_model_state_dicts(state["models"])
+        for model, state_dict in zip(self.models, state["models"]):
+            model.load_state_dict(state_dict)
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
         if self.schedulers:
