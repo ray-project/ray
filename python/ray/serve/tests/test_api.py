@@ -182,16 +182,16 @@ def test_killing_replicas(serve_instance):
     b_config = BackendConfig(num_replicas=3, num_cpus=2)
     serve.create_backend(Simple, "simple:v1", backend_config=b_config)
     global_state = serve.api._get_global_state()
-    old_replica_tag_list = global_state.backend_table.list_replicas(
-        "simple:v1")
+    old_replica_tag_list = ray.get(
+        global_state.master_actor._list_replicas.remote("simple:v1"))
 
     bnew_config = serve.get_backend_config("simple:v1")
     # change the config
     bnew_config.num_cpus = 1
     # set the config
     serve.set_backend_config("simple:v1", bnew_config)
-    new_replica_tag_list = global_state.backend_table.list_replicas(
-        "simple:v1")
+    new_replica_tag_list = ray.get(
+        global_state.master_actor._list_replicas.remote("simple:v1"))
     new_all_tag_list = list(
         ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 
@@ -216,16 +216,16 @@ def test_not_killing_replicas(serve_instance):
     b_config = BackendConfig(num_replicas=3, max_batch_size=2)
     serve.create_backend(BatchSimple, "bsimple:v1", backend_config=b_config)
     global_state = serve.api._get_global_state()
-    old_replica_tag_list = global_state.backend_table.list_replicas(
-        "bsimple:v1")
+    old_replica_tag_list = ray.get(
+        global_state.master_actor._list_replicas.remote("bsimple:v1"))
 
     bnew_config = serve.get_backend_config("bsimple:v1")
     # change the config
     bnew_config.max_batch_size = 5
     # set the config
     serve.set_backend_config("bsimple:v1", bnew_config)
-    new_replica_tag_list = global_state.backend_table.list_replicas(
-        "bsimple:v1")
+    new_replica_tag_list = ray.get(
+        global_state.master_actor._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = list(
         ray.get(global_state.master_actor.get_all_handles.remote()).keys())
 

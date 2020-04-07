@@ -167,10 +167,9 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    methods = [m.upper() for m in methods]
     ray.get(
         global_state.master_actor.create_endpoint.remote(
-            route, endpoint_name, methods))
+            route, endpoint_name, [m.upper() for m in methods]))
 
 
 @_ensure_connected
@@ -181,52 +180,20 @@ def set_backend_config(backend_tag, backend_config):
         backend_tag(str): A registered backend.
         backend_config(BackendConfig) : Desired backend configuration.
     """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert isinstance(backend_config,
-                      BackendConfig), ("backend_config must be"
-                                       " of instance BackendConfig")
-    backend_config_dict = dict(backend_config)
-    old_backend_config_dict = global_state.backend_table.get_info(backend_tag)
-
-    if (not old_backend_config_dict["has_accept_batch_annotation"]
-            and backend_config.max_batch_size is not None):
-        raise batch_annotation_not_found
-
-    global_state.backend_table.register_info(backend_tag, backend_config_dict)
-
-    # inform the router about change in configuration
-    # particularly for setting max_batch_size
-    router = global_state.get_router()
-    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
-
-    # checking if replicas need to be restarted
-    # Replicas are restarted if there is any change in the backend config
-    # related to restart_configs
-    # TODO(alind) : have replica restarting policies selected by the user
-
-    need_to_restart_replicas = any(
-        old_backend_config_dict[k] != backend_config_dict[k]
-        for k in BackendConfig.restart_on_change_fields)
-    if need_to_restart_replicas:
-        # kill all the replicas for restarting with new configurations
-        _scale(backend_tag, 0)
-
-    # scale the replicas with new configuration
-    _scale(backend_tag, backend_config_dict["num_replicas"])
+    ray.get(
+        global_state.master_actor.set_backend_config.remote(
+            backend_tag, backend_config))
 
 
 @_ensure_connected
 def get_backend_config(backend_tag):
-    """get the backend configuration for a backend tag
+    """Get the backend configuration for a backend tag.
 
     Args:
         backend_tag(str): A registered backend.
     """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    backend_config_dict = global_state.backend_table.get_info(backend_tag)
-    return BackendConfig(**backend_config_dict)
+    return ray.get(
+        global_state.master_actor.get_backend_config.remote(backend_tag))
 
 
 def _backend_accept_batch(func_or_class):
@@ -290,51 +257,9 @@ def create_backend(func_or_class,
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
-    backend_config_dict = dict(backend_config)
-
-    # save creator which starts replicas
-    global_state.backend_table.register_backend(backend_tag, creator)
-
-    # save information about configurations needed to start the replicas
-    global_state.backend_table.register_info(backend_tag, backend_config_dict)
-
-    # save the initial arguments needed by replicas
-    global_state.backend_table.save_init_args(backend_tag, arg_list)
-
-    # set the backend config inside the router
-    # particularly for max-batch-size
-    router = global_state.get_router()
-    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
-    _scale(backend_tag, backend_config_dict["num_replicas"])
-
-
-@_ensure_connected
-def _scale(backend_tag, num_replicas):
-    """Set the number of replicas for backend_tag.
-
-    Args:
-        backend_tag (str): A registered backend.
-        num_replicas (int): Desired number of replicas
-    """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert num_replicas >= 0, ("Number of replicas must be"
-                               " greater than or equal to 0.")
-
-    replicas = global_state.backend_table.list_replicas(backend_tag)
-    current_num_replicas = len(replicas)
-    delta_num_replicas = num_replicas - current_num_replicas
-
-    if delta_num_replicas > 0:
-        for _ in range(delta_num_replicas):
-            ray.get(
-                global_state.master_actor.start_backend_replica.remote(
-                    backend_tag))
-    elif delta_num_replicas < 0:
-        for _ in range(-delta_num_replicas):
-            ray.get(
-                global_state.master_actor.remove_backend_replica.remote(
-                    backend_tag))
+    ray.get(
+        global_state.master_actor.create_backend.remote(
+            backend_tag, creator, backend_config, arg_list))
 
 
 @_ensure_connected
