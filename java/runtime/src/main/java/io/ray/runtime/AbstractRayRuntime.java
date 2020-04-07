@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Core functionality to implement Ray APIs.
  */
-public abstract class AbstractRayRuntime implements RayRuntime {
+public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
@@ -55,9 +55,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  public AbstractRayRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+  /**
+   * Whether the required thread context is set on the current thread.
+   */
+  final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
+
+  public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    this.functionManager = functionManager;
+    setIsContextSet(rayConfig.workerMode == WorkerType.DRIVER);
+    functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
   }
 
@@ -161,13 +167,54 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public Runnable wrapRunnable(Runnable runnable) {
-    return runnable;
+  public void setAsyncContext(Object asyncContext) {
+    isContextSet.set(true);
+  }
+
+  // TODO (kfstorm): Simplify the duplicate code in wrap*** methods.
+
+  @Override
+  public final Runnable wrapRunnable(Runnable runnable) {
+    Object asyncContext = getAsyncContext();
+    return () -> {
+      boolean oldIsContextSet = isContextSet.get();
+      Object oldAsyncContext = null;
+      if (oldIsContextSet) {
+        oldAsyncContext = getAsyncContext();
+      }
+      setAsyncContext(asyncContext);
+      try {
+        runnable.run();
+      } finally {
+        if (oldIsContextSet) {
+          setAsyncContext(oldAsyncContext);
+        } else {
+          setIsContextSet(false);
+        }
+      }
+    };
   }
 
   @Override
-  public Callable wrapCallable(Callable callable) {
-    return callable;
+  public final <T> Callable<T> wrapCallable(Callable<T> callable) {
+    Object asyncContext = getAsyncContext();
+    return () -> {
+      boolean oldIsContextSet = isContextSet.get();
+      Object oldAsyncContext = null;
+      if (oldIsContextSet) {
+        oldAsyncContext = getAsyncContext();
+      }
+      setAsyncContext(asyncContext);
+      try {
+        return callable.call();
+      } finally {
+        if (oldIsContextSet) {
+          setAsyncContext(oldAsyncContext);
+        } else {
+          setIsContextSet(false);
+        }
+      }
+    };
   }
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
@@ -209,18 +256,22 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
+  @Override
   public WorkerContext getWorkerContext() {
     return workerContext;
   }
 
+  @Override
   public ObjectStore getObjectStore() {
     return objectStore;
   }
 
+  @Override
   public FunctionManager getFunctionManager() {
     return functionManager;
   }
 
+  @Override
   public RayConfig getRayConfig() {
     return rayConfig;
   }
@@ -229,7 +280,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return runtimeContext;
   }
 
+  @Override
   public GcsClient getGcsClient() {
     return gcsClient;
+  }
+
+  @Override
+  public void setIsContextSet(boolean isContextSet) {
+    this.isContextSet.set(isContextSet);
   }
 }

@@ -1,9 +1,7 @@
 package io.ray.api;
 
-import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.util.function.Supplier;
-
 import io.ray.api.runtime.RayRuntime;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.RayMultiWorkerNativeRuntime;
@@ -80,12 +78,13 @@ public class TestUtils {
     Assert.assertEquals(obj.get(), "hi");
   }
 
-  public static AbstractRayRuntime getRuntime() {
-    RayRuntime runtime = Ray.internal();
-    if (runtime instanceof RayMultiWorkerNativeRuntime) {
-      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-    }
-    Preconditions.checkState(runtime instanceof AbstractRayRuntime);
-    return (AbstractRayRuntime) runtime;
+  public static RayRuntimeInternal getRuntime() {
+    return (RayRuntimeInternal) Ray.internal();
+  }
+
+  public static RayRuntimeInternal getUnderlyingRuntime() {
+    RayRuntimeProxy proxy = (RayRuntimeProxy) (java.lang.reflect.Proxy
+        .getInvocationHandler(Ray.internal()));
+    return proxy.getRuntimeObject();
   }
 }

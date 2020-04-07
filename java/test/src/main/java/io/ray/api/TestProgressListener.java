@@ -42,6 +42,10 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onTestFailure(ITestResult result) {
     printInfo("TEST FAILURE", getFullTestName(result));
+    Throwable throwable = result.getThrowable();
+    if (throwable != null) {
+      throwable.printStackTrace();
+    }
   }
 
   @Override

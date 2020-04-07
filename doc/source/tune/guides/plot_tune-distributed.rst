@@ -1,21 +1,27 @@
+.. _tune-distributed:
+
 Tune Distributed Experiments
 ============================
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview:
 
   1. How to setup and launch a distributed experiment,
-  2. `commonly used commands <tune-distributed.html#common-commands>`_, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
+  2. :ref:`Commonly used commands <tune-distributed-common>`, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
 
 **Quick Summary**: To run a distributed experiment with Tune, you need to:
 
   1. Make sure your script has ``ray.init(address=...)`` to connect to the existing Ray cluster.
-  2. If a ray cluster does not exist, start a Ray cluster (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
+  2. If a ray cluster does not exist, start a Ray cluster.
   3. Run the script on the head node (or use ``ray submit``).
+
+.. contents::
+    :local:
+    :backlinks: none
 
 Running a distributed experiment
 --------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
@@ -29,9 +35,9 @@ One common approach to modifying an existing Tune experiment to go distributed i
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address")
+    parser.add_argument("--address")
     args = parser.parse_args()
-    ray.init(address=args.ray_address)
+    ray.init(address=args.address)
 
     tune.run(...)
 
@@ -51,12 +57,14 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
+.. _tune-distributed-local:
+
 Local Cluster Setup
 -------------------
 
-If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
+If you already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
 
-.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+.. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
 
 ``ray up`` starts Ray on the cluster of nodes.
@@ -98,16 +106,18 @@ Then, you can run your Tune Python script on the head node like:
     # On the head node, execute using existing ray cluster
     $ python tune_script.py --ray-address=<address>
 
+.. tune-distributed-cloud:
+
 Launching a cloud cluster
 -------------------------
 
 .. tip::
 
-    If you have already have a list of nodes, go to the `Local Cluster Setup`_ section.
+    If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
 Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
 
-.. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
+.. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
    :name: tune-default.yaml
 
@@ -125,7 +135,7 @@ Ray currently supports AWS and GCP. Follow the instructions below to launch node
 
     ray submit tune-default.yaml tune_script.py --start --args="--ray-address=localhost:6379"
 
-.. image:: images/tune-upload.png
+.. image:: /images/tune-upload.png
     :scale: 50%
     :align: center
 
@@ -138,6 +148,8 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 
 Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+
+.. _tune-distributed-spot:
 
 Pre-emptible Instances (Cloud)
 ------------------------------
@@ -180,14 +192,14 @@ Spot instances may be removed suddenly while trials are still running. Often tim
 
 The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in the example below:
 
-.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch_trainable.py
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_trainable.py
    :language: python
    :start-after: __trainable_example_begin__
    :end-before: __trainable_example_end__
 
 This can then be used similarly to the Function API as before:
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
     :language: python
     :start-after: __trainable_run_begin__
     :end-before: __trainable_run_end__
@@ -198,13 +210,13 @@ Example for using spot instances (AWS)
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
-1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
+1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py </../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
 
 .. code-block:: bash
 
     $ pip install ray torch torchvision filelock
 
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
+2. Download an example cluster yaml here: :download:`tune-default.yaml </../../python/ray/tune/examples/tune-default.yaml>`
 3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
 
 .. code-block:: bash
@@ -230,9 +242,11 @@ To summarize, here are the commands to run:
     # wait a while until after all nodes have started
     ray kill-random-node tune-default.yaml --hard
 
-You should see Tune eventually continue the trials on a different worker node. See the `Save and Restore <tune-usage.html#save-and-restore>`__ section for more details.
+You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
+You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+
+.. _tune-distributed-common:
 
 Common Commands
 ---------------
@@ -284,6 +298,3 @@ Sometimes, your program may freeze. Run this to restart the Ray cluster without 
 .. code-block:: bash
 
     $ ray up CLUSTER.YAML --restart-only
-
-
-..  Local Cluster Setup: tune-distributed.html#local-cluster-setup

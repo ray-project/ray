@@ -25,33 +25,32 @@ extern "C" {
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitTask
  * Signature:
- * (JLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
+ * (Lorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jobject, jobject, jint, jobject);
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
+    JNIEnv *, jclass, jobject, jobject, jint, jobject);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeCreateActor
  * Signature:
- * (JLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lio/ray/api/options/ActorCreationOptions;)[B
+ * (Lorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jlong,
-                                                                jobject, jobject,
-                                                                jobject);
+Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jobject,
+                                                                jobject, jobject);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitActorTask
  * Signature:
- * (J[BLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
+ * ([BLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
-                                                                    jlong, jbyteArray,
-                                                                    jobject, jobject,
-                                                                    jint, jobject);
+Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
+                                                                    jbyteArray, jobject,
+                                                                    jobject, jint,
+                                                                    jobject);
 
 #ifdef __cplusplus
 }

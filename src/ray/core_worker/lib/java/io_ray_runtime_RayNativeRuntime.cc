@@ -20,6 +20,7 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 thread_local JNIEnv *local_env = nullptr;
+jobject java_task_executor = nullptr;
 
 inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
                                                      jobject gcs_client_options) {
@@ -36,15 +37,21 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
-    JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-    jstring nodeIpAddress, jint nodeManagerPort, jbyteArray jobId,
-    jobject gcsClientOptions) {
-  auto native_store_socket = JavaStringToNativeString(env, storeSocket);
-  auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
-  auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
-  auto gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
-  auto node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
+
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
+    JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
+    jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
+    jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
+    jobject rayletConfigParameters) {
+  auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
+      env, rayletConfigParameters,
+      [](JNIEnv *env, jobject java_key) {
+        return JavaStringToNativeString(env, (jstring)java_key);
+      },
+      [](JNIEnv *env, jobject java_value) {
+        return JavaStringToNativeString(env, (jstring)java_value);
+      });
+  RayConfig::instance().initialize(raylet_config);
 
   auto task_execution_callback =
       [](ray::TaskType task_type, const ray::RayFunction &ray_function,
@@ -52,8 +59,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorke
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
-         std::vector<std::shared_ptr<ray::RayObject>> *results,
-         const ray::WorkerID &worker_id) {
+         std::vector<std::shared_ptr<ray::RayObject>> *results) {
         JNIEnv *env = local_env;
         if (!env) {
           // Attach the native thread to JVM.
@@ -64,12 +70,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorke
         }
 
         RAY_CHECK(env);
-
-        auto worker_id_bytes = IdToJavaByteArray<ray::WorkerID>(env, worker_id);
-        jobject local_java_task_executor = env->CallStaticObjectMethod(
-            java_task_executor_class, java_task_executor_get, worker_id_bytes);
-
-        RAY_CHECK(local_java_task_executor);
+        RAY_CHECK(java_task_executor);
         // convert RayFunction
         jobject ray_function_array_list = NativeRayFunctionDescriptorToJavaStringList(
             env, ray_function.GetFunctionDescriptor());
@@ -80,7 +81,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorke
 
         // invoke Java method
         jobject java_return_objects =
-            env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
+            env->CallObjectMethod(java_task_executor, java_task_executor_execute,
                                   ray_function_array_list, args_array_list);
         RAY_CHECK_JAVA_EXCEPTION(env);
         std::vector<std::shared_ptr<ray::RayObject>> return_objects;
@@ -99,79 +100,68 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitCoreWorke
         return ray::Status::OK();
       };
 
-  try {
-    auto core_worker = new ray::CoreWorker(
-        static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"", node_ip_address,
-        nodeManagerPort, task_execution_callback);
-    return reinterpret_cast<jlong>(core_worker);
-  } catch (const std::exception &e) {
-    std::ostringstream oss;
-    oss << "Failed to construct core worker: " << e.what();
-    THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, ray::Status::Invalid(oss.str()), 0);
-    return 0;  // To make compiler no complain
-  }
+  ray::CoreWorkerOptions options = {
+      static_cast<ray::WorkerType>(workerMode),     // worker_type
+      ray::Language::JAVA,                          // langauge
+      JavaStringToNativeString(env, storeSocket),   // store_socket
+      JavaStringToNativeString(env, rayletSocket),  // raylet_socket
+      JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
+      ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
+      JavaStringToNativeString(env, logDir),        // log_dir
+      // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
+      false,                                         // install_failure_signal_handler
+      JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
+      static_cast<int>(nodeManagerPort),             // node_manager_port
+      JavaStringToNativeString(env, driverName),     // driver_name
+      "",                                            // stdout_file
+      "",                                            // stderr_file
+      task_execution_callback,                       // task_execution_callback
+      nullptr,                                       // check_signals
+      nullptr,                                       // gc_collect
+      nullptr,                                       // get_lang_stack
+      false,                                         // ref_counting_enabled
+      false,                                         // is_local_mode
+      static_cast<int>(numWorkersPerProcess),        // num_workers
+  };
+
+  ray::CoreWorkerProcess::Initialize(options);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
-    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
-  local_env = env;
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  core_worker->StartExecutingTasks();
-  local_env = nullptr;
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
+    JNIEnv *env, jclass o, jobject javaTaskExecutor) {
+  java_task_executor = javaTaskExecutor;
+  ray::CoreWorkerProcess::RunTaskExecutionLoop();
+  java_task_executor = nullptr;
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(
-    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  core_worker->Disconnect();
-  delete core_worker;
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
+                                                                            jclass o) {
+  ray::CoreWorkerProcess::Shutdown();
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetup(
-    JNIEnv *env, jclass, jstring logDir, jobject rayletConfigParameters) {
-  std::string log_dir = JavaStringToNativeString(env, logDir);
-  ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
-  // TODO (kfstorm): We can't InstallFailureSignalHandler here, because JVM already
-  // installed its own signal handler. It's possible to fix this by chaining signal
-  // handlers. But it's not easy. See
-  // https://docs.oracle.com/javase/9/troubleshoot/handle-signals-and-exceptions.htm.
-  auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
-      env, rayletConfigParameters,
-      [](JNIEnv *env, jobject java_key) {
-        return JavaStringToNativeString(env, (jstring)java_key);
-      },
-      [](JNIEnv *env, jobject java_value) {
-        return JavaStringToNativeString(env, (jstring)java_value);
-      });
-  RayConfig::instance().initialize(raylet_config);
-}
-
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
-                                                                                jclass) {
-  ray::RayLog::ShutDownRayLog();
-}
-
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jstring resourceName,
-    jdouble capacity, jbyteArray nodeId) {
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+    JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
   const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
-  auto status =
-      reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-          ->SetResource(native_resource_name, static_cast<double>(capacity), node_id);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().SetResource(
+      native_resource_name, static_cast<double>(capacity), node_id);
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray actorId,
-    jboolean noReconstruction) {
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  auto status = core_worker->KillActor(JavaByteArrayToId<ActorID>(env, actorId),
-                                       /*force_kill=*/true, noReconstruction);
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
+    JNIEnv *env, jclass, jbyteArray actorId, jboolean noReconstruction) {
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
+      JavaByteArrayToId<ActorID>(env, actorId),
+      /*force_kill=*/true, noReconstruction);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
+    JNIEnv *env, jclass, jbyteArray workerId) {
+  const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
+  ray::CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
 }
 
 #ifdef __cplusplus

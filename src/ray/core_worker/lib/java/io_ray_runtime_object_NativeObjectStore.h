@@ -24,44 +24,44 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (JLio/ray/runtime/object/NativeRayObject;)[B
+ * Signature: (Lorg/ray/runtime/object/NativeRayObject;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__JLio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jlong, jobject);
+Java_org_ray_runtime_object_NativeObjectStore_nativePut__Lorg_ray_runtime_object_NativeRayObject_2(
+    JNIEnv *, jclass, jobject);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (J[BLio/ray/runtime/object/NativeRayObject;)V
+ * Signature: ([BLorg/ray/runtime/object/NativeRayObject;)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__J_3BLio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jlong, jbyteArray, jobject);
+Java_org_ray_runtime_object_NativeObjectStore_nativePut___3BLorg_ray_runtime_object_NativeRayObject_2(
+    JNIEnv *, jclass, jbyteArray, jobject);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeGet
- * Signature: (JLjava/util/List;J)Ljava/util/List;
+ * Signature: (Ljava/util/List;J)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(
-    JNIEnv *, jclass, jlong, jobject, jlong);
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeGet(JNIEnv *, jclass, jobject, jlong);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeWait
- * Signature: (JLjava/util/List;IJ)Ljava/util/List;
+ * Signature: (Ljava/util/List;IJ)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
-    JNIEnv *, jclass, jlong, jobject, jint, jlong);
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWait(
+    JNIEnv *, jclass, jobject, jint, jlong);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeDelete
- * Signature: (JLjava/util/List;ZZ)V
+ * Signature: (Ljava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *, jclass, jlong, jobject, jboolean, jboolean);
+JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
+    JNIEnv *, jclass, jobject, jboolean, jboolean);
 
 #ifdef __cplusplus
 }

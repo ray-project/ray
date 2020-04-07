@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.stats import norm
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
@@ -8,7 +7,7 @@ import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 
@@ -37,20 +36,9 @@ def do_test_log_likelihood(run,
     prev_r = None if prev_a is None else np.array(0.0)
 
     # Test against all frameworks.
-    for fw in ["tf", "eager", "torch"]:
+    for fw in framework_iterator(config):
         if run in [dqn.DQNTrainer, sac.SACTrainer] and fw == "torch":
             continue
-        print("Testing {} with framework={}".format(run, fw))
-        config["eager"] = fw == "eager"
-        config["use_pytorch"] = fw == "torch"
-
-        eager_ctx = None
-        if fw == "tf":
-            assert not tf.executing_eagerly()
-        elif fw == "eager":
-            eager_ctx = eager_mode()
-            eager_ctx.__enter__()
-            assert tf.executing_eagerly()
 
         trainer = run(config=config, env=env)
 
@@ -88,9 +76,11 @@ def do_test_log_likelihood(run,
                                 layer_key[0])])
                 else:
                     expected_mean_logstd = fc(
-                        fc(obs_batch,
-                           vars["_hidden_layers.0._model.0.weight"]),
-                        vars["_logits._model.0.weight"])
+                        fc(
+                            obs_batch,
+                            np.transpose(
+                                vars["_hidden_layers.0._model.0.weight"])),
+                        np.transpose(vars["_logits._model.0.weight"]))
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:
                     expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
@@ -113,9 +103,6 @@ def do_test_log_likelihood(run,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
                 check(np.exp(logp), expected_prob, atol=0.2)
-
-        if eager_ctx:
-            eager_ctx.__exit__(None, None, None)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):

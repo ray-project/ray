@@ -24,16 +24,12 @@ public class TransferHandler {
   private long writerClientNative;
   private long readerClientNative;
 
-  public TransferHandler(long coreWorkerNative,
-                         JavaFunctionDescriptor writerAsyncFunc,
+  public TransferHandler(JavaFunctionDescriptor writerAsyncFunc,
                          JavaFunctionDescriptor writerSyncFunc,
                          JavaFunctionDescriptor readerAsyncFunc,
                          JavaFunctionDescriptor readerSyncFunc) {
-    Preconditions.checkArgument(coreWorkerNative != 0);
-    writerClientNative = createWriterClientNative(
-        coreWorkerNative, writerAsyncFunc, writerSyncFunc);
-    readerClientNative = createReaderClientNative(
-        coreWorkerNative, readerAsyncFunc, readerSyncFunc);
+    writerClientNative = createWriterClientNative(writerAsyncFunc, writerSyncFunc);
+    readerClientNative = createReaderClientNative(readerAsyncFunc, readerSyncFunc);
   }
 
   public void onWriterMessage(byte[] buffer) {
@@ -53,12 +49,10 @@ public class TransferHandler {
   }
 
   private native long createWriterClientNative(
-      long coreWorkerNative,
       FunctionDescriptor asyncFunc,
       FunctionDescriptor syncFunc);
 
   private native long createReaderClientNative(
-      long coreWorkerNative,
       FunctionDescriptor asyncFunc,
       FunctionDescriptor syncFunc);
 

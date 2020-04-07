@@ -19,10 +19,6 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 
-inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
-  return *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-}
-
 inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
   std::vector<std::string> function_descriptor_list;
   jobject list =
@@ -126,18 +122,18 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
-    jobject args, jint numReturns, jobject callOptions) {
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
+    JNIEnv *env, jclass p, jobject functionDescriptor, jobject args, jint numReturns,
+    jobject callOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .SubmitTask(ray_function, task_args, task_options, &return_ids,
-                                /*max_retries=*/0);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options, &return_ids,
+      /*max_retries=*/0);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
 
@@ -145,35 +141,34 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
-    jobject args, jobject actorCreationOptions) {
+Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
+    JNIEnv *env, jclass p, jobject functionDescriptor, jobject args,
+    jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   auto task_args = ToTaskArgs(env, args);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
-  ray::ActorID actor_id;
-  auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .CreateActor(ray_function, task_args, actor_creation_options,
-                                 /*extension_data*/ "", &actor_id);
+  ActorID actor_id;
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreateActor(
+      ray_function, task_args, actor_creation_options,
+      /*extension_data*/ "", &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jbyteArray actorId,
-    jobject functionDescriptor, jobject args, jint numReturns, jobject callOptions) {
+Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
+    JNIEnv *env, jclass p, jbyteArray actorId, jobject functionDescriptor, jobject args,
+    jint numReturns, jobject callOptions) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   auto ray_function = ToRayFunction(env, functionDescriptor);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status =
-      GetCoreWorker(nativeCoreWorkerPointer)
-          .SubmitActorTask(actor_id, ray_function, task_args, task_options, &return_ids);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, ray_function, task_args, task_options, &return_ids);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeIdVectorToJavaByteArrayList(env, return_ids);

@@ -29,8 +29,7 @@ public class Worker {
   protected TransferHandler transferHandler = null;
 
   public Worker() {
-    transferHandler = new TransferHandler(((RayMultiWorkerNativeRuntime) Ray.internal())
-        .getCurrentRuntime().getNativeCoreWorkerPointer(),
+    transferHandler = new TransferHandler(
         new JavaFunctionDescriptor(Worker.class.getName(),
             "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(),

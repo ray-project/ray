@@ -12,61 +12,52 @@ import io.ray.runtime.generated.Common.TaskType;
  */
 public class NativeWorkerContext implements WorkerContext {
 
-  /**
-   * The native pointer of core worker.
-   */
-  private final long nativeCoreWorkerPointer;
-
-  private ClassLoader currentClassLoader;
-
-  public NativeWorkerContext(long nativeCoreWorkerPointer) {
-    this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
-  }
+  private final ThreadLocal<ClassLoader> currentClassLoader = new ThreadLocal<>();
 
   @Override
   public UniqueId getCurrentWorkerId() {
-    return UniqueId.fromByteBuffer(nativeGetCurrentWorkerId(nativeCoreWorkerPointer));
+    return UniqueId.fromByteBuffer(nativeGetCurrentWorkerId());
   }
 
   @Override
   public JobId getCurrentJobId() {
-    return JobId.fromByteBuffer(nativeGetCurrentJobId(nativeCoreWorkerPointer));
+    return JobId.fromByteBuffer(nativeGetCurrentJobId());
   }
 
   @Override
   public ActorId getCurrentActorId() {
-    return ActorId.fromByteBuffer(nativeGetCurrentActorId(nativeCoreWorkerPointer));
+    return ActorId.fromByteBuffer(nativeGetCurrentActorId());
   }
 
   @Override
   public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader;
+    return currentClassLoader.get();
   }
 
   @Override
   public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    if (this.currentClassLoader != currentClassLoader) {
-      this.currentClassLoader = currentClassLoader;
+    if (this.currentClassLoader.get() != currentClassLoader) {
+      this.currentClassLoader.set(currentClassLoader);
     }
   }
 
   @Override
   public TaskType getCurrentTaskType() {
-    return TaskType.forNumber(nativeGetCurrentTaskType(nativeCoreWorkerPointer));
+    return TaskType.forNumber(nativeGetCurrentTaskType());
   }
 
   @Override
   public TaskId getCurrentTaskId() {
-    return TaskId.fromByteBuffer(nativeGetCurrentTaskId(nativeCoreWorkerPointer));
+    return TaskId.fromByteBuffer(nativeGetCurrentTaskId());
   }
 
-  private static native int nativeGetCurrentTaskType(long nativeCoreWorkerPointer);
+  private static native int nativeGetCurrentTaskType();
 
-  private static native ByteBuffer nativeGetCurrentTaskId(long nativeCoreWorkerPointer);
+  private static native ByteBuffer nativeGetCurrentTaskId();
 
-  private static native ByteBuffer nativeGetCurrentJobId(long nativeCoreWorkerPointer);
+  private static native ByteBuffer nativeGetCurrentJobId();
 
-  private static native ByteBuffer nativeGetCurrentWorkerId(long nativeCoreWorkerPointer);
+  private static native ByteBuffer nativeGetCurrentWorkerId();
 
-  private static native ByteBuffer nativeGetCurrentActorId(long nativeCoreWorkerPointer);
+  private static native ByteBuffer nativeGetCurrentActorId();
 }

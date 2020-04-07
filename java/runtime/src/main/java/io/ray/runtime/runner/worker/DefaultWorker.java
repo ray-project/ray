@@ -25,14 +25,7 @@ public class DefaultWorker {
       });
       Ray.init();
       LOGGER.info("Worker started.");
-      RayRuntime runtime = Ray.internal();
-      if (runtime instanceof RayNativeRuntime) {
-        ((RayNativeRuntime)runtime).run();
-      } else if (runtime instanceof RayMultiWorkerNativeRuntime) {
-        ((RayMultiWorkerNativeRuntime)runtime).run();
-      } else {
-        throw new RuntimeException("Unknown RayRuntime: " + runtime);
-      }
+      ((RayRuntimeInternal) Ray.internal()).run();
     } catch (Exception e) {
       LOGGER.error("Failed to start worker.", e);
     }

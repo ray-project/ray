@@ -89,7 +89,7 @@ class AlphaZeroPolicy(TorchPolicy):
                     episode.user_data["mcts_policies"].append(mcts_policy)
 
             return np.array(actions), [], self.extra_action_out(
-                input_dict, state_batches, self.model)
+                input_dict, state_batches, self.model, None)
 
     @override(Policy)
     def postprocess_trajectory(self,

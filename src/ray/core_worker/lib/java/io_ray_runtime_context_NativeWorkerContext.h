@@ -24,47 +24,45 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetCurrentTaskType
- * Signature: (J)I
+ * Signature: ()I
  */
 JNIEXPORT jint JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
-                                                                          jclass, jlong);
+Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
+                                                                          jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetCurrentTaskId
- * Signature: (J)Ljava/nio/ByteBuffer;
+ * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass,
-                                                                        jlong);
+Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetCurrentJobId
- * Signature: (J)Ljava/nio/ByteBuffer;
+ * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass,
-                                                                       jlong);
+Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetCurrentWorkerId
- * Signature: (J)Ljava/nio/ByteBuffer;
+ * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
-                                                                          jclass, jlong);
+Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
+                                                                          jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetCurrentActorId
- * Signature: (J)Ljava/nio/ByteBuffer;
+ * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *, jclass,
-                                                                         jlong);
+Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *,
+                                                                         jclass);
 
 #ifdef __cplusplus
 }

@@ -6,10 +6,31 @@ import io.ray.runtime.AbstractRayRuntime;
 /**
  * Task executor for local mode.
  */
-public class LocalModeTaskExecutor extends TaskExecutor {
+public class LocalModeTaskExecutor extends TaskExecutor<LocalActorContext> {
 
-  public LocalModeTaskExecutor(AbstractRayRuntime runtime) {
+  static class LocalActorContext extends TaskExecutor.ActorContext {
+
+    /**
+     * The worker ID of the actor.
+     */
+    private final UniqueId workerId;
+
+    public LocalActorContext(UniqueId workerId) {
+      this.workerId = workerId;
+    }
+
+    public UniqueId getWorkerId() {
+      return workerId;
+    }
+  }
+
+  public LocalModeTaskExecutor(RayRuntimeInternal runtime) {
     super(runtime);
+  }
+
+  @Override
+  protected LocalActorContext createActorContext() {
+    return new LocalActorContext(runtime.getWorkerContext().getCurrentWorkerId());
   }
 
   @Override

@@ -2,7 +2,6 @@ package io.ray.runtime.task;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
@@ -43,11 +42,7 @@ public class ArgumentsBuilder {
       } else {
         value = ObjectSerializer.serialize(arg);
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          RayRuntime runtime = Ray.internal();
-          if (runtime instanceof RayMultiWorkerNativeRuntime) {
-            runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-          }
-          id = ((AbstractRayRuntime) runtime).getObjectStore()
+          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
             .putRaw(value);
           value = null;
         }

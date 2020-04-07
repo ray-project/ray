@@ -30,7 +30,8 @@ public class ClientExceptionTest extends BaseTest {
       try {
         TimeUnit.SECONDS.sleep(1);
         // kill raylet
-        RunManager runManager = ((RayNativeRuntime) TestUtils.getRuntime()).getRunManager();
+        RunManager runManager =
+            ((RayNativeRuntime) TestUtils.getUnderlyingRuntime()).getRunManager();
         for (Process process : runManager.getProcesses("raylet")) {
           runManager.terminateProcess("raylet", process);
         }

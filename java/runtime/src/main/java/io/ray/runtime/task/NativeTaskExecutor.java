@@ -13,34 +13,36 @@ import io.ray.runtime.AbstractRayRuntime;
 /**
  * Task executor for cluster mode.
  */
-public class NativeTaskExecutor extends TaskExecutor {
+public class NativeTaskExecutor extends TaskExecutor<NativeActorContext> {
 
   // TODO(hchen): Use the C++ config.
   private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
 
-  /**
-   * The native pointer of core worker.
-   */
-  private final long nativeCoreWorkerPointer;
+  static class NativeActorContext extends TaskExecutor.ActorContext {
 
-  /**
-   * Number of tasks executed since last actor checkpoint.
-   */
-  private int numTasksSinceLastCheckpoint = 0;
+    /**
+     * Number of tasks executed since last actor checkpoint.
+     */
+    private int numTasksSinceLastCheckpoint = 0;
 
-  /**
-   * IDs of this actor's previous checkpoints.
-   */
-  private List<UniqueId> checkpointIds;
+    /**
+     * IDs of this actor's previous checkpoints.
+     */
+    private List<UniqueId> checkpointIds;
 
-  /**
-   * Timestamp of the last actor checkpoint.
-   */
-  private long lastCheckpointTimestamp = 0;
+    /**
+     * Timestamp of the last actor checkpoint.
+     */
+    private long lastCheckpointTimestamp = 0;
+  }
 
-  public NativeTaskExecutor(long nativeCoreWorkerPointer, AbstractRayRuntime runtime) {
+  public NativeTaskExecutor(RayRuntimeInternal runtime) {
     super(runtime);
-    this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
+  }
+
+  @Override
+  protected NativeActorContext createActorContext() {
+    return new NativeActorContext();
   }
 
   @Override
@@ -48,15 +50,18 @@ public class NativeTaskExecutor extends TaskExecutor {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
+    NativeActorContext actorContext = getActorContext();
     CheckpointContext checkpointContext = new CheckpointContext(actorId,
-        ++numTasksSinceLastCheckpoint, System.currentTimeMillis() - lastCheckpointTimestamp);
+        ++actorContext.numTasksSinceLastCheckpoint,
+        System.currentTimeMillis() - actorContext.lastCheckpointTimestamp);
     Checkpointable checkpointable = (Checkpointable) actor;
     if (!checkpointable.shouldCheckpoint(checkpointContext)) {
       return;
     }
-    numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTimestamp = System.currentTimeMillis();
-    UniqueId checkpointId = new UniqueId(nativePrepareCheckpoint(nativeCoreWorkerPointer));
+    actorContext.numTasksSinceLastCheckpoint = 0;
+    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
+    UniqueId checkpointId = new UniqueId(nativePrepareCheckpoint());
+    List<UniqueId> checkpointIds = actorContext.checkpointIds;
     checkpointIds.add(checkpointId);
     if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
       ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));
@@ -70,9 +75,10 @@ public class NativeTaskExecutor extends TaskExecutor {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
-    numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTimestamp = System.currentTimeMillis();
-    checkpointIds = new ArrayList<>();
+    NativeActorContext actorContext = getActorContext();
+    actorContext.numTasksSinceLastCheckpoint = 0;
+    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
+    actorContext.checkpointIds = new ArrayList<>();
     List<Checkpoint> availableCheckpoints
         = runtime.getGcsClient().getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
@@ -90,13 +96,11 @@ public class NativeTaskExecutor extends TaskExecutor {
       Preconditions.checkArgument(checkpointValid,
           "'loadCheckpoint' must return a checkpoint ID that exists in the "
               + "'availableCheckpoints' list, or null.");
-
-      nativeNotifyActorResumedFromCheckpoint(nativeCoreWorkerPointer, checkpointId.getBytes());
+      nativeNotifyActorResumedFromCheckpoint(checkpointId.getBytes());
     }
   }
 
-  private static native byte[] nativePrepareCheckpoint(long nativeCoreWorkerPointer);
+  private static native byte[] nativePrepareCheckpoint();
 
-  private static native void nativeNotifyActorResumedFromCheckpoint(long nativeCoreWorkerPointer,
-      byte[] checkpointId);
+  private static native void nativeNotifyActorResumedFromCheckpoint(byte[] checkpointId);
 }

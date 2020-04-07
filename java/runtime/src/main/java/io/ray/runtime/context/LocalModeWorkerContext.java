@@ -16,6 +16,7 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   private final JobId jobId;
   private ThreadLocal<TaskSpec> currentTask = new ThreadLocal<>();
+  private final ThreadLocal<UniqueId> currentWorkerId = new ThreadLocal<>();
 
   public LocalModeWorkerContext(JobId jobId) {
     this.jobId = jobId;
@@ -23,7 +24,11 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   @Override
   public UniqueId getCurrentWorkerId() {
-    throw new UnsupportedOperationException();
+    return currentWorkerId.get();
+  }
+
+  public void setCurrentWorkerId(UniqueId workerId) {
+    currentWorkerId.set(workerId);
   }
 
   @Override

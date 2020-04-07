@@ -82,7 +82,6 @@ jfieldID java_native_ray_object_metadata;
 
 jclass java_task_executor_class;
 jmethodID java_task_executor_execute;
-jmethodID java_task_executor_get;
 
 JavaVM *jvm;
 
@@ -196,10 +195,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
-
-  java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class, "get", "([B)Lio/ray/runtime/task/TaskExecutor;");
-
   return CURRENT_JNI_VERSION;
 }
 

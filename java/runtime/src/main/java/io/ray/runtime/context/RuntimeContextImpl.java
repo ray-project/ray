@@ -12,9 +12,9 @@ import io.ray.runtime.generated.Common.TaskType;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
-  private AbstractRayRuntime runtime;
+  private RayRuntimeInternal runtime;
 
-  public RuntimeContextImpl(AbstractRayRuntime runtime) {
+  public RuntimeContextImpl(RayRuntimeInternal runtime) {
     this.runtime = runtime;
   }
 
