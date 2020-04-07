@@ -46,7 +46,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
         .mapToInt(vertex -> vertex.getParallelism()).sum();
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(), totalVertexNum);
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(),
-        executionGraph.getLastExecutionVertexIndex().get());
+        executionGraph.getExecutionVertexIdGenerator().get());
 
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
         Assert.assertNotNull(vertex.getStreamOperator());

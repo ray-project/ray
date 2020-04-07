@@ -43,7 +43,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * A monotonic increasing number, used for vertex's id(immutable).
    */
-  private AtomicInteger lastExecutionVertexIndex = new AtomicInteger(0);
+  private AtomicInteger executionVertexIdGenerator = new AtomicInteger(0);
 
   public ExecutionGraph(String jobName) {
     this.jobName = jobName;
@@ -86,12 +86,12 @@ public class ExecutionGraph implements Serializable {
     return buildTime;
   }
 
-  public int incLastExecutionVertexIndex() {
-    return lastExecutionVertexIndex.getAndIncrement();
+  public int generateExecutionVertexId() {
+    return executionVertexIdGenerator.getAndIncrement();
   }
 
-  public AtomicInteger getLastExecutionVertexIndex() {
-    return lastExecutionVertexIndex;
+  public AtomicInteger getExecutionVertexIdGenerator() {
+    return executionVertexIdGenerator;
   }
 
   /**

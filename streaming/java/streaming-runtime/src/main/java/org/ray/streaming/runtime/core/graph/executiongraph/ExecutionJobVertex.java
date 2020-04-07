@@ -55,7 +55,7 @@ public class ExecutionJobVertex {
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
   public ExecutionJobVertex(
-      JobVertex jobVertex, Map<String, String> jobConfig, AtomicInteger globalIndex) {
+      JobVertex jobVertex, Map<String, String> jobConfig, AtomicInteger idGenerator) {
     this.operatorId = jobVertex.getVertexId();
     this.operatorName = jobVertex.getStreamOperator().getName();
     this.streamOperator = jobVertex.getStreamOperator();
@@ -63,16 +63,16 @@ public class ExecutionJobVertex {
     this.language = jobVertex.getLanguage();
     this.jobConfig = jobConfig;
     this.parallelism = jobVertex.getParallelism();
-    this.executionVertices = createExecutionVertics(globalIndex);
+    this.executionVertices = createExecutionVertics(idGenerator);
   }
 
-  private List<ExecutionVertex> createExecutionVertics(AtomicInteger gloabalIndex) {
+  private List<ExecutionVertex> createExecutionVertics(AtomicInteger idGenerator) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     ResourceConfig resourceConfig = ConfigFactory.create(ResourceConfig.class, jobConfig);
 
     for (int subIndex = 0; subIndex < parallelism; subIndex++) {
       executionVertices.add(new ExecutionVertex(
-          gloabalIndex.getAndIncrement(), subIndex, this, resourceConfig));
+        idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
     }
     return executionVertices;
   }
