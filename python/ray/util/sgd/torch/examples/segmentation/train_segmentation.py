@@ -129,31 +129,26 @@ class SegOperator(TrainingOperator):
                 confmat.update(target.flatten(), output.argmax(1).flatten())
 
             confmat.reduce_from_all_processes()
-
         return confmat
 
 
 def optimizer_creator(model, config):
     args = config["args"]
-    model_without_ddp = model.module if hasattr(model, "module") else model
     params_to_optimize = [
         {
             "params": [
-                p for p in model_without_ddp.backbone.parameters()
-                if p.requires_grad
+                p for p in model.backbone.parameters() if p.requires_grad
             ]
         },
         {
             "params": [
-                p for p in model_without_ddp.classifier.parameters()
-                if p.requires_grad
+                p for p in model.classifier.parameters() if p.requires_grad
             ]
         },
     ]
     if args.aux_loss:
         params = [
-            p for p in model_without_ddp.aux_classifier.parameters()
-            if p.requires_grad
+            p for p in model.aux_classifier.parameters() if p.requires_grad
         ]
         params_to_optimize.append({"params": params, "lr": args.lr * 10})
     return torch.optim.SGD(

@@ -1,5 +1,6 @@
 from datetime import timedelta
 import logging
+import io
 import os
 
 import torch
@@ -108,6 +109,23 @@ class DistributedTorchRunner(TorchRunner):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
 
+    def load_state_stream(self, byte_obj):
+        """Loads a bytes object the training state dict.
+
+        This is needed because we don't want to deserialize the tensor
+        onto the same device (which is from the driver process). We want to
+        map it onto the actor's specific device.
+
+        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
+        """
+        _buffer = io.BytesIO(byte_obj)
+        to_gpu = self.use_gpu and torch.cuda.is_available()
+        state_dict = torch.load(
+            _buffer,
+            map_location=(
+                lambda storage, loc: storage.cuda() if to_gpu else "cpu"))
+        return self.load_state_dict(state_dict)
+
     def _wrap_dataloaders(self):
         def with_sampler(loader):
             # Automatically set the DistributedSampler
@@ -188,11 +206,12 @@ class LocalDistributedRunner(DistributedTorchRunner):
         # TODO: we should make sure this NEVER dies.
         self.local_device = "0"
         global _dummy_actor
-        if not self.is_actor() and _dummy_actor is None:
-            _dummy_actor = ray.remote(
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+        if not self.is_actor():
+            if _dummy_actor is None:
+                _dummy_actor = ray.remote(
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
             self.local_device = ray.get(_dummy_actor.cuda_devices.remote())
 
