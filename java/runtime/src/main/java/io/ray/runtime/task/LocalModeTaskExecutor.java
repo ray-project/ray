@@ -1,12 +1,13 @@
 package io.ray.runtime.task;
 
 import io.ray.api.id.ActorId;
-import io.ray.runtime.AbstractRayRuntime;
+import io.ray.api.id.UniqueId;
+import io.ray.runtime.RayRuntimeInternal;
 
 /**
  * Task executor for local mode.
  */
-public class LocalModeTaskExecutor extends TaskExecutor<LocalActorContext> {
+public class LocalModeTaskExecutor extends TaskExecutor<LocalModeTaskExecutor.LocalActorContext> {
 
   static class LocalActorContext extends TaskExecutor.ActorContext {
 

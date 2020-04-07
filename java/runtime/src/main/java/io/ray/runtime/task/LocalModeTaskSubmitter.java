@@ -20,9 +20,10 @@ import io.ray.api.BaseActor;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
-import io.ray.runtime.RayDevRuntime;
+import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeRayActor;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -59,7 +60,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final ExecutorService normalTaskExecutorService;
 
 
-  private final Map<ActorId, ActorContext> actorContexts = new ConcurrentHashMap<>();
+  private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
       LocalModeObjectStore objectStore) {
@@ -252,7 +253,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private void executeTask(TaskSpec taskSpec) {
-    ActorContext actorContext = null;
+    TaskExecutor.ActorContext actorContext = null;
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
       actorContext = actorContexts.get(getActorId(taskSpec));
       Preconditions.checkNotNull(actorContext);

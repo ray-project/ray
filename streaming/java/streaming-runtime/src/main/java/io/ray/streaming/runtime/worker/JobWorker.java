@@ -2,9 +2,7 @@ package io.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
-
 import io.ray.api.Ray;
-import io.ray.runtime.RayMultiWorkerNativeRuntime;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;

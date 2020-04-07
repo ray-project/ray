@@ -19,7 +19,6 @@ import io.ray.api.function.RayFuncVoid;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
-import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.config.RayConfig;
@@ -28,6 +27,7 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.runtime.gcs.GcsClient;
+import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectStore;
 import io.ray.runtime.object.RayObjectImpl;
@@ -62,7 +62,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    setIsContextSet(rayConfig.workerMode == WorkerType.DRIVER);
+    setIsContextSet(rayConfig.workerMode == Common.WorkerType.DRIVER);
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
   }

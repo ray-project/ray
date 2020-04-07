@@ -10,9 +10,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.AbstractRayRuntime;
-import io.ray.runtime.config.RayConfig;
-import io.ray.runtime.config.RunMode;
+import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -24,7 +22,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The task executor, which executes tasks assigned by raylet continuously.
  */
-public abstract class TaskExecutor<T extends ActorContext> {
+public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 

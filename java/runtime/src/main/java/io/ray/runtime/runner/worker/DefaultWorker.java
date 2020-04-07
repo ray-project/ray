@@ -1,9 +1,7 @@
 package io.ray.runtime.runner.worker;
 
 import io.ray.api.Ray;
-import io.ray.api.runtime.RayRuntime;
-import io.ray.runtime.RayNativeRuntime;
-import io.ray.runtime.RayMultiWorkerNativeRuntime;
+import io.ray.runtime.RayRuntimeInternal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

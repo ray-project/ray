@@ -7,11 +7,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
 import io.ray.api.BaseActor;
-import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
-import io.ray.api.runtime.RayRuntime;
-import io.ray.runtime.RayNativeRuntime;
-import io.ray.runtime.RayMultiWorkerNativeRuntime;
 import io.ray.runtime.generated.Common.Language;
 
 /**

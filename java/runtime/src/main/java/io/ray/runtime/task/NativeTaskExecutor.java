@@ -8,12 +8,12 @@ import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.Checkpointable.CheckpointContext;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.AbstractRayRuntime;
+import io.ray.runtime.RayRuntimeInternal;
 
 /**
  * Task executor for cluster mode.
  */
-public class NativeTaskExecutor extends TaskExecutor<NativeActorContext> {
+public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeActorContext> {
 
   // TODO(hchen): Use the C++ config.
   private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
