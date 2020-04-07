@@ -77,9 +77,14 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
+    : subscribe_id_(ClientID::FromRandom()),
+      client_impl_(client_impl),
+      actor_sub_executor_(client_impl->GetRedisGcsClient().log_based_actor_table()) {}
+
+Status ServiceBasedActorInfoAccessor::GetAll(
+    std::vector<ActorTableData> *actor_table_data_list) {
+  return Status::Invalid("Not implemented");
+}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
@@ -216,10 +221,11 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorCheckpointID &checkpoint_id,
+    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
     const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id;
   rpc::GetActorCheckpointRequest request;
+  request.set_actor_id(actor_id.Binary());
   request.set_checkpoint_id(checkpoint_id.Binary());
   client_impl_->GetGcsRpcClient().GetActorCheckpoint(
       request, [checkpoint_id, callback](const Status &status,
@@ -507,30 +513,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing heartbeat.";
-  RAY_CHECK(subscribe != nullptr);
-  auto status =
-      heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing heartbeat.";
-  return status;
+  const std::string error_msg =
+      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
     const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
     const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Reporting batch heartbeat, batch size = " << data_ptr->batch_size();
-  rpc::ReportBatchHeartbeatRequest request;
-  request.mutable_heartbeat_batch()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportBatchHeartbeat(
-      request, [data_ptr, callback](const Status &status,
-                                    const rpc::ReportBatchHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, status = " << status
-                       << ", batch size = " << data_ptr->batch_size();
-      });
-  return Status::OK();
+  const std::string error_msg =
+      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(

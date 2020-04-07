@@ -70,7 +70,8 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
-    Example:
+    .. code-block: python
+
         runner = TrialRunner()
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
@@ -87,6 +88,28 @@ class TrialRunner:
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
+
+    Args:
+        search_alg (SearchAlgorithm): SearchAlgorithm for generating
+            Trial objects.
+        scheduler (TrialScheduler): Defaults to FIFOScheduler.
+        launch_web_server (bool): Flag for starting TuneServer
+        local_checkpoint_dir (str): Path where
+            global checkpoints are stored and restored from.
+        remote_checkpoint_dir (str): Remote path where
+            global checkpoints are stored and restored from. Used
+            if `resume` == REMOTE.
+        stopper: Custom class for stopping whole experiments. See
+            ``Stopper``.
+        resume (str|False): see `tune.py:run`.
+        sync_to_cloud (func|str): See `tune.py:run`.
+        server_port (int): Port number for launching TuneServer.
+        fail_fast (bool): Finishes as soon as a trial fails if True.
+        verbose (bool): Flag for verbosity. If False, trial results
+            will not be output.
+        checkpoint_period (int): Trial runner checkpoint periodicity in
+            seconds. Defaults to 10.
+        trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -102,32 +125,10 @@ class TrialRunner:
                  stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
+                 fail_fast=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
-        """Initializes a new TrialRunner.
-
-        Args:
-            search_alg (SearchAlgorithm): SearchAlgorithm for generating
-                Trial objects.
-            scheduler (TrialScheduler): Defaults to FIFOScheduler.
-            launch_web_server (bool): Flag for starting TuneServer
-            local_checkpoint_dir (str): Path where
-                global checkpoints are stored and restored from.
-            remote_checkpoint_dir (str): Remote path where
-                global checkpoints are stored and restored from. Used
-                if `resume` == REMOTE.
-            stopper: Custom class for stopping whole experiments. See
-                ``Stopper``.
-            resume (str|False): see `tune.py:run`.
-            sync_to_cloud (func|str): See `tune.py:run`.
-            server_port (int): Port number for launching TuneServer.
-            verbose (bool): Flag for verbosity. If False, trial results
-                will not be output.
-            checkpoint_period (int): Trial runner checkpoint periodicity in
-                seconds. Defaults to 10.
-            trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
-        """
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -138,6 +139,8 @@ class TrialRunner:
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
         self._iteration = 0
+        self._has_errored = False
+        self._fail_fast = fail_fast
         self._verbose = verbose
 
         self._server = None
@@ -148,6 +151,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._stop_queue = []
+        self._should_stop_experiment = False  # used by TuneServer
         self._local_checkpoint_dir = local_checkpoint_dir
 
         if self._local_checkpoint_dir:
@@ -347,7 +351,7 @@ class TrialRunner:
 
         if self._server:
             with warn_if_slow("server"):
-                self._process_requests()
+                self._process_stop_requests()
 
             if self.is_finished():
                 self._server.shutdown()
@@ -392,11 +396,15 @@ class TrialRunner:
         return self.trial_executor.has_resources(resources)
 
     def _stop_experiment_if_needed(self):
-        """Stops all trials if the user condition is satisfied."""
-
-        if self._stopper.stop_all():
-            [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("All trials stopped due to ``stopper.stop_all``.")
+        """Stops all trials."""
+        fail_fast = self._fail_fast and self._has_errored
+        if (self._stopper.stop_all() or fail_fast
+                or self._should_stop_experiment):
+            self._search_alg.set_finished()
+            [
+                self.trial_executor.stop_trial(t) for t in self._trials
+                if t.status is not Trial.ERROR
+            ]
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -570,6 +578,7 @@ class TrialRunner:
             trial (Trial): Failed trial.
             error_msg (str): Error message prior to invoking this method.
         """
+        self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
                 self._try_recover(trial, error_msg)
@@ -689,7 +698,10 @@ class TrialRunner:
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
 
-    def _process_requests(self):
+    def request_stop_experiment(self):
+        self._should_stop_experiment = True
+
+    def _process_stop_requests(self):
         while self._stop_queue:
             t = self._stop_queue.pop()
             self.stop_trial(t)

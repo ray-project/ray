@@ -193,6 +193,9 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
+        CRayObject(const shared_ptr[CBuffer] &data,
+                   const shared_ptr[CBuffer] &metadata,
+                   const c_vector[CObjectID] &nested_ids)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const
@@ -217,13 +220,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns, c_bool is_direct_call,
+        CTaskOptions(int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()
         CActorCreationOptions(
-            uint64_t max_reconstructions, c_bool is_direct_call,
+            uint64_t max_reconstructions,
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,

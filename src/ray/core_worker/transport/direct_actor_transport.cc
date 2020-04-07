@@ -23,13 +23,23 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill) {
+                                                   bool force_kill,
+                                                   bool no_reconstruction) {
   absl::MutexLock lock(&mu_);
-  auto inserted = pending_force_kills_.emplace(actor_id, force_kill);
+  rpc::KillActorRequest request;
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_reconstruction(no_reconstruction);
+  auto inserted = pending_force_kills_.emplace(actor_id, request);
   if (!inserted.second && force_kill) {
     // Overwrite the previous request to kill the actor if the new request is a
     // force kill.
-    inserted.first->second = true;
+    inserted.first->second.set_force_kill(true);
+    if (no_reconstruction) {
+      // Overwrite the previous request to disable reconstruction if the new request's
+      // no_reconstruction flag is set to true.
+      inserted.first->second.set_no_reconstruction(true);
+    }
   }
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
@@ -66,6 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+    request->set_caller_version(caller_creation_timestamp_ms_);
 
     absl::MutexLock lock(&mu_);
 
@@ -102,9 +113,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
-  if (pending_requests_.count(actor_id) > 0) {
-    SendPendingTasks(actor_id);
-  }
+  SendPendingTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -135,6 +144,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
+
+    pending_force_kills_.erase(actor_id);
   }
 }
 
@@ -145,11 +156,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // client.
   auto it = pending_force_kills_.find(actor_id);
   if (it != pending_force_kills_.end()) {
-    rpc::KillActorRequest request;
-    request.set_intended_actor_id(actor_id.Binary());
-    request.set_force_kill(it->second);
+    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     // It's okay if this fails because this means the worker is already dead.
-    RAY_UNUSED(client->KillActor(request, nullptr));
+    RAY_UNUSED(client->KillActor(it->second, nullptr));
     pending_force_kills_.erase(it);
   }
 
@@ -193,9 +202,14 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
-                                        rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
+void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t timestamp) {
+  caller_creation_timestamp_ms_ = timestamp;
+}
+
+void CoreWorkerDirectTaskReceiver::Init(
+    rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
+  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -205,12 +219,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
-                        nullptr, nullptr);
-    return;
-  }
-
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
@@ -256,6 +264,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
         // The object is nullptr if it already existed in the object store.
         const auto &result = return_objects[i];
+        return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
         } else {
@@ -277,7 +286,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will reconstruct the actor.
-        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+        RAY_CHECK_OK(task_done_());
       }
     }
     if (status.IsSystemExit()) {
@@ -307,15 +316,50 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto caller_worker_id = WorkerID::FromBinary(request.caller_address().worker_id());
+  auto caller_version = request.caller_version();
   auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it != scheduling_queue_.end()) {
+    if (it->second.first.caller_worker_id != caller_worker_id) {
+      // We received a request with the same caller ID, but from a different worker,
+      // this indicates the caller (actor) is reconstructed.
+      if (it->second.first.caller_creation_timestamp_ms < caller_version) {
+        // The new request has a newer caller version, then remove the old entry
+        // from scheduling queue since it's invalid now.
+        RAY_LOG(INFO) << "Remove existing scheduling queue for caller "
+                      << task_spec.CallerId() << " after receiving a "
+                      << "request from a different worker ID with a newer "
+                      << "version, old worker ID: " << it->second.first.caller_worker_id
+                      << ", new worker ID" << caller_worker_id;
+        scheduling_queue_.erase(task_spec.CallerId());
+        it = scheduling_queue_.end();
+      } else {
+        // The existing caller has the newer version, this indicates the request
+        // is from an old caller, which might be possible when network has problems.
+        // In this case fail this request.
+        RAY_LOG(WARNING) << "Ignoring request from an old caller because "
+                         << "it has a smaller timestamp, old worker ID: "
+                         << caller_worker_id << ", current worker ID"
+                         << it->second.first.caller_worker_id;
+        // Fail request with an old caller version.
+        reject_callback();
+        return;
+      }
+    }
+  }
+
   if (it == scheduling_queue_.end()) {
+    SchedulingQueueTag tag;
+    tag.caller_worker_id = caller_worker_id;
+    tag.caller_creation_timestamp_ms = caller_version;
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, worker_context_)));
+        task_spec.CallerId(),
+        std::make_pair(tag, std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                task_main_io_service_, *waiter_, worker_context_))));
     it = result.first;
   }
-  it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                  accept_callback, reject_callback, dependencies);
+  it->second.second->Add(request.sequence_number(), request.client_processed_up_to(),
+                         accept_callback, reject_callback, dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(

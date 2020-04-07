@@ -1,22 +1,25 @@
-import Dialog from "@material-ui/core/Dialog";
-import IconButton from "@material-ui/core/IconButton";
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  createStyles,
+  Dialog,
+  IconButton,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import CloseIcon from "@material-ui/icons/Close";
 import React from "react";
 
 const styles = (theme: Theme) =>
   createStyles({
     paper: {
-      padding: theme.spacing(3)
+      padding: theme.spacing(3),
     },
     closeButton: {
       position: "absolute",
       right: theme.spacing(1.5),
       top: theme.spacing(1.5),
-      zIndex: 1
+      zIndex: 1,
     },
     title: {
       borderBottomColor: theme.palette.divider,
@@ -25,14 +28,14 @@ const styles = (theme: Theme) =>
       fontSize: "1.5rem",
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      paddingBottom: theme.spacing(3)
-    }
+      paddingBottom: theme.spacing(3),
+    },
   });
 
-interface Props {
+type Props = {
   handleClose: () => void;
   title: string;
-}
+};
 
 class DialogWithTitle extends React.Component<
   Props & WithStyles<typeof styles>

@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from abc import ABC
-from typing import Union
+from typing import Union, List
 
 from ray import cloudpickle as pickle
 import ray.experimental.internal_kv as ray_kv
@@ -173,9 +173,11 @@ class SQLiteKVStore(NamespacedKVStore):
 class RoutingTable:
     def __init__(self, kv_connector):
         self.routing_table = kv_connector("routing_table")
+        self.methods_table = kv_connector("methods_table")
         self.request_count = 0
 
-    def register_service(self, route: Union[str, None], service: str):
+    def register_service(self, route: Union[str, None], service: str,
+                         methods: List[str]):
         """Create an entry in the routing table
 
         Args:
@@ -183,8 +185,9 @@ class RoutingTable:
             service: service name. This is the name http actor will push
                 the request to.
         """
-        logger.debug("[KV] Registering route {} to service {}.".format(
-            route, service))
+        logger.debug(
+            "[KV] Registering route {} to service {} with methods {}.".format(
+                route, service, methods))
 
         # put no route services in default key
         if route is None:
@@ -194,14 +197,23 @@ class RoutingTable:
             self.routing_table.put(NO_ROUTE_KEY, json.dumps(no_http_services))
         else:
             self.routing_table.put(route, service)
+            self.methods_table.put(route, json.dumps(methods))
 
-    def list_service(self, include_headless=False):
+    def list_service(self, include_headless=False, include_methods=False):
         """Returns the routing table.
         Args:
             include_headless: If True, returns a no route services (headless)
                 services with normal services. (Default: False)
+            include_methods: If True, returns a mapping include the methods
+                list for each route.
         """
         table = self.routing_table.as_dict()
+        if include_methods:
+            methods_table = self.methods_table.as_dict()
+            for route, methods in methods_table.items():
+                if route in table:
+                    table[route] = (table[route], json.loads(methods))
+
         if include_headless:
             table[NO_ROUTE_KEY] = json.loads(table.get(NO_ROUTE_KEY, "[]"))
         else:
@@ -213,13 +225,13 @@ class RoutingTable:
 
         This method is used for two purpose:
 
-        1. Make sure HTTP server has started and healthy. Incremented request
-           count means HTTP server is actively fetching routing table.
+        1. Make sure HTTP proxy has started and healthy. Incremented request
+           count means HTTP proxy is actively fetching routing table.
 
-        2. Make sure HTTP server does not have stale routing table. This number
+        2. Make sure HTTP proxy does not have stale routing table. This number
            should be incremented every HTTP_ROUTER_CHECKER_INTERVAL_S seconds.
            Supervisor should check this number as indirect indicator of http
-           server's health.
+           proxy's health.
         """
         return self.request_count
 
@@ -279,5 +291,5 @@ class TrafficPolicyTable:
     def list_traffic_policy(self):
         return {
             service: json.loads(policy)
-            for service, policy in self.traffic_policy_table.as_dict()
+            for service, policy in self.traffic_policy_table.as_dict().items()
         }

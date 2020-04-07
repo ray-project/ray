@@ -91,7 +91,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
-             bool ref_counting_enabled = false);
+             std::function<void(std::string *)> get_lang_stack = nullptr,
+             bool ref_counting_enabled = false, bool local_mode = false);
 
   virtual ~CoreWorker();
 
@@ -119,13 +120,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  void SetCallerCreationTimestamp();
+
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddLocalReference(const ObjectID &object_id) {
-    reference_counter_->AddLocalReference(object_id);
+    AddLocalReference(object_id, CurrentCallSite());
   }
 
   /// Decrease the reference count for this object ID. Should be called
@@ -135,7 +138,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
+    // TOOD(ilr): better way of keeping an object from being deleted
+    if (ref_counting_enabled_ && !is_local_mode_) {
       memory_store_->Delete(deleted);
     }
   }
@@ -394,8 +398,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_reconstruction If set to true, the killed actor will not be
+  /// reconstructed anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id, bool force_kill);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
@@ -577,6 +583,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Private methods related to task submission.
   ///
 
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  /// \param[in] call_site The call site from the language frontend.
+  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
+
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -614,6 +629,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
+
+  /// Execute a local mode task (runs normal ExecuteTask)
+  ///
+  /// \param spec[in] task_spec Task specification.
+  /// \return Status.
+  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                              const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -672,6 +694,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether local reference counting is enabled.
   const bool ref_counting_enabled_;
 
+  /// Is local mode being used.
+  const bool is_local_mode_;
+
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
@@ -681,6 +706,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
   std::function<void()> gc_collect_;
+
+  /// Callback to get the current language (e.g., Python) call site.
+  std::function<void(std::string *)> get_call_site_;
+
+  // Convenience method to get the current language call site.
+  std::string CurrentCallSite() {
+    std::string call_site;
+    if (get_call_site_ != nullptr) {
+      get_call_site_(&call_site);
+    }
+    return call_site;
+  }
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

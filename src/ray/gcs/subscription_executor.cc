@@ -198,6 +198,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
+template class SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>;
 template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;

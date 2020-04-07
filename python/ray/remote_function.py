@@ -150,7 +150,7 @@ class RemoteFunction:
                 resources=None,
                 max_retries=None):
         """Submit the remote function for execution."""
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
@@ -203,13 +203,9 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
-                object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, args, kwargs,
-                    num_return_vals)
-            else:
-                object_ids = worker.core_worker.submit_task(
-                    self._language, self._function_descriptor, list_args,
-                    num_return_vals, resources, max_retries)
+            object_ids = worker.core_worker.submit_task(
+                self._language, self._function_descriptor, list_args,
+                num_return_vals, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

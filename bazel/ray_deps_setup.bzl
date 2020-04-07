@@ -78,14 +78,10 @@ def ray_deps_setup():
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
-            "//thirdparty/patches:hiredis-casts.patch",
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
-            "//thirdparty/patches:hiredis-windows-poll.patch",
-            "//thirdparty/patches:hiredis-windows-translations.patch",
-            "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
@@ -166,23 +162,24 @@ def ray_deps_setup():
     auto_http_archive(
         name = "plasma",
         build_file = True,
-        url = "https://github.com/apache/arrow/archive/66b05abc267661172286b47b9246ad55f1581555.tar.gz",
-        sha256 = "fb0227005116f64dca4b19b451ae793e9a2591c019136b70424ebe3d4f5334fe",
+        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
+        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
-            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-nonstdc.patch",
             "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
             "//thirdparty/patches:arrow-windows-dlmalloc.patch",
+            "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )
 
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e.tar.gz",
-        sha256 = "0b697ac90d1e46842c7cbbf5f4a1bde5b7b41037c611167417115337e3756eaa",
+        url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",
+        sha256 = "d21e155ac9a455831f81608bb06620e4a1d75012a630faf11f4c25ad10cfc9bb",
     )
 
     auto_http_archive(
@@ -236,4 +233,14 @@ def ray_deps_setup():
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+    )
+
+    auto_http_archive(
+        name = "msgpack",
+        build_file = True,
+        url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
+        sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
+        patches = [
+            "//thirdparty/patches:msgpack-windows-iovec.patch",
+        ],
     )

@@ -2,7 +2,6 @@ import gym
 from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
-import sys
 import unittest
 import traceback
 
@@ -17,6 +16,7 @@ from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
     MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
+
 tf = try_import_tf()
 
 ACTION_SPACES_TO_TEST = {
@@ -215,7 +215,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             "num_workers": 1,
             "num_sgd_iter": 1,
             "train_batch_size": 10,
-            "sample_batch_size": 10,
+            "rollout_fragment_length": 10,
             "sgd_minibatch_size": 1,
         }
         check_support("PPO", config, self.stats, check_bounds=True)
@@ -283,12 +283,15 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_workers": 1,
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
-                "sample_batch_size": 10,
+                "rollout_fragment_length": 10,
                 "sgd_minibatch_size": 1,
             })
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         ACTION_SPACES_TO_TEST = {
             "discrete": Discrete(5),
@@ -297,4 +300,5 @@ if __name__ == "__main__":
             "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
             "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
         }
-    unittest.main(verbosity=2)
+
+    sys.exit(pytest.main(["-v", __file__]))

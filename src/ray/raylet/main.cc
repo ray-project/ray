@@ -113,6 +113,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
+  node_manager_config.raylet_config = raylet_config;
   node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
@@ -176,8 +177,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
-  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+  if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
@@ -201,7 +201,12 @@ int main(int argc, char *argv[]) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };
-  boost::asio::signal_set signals(main_service, SIGTERM);
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
   signals.async_wait(handler);
 
   main_service.run();

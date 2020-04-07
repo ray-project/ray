@@ -7,27 +7,16 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 
-import com.google.common.collect.Lists;
 import org.aeonbits.owner.ConfigFactory;
-import org.ray.api.RayActor;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.actor.LocalModeRayActor;
-import org.ray.streaming.api.context.RuntimeContext;
-import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.DataStreamSink;
-import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.config.StreamingConfig;
-import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
-import org.ray.streaming.runtime.core.master.scheduler.strategy.impl.PipelineFirstStrategy;
+import org.ray.streaming.runtime.core.resource.ResourceType;
+import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import org.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;
 import org.ray.streaming.runtime.core.resource.Resources;
@@ -60,8 +49,8 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     Resources resources = new Resources(resourceConfig);
 
     Map<String, Double> containerResource = new HashMap<>();
-    containerResource.put(ResourceConfig.RESOURCE_KEY_CPU, 16.0);
-    containerResource.put(ResourceConfig.RESOURCE_KEY_MEM, 128.0);
+    containerResource.put(ResourceType.CPU.name(), 16.0);
+    containerResource.put(ResourceType.MEM.name(), 128.0);
     for (int i = 0; i < 2; ++i) {
       UniqueId uniqueId = UniqueId.randomId();
       Container container = new Container(uniqueId, "1.1.1." + i,  "localhost" + i);

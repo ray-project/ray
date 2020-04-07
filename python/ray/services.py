@@ -1,10 +1,12 @@
 import collections
 import errno
+import io
 import json
 import logging
 import multiprocessing
 import os
 import random
+import signal
 import socket
 import subprocess
 import sys
@@ -74,6 +76,32 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
     "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
+
+
+class ConsolePopen(subprocess.Popen):
+    if sys.platform == "win32":
+
+        def terminate(self):
+            if isinstance(self.stdin, io.IOBase):
+                self.stdin.close()
+            if self._use_signals:
+                self.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                super(ConsolePopen, self).terminate()
+
+        def __init__(self, *args, **kwargs):
+            # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
+            # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
+            new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
+            flags = 0
+            if ray.utils.detect_fate_sharing_support():
+                # If we don't have kernel-mode fate-sharing, then don't do this
+                # because our children need to be in out process group for
+                # the process reaper to properly terminate them.
+                flags = new_pgroup
+            kwargs.setdefault("creationflags", flags)
+            self._use_signals = (kwargs["creationflags"] & new_pgroup)
+            super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
 def address(ip_address, port):
@@ -330,6 +358,7 @@ def create_redis_client(redis_address, password=None):
 
 def start_ray_process(command,
                       process_type,
+                      fate_share,
                       env_updates=None,
                       cwd=None,
                       use_valgrind=False,
@@ -339,8 +368,7 @@ def start_ray_process(command,
                       use_tmux=False,
                       stdout_file=None,
                       stderr_file=None,
-                      pipe_stdin=False,
-                      fate_share=None):
+                      pipe_stdin=False):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -352,6 +380,8 @@ def start_ray_process(command,
         command (List[str]): The command to use to start the Ray process.
         process_type (str): The type of the process that is being started
             (e.g., "raylet").
+        fate_share: If true, the child will be killed if its parent (us) dies.
+            True must only be passed after detection of this functionality.
         env_updates (dict): A dictionary of additional environment variables to
             run the command with (in addition to the caller's environment
             variables).
@@ -369,8 +399,6 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
-        fate_share: If true, the child will be killed if its parent (us) dies.
-            Note that this functionality must be supported, or it is an error.
 
     Returns:
         Information about the process that was started including a handle to
@@ -423,8 +451,9 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = "/tmp/ray/gdb_init_{}_{}".format(
-            process_type, time.time())
+        gdb_init_path = os.path.join(
+            ray.utils.get_ray_temp_dir(), "gdb_init_{}_{}".format(
+                process_type, time.time()))
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -452,8 +481,6 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
-    if fate_share is None:
-        logger.warning("fate_share= should be passed to start_ray_process()")
     if fate_share:
         assert ray.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
@@ -465,7 +492,7 @@ def start_ray_process(command,
         if fate_share and sys.platform.startswith("linux"):
             ray.utils.set_kill_on_parent_death_linux()
 
-    process = subprocess.Popen(
+    process = ConsolePopen(
         command,
         env=modified_env,
         cwd=cwd,
@@ -606,9 +633,10 @@ def start_reaper(fate_share=None):
     # up other ray processes without killing the process group of the
     # process that started us.
     try:
-        os.setpgrp()
-    except (AttributeError, OSError) as e:
-        errcode = e.errno if isinstance(e, OSError) else None
+        if sys.platform != "win32":
+            os.setpgrp()
+    except OSError as e:
+        errcode = e.errno
         if errcode == errno.EPERM and os.getpgrp() == os.getpid():
             # Nothing to do; we're already a session leader.
             pass
@@ -1084,13 +1112,9 @@ def start_dashboard(require_webui,
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        "--host={}".format(host),
-        "--port={}".format(port),
-        "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir),
+        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
+        "--port={}".format(port), "--redis-address={}".format(redis_address),
+        "--temp-dir={}".format(temp_dir)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1103,7 +1127,7 @@ def start_dashboard(require_webui,
         webui_dependencies_present = False
         warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
+            "as well as 'pip install aiohttp grpcio'.")
         if require_webui:
             raise ImportError(warning_message)
         else:
@@ -1122,6 +1146,7 @@ def start_dashboard(require_webui,
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
+
         return dashboard_url, process_info
     else:
         return None, None
@@ -1249,7 +1274,8 @@ def start_raylet(redis_address,
     if include_java is True:
         default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            java_worker_options or ["-classpath", default_cp],
+            json.loads(java_worker_options)
+            if java_worker_options else ["-classpath", default_cp],
             redis_address,
             node_manager_port,
             plasma_store_name,
@@ -1367,10 +1393,10 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    pairs.append(("ray.raylet.config.num_workers_per_process_java",
-                  "RAY_WORKER_NUM_WORKERS_PLACEHOLDER"))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+
+    command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -1432,18 +1458,18 @@ def determine_plasma_store_config(object_store_memory,
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
             else:
-                plasma_directory = "/tmp"
+                plasma_directory = ray.utils.get_user_temp_dir()
                 logger.warning(
-                    "WARNING: The object store is using /tmp instead of "
+                    "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
                     "This may slow down performance! You may be able to free "
                     "up space by deleting files in /dev/shm or terminating "
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
                     "argument with the flag '--shm-size' to 'docker run'.".
-                    format(shm_avail))
+                    format(ray.utils.get_user_temp_dir(), shm_avail))
         else:
-            plasma_directory = "/tmp"
+            plasma_directory = ray.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

@@ -2,13 +2,14 @@ import collections
 from filelock import FileLock
 import logging
 import inspect
+import io
 import itertools
 import os
 import tempfile
 import torch
 
 import ray
-from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP
+from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP, NUM_STEPS
 from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd import utils
 
@@ -20,6 +21,14 @@ try:
 except ImportError:
     logger.debug("apex is not installed.")
     pass
+
+
+def _remind_gpu_usage(use_gpu, is_chief):
+    if not is_chief:
+        return
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
 
 
 class TorchRunner:
@@ -35,6 +44,7 @@ class TorchRunner:
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
         config (dict): see torch_trainer.py.
+        use_gpu (bool): see torch_trainer.py.
         use_fp16 (bool): see torch_trainer.py.
         apex_args (dict|None): see torch_trainer.py.
         scheduler_step_freq (str): see torch_trainer.py.
@@ -48,7 +58,9 @@ class TorchRunner:
                  scheduler_creator=None,
                  training_operator_cls=None,
                  config=None,
+                 use_gpu=False,
                  use_fp16=False,
+                 use_tqdm=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         self.model_creator = model_creator
@@ -67,7 +79,9 @@ class TorchRunner:
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
+        self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
+        self.use_tqdm = use_tqdm
         self.apex_args = apex_args or {}
         if use_fp16 and not amp:
             raise ImportError(
@@ -114,8 +128,9 @@ class TorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available() and hasattr("cuda", self.criterion):
-            self.criterion = self.criterion.cuda()
+        if self.use_gpu and torch.cuda.is_available():
+            if hasattr(self.criterion, "cuda"):
+                self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
         # Learning rate schedules are optional.
@@ -135,11 +150,13 @@ class TorchRunner:
 
     def setup(self):
         """Initializes the model."""
+        _remind_gpu_usage(self.use_gpu, is_chief=True)
+        self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
-        if torch.cuda.is_available():
+        if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer")
@@ -150,14 +167,18 @@ class TorchRunner:
         self._create_schedulers_if_available()
         self._try_setup_apex()
         self._create_loss()
-        self._initialize_dataloaders()
         self.training_operator = self.training_operator_cls(
             self.config,
             models=self.models,
             optimizers=self.optimizers,
             criterion=self.criterion,
+            train_loader=self.train_loader,
+            validation_loader=self.validation_loader,
+            world_rank=0,
             schedulers=self.schedulers,
-            use_fp16=self.use_fp16)
+            use_gpu=self.use_gpu,
+            use_fp16=self.use_fp16,
+            use_tqdm=self.use_tqdm)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -174,6 +195,7 @@ class TorchRunner:
         self._toggle_profiling(profile=profile)
 
         info.update({
+            NUM_STEPS: num_steps,
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })
@@ -218,22 +240,14 @@ class TorchRunner:
         self.training_operator._set_timers(self.timers)
 
     def _get_model_state_dicts(self):
-        # This is so that we create a duplicate of weights into CPU rather than
-        # move the model weights entirely out of the GPU, so that we can
-        # resume training while saving intermediate checkpoints.
-        cpu_state_dicts = []
-        for model in self.models:
-            state_dict = model.state_dict()
-            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
-        return cpu_state_dicts
+        return [model.state_dict() for model in self.models]
 
     def _set_model_state_dicts(self, models_state_dicts):
         for model, state_dict in zip(self.models, models_state_dicts):
             model.load_state_dict(state_dict)
 
-    def get_state(self):
+    def state_dict(self):
         """Returns the state of the runner."""
-
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
@@ -251,9 +265,8 @@ class TorchRunner:
             state.update({"amp": amp.state_dict()})
         return state
 
-    def set_state(self, state):
+    def load_state_dict(self, state):
         """Sets the state of the model."""
-        # TODO: restore timer stats
         self._set_model_state_dicts(state["models"])
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
@@ -266,6 +279,19 @@ class TorchRunner:
             amp.load_state_dict(state["amp"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state_dict)
+
+    def state_stream(self):
+        """Returns a bytes object for the state dict."""
+        state_dict = self.state_dict()
+        _buffer = io.BytesIO()
+        torch.save(state_dict, _buffer)
+        return _buffer.getvalue()
+
+    def load_state_stream(self, byte_obj):
+        """Loads a bytes object the training state dict."""
+        _buffer = io.BytesIO(byte_obj)
+        state_dict = torch.load(_buffer)
+        return self.load_state_dict(state_dict)
 
     def apply(self, fn):
         return fn()

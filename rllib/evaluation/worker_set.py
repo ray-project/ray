@@ -5,6 +5,7 @@ import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
+from ray.rllib.policy import Policy, TorchPolicy
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.utils import merge_dicts, try_import_tf
@@ -74,9 +75,10 @@ class WorkerSet:
 
     def sync_weights(self):
         """Syncs weights of remote workers with the local worker."""
-        weights = ray.put(self.local_worker().get_weights())
-        for e in self.remote_workers():
-            e.set_weights.remote(weights)
+        if self.remote_workers():
+            weights = ray.put(self.local_worker().get_weights())
+            for e in self.remote_workers():
+                e.set_weights.remote(weights)
 
     def add_workers(self, num_workers):
         """Creates and add a number of remote workers to this worker set.
@@ -232,14 +234,14 @@ class WorkerSet:
                     tmp[k] = (policy, v[1], v[2], v[3])
             policy = tmp
 
-        return cls(
+        worker = cls(
             env_creator,
             policy,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
-            batch_steps=config["sample_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],
@@ -268,3 +270,26 @@ class WorkerSet:
             seed=(config["seed"] + worker_index)
             if config["seed"] is not None else None,
             _fake_sampler=config.get("_fake_sampler", False))
+
+        # Check for correct policy class (only locally, remote Workers should
+        # create the exact same Policy types).
+        if type(worker) is RolloutWorker:
+            actual_class = type(worker.get_policy())
+
+            # Pytorch case: Policy must be a TorchPolicy.
+            if config["use_pytorch"]:
+                assert issubclass(actual_class, TorchPolicy), \
+                    "Worker policy must be subclass of `TorchPolicy`, " \
+                    "but is {}!".format(actual_class.__name__)
+            # non-Pytorch case:
+            # Policy may be None AND must not be a TorchPolicy.
+            else:
+                assert issubclass(actual_class, type(None)) or \
+                       (issubclass(actual_class, Policy) and
+                        not issubclass(actual_class, TorchPolicy)), "Worker " \
+                       "policy must be subclass of `Policy`, but NOT " \
+                       "`TorchPolicy` (your class={})! If you have a torch " \
+                       "Trainer, make sure to set `use_pytorch=True` in " \
+                       "your Trainer's config)!".format(actual_class.__name__)
+
+        return worker

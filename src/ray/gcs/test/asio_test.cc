@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/asio.h"
+
 #include <iostream>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/asio.h"
+#include "ray/common/test_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/test_util.h"
 
 extern "C" {
 #include "hiredis/async.h"
