@@ -120,7 +120,7 @@ def try_import_torch(error=False):
     """
     if "RLLIB_TEST_NO_TORCH_IMPORT" in os.environ:
         logger.warning("Not importing Torch for test purposes.")
-        return None, None
+        return _torch_stubs()
 
     try:
         import torch
@@ -129,10 +129,14 @@ def try_import_torch(error=False):
     except ImportError as e:
         if error:
             raise e
+        return _torch_stubs()
 
-        nn = NNStub()
-        nn.Module = ModuleStub
-        return None, nn
+
+def _torch_stubs():
+    nn = NNStub()
+    nn.Module = ModuleStub
+    nn.functional = None
+    return None, nn
 
 
 def get_variable(value,
@@ -157,7 +161,7 @@ def get_variable(value,
             python primitive).
     """
     if framework == "tf":
-        import tensorflow as tf
+        tf = try_import_tf()
         dtype = getattr(
             value, "dtype", tf.float32
             if isinstance(value, float) else tf.int32
@@ -165,7 +169,7 @@ def get_variable(value,
         return tf.compat.v1.get_variable(
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
-        import torch
+        torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
         var_.requires_grad = trainable
         return var_
