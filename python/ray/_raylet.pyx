@@ -473,6 +473,8 @@ cdef execute_task(
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause_cls, proctitle=title)
+            elif isinstance(error, RayCancellationError):
+                failure_object = RayCancellationError("")
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.__class__, proctitle=title)
