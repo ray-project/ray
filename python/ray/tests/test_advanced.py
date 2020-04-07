@@ -709,7 +709,7 @@ def test_wait_makes_object_local(ray_start_cluster):
 
 
 def test_task_cancellation(shutdown_only):
-    import ray, time
+    # import ray, time
     ray.init(num_cpus=1)
 
     @ray.remote
@@ -719,10 +719,10 @@ def test_task_cancellation(shutdown_only):
         return t
 
     obj1 = micro_sleep_for.remote(100)
-    obj2 = micro_sleep_for.remote(200)
     ray.kill(obj1)
-    ray.get(obj1)
-    obj3 = microsleep_for.remote(300)
+    ray.get(obj1, 1)
+    obj2 = micro_sleep_for.remote(200)
+    obj3 = micro_sleep_for.remote(300)
     ray.kill(obj3)
     ray.get(obj3)
     ray.kill(obj2)

@@ -898,21 +898,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id) {
-  // Remove ActorCreation Tasks!?
-
   auto task_id = object_id.TaskId();
-  RAY_LOG(ERROR) << "Killing Task under actor id: " << task_id.ActorId();
   if (task_manager_->IsTaskPending(task_id)) {
-    RAY_LOG(ERROR) << "Pending task";
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-    RAY_LOG(ERROR) << "Got Task spec";
-    // for returnID in task_spec, create Object failed !
-    return direct_task_submitter_->KillTask(task_spec);
-    // Do some cleanup
-  } else {
-    // Already finished :'(
-    return Status::OK();
+    if (!task_spec.IsActorCreationTask())
+      return direct_task_submitter_->KillTask(task_spec);
   }
+  return Status::OK();
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
@@ -1413,13 +1405,17 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
                                 rpc::KillTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   TaskID intended_task_id = TaskID::FromBinary(request.intended_task_id());
-  RAY_LOG(ERROR) << "Asking to kill: " << intended_task_id
-                 << " Currently running: " << GetCurrentTaskId()
-                 << " And also at main thread: " << main_thread_task_id_;
-  absl::MutexLock lock(&mutex_);
-  if (main_thread_task_id_ == intended_task_id) {
-    RAY_LOG(ERROR) << "Attempting to interrupt main";
-    kill_main_thread_();
+  for (int i = 0; i < 3; i++) {
+    {
+      absl::MutexLock lock(&mutex_);
+      if (main_thread_task_id_ == intended_task_id) {
+        RAY_LOG(ERROR) << "Calling Kill Main";
+        kill_main_thread_();
+        return;
+      }
+    }
+    RAY_LOG(ERROR) << "Failed: " << i;
+    usleep(5 * 1000);
   }
 }
 

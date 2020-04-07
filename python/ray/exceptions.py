@@ -17,7 +17,7 @@ class RayConnectionError(RayError):
 
 
 class RayCancellationError(RayError):
-    """Raised when this task or a task that this is dependent on is cancelled"""
+    """Raised when this task or a dependency is cancelled"""
     pass
 
 

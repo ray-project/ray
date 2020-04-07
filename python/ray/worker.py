@@ -1670,7 +1670,8 @@ def kill(id):
     If this actor is reconstructable, it will be attempted to be reconstructed.
 
     Args:
-        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID of the task to kill.
+        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
+        of the task to kill.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
