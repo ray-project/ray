@@ -11,13 +11,12 @@ GcsServerInfoTable::GcsServerInfoTable(std::shared_ptr<GcsServerInfoTableImpl> t
   // Ensure that different ray clusters do not overwrite each other when sharing storage.
   table_name_ = kGcsServerInfoTableNamePrefix;
 }
-      
 
- GcsServerInfoTable::~GcsServerInfoTable() {}
+GcsServerInfoTable::~GcsServerInfoTable() {}
 
-Status GcsServerInfoTable::AsyncPut(
-    const GcsServerID &server_id, const rpc::GcsServerInfo &server_info,
-    const StatusCallback &callback) {
+Status GcsServerInfoTable::AsyncPut(const GcsServerID &server_id,
+                                    const rpc::GcsServerInfo &server_info,
+                                    const StatusCallback &callback) {
   return table_impl_->AsyncPut(table_name_, server_id, server_info, callback);
 }
 

@@ -73,8 +73,7 @@ class GcsServiceDiscoveryClient {
  protected:
   GcsServiceDiscoveryClient(const GcsServiceDiscoveryClientOptions &options,
                             std::shared_ptr<IOServicePool> io_service_pool)
-      : options_(options),
-        io_service_pool_(std::move(io_service_pool)) {}
+      : options_(options), io_service_pool_(std::move(io_service_pool)) {}
 
   /// Options of this client.
   GcsServiceDiscoveryClientOptions options_;

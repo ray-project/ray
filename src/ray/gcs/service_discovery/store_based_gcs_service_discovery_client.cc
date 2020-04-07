@@ -34,8 +34,7 @@ void StoreBasedGcsServiceDiscoveryClient::Shutdown() {
 }
 
 Status StoreBasedGcsServiceDiscoveryClient::AsyncRegisterService(
-    const rpc::GcsServerInfo &service_info,
-    const StatusCallback &callback) {
+    const rpc::GcsServerInfo &service_info, const StatusCallback &callback) {
   return gcs_server_table_->AsyncPut(GcsServerID::Nil(), service_info, callback);
 }
 
@@ -91,27 +90,26 @@ void StoreBasedGcsServiceDiscoveryClient::OnReceiveGcsServiceInfo(
 }
 
 void StoreBasedGcsServiceDiscoveryClient::RunQueryStoreTimer() {
-  auto on_get_callback =
-      [this](Status status, const boost::optional<rpc::GcsServerInfo> &result) {
-        if (status.ok() && result) {
-          OnReceiveGcsServiceInfo(*result);
-        }
-        if (!status.ok()) {
-          // TODO(micafan) Change RAY_LOG to RAY_LOG_EVERY_N.
-          RAY_LOG(INFO) << "Get gcs service info from storage failed, status "
-                        << status.ToString();
-        }
+  auto on_get_callback = [this](Status status,
+                                const boost::optional<rpc::GcsServerInfo> &result) {
+    if (status.ok() && result) {
+      OnReceiveGcsServiceInfo(*result);
+    }
+    if (!status.ok()) {
+      // TODO(micafan) Change RAY_LOG to RAY_LOG_EVERY_N.
+      RAY_LOG(INFO) << "Get gcs service info from storage failed, status "
+                    << status.ToString();
+    }
 
-        auto query_period = boost::posix_time::milliseconds(100);
-        query_store_timer_->expires_from_now(query_period);
-        query_store_timer_->async_wait([this](const boost::system::error_code &error) {
-          RAY_CHECK(!error);
-          RunQueryStoreTimer();
-        });
-      };
+    auto query_period = boost::posix_time::milliseconds(100);
+    query_store_timer_->expires_from_now(query_period);
+    query_store_timer_->async_wait([this](const boost::system::error_code &error) {
+      RAY_CHECK(!error);
+      RunQueryStoreTimer();
+    });
+  };
 
-  Status status =
-      gcs_server_table_->AsyncGet(GcsServerID::Nil(), on_get_callback);
+  Status status = gcs_server_table_->AsyncGet(GcsServerID::Nil(), on_get_callback);
   RAY_CHECK_OK(status);
 }
 
