@@ -203,7 +203,7 @@ class CentralizedQueues:
         await self.worker_queues[backend].put(replica_handle)
         await self.flush()
 
-    async def remove_and_destory_replica(self, backend, replica_handle):
+    async def remove_and_destroy_replica(self, backend, replica_handle):
         # We need this lock because we modify worker_queue here.
         async with self.flush_lock:
             old_queue = self.worker_queues[backend]
