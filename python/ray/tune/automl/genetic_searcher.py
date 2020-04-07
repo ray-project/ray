@@ -168,10 +168,8 @@ class GeneticSearch(AutoMLSearcher):
 
         next_gen = []
         for i in range(len(sample_1)):
-            if i is select_index:
-                next_gen.append(sample_2[i])
-            else:
-                next_gen.append(sample_1[i])
+            sample = sample_2[i] if i is select_index else sample_1[i]
+            next_gen.append(sample)
         return next_gen
 
     @staticmethod
