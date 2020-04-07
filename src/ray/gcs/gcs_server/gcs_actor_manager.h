@@ -22,6 +22,7 @@
 #include <queue>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "gcs_actor_scheduler.h"
 
 namespace ray {
@@ -29,6 +30,7 @@ namespace gcs {
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
+/// This class is not thread-safety, do not share between multiple threads.
 class GcsActor {
  public:
   /// Create a GcsActor
@@ -69,6 +71,7 @@ class GcsActor {
 };
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
+/// This class is not thread-safety, do not share between multiple threads.
 class GcsActorManager {
  public:
   /// This constructor allows us to pass in a mocked GcsActorScheduler, which is very
@@ -81,7 +84,7 @@ class GcsActorManager {
   /// \param gcs_actor_scheduler The scheduler to schedule the actor creation task.
   explicit GcsActorManager(std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client,
                            gcs::GcsNodeManager &gcs_node_manager,
-                           std::unique_ptr<gcs::GcsActorScheduler> &&gcs_actor_scheduler);
+                           std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler);
 
   /// Create a GcsActorManager
   ///
@@ -102,7 +105,7 @@ class GcsActorManager {
   /// \param callback Will be invoked after the meta info is flushed to the storage or be
   /// invoked immediately if the meta info already exists.
   void RegisterActor(const rpc::CreateActorRequest &request,
-                     std::function<void(std::shared_ptr<GcsActor>)> &&callback);
+                     std::function<void(std::shared_ptr<GcsActor>)> callback);
 
   /// Reconstruct all actors associated with the specified node id, including actors that
   /// are being scheduled or have been created on this node
@@ -122,7 +125,7 @@ class GcsActorManager {
                                 bool need_reschedule = true);
 
   /// Get all registered actors.
-  const std::unordered_map<ActorID, std::shared_ptr<GcsActor>> &GetAllRegisteredActors()
+  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetAllRegisteredActors()
       const {
     return registered_actors_;
   }
@@ -142,13 +145,13 @@ class GcsActorManager {
 
  private:
   /// All registered actors (pending actors are also included).
-  std::unordered_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
+  absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::queue<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of worker and created actor.
-  std::unordered_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
   /// Map contains the relationship of node and created actors.
-  std::unordered_map<ClientID, std::unordered_map<ActorID, std::shared_ptr<GcsActor>>>
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
       node_to_created_actors_;
   /// The client to communicate with redis to access actor table data.
   std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;

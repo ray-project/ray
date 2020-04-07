@@ -68,10 +68,11 @@ void GcsNodeManager::Tick() {
 
 void GcsNodeManager::DetectDeadNodes() {
   for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
-    it->second = it->second - 1;
-    if (it->second == 0) {
-      if (dead_nodes_.count(it->first) == 0) {
-        auto node_id = it->first;
+    auto current = it++;
+    current->second = current->second - 1;
+    if (current->second == 0) {
+      if (dead_nodes_.count(current->first) == 0) {
+        auto node_id = current->first;
         RAY_LOG(WARNING) << "Node timed out: " << node_id;
         auto lookup_callback = [this, node_id](Status status,
                                                const std::vector<GcsNodeInfo> &all_node) {
@@ -104,9 +105,7 @@ void GcsNodeManager::DetectDeadNodes() {
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(lookup_callback));
         dead_nodes_.insert(node_id);
       }
-      it = heartbeats_.erase(it);
-    } else {
-      it++;
+      heartbeats_.erase(current);
     }
   }
 }
@@ -147,7 +146,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
   return iter->second;
 }
 
-const std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
+const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
     &GcsNodeManager::GetAllAliveNodes() const {
   return alive_nodes_;
 }

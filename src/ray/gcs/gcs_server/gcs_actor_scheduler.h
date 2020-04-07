@@ -24,12 +24,16 @@
 #include <ray/rpc/worker/core_worker_client.h>
 #include <queue>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "gcs_node_manager.h"
 
 namespace ray {
 namespace gcs {
 
 class GcsActor;
+/// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
+/// This class is not thread-safety, do not share between multiple threads.
 class GcsActorScheduler {
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -45,7 +49,7 @@ class GcsActorScheduler {
     /// \param resources the resources that leased from the remote node(raylet).
     /// \param client_call_manager is shared by all `CoreWorkerClient`s.
     explicit GcsLeasedWorker(rpc::Address address,
-                             std::vector<rpc::ResourceMapEntry> &&resources,
+                             std::vector<rpc::ResourceMapEntry> resources,
                              boost::asio::io_context &io_context,
                              rpc::ClientCallManager &client_call_manager)
         : address_(std::move(address)),
@@ -243,13 +247,14 @@ class GcsActorScheduler {
   std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;
   /// Map which contains the relationship of node and actor id set in phase of leasing
   /// worker.
-  std::unordered_map<ClientID, std::unordered_set<ActorID>> node_to_actors_when_leasing_;
+  absl::flat_hash_map<ClientID, absl::flat_hash_set<ActorID>>
+      node_to_actors_when_leasing_;
   /// Map which contains the relationship of node and workers in phase of creating actor.
-  std::unordered_map<ClientID,
-                     std::unordered_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
+  absl::flat_hash_map<ClientID,
+                      absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
   /// The cached node clients which are used to communicate with raylet to lease workers.
-  std::unordered_map<ClientID, std::shared_ptr<rpc::NodeManagerWorkerClient>>
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::NodeManagerWorkerClient>>
       node_to_client_;
   /// The handler to handle the scheduling failures.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_failed_handler_;

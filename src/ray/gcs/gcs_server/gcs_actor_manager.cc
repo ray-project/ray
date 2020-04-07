@@ -70,7 +70,7 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 GcsActorManager::GcsActorManager(
     std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client,
     gcs::GcsNodeManager &gcs_node_manager,
-    std::unique_ptr<gcs::GcsActorScheduler> &&gcs_actor_scheduler)
+    std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler)
     : redis_gcs_client_(redis_gcs_client),
       gcs_actor_scheduler_(std::move(gcs_actor_scheduler)) {
   RAY_LOG(INFO) << "Initializing GcsActorManager.";
@@ -125,7 +125,7 @@ GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
 
 void GcsActorManager::RegisterActor(
     const ray::rpc::CreateActorRequest &request,
-    std::function<void(std::shared_ptr<GcsActor>)> &&callback) {
+    std::function<void(std::shared_ptr<GcsActor>)> callback) {
   RAY_CHECK(callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());

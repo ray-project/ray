@@ -18,11 +18,14 @@
 #include <ray/common/id.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 
 namespace ray {
 namespace gcs {
 class RedisGcsClient;
 /// GcsNodeManager is responsible for managing and monitoring nodes.
+/// This class is not thread-safety, do not share between multiple threads.
 class GcsNodeManager {
  public:
   /// Create a GcsNodeManager.
@@ -51,14 +54,14 @@ class GcsNodeManager {
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
+  const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
       &GetAllAliveNodes() const;
 
   /// Add listener to monitor the remove action of nodes.
   ///
   /// \param listener The handler which process the remove of nodes.
   void AddNodeRemovedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> &&listener) {
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
     RAY_CHECK(listener);
     node_removed_listeners_.emplace_back(std::move(listener));
   }
@@ -67,7 +70,7 @@ class GcsNodeManager {
   ///
   /// \param listener The handler which process the add of nodes.
   void AddNodeAddedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> &&listener) {
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
     RAY_CHECK(listener);
     node_added_listeners_.emplace_back(std::move(listener));
   }
@@ -101,7 +104,7 @@ class GcsNodeManager {
 
  private:
   /// Alive nodes.
-  std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// A client to the GCS, through which heartbeats are received.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The number of heartbeats that can be missed before a node is removed.
@@ -110,11 +113,11 @@ class GcsNodeManager {
   boost::asio::deadline_timer heartbeat_timer_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
-  std::unordered_map<ClientID, int64_t> heartbeats_;
+  absl::flat_hash_map<ClientID, int64_t> heartbeats_;
   /// The Raylets that have been marked as dead in gcs.
-  std::unordered_set<ClientID> dead_nodes_;
+  absl::flat_hash_set<ClientID> dead_nodes_;
   /// A buffer containing heartbeats received from node managers in the last tick.
-  std::unordered_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;

@@ -141,8 +141,8 @@ struct Mocker {
     }
 
    public:
-    std::unordered_map<ClientID,
-                       std::unordered_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
+    absl::flat_hash_map<ClientID,
+                        absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
     GetNodeToWorkersInPhaseOfCreating() const {
       return node_to_workers_when_creating_;
     }
