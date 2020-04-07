@@ -123,7 +123,7 @@ class DistributedTorchRunner(TorchRunner):
         state_dict = torch.load(
             _buffer,
             map_location=(
-                lambda storage, loc: storage.cuda() if to_gpu else "cpu"))
+                "cpu" if not to_gpu else lambda storage, loc: storage.cuda()))
         return self.load_state_dict(state_dict)
 
     def _wrap_dataloaders(self):
