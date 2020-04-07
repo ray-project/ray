@@ -24,8 +24,6 @@ head_node:
     ImageId: ami-0698bcaf8bd9ef56d
     InstanceMarketOptions:
         MarketType: spot
-        SpotOptions:
-            BlockDurationMinutes: 180
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
