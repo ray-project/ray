@@ -1,7 +1,7 @@
 package org.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,57 +11,74 @@ import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.RunMode;
+import org.ray.runtime.RayRuntimeInternal;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
+import org.ray.runtime.task.TaskExecutor.ActorContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * The task executor, which executes tasks assigned by raylet continuously.
  */
-public abstract class TaskExecutor {
+public abstract class TaskExecutor<T extends ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
-  // A helper map to help we get the corresponding executor for the given worker in JNI.
-  private static ConcurrentHashMap<UniqueId, TaskExecutor> taskExecutors
-      = new ConcurrentHashMap<>();
+  protected final RayRuntimeInternal runtime;
 
-  protected final AbstractRayRuntime runtime;
+  private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
 
-  /**
-   * The current actor object, if this worker is an actor, otherwise null.
-   */
-  protected Object currentActor = null;
+  static class ActorContext {
 
-  /**
-   * The exception that failed the actor creation task, if any.
-   */
-  private Exception actorCreationException = null;
+    /**
+     * The current actor object, if this worker is an actor, otherwise null.
+     */
+    Object currentActor = null;
 
-  protected TaskExecutor(AbstractRayRuntime runtime) {
-    this.runtime = runtime;
-    if (RayConfig.getInstance().runMode == RunMode.CLUSTER) {
-      taskExecutors.put(runtime.getWorkerContext().getCurrentWorkerId(), this);
-    }
+    /**
+     * The exception that failed the actor creation task, if any.
+     */
+    Throwable actorCreationException = null;
   }
 
-  public static TaskExecutor get(byte[] workerId) {
-    return taskExecutors.get(new UniqueId(workerId));
+  TaskExecutor(RayRuntimeInternal runtime) {
+    this.runtime = runtime;
+  }
+
+  protected abstract T createActorContext();
+
+  T getActorContext() {
+    return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
+  }
+
+  void setActorContext(T actorContext) {
+    if (actorContext == null) {
+      // ConcurrentHashMap doesn't allow null values. So just return here.
+      return;
+    }
+    this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
       List<NativeRayObject> argsBytes) {
+    runtime.setIsContextSet(true);
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {}", taskId);
+
+    T actorContext = null;
+    if (taskType == TaskType.ACTOR_CREATION_TASK) {
+      actorContext = createActorContext();
+      setActorContext(actorContext);
+    } else if (taskType == TaskType.ACTOR_TASK) {
+      actorContext = getActorContext();
+      Preconditions.checkNotNull(actorContext);
+    }
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
@@ -76,20 +93,27 @@ public abstract class TaskExecutor {
       // Get local actor object and arguments.
       Object actor = null;
       if (taskType == TaskType.ACTOR_TASK) {
-        if (actorCreationException != null) {
-          throw actorCreationException;
+        if (actorContext.actorCreationException != null) {
+          throw actorContext.actorCreationException;
         }
-        actor = currentActor;
-
+        actor = actorContext.currentActor;
       }
       Object[] args = ArgumentsBuilder
           .unwrap(argsBytes, rayFunction.executable.getParameterTypes(), rayFunction.classLoader);
       // Execute the task.
       Object result;
-      if (!rayFunction.isConstructor()) {
-        result = rayFunction.getMethod().invoke(actor, args);
-      } else {
-        result = rayFunction.getConstructor().newInstance(args);
+      try {
+        if (!rayFunction.isConstructor()) {
+          result = rayFunction.getMethod().invoke(actor, args);
+        } else {
+          result = rayFunction.getConstructor().newInstance(args);
+        }
+      } catch (InvocationTargetException e) {
+        if (e.getCause() != null) {
+          throw e.getCause();
+        } else {
+          throw e;
+        }
       }
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
@@ -103,10 +127,10 @@ public abstract class TaskExecutor {
       } else {
         // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
-        currentActor = result;
+        actorContext.currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", taskId);
-    } catch (Exception e) {
+    } catch (Throwable e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
@@ -116,11 +140,12 @@ public abstract class TaskExecutor {
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
         }
       } else {
-        actorCreationException = e;
+        actorContext.actorCreationException = e;
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
       runtime.getWorkerContext().setCurrentClassLoader(null);
+      runtime.setIsContextSet(false);
     }
     return returnObjects;
   }

@@ -33,13 +33,34 @@ namespace ray {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
-             int node_manager_port, const gcs::GcsClientOptions &gcs_options)
-      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
-                /*node_id_address=*/"127.0.0.1", node_manager_port,
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7)) {}
+             int node_manager_port, const gcs::GcsClientOptions &gcs_options) {
+    CoreWorkerOptions options = {
+        WorkerType::WORKER,  // worker_type
+        Language::PYTHON,    // langauge
+        store_socket,        // store_socket
+        raylet_socket,       // raylet_socket
+        JobID::FromInt(1),   // job_id
+        gcs_options,         // gcs_options
+        "",                  // log_dir
+        true,                // install_failure_signal_handler
+        "127.0.0.1",         // node_ip_address
+        node_manager_port,   // node_manager_port
+        "",                  // driver_name
+        "",                  // stdout_file
+        "",                  // stderr_file
+        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
+                  _7),  // task_execution_callback
+        nullptr,        // check_signals
+        nullptr,        // gc_collect
+        nullptr,        // get_lang_stack
+        true,           // ref_counting_enabled
+        false,          // is_local_mode
+        1,              // num_workers
+    };
+    CoreWorkerProcess::Initialize(options);
+  }
 
-  void StartExecutingTasks() { worker_.StartExecutingTasks(); }
+  void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
@@ -112,7 +133,6 @@ class MockWorker {
     return Status::OK();
   }
 
-  CoreWorker worker_;
   int64_t prev_seq_no_ = 0;
 };
 
@@ -126,6 +146,6 @@ int main(int argc, char **argv) {
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
-  worker.StartExecutingTasks();
+  worker.RunTaskExecutionLoop();
   return 0;
 }

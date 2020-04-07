@@ -5,7 +5,9 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
-from ray.serve.utils import get_random_letters
+from ray.serve.utils import expand, get_random_letters
+
+import numpy as np
 
 
 @ray.remote
@@ -31,6 +33,9 @@ class ServeMaster:
 
     def get_kv_store_connector(self):
         return self.kv_store_connector
+
+    def get_traffic_policy(self, endpoint_name):
+        return self.policy_table.list_traffic_policy()[endpoint_name]
 
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
@@ -119,6 +124,41 @@ class ServeMaster:
     def get_all_handles(self):
         return self.tag_to_actor_handles
 
+    def get_all_endpoints(self):
+        return expand(
+            self.route_table.list_service(include_headless=True).values())
+
+    def split_traffic(self, endpoint_name, traffic_policy_dictionary):
+        assert endpoint_name in expand(
+            self.route_table.list_service(include_headless=True).values())
+
+        assert isinstance(traffic_policy_dictionary,
+                          dict), "Traffic policy must be dictionary"
+        prob = 0
+        for backend, weight in traffic_policy_dictionary.items():
+            prob += weight
+            assert (backend in self.backend_table.list_backends()
+                    ), "backend {} is not registered".format(backend)
+        assert np.isclose(
+            prob, 1, atol=0.02
+        ), "weights must sum to 1, currently it sums to {}".format(prob)
+
+        self.policy_table.register_traffic_policy(endpoint_name,
+                                                  traffic_policy_dictionary)
+        [router] = self.get_router()
+        ray.get(
+            router.set_traffic.remote(endpoint_name,
+                                      traffic_policy_dictionary))
+
+    def create_endpoint(self, route, endpoint_name, methods):
+        self.route_table.register_service(
+            route, endpoint_name, methods=methods)
+        [http_proxy] = self.get_http_proxy()
+        ray.get(
+            http_proxy.set_route_table.remote(
+                self.route_table.list_service(
+                    include_methods=True, include_headless=False)))
+
 
 class GlobalState:
     """Encapsulate all global state in the serving system.
@@ -137,15 +177,17 @@ class GlobalState:
         # Connect to all the tables.
         kv_store_connector = ray.get(
             self.master_actor.get_kv_store_connector.remote())
-        self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
-        self.policy_table = TrafficPolicyTable(kv_store_connector)
-
-    def get_http_proxy(self):
-        return ray.get(self.master_actor.get_http_proxy.remote())[0]
 
     def get_router(self):
         return ray.get(self.master_actor.get_router.remote())[0]
 
     def get_metric_monitor(self):
         return ray.get(self.master_actor.get_metric_monitor.remote())[0]
+
+    def get_traffic_policy(self, endpoint_name):
+        return ray.get(
+            self.master_actor.get_traffic_policy.remote(endpoint_name))
+
+    def get_all_endpoints(self):
+        return ray.get(self.master_actor.get_all_endpoints.remote())
