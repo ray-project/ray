@@ -41,19 +41,25 @@ class GcsTablePubSubTest : public RedisServiceManagerForTest {
 
   template <typename TABLE_PUB_SUB, typename ID, typename Data>
   void Subscribe(TABLE_PUB_SUB &table_pub_sub, const ID &id, std::vector<Data> &result) {
+    std::promise<bool> promise;
+    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(data);
     };
-    RAY_CHECK_OK(table_pub_sub.Subscribe(id, subscribe));
+    RAY_CHECK_OK(table_pub_sub.Subscribe(id, subscribe, done));
+    WaitReady(promise.get_future(), timeout_ms_);
   }
 
   template <typename TABLE_PUB_SUB, typename ID, typename Data>
   void SubscribeAll(TABLE_PUB_SUB &table_pub_sub,
                     std::vector<std::pair<ID, Data>> &result) {
+    std::promise<bool> promise;
+    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK(table_pub_sub.SubscribeAll(subscribe));
+    RAY_CHECK_OK(table_pub_sub.SubscribeAll(subscribe, done));
+    WaitReady(promise.get_future(), timeout_ms_);
   }
 
   template <typename TABLE_PUB_SUB, typename ID>
