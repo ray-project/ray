@@ -51,6 +51,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #ifdef _WIN32
+#ifndef _WINSOCKAPI_
+#include <WinSock2.h>
+#endif
 #include <Windows.h>
 #include <io.h>
 #include <ws2tcpip.h> /* socklen_t, et al (MSVC20xx) */

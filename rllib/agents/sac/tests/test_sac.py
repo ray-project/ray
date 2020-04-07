@@ -3,6 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import framework_iterator
 
 tf = try_import_tf()
 
@@ -16,12 +17,7 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         # eager (discrete and cont. actions).
-        for fw in ["eager", "tf", "torch"]:
-            print("framework={}".format(fw))
-            if fw == "torch":
-                continue
-            config["eager"] = fw == "eager"
-            config["use_pytorch"] = fw == "torch"
+        for _ in framework_iterator(config, ["tf", "eager"]):
             for env in [
                     "CartPole-v0",
                     "Pendulum-v0",

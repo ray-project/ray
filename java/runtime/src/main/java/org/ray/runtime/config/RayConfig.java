@@ -72,6 +72,8 @@ public class RayConfig {
   public final String jobResourcePath;
   public final String pythonWorkerCommand;
 
+  public final boolean gcsServiceEnabled;
+
   private static volatile RayConfig instance = null;
 
   public static RayConfig getInstance() {
@@ -91,10 +93,6 @@ public class RayConfig {
     }
   }
 
-  /**
-   * Number of threads that execute tasks.
-   */
-  public final int numberExecThreadsForDevRuntime;
 
   public final int numWorkersPerProcess;
 
@@ -218,10 +216,10 @@ public class RayConfig {
       jobResourcePath = null;
     }
 
-    // Number of threads that execute tasks.
-    numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
-
     numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
+
+    gcsServiceEnabled = System.getenv("RAY_GCS_SERVICE_ENABLED") == null ||
+      System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
 
     // Validate config.
     validate();

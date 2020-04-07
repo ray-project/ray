@@ -7,6 +7,8 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
+
 RLlib in 60 seconds
 -------------------
 
@@ -96,7 +98,12 @@ RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distribu
 
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
-RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
+RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter. Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+
+Application Support
+~~~~~~~~~~~~~~~~~~~
+
+Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__.
 
 Customization
 ~~~~~~~~~~~~~
@@ -104,13 +111,6 @@ Customization
 RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
 
 .. image:: rllib-components.svg
-
-Application Support
-~~~~~~~~~~~~~~~~~~~
-
-Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__:
-
-.. image:: rllib-external.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 

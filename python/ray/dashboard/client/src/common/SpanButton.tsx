@@ -1,6 +1,4 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
 import React, { HTMLAttributes } from "react";
 
 const styles = (theme: Theme) =>
@@ -9,9 +7,9 @@ const styles = (theme: Theme) =>
       color: theme.palette.primary.main,
       "&:hover": {
         cursor: "pointer",
-        textDecoration: "underline"
-      }
-    }
+        textDecoration: "underline",
+      },
+    },
   });
 
 class SpanButton extends React.Component<
