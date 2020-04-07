@@ -101,7 +101,10 @@ def try_import_tfp(error=False):
 
 # Fake module for torch.nn.
 class NNStub:
-    pass
+    def __init__(self, *a, **kw):
+        # Fake nn.functional module within torch.nn.
+        self.functional = None
+        self.Module = ModuleStub
 
 
 # Fake class for torch.nn.Module to allow it to be inherited from.
@@ -134,8 +137,6 @@ def try_import_torch(error=False):
 
 def _torch_stubs():
     nn = NNStub()
-    nn.Module = ModuleStub
-    nn.functional = None
     return None, nn
 
 
