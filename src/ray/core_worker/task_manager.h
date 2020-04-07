@@ -110,6 +110,9 @@ class TaskManager : public TaskFinisherInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
+  /// Cancels a task by treating it as failed and removes any remaining retries
+  ///
+  /// \param[in] task_id The TaskId that is being cancelled
   void CancelTask(const TaskID &task_id);
 
   /// Return the spec for a pending task.

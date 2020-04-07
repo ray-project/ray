@@ -1089,7 +1089,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
-  RAY_LOG(ERROR) << "Setting current task id: " << task_spec.TaskId();
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
@@ -1405,16 +1404,15 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
                                 rpc::KillTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   TaskID intended_task_id = TaskID::FromBinary(request.intended_task_id());
+  // Retry a few times to avoid the KillTask RPC getting processed before the actual task
   for (int i = 0; i < 3; i++) {
     {
       absl::MutexLock lock(&mutex_);
       if (main_thread_task_id_ == intended_task_id) {
-        RAY_LOG(ERROR) << "Calling Kill Main";
         kill_main_thread_();
         return;
       }
     }
-    RAY_LOG(ERROR) << "Failed: " << i;
     usleep(5 * 1000);
   }
 }

@@ -70,6 +70,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] task_spec The task to schedule.
   Status SubmitTask(TaskSpecification task_spec);
 
+  /// Either remove a pending task or send an RPC to kill a running task
+  ///
+  /// \param[in] task_spec The task to kill.
   Status KillTask(TaskSpecification task_spec);
 
  private:
@@ -171,6 +174,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
       GUARDED_BY(mu_);
 
+  // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> sent_tasks_ GUARDED_BY(mu_);
 };
 

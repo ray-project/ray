@@ -701,6 +701,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
 
+  // Function that tries to interrupt the currently running Python thread.
   std::function<void()> kill_main_thread_;
 
   /// Application-language callback to trigger garbage collection in the language
