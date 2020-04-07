@@ -702,6 +702,7 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
       new_resource_scheduler_->DeleteResource(client_id.Binary(), resource_label);
     }
   }
+  RAY_LOG(DEBUG) << "[ResourceDeleted] Updated cluster_resource_map.";
   return;
 }
 
@@ -955,9 +956,9 @@ void NodeManager::DispatchTasks(
   }
 }
 
-void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
-                                       int64_t message_type,
-                                       const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(
+    const std::shared_ptr<ClientConnection> &client, int64_t message_type,
+    const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
@@ -1081,6 +1082,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
         if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Failed to send RegisterClientReply to client, so disconnecting";
           ProcessDisconnectClientMessage(client);
         }
       });
@@ -1170,7 +1173,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   }
 }
 
-void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
+void NodeManager::HandleWorkerAvailable(
+    const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1215,10 +1219,10 @@ void NodeManager::ProcessDisconnectClientMessage(
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                     << "been disconnected.";
-      return;
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
+
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
@@ -1317,10 +1321,13 @@ void NodeManager::ProcessDisconnectClientMessage(
       worker->ResetLifetimeResourceIds();
     }
 
-    // Since some resources may have been released, we can try to dispatch more tasks. YYY
+    // Since some resources may have been released, we can try to dispatch more tasks.
     if (new_scheduler_enabled_) {
       NewSchedulerSchedulePendingTasks();
     } else {
+      RAY_LOG(DEBUG) << "Worker (pid=" << worker->GetProcess().GetId()
+                     << ") is disconnected. "
+                     << "job_id: " << worker->GetAssignedJobId();
       DispatchTasks(local_queues_.GetReadyTasksByClass());
     }
   } else if (is_driver) {
@@ -1420,6 +1427,8 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
+          RAY_LOG(WARNING)
+              << "Failed to send WaitReply to client, so disconnecting client";
           ProcessDisconnectClientMessage(client);
         }
       });
@@ -1793,6 +1802,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(DEBUG) << "Return worker " << worker_id;
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   Status status;
@@ -2268,10 +2278,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
   worker->MarkUnblocked();
 }
 
-void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                                      const std::vector<ObjectID> &required_object_ids,
-                                      const TaskID &current_task_id, bool ray_get,
-                                      bool mark_worker_blocked) {
+void NodeManager::AsyncResolveObjects(
+    const std::shared_ptr<ClientConnection> &client,
+    const std::vector<ObjectID> &required_object_ids, const TaskID &current_task_id,
+    bool ray_get, bool mark_worker_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -2517,7 +2527,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     worker.ResetTaskResourceIds();
   }
 
-  const auto &spec = task.GetTaskSpecification();  //
+  const auto &spec = task.GetTaskSpecification();
   if ((spec.IsActorCreationTask() || spec.IsActorTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
