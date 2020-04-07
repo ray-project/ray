@@ -167,7 +167,7 @@ def get_variable(value,
             value, "dtype", tf.float32
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
-        return tf.compat.v1.get_variable(
+        return tf.get_variable(
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
