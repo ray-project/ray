@@ -1,10 +1,9 @@
-from typing import List, Any
+from typing import Any
 import time
 
-import ray
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import SampleBatchType, STEPS_SAMPLED_COUNTER
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 

@@ -1,21 +1,7 @@
-import logging
-from typing import List, Any, Tuple, Union
-import numpy as np
-import queue
-import random
-import time
+from typing import Union
 
-import ray
-from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
-from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
-    ReplayBuffer
-from ray.rllib.evaluation.metrics import collect_episodes, \
-    summarize_episodes, get_learner_stats
-from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
-    DEFAULT_POLICY_ID
-from ray.rllib.utils.compression import pack_if_needed
+from ray.util.iter import LocalIterator
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 # Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"

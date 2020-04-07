@@ -1,4 +1,5 @@
-from typing import List, Tuple
+import logging
+from typing import List
 
 import ray
 from ray.util.iter import LocalIterator
@@ -6,7 +7,11 @@ from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import SampleBatchType, \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
-    APPLY_GRADS_TIMER, WORKER_UPDATE_TIMER, _get_global_vars
+    APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
+    LEARN_ON_BATCH_TIMER, LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, \
+    _get_global_vars, _check_sample_batch_type
+
+logger = logging.getLogger(__name__)
 
 
 class TrainOneStep:

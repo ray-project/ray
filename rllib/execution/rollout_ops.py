@@ -1,15 +1,14 @@
 from typing import List, Tuple
 import time
 
-import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
-    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
-    GRAD_WAIT_TIMER
+    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
+    GRAD_WAIT_TIMER, _check_sample_batch_type
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
