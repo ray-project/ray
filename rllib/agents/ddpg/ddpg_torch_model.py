@@ -49,17 +49,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        if isinstance(action_space, Discrete):
-            self.action_dim = action_space.n
-            self.discrete = True
-            self.action_outs = q_outs = self.action_dim
-            self.action_ins = None  # No action inputs for the discrete case.
-        else:
-            self.action_dim = np.product(action_space.shape)
-            self.discrete = False
-            self.action_outs = 2 * self.action_dim
-            self.action_ins = self.action_dim
-            q_outs = 1
+        self.action_dim = np.product(action_space.shape)
 
         # Build the policy network.
         self.action_model = nn.Sequential()
@@ -77,14 +67,14 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                 self.action_model.add_module(
                     "LayerNorm_A_{}".format(i), nn.LayerNorm(n))
             ins = n
-        self.action_model.add_module("action_out", nn.Linear(ins, self.action_outs))
+        self.action_model.add_module("action_out", nn.Linear(ins, self.action_dim))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
-            ins = self.obs_ins + (0 if self.discrete else self.action_ins)
+            ins = self.obs_ins + self.action_dim
             for i, n in enumerate(critic_hiddens):
                 q_net.add_module("{}_hidden_{}".format(name_, i), nn.Linear(ins, n))
                 # Add activations if necessary.
@@ -94,7 +84,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                     q_net.add_module("{}_activation_{}".format(name_, i), nn.Tanh())
                 ins = n
 
-            q_net.add_module("{}_out".format(name_), nn.Linear(ins, q_outs))
+            q_net.add_module("{}_out".format(name_), nn.Linear(ins, 1))
             return q_net
 
         self.q_net = build_q_net("q")

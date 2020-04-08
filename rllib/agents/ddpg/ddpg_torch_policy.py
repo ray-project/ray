@@ -114,24 +114,25 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
                 + huber_loss(twin_td_error, huber_threshold)
         else:
             errors = 0.5 * \
-                (torch.power(td_error, 2.0) + torch.power(twin_td_error, 2.0))
+                (torch.pow(td_error, 2.0) + torch.pow(twin_td_error, 2.0))
     else:
         td_error = q_t_selected - q_t_selected_target
         if use_huber:
             errors = huber_loss(td_error, huber_threshold)
         else:
-            errors = 0.5 * torch.power(td_error, 2.0)
+            errors = 0.5 * torch.pow(td_error, 2.0)
 
     critic_loss = torch.mean(train_batch[PRIO_WEIGHTS] * errors)
     actor_loss = -torch.mean(q_t_det_policy)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
-        for var in policy.model.policy_variables():
-            if "bias" not in var.name:
+        TODO: var names in torch
+        for name, var in policy.model.policy_variables(as_dict=True).items():
+            if "bias" not in name:
                 actor_loss += (l2_reg * l2_loss(var))
-        for var in policy.model.q_variables():
-            if "bias" not in var.name:
+        for name, var in policy.model.q_variables(as_dict=True).items:
+            if "bias" not in name:
                 critic_loss += (l2_reg * l2_loss(var))
 
     # Model self-supervised losses.

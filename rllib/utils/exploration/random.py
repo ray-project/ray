@@ -7,6 +7,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils import force_tuple
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -88,7 +89,12 @@ class Random(Exploration):
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
             a = self.action_space.sample()
-            action = tensor_fn([a] if isinstance(a, int) else a)
+            req = force_tuple(action_dist.required_model_output_shape(
+                self.action_space, self.model.model_config))
+            # Add a batch dimension.
+            if len(action_dist.inputs.shape) == len(req) + 1:
+                a = [a]
+            action = tensor_fn(a)
         else:
             action = tensor_fn(action_dist.deterministic_sample())
         logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
