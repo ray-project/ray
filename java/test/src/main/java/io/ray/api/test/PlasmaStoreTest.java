@@ -15,9 +15,9 @@ public class PlasmaStoreTest extends BaseTest {
     ObjectId objectId = ObjectId.fromRandom();
     ObjectStore objectStore = TestUtils.getRuntime().getObjectStore();
     objectStore.put("1", objectId);
-    Assert.assertEquals(Ray.get(objectId), "1");
+    Assert.assertEquals(Ray.get(objectId, String.class), "1");
     objectStore.put("2", objectId);
     // Putting the second object with duplicate ID should fail but ignored.
-    Assert.assertEquals(Ray.get(objectId), "1");
+    Assert.assertEquals(Ray.get(objectId, String.class), "1");
   }
 }

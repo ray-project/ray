@@ -142,7 +142,7 @@ public class ActorTest extends BaseTest {
     try {
       // Try getting the object again, this should throw an UnreconstructableException.
       // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
-      Ray.get(value.getId());
+      Ray.get(value.getId(), value.getType());
       Assert.fail("This line should not be reachable.");
     } catch (UnreconstructableException e) {
       Assert.assertEquals(value.getId(), e.objectId);

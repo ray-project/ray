@@ -20,13 +20,16 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
    */
   private transient T object;
 
+  private Class<T> type;
+
   /**
    * Whether the object is already gotten from the object store.
    */
   private transient boolean objectGotten;
 
-  public RayObjectImpl(ObjectId id) {
+  public RayObjectImpl(ObjectId id, Class<T> type) {
     this.id = id;
+    this.type = type;
     object = null;
     objectGotten = false;
   }
@@ -34,7 +37,7 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   @Override
   public synchronized T get() {
     if (!objectGotten) {
-      object = Ray.get(id);
+      object = Ray.get(id, type);
       objectGotten = true;
     }
     return object;
@@ -43,6 +46,11 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   @Override
   public ObjectId getId() {
     return id;
+  }
+
+  @Override
+  public Class<T> getType() {
+    return type;
   }
 
 }

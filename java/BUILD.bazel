@@ -76,6 +76,7 @@ define_java_module(
         "@maven//:de_ruedigermoeller_fst",
         "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_msgpack_msgpack_core",
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",

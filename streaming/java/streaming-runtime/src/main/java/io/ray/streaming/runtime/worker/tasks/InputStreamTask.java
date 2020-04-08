@@ -28,7 +28,7 @@ public abstract class InputStreamTask extends StreamTask {
       if (item != null) {
         byte[] bytes = new byte[item.body().remaining()];
         item.body().get(bytes);
-        Object obj = Serializer.decode(bytes);
+        Object obj = Serializer.decode(bytes, Object.class);
         processor.process(obj);
       }
     }

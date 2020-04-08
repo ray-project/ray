@@ -39,17 +39,19 @@ public interface RayRuntime {
    * Get an object from the object store.
    *
    * @param objectId The ID of the object to get.
+   * @param objectType The type of the object to get.
    * @return The Java object.
    */
-  <T> T get(ObjectId objectId);
+  <T> T get(ObjectId objectId, Class<T> objectType);
 
   /**
    * Get a list of objects from the object store.
    *
    * @param objectIds The list of object IDs.
+   * @param objectType The type of object.
    * @return A list of Java objects.
    */
-  <T> List<T> get(List<ObjectId> objectIds);
+  <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType);
 
   /**
    * Wait for a list of RayObjects to be locally available, until specified number of objects are

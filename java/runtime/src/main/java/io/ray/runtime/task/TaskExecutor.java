@@ -96,7 +96,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         }
         actor = actorContext.currentActor;
       }
-      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
+      Object[] args = ArgumentsBuilder
+          .unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       // Execute the task.
       Object result;
       try {

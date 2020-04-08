@@ -86,7 +86,7 @@ public class RayCallTest extends BaseTest {
 
     ObjectId randomObjectId = ObjectId.fromRandom();
     Ray.call(RayCallTest::testNoReturn, randomObjectId);
-    Assert.assertEquals(((int) Ray.get(randomObjectId)), 1);
+    Assert.assertEquals(((int) Ray.get(randomObjectId, Integer.class)), 1);
   }
 
   private static int testNoParam() {

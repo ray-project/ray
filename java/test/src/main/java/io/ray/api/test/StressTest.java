@@ -28,7 +28,7 @@ public class StressTest extends BaseTest {
           resultIds.add(Ray.call(StressTest::echo, 1).getId());
         }
 
-        for (Integer result : Ray.<Integer>get(resultIds)) {
+        for (Integer result : Ray.<Integer>get(resultIds, Integer.class)) {
           Assert.assertEquals(result, Integer.valueOf(1));
         }
       }
@@ -67,7 +67,7 @@ public class StressTest extends BaseTest {
         objectIds.add(actor.call(Actor::ping).getId());
       }
       int sum = 0;
-      for (Integer result : Ray.<Integer>get(objectIds)) {
+      for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {
         sum += result;
       }
       return sum;
@@ -84,7 +84,7 @@ public class StressTest extends BaseTest {
       objectIds.add(worker.call(Worker::ping, 100).getId());
     }
 
-    for (Integer result : Ray.<Integer>get(objectIds)) {
+    for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {
       Assert.assertEquals(result, Integer.valueOf(100));
     }
   }

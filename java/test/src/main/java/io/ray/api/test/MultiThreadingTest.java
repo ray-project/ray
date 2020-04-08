@@ -104,7 +104,7 @@ public class MultiThreadingTest extends BaseTest {
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.put(arg);
-      Assert.assertEquals(arg, (int) Ray.get(obj.getId()));
+      Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
     TestUtils.warmUpCluster();
@@ -141,7 +141,7 @@ public class MultiThreadingTest extends BaseTest {
     final RayActor<Echo> fooActor = Ray.createActor(Echo::new);
     final Runnable[] runnables = new Runnable[]{
         () -> Ray.put(1),
-        () -> Ray.get(fooObject.getId()),
+        () -> Ray.get(fooObject.getId(), fooObject.getType()),
         fooObject::get,
         () -> Ray.wait(ImmutableList.of(fooObject)),
         Ray::getRuntimeContext,

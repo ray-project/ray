@@ -8,6 +8,7 @@ import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -39,9 +40,18 @@ public class ArgumentsBuilder {
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
+        if (language != Language.JAVA) {
+          boolean isCrossData =
+              Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
+                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW);
+          if (!isCrossData) {
+            throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
+                Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
+          }
+        }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
-            .putRaw(value);
+              .putRaw(value);
           value = null;
         }
       }
@@ -60,10 +70,10 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject to real function arguments.
    */
-  public static Object[] unwrap(List<NativeRayObject> args, ClassLoader classLoader) {
+  public static Object[] unwrap(List<NativeRayObject> args, Class<?>[] types) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
-      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, classLoader);
+      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, types[i]);
     }
     return realArgs;
   }
