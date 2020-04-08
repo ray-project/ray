@@ -436,9 +436,9 @@ class ParallelIterator(Generic[T]):
             batch_time (int): Batches items for batch_time milliseconds
                 on each shard before retrieving it.
                 Increasing batch_time reduces latency but improves throughput.
-            pipeline_queue_depth (int): The max number of async requests in flight
-                per actor. Increasing this improves the amount of pipeline
-                parallelism in the iterator.
+            pipeline_queue_depth (int): The max number of async requests in
+                flight per actor. Increasing this improves the amount of
+                pipeline parallelism in the iterator.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -544,9 +544,9 @@ class ParallelIterator(Generic[T]):
             batch_time (int): Batches items for batch_time milliseconds
                 before retrieving it.
                 Increasing batch_time reduces latency but improves throughput.
-            pipeline_queue_depth (int): The max number of requests in flight. 
+            pipeline_queue_depth (int): The max number of requests in flight.
                 Increasing this improves the amount of pipeline
-                parallelism in the iterator. 
+                parallelism in the iterator.
         """
         a, t = None, None
         i = shard_index

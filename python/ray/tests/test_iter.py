@@ -295,6 +295,7 @@ def test_gather_async_optimized(ray_start_regular_shared):
     it = it.gather_async(batch_time=100, pipeline_queue_depth=4)
     assert sorted(it) == list(range(100))
 
+
 def test_get_shard_optimized(ray_start_regular_shared):
     it = from_range(6, num_shards=3)
     shard1 = it.get_shard(shard_index=0, batch_time=25, pipeline_queue_depth=2)
