@@ -4,7 +4,6 @@
 #include <boost/asio.hpp>
 #include <functional>
 #include <string>
-#include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
 #include "ray/protobuf/gcs.pb.h"
 #include "ray/util/io_service_pool.h"
