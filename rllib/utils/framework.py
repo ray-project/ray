@@ -162,12 +162,12 @@ def get_variable(value,
             python primitive).
     """
     if framework == "tf":
-        tf = try_import_tf()
+        import tensorflow as tf
         dtype = getattr(
             value, "dtype", tf.float32
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
-        return tf.get_variable(
+        return tf.compat.v1.get_variable(
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
