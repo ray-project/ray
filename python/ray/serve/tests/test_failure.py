@@ -1,27 +1,27 @@
 import time
-import pytest
 import requests
 
 from ray import serve
-from ray.serve import BackendConfig
 import ray
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+
 
 def _kill_http_proxy():
-    [http_proxy] = ray.get(serve.api._get_master_actor().get_http_proxy.remote())
+    [http_proxy] = ray.get(
+        serve.api._get_master_actor().get_http_proxy.remote())
     ray.kill(http_proxy)
+
 
 def request_with_retries(endpoint, verify_response, timeout=30):
     start = time.time()
     while True:
         try:
-            verify_response(requests.get("http://127.0.0.1:8000"+endpoint))
+            verify_response(requests.get("http://127.0.0.1:8000" + endpoint))
             break
-        except:
-            if time.time()-start > timeout:
+        except requests.RequestException:
+            if time.time() - start > timeout:
                 raise TimeoutError
             time.sleep(0.1)
+
 
 def test_http_proxy_failure(serve_instance):
     serve.init()
