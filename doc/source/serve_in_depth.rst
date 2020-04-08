@@ -2,11 +2,11 @@ Serve In Depth
 ==============
 
 This page dives into features and topics around Ray Serve. It is designed to
-help you understand how to work with Serve.
+help you understand how to work with Serve API and the internal.
 
 Architecture
 ------------
-Serve's architecture it horitizontally scalable. It has three independent tiers:
+Serve's architecture it horizontally scalable. It has three independent tiers:
 
 1. HTTP gateway servers that proxy the incoming requests to backend services.
 2. Programmable load balancers to route requests to different workers.
@@ -20,7 +20,8 @@ Serve's architecture it horitizontally scalable. It has three independent tiers:
 Let's consider the life of an *HTTP request*:
 
 1. When the ``API Client`` issues an HTTP request to ``HTTP Gateway``, the 
-   gateway receives the request and parses it. For example, the HTTP request is:
+   gateway receives the request and parses it. For example, the HTTP request 
+   can be:
 
 .. code-block:: http
     
@@ -76,19 +77,26 @@ automatically. For strings and bytes, serve will return ``text/plain`` type. For
 nested data structures, serve will try to encoded it with ``json`` and return 
 ``application/json`` responses. 
 
+.. note:: 
+    Returning custom status code is currently work in progress.
 
-SERVE TODO: status code
-SERVE TODO: variable routes
+    Adding variable path like ``@serve.route("/a/{name}/c")`` is currently 
+    work in progress.
 
 Composing models using RayServeHandle
 -------------------------------------
 pass
 
+
+Support for multiple methods
+----------------------------
+
+
 Endpoints and backends 
 ---------------------- 
 Serve has concepts of the "endpoint" and "backend". An "endpoint" is the name
 for service, like "image classifier". A "backend" is the name for the
-implementation, like "SVM:v1" or "ResNet50:v2". Endpoinds and backends can be
+implementation, like "SVM:v1" or "ResNet50:v2". Endpoints and backends can be
 connected and routed through the routers. For example, you can declare a
 "split" configuration to route 50% of the queries to one backend and the rest
 the other one. 
@@ -100,6 +108,14 @@ the other one.
 ..     "ResNet50:v2": 0.5
 .. })
 .. ```
+
+Traffic policies
+----------------
+pass
+
+Queuing policies
+----------------
+pass
 
 Batching
 --------
@@ -117,9 +133,9 @@ the max batch size.
 .. ```
 
 
-Latency reodering in depth
---------------------------
-Serve also support latency SLO deadline specificiation for both relative and
-aboslute SLO ordering.
+Latency reordering
+------------------
+Serve also support latency SLO deadline specification for both relative and
+absolute SLO ordering.
 
 
