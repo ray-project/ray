@@ -25,14 +25,14 @@ import org.ray.streaming.runtime.worker.JobWorker;
 public class ExecutionJobVertex {
 
   /**
-   * Unique id of operator(use {@link JobVertex}'s id).
+   * Unique id of operator(use {@link JobVertex}'s id). Used as jobVertex's id.
    */
-  private final int operatorId;
+  private final int jobVertexId;
 
   /**
-   * Unique name of operator(use {@link StreamOperator}'s name).
+   * Unique name of operator(use {@link StreamOperator}'s name). Used as jobVertex's name.
    */
-  private final String operatorName;
+  private final String jobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
@@ -56,8 +56,8 @@ public class ExecutionJobVertex {
 
   public ExecutionJobVertex(
       JobVertex jobVertex, Map<String, String> jobConfig, AtomicInteger idGenerator) {
-    this.operatorId = jobVertex.getVertexId();
-    this.operatorName = jobVertex.getStreamOperator().getName();
+    this.jobVertexId = jobVertex.getVertexId();
+    this.jobVertexName = jobVertex.getStreamOperator().getName();
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.language = jobVertex.getLanguage();
@@ -93,12 +93,12 @@ public class ExecutionJobVertex {
     return executionVertexWorkersMap;
   }
 
-  public int getOperatorId() {
-    return operatorId;
+  public int getJobVertexId() {
+    return jobVertexId;
   }
 
-  public String getOperatorName() {
-    return operatorName;
+  public String getJobVertexName() {
+    return jobVertexName;
   }
 
   /**
@@ -107,7 +107,7 @@ public class ExecutionJobVertex {
    * @return operator name with index
    */
   public String getVertexNameWithIndex() {
-    return operatorId + "-" + operatorName;
+    return jobVertexId + "-" + jobVertexName;
   }
 
   public int getParallelism() {
@@ -168,8 +168,8 @@ public class ExecutionJobVertex {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("jobVertexId", operatorId)
-        .add("jobVertexName", operatorName)
+        .add("jobVertexId", jobVertexId)
+        .add("jobVertexName", jobVertexName)
         .add("vertexType", vertexType)
         .add("parallelism", parallelism)
         .toString();

@@ -50,11 +50,11 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
         Assert.assertNotNull(vertex.getStreamOperator());
-        Assert.assertNotNull(vertex.getOperatorName());
+        Assert.assertNotNull(vertex.getJobVertexName());
         Assert.assertNotNull(vertex.getVertexType());
         Assert.assertNotNull(vertex.getLanguage());
         Assert.assertEquals(vertex.getVertexName(),
-          vertex.getOperatorId() + "-" + vertex.getOperatorName() + "-" + vertex.getVertexIndex());
+          vertex.getJobVertexId() + "-" + vertex.getJobVertexName() + "-" + vertex.getVertexIndex());
     });
 
     int startIndex = 0;
