@@ -107,16 +107,12 @@ cdef extern from "channel.h" namespace "ray::streaming" nogil:
 
 cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
     cdef cppclass CReaderClient "ray::streaming::ReaderClient":
-        CReaderClient(CCoreWorker *core_worker,
-                      CRayFunction &async_func,
-                      CRayFunction &sync_func)
+        CReaderClient(CCoreWorker *core_worker)
         void OnReaderMessage(shared_ptr[CLocalMemoryBuffer] buffer);
         shared_ptr[CLocalMemoryBuffer] OnReaderMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
 
     cdef cppclass CWriterClient "ray::streaming::WriterClient":
-        CWriterClient(CCoreWorker *core_worker,
-                      CRayFunction &async_func,
-                      CRayFunction &sync_func)
+        CWriterClient(CCoreWorker *core_worker)
         void OnWriterMessage(shared_ptr[CLocalMemoryBuffer] buffer);
         shared_ptr[CLocalMemoryBuffer] OnWriterMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
 

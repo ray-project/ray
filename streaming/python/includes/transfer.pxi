@@ -76,16 +76,10 @@ cdef class ReaderClient:
         CReaderClient *client
 
     def __cinit__(self,
-                  CoreWorker worker,
-                  FunctionDescriptor async_func,
-                  FunctionDescriptor sync_func):
+                  CoreWorker worker):
         cdef:
             CCoreWorker *core_worker = worker.core_worker.get()
-            CRayFunction async_native_func
-            CRayFunction sync_native_func
-        async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
-        sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CReaderClient(core_worker, async_native_func, sync_native_func)
+        self.client = new CReaderClient(core_worker)
 
     def __dealloc__(self):
         del self.client
@@ -115,16 +109,10 @@ cdef class WriterClient:
         CWriterClient * client
 
     def __cinit__(self,
-                  CoreWorker worker,
-                  FunctionDescriptor async_func,
-                  FunctionDescriptor sync_func):
+                  CoreWorker worker):
         cdef:
             CCoreWorker *core_worker = worker.core_worker.get()
-            CRayFunction async_native_func
-            CRayFunction sync_native_func
-        async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
-        sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CWriterClient(core_worker, async_native_func, sync_native_func)
+        self.client = new CWriterClient(core_worker)
 
     def __dealloc__(self):
         del self.client
@@ -168,8 +156,10 @@ cdef class DataWriter:
             c_vector[CChannelInitialParameter] initial_parameters
             c_vector[uint64_t] msg_ids
             CDataWriter *c_writer
+            ChannelInitialParameter parameter
             cdef const unsigned char[:] config_data
-        for parameter in output_initial_parameters:
+        for param in output_initial_parameters:
+            parameter = param
             initial_parameters.push_back(parameter.get_parameter())
         for py_msg_id in py_msg_ids:
             msg_ids.push_back(<uint64_t>py_msg_id)
@@ -249,8 +239,10 @@ cdef class DataReader:
             c_vector[uint64_t] seq_ids
             c_vector[uint64_t] msg_ids
             CDataReader *c_reader
+            ChannelInitialParameter parameter
             cdef const unsigned char[:] config_data
-        for parameter in output_initial_parameters:
+        for param in output_initial_parameters:
+            parameter = param
             initial_parameters.push_back(parameter.get_parameter())
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)

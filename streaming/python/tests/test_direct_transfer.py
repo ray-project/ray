@@ -18,15 +18,13 @@ class Worker:
         writer_sync_func = PythonFunctionDescriptor(
             __name__, self.on_writer_message_sync.__name__,
             self.__class__.__name__)
-        self.writer_client = _streaming.WriterClient(
-            core_worker, writer_async_func, writer_sync_func)
+        self.writer_client = _streaming.WriterClient(core_worker)
         reader_async_func = PythonFunctionDescriptor(
             __name__, self.on_reader_message.__name__, self.__class__.__name__)
         reader_sync_func = PythonFunctionDescriptor(
             __name__, self.on_reader_message_sync.__name__,
             self.__class__.__name__)
-        self.reader_client = _streaming.ReaderClient(
-            core_worker, reader_async_func, reader_sync_func)
+        self.reader_client = _streaming.ReaderClient(core_worker)
         self.writer = None
         self.output_channel_id = None
         self.reader = None
@@ -36,6 +34,7 @@ class Worker:
             Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
+        ChannelInitialParameters.set_python_reader_function_descriptor(reader_async_func, reader_sync_func);
         self.writer = transfer.DataWriter([output_channel],
                                           [pickle.loads(reader_actor)], conf)
         self.output_channel_id = transfer.ChannelID(output_channel)
@@ -45,6 +44,7 @@ class Worker:
             Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
+        ChannelInitialParameters.set_python_writer_function_descriptor(writer_async_func, writer_sync_func);
         self.reader = transfer.DataReader([input_channel],
                                           [pickle.loads(writer_actor)], conf)
 
