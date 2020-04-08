@@ -12,48 +12,58 @@ extern "C" {
  * Method:    createWriterClientNative
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative
-  (JNIEnv *, jobject, jlong, jobject, jobject);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(JNIEnv *,
+                                                                                jobject,
+                                                                                jobject,
+                                                                                jobject);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    createReaderClientNative
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative
-  (JNIEnv *, jobject, jlong, jobject, jobject);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(JNIEnv *,
+                                                                                jobject,
+                                                                                jobject,
+                                                                                jobject);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    handleWriterMessageNative
  * Signature: (J[B)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative
-  (JNIEnv *, jobject, jlong, jbyteArray);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
+    JNIEnv *, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    handleWriterMessageSyncNative
  * Signature: (J[B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative
-  (JNIEnv *, jobject, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+    Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
+    JNIEnv *, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    handleReaderMessageNative
  * Signature: (J[B)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative
-  (JNIEnv *, jobject, jlong, jbyteArray);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative(
+    JNIEnv *, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    handleReaderMessageSyncNative
  * Signature: (J[B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative
-  (JNIEnv *, jobject, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+    Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative(
+    JNIEnv *, jobject, jlong, jbyteArray);
 
 #ifdef __cplusplus
 }
