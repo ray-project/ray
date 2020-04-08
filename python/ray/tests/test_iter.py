@@ -290,10 +290,19 @@ def test_gather_async(ray_start_regular_shared):
     assert sorted(it) == [0, 1, 2, 3]
 
 
-def test_gather_async_queue(ray_start_regular_shared):
+def test_gather_async_optimized(ray_start_regular_shared):
     it = from_range(100)
-    it = it.gather_async(async_queue_depth=4)
+    it = it.gather_async(batch_time=100, pipeline_queue_depth=4)
     assert sorted(it) == list(range(100))
+
+def test_get_shard_optimized(ray_start_regular_shared):
+    it = from_range(6, num_shards=3)
+    shard1 = it.get_shard(shard_index=0, batch_time=25, pipeline_queue_depth=2)
+    shard2 = it.get_shard(shard_index=1, batch_time=15, pipeline_queue_depth=3)
+    shard3 = it.get_shard(shard_index=2, batch_time=5, pipeline_queue_depth=4)
+    assert list(shard1) == [0, 1]
+    assert list(shard2) == [2, 3]
+    assert list(shard3) == [4, 5]
 
 
 def test_batch_across_shards(ray_start_regular_shared):

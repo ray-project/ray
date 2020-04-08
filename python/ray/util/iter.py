@@ -291,6 +291,9 @@ class ParallelIterator(Generic[T]):
         Args:
             num_partitions (int): The number of shards to use for the new
                 ParallelIterator
+            batch_time (int): Batches items for batch_time milliseconds
+                on each shard before retrieving it.
+                Increasing batch_time reduces latency but improves throughput.
 
         Returns:
             A ParallelIterator with num_partitions number of shards and the
@@ -423,7 +426,7 @@ class ParallelIterator(Generic[T]):
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
     def gather_async(self, batch_time: int = 10,
-                     async_queue_depth: int = 1) -> "LocalIterator[T]":
+                     pipeline_queue_depth: int = 1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
@@ -433,7 +436,7 @@ class ParallelIterator(Generic[T]):
             batch_time (int): Batches items for batch_time milliseconds
                 on each shard before retrieving it.
                 Increasing batch_time reduces latency but improves throughput.
-            async_queue_depth (int): The max number of async requests in flight
+            pipeline_queue_depth (int): The max number of async requests in flight
                 per actor. Increasing this improves the amount of pipeline
                 parallelism in the iterator.
 
@@ -447,7 +450,7 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        if async_queue_depth < 1:
+        if pipeline_queue_depth < 1:
             raise ValueError("queue depth must be positive")
         if batch_time <= 0:
             raise ValueError("batch time must be positive")
@@ -461,7 +464,7 @@ class ParallelIterator(Generic[T]):
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for _ in range(async_queue_depth):
+            for _ in range(pipeline_queue_depth):
                 for a in all_actors:
                     futures[a.par_iter_next_batch.remote(batch_time)] = a
             while futures:
@@ -535,6 +538,15 @@ class ParallelIterator(Generic[T]):
 
         The iterator is guaranteed to be serializable and can be passed to
         remote tasks or actors.
+
+        Arguments:
+            shard_index (int): Index of the shard to gather.
+            batch_time (int): Batches items for batch_time milliseconds
+                before retrieving it.
+                Increasing batch_time reduces latency but improves throughput.
+            pipeline_queue_depth (int): The max number of requests in flight. 
+                Increasing this improves the amount of pipeline
+                parallelism in the iterator. 
         """
         a, t = None, None
         i = shard_index
@@ -556,7 +568,7 @@ class ParallelIterator(Generic[T]):
                 queue.append(a.par_iter_next_batch.remote(batch_time))
             while True:
                 try:
-                    batch = ray.get(queue.popLeft(), timeout=timeout)
+                    batch = ray.get(queue.popleft(), timeout=timeout)
                     queue.append(a.par_iter_next_batch.remote(batch_time))
                     for item in batch:
                         yield item
@@ -852,9 +864,12 @@ class LocalIterator(Generic[T]):
         def make_next(i):
             def gen(timeout):
                 while True:
-                    if len(queues[i]) == 0:
-                        fill_next(timeout)
-                    yield queues[i].popleft()
+                    try:
+                        if len(queues[i]) == 0:
+                            fill_next(timeout)
+                        yield queues[i].popleft()
+                    except StopIteration:
+                        break
 
             return gen
 
