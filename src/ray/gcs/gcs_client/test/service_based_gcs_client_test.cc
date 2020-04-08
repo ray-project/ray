@@ -873,7 +873,7 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(add_job_id);
 
-  RAY_LOG(INFO) << "GCS service init port = " << gcs_server_->GetPort();
+  RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
   gcs_server_->Stop();
   thread_gcs_server_->join();
 
@@ -884,7 +884,7 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   while (gcs_server_->GetPort() == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  RAY_LOG(INFO) << "GCS service restart success, port = " << gcs_server_->GetPort();
+  RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
 
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
