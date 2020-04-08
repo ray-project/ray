@@ -188,5 +188,5 @@ async def test_queue_remove_replicas(serve_instance):
     temp_actor = make_task_runner_mock()
     q = RandomPolicyQueue()
     await q.dequeue_request("backend", temp_actor)
-    await q.remove_and_destory_replica("backend", temp_actor)
+    await q.remove_and_destroy_replica("backend", temp_actor)
     assert q.worker_queues["backend"].qsize() == 0

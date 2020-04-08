@@ -1173,27 +1173,14 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
-    # Register the worker with Redis.
+    driver_name = ""
+    log_stdout_file_name = ""
+    log_stderr_file_name = ""
     if mode == SCRIPT_MODE:
-        # The concept of a driver is the same as the concept of a "job".
-        # Register the driver/job with Redis here.
         import __main__ as main
-        driver_info = {
-            "node_ip_address": node.node_ip_address,
-            "driver_id": worker.worker_id,
-            "start_time": time.time(),
-            "plasma_store_socket": node.plasma_store_socket_name,
-            "raylet_socket": node.raylet_socket_name,
-            "name": (main.__file__
-                     if hasattr(main, "__file__") else "INTERACTIVE MODE")
-        }
-        worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
+        driver_name = (main.__file__
+                       if hasattr(main, "__file__") else "INTERACTIVE MODE")
     elif mode == WORKER_MODE:
-        # Register the worker with Redis.
-        worker_dict = {
-            "node_ip_address": node.node_ip_address,
-            "plasma_store_socket": node.plasma_store_socket_name,
-        }
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
@@ -1224,14 +1211,12 @@ def connect(node,
             print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
             sys.stdout.flush()
             sys.stderr.flush()
-
-            worker_dict["stdout_file"] = os.path.abspath(
+            log_stdout_file_name = os.path.abspath(
                 (log_stdout_file
                  if log_stdout_file is not None else sys.stdout).name)
-            worker_dict["stderr_file"] = os.path.abspath(
+            log_stderr_file_name = os.path.abspath(
                 (log_stderr_file
                  if log_stderr_file is not None else sys.stderr).name)
-        worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
@@ -1242,9 +1227,19 @@ def connect(node,
         node.redis_password,
     )
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE), node.plasma_store_socket_name,
-        node.raylet_socket_name, job_id, gcs_options, node.get_logs_dir_path(),
-        node.node_ip_address, node.node_manager_port, mode == LOCAL_MODE)
+        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
+        node.plasma_store_socket_name,
+        node.raylet_socket_name,
+        job_id,
+        gcs_options,
+        node.get_logs_dir_path(),
+        node.node_ip_address,
+        node.node_manager_port,
+        (mode == LOCAL_MODE),
+        driver_name,
+        log_stdout_file_name,
+        log_stderr_file_name,
+    )
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

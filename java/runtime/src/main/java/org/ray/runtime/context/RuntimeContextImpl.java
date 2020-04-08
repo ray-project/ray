@@ -6,15 +6,15 @@ import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.api.runtimecontext.RuntimeContext;
-import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayRuntimeInternal;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.Common.TaskType;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
-  private AbstractRayRuntime runtime;
+  private RayRuntimeInternal runtime;
 
-  public RuntimeContextImpl(AbstractRayRuntime runtime) {
+  public RuntimeContextImpl(RayRuntimeInternal runtime) {
     this.runtime = runtime;
   }
 
