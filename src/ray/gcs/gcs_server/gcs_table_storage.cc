@@ -26,66 +26,43 @@ namespace ray {
 namespace gcs {
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Put(const JobID &job_id, const Key &key,
-                                 const Data &value,
-                                 const StatusCallback &callback) {
-  RAY_LOG(INFO) << "Putting " << key << " into " << table_name_;
-  auto status = store_client_->AsyncPutWithIndex(table_name_, key, job_id, value, callback);
-  RAY_LOG(INFO) << "Finished putting " << key << " into " << table_name_;
-  return status;
+Status GcsTable<Key, Data>::Put(const JobID &job_id, const Key &key, const Data &value,
+                                const StatusCallback &callback) {
+  return store_client_->AsyncPutWithIndex(table_name_, key, job_id, value, callback);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const JobID &job_id, const Key &key,
-                                 const OptionalItemCallback<Data> &callback) {
-  RAY_LOG(INFO) << "Getting " << key << " from " << table_name_;
-  auto status = store_client_->AsyncGet(table_name_, key, callback);
-  RAY_LOG(INFO) << "Finished getting " << key << " from " << table_name_;
-  return status;
+                                const OptionalItemCallback<Data> &callback) {
+  return store_client_->AsyncGet(table_name_, key, callback);
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::GetAll(const JobID &job_id,
-                                    const SegmentedCallback<std::pair<Key, Data>> &callback) {
-  RAY_LOG(INFO) << "Getting all " << job_id << " from " << table_name_;
-  auto status = store_client_->AsyncGetAll(table_name_, callback);
-  RAY_LOG(INFO) << "Finished getting all " << job_id << " from " << table_name_;
-  return status;
+Status GcsTable<Key, Data>::GetAll(
+    const JobID &job_id, const SegmentedCallback<std::pair<Key, Data>> &callback) {
+  return store_client_->AsyncGetAll(table_name_, callback);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const JobID &job_id, const Key &key,
-                                    const StatusCallback &callback) {
-  RAY_LOG(INFO) << "Deleting table " << table_name_ << " item, key = " << key
-                << ", job id = " << job_id;
-  auto status = store_client_->AsyncDelete(table_name_, key, callback);
-  RAY_LOG(INFO) << "Finished deleting table " << table_name_ << " item, key = " << key
-                << ", job id = " << job_id;
-  return status;
+                                   const StatusCallback &callback) {
+  return store_client_->AsyncDelete(table_name_, key, callback);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const JobID &job_id, const std::vector<Key> &keys,
-                                    const StatusCallback &callback) {
-//  RAY_LOG(INFO) << "Deleting table " << table_name_ << " items, job id = " << job_id
-//                << ", key size = " << keys.size();
-//  int finished_count = 0;
-//  int size = keys.size();
-//  for (Key key : keys) {
-//    std::string str_key = key.Binary();
-//    // TODO(ffbin)
-//    auto done = [&finished_count, size, callback](Status status) {
-//      ++finished_count;
-//      if (finished_count == size) {
-//        RAY_LOG(INFO) << "9999999999999 666666666666666";
-//        //        callback(Status::OK());
-//      }
-//    };
-//    RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, str_key, done));
-//  }
-//  callback(Status::OK());
-//  RAY_LOG(INFO) << "Finished deleting table " << table_name_
-//                << " items, job id = " << job_id << ", key size = " << keys.size();
+                                   const StatusCallback &callback) {
+  auto finished_count = std::make_shared<int>(0);
+  int size = keys.size();
+  for (Key key : keys) {
+    auto done = [finished_count, size, callback](Status status) {
+      ++(*finished_count);
+      if (*finished_count == size) {
+        callback(Status::OK());
+      }
+    };
+    RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key, done));
+  }
   return Status::OK();
 }
 

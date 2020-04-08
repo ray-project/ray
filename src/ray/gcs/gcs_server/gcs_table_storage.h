@@ -65,12 +65,10 @@ static const std::string kWorkerFailureTable = "WORKER_FAILURE";
 template <typename Key, typename Data>
 class GcsTable {
  public:
-  GcsTable(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
+  explicit GcsTable(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
       : store_client_(store_client) {}
 
-  virtual ~GcsTable() {
-    store_client_.reset();
-  }
+  virtual ~GcsTable() { store_client_.reset(); }
 
   Status Put(const JobID &job_id, const Key &key, const Data &value,
              const StatusCallback &callback);
@@ -78,7 +76,8 @@ class GcsTable {
   Status Get(const JobID &job_id, const Key &key,
              const OptionalItemCallback<Data> &callback);
 
-  Status GetAll(const JobID &job_id, const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status GetAll(const JobID &job_id,
+                const SegmentedCallback<std::pair<Key, Data>> &callback);
 
   Status Delete(const JobID &job_id, const Key &key, const StatusCallback &callback);
 
@@ -96,7 +95,8 @@ class GcsTable {
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
-  explicit GcsJobTable(std::shared_ptr<StoreClient<JobID, JobTableData, JobID>> store_client)
+  explicit GcsJobTable(
+      std::shared_ptr<StoreClient<JobID, JobTableData, JobID>> store_client)
       : GcsTable(store_client) {
     table_name_ = kJobTable;
   }
@@ -104,7 +104,8 @@ class GcsJobTable : public GcsTable<JobID, JobTableData> {
 
 class GcsActorTable : public GcsTable<ActorID, ActorTableData> {
  public:
-  explicit GcsActorTable(std::shared_ptr<StoreClient<ActorID, ActorTableData, JobID>> store_client)
+  explicit GcsActorTable(
+      std::shared_ptr<StoreClient<ActorID, ActorTableData, JobID>> store_client)
       : GcsTable(store_client) {
     table_name_ = kActorTable;
   }
@@ -112,7 +113,9 @@ class GcsActorTable : public GcsTable<ActorID, ActorTableData> {
 
 class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
  public:
-  explicit GcsActorCheckpointTable(std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>> store_client)
+  explicit GcsActorCheckpointTable(
+      std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>
+          store_client)
       : GcsTable(store_client) {
     table_name_ = kActorCheckpointTable;
   }
@@ -120,7 +123,8 @@ class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpoi
 
 class GcsActorCheckpointIdTable : public GcsTable<ActorID, ActorCheckpointIdData> {
  public:
-  explicit GcsActorCheckpointIdTable(std::shared_ptr<StoreClient<ActorID, ActorCheckpointIdData, JobID>> store_client)
+  explicit GcsActorCheckpointIdTable(
+      std::shared_ptr<StoreClient<ActorID, ActorCheckpointIdData, JobID>> store_client)
       : GcsTable(store_client) {
     table_name_ = kActorCheckpointIdTable;
   }
@@ -128,14 +132,17 @@ class GcsActorCheckpointIdTable : public GcsTable<ActorID, ActorCheckpointIdData
 
 class GcsTaskTable : public GcsTable<TaskID, TaskTableData> {
  public:
-  explicit GcsTaskTable(std::shared_ptr<StoreClient<TaskID, TaskTableData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsTaskTable(
+      std::shared_ptr<StoreClient<TaskID, TaskTableData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kTaskTable;
   }
 };
 
 class GcsTaskLeaseTable : public GcsTable<TaskID, TaskLeaseData> {
  public:
-  explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient<TaskID, TaskLeaseData, JobID>> store_client)
+  explicit GcsTaskLeaseTable(
+      std::shared_ptr<StoreClient<TaskID, TaskLeaseData, JobID>> store_client)
       : GcsTable(store_client) {
     table_name_ = kTaskLeaseTable;
   }
@@ -143,7 +150,8 @@ class GcsTaskLeaseTable : public GcsTable<TaskID, TaskLeaseData> {
 
 class GcsTaskReconstructionTable : public GcsTable<TaskID, TaskReconstructionData> {
  public:
-  explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient<TaskID, TaskReconstructionData, JobID>> store_client)
+  explicit GcsTaskReconstructionTable(
+      std::shared_ptr<StoreClient<TaskID, TaskReconstructionData, JobID>> store_client)
       : GcsTable(store_client) {
     table_name_ = kTaskReconstructionTable;
   }
@@ -151,56 +159,72 @@ class GcsTaskReconstructionTable : public GcsTable<TaskID, TaskReconstructionDat
 
 class GcsObjectTable : public GcsTable<ObjectID, ObjectTableDataList> {
  public:
-  explicit GcsObjectTable(std::shared_ptr<StoreClient<ObjectID, ObjectTableDataList, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsObjectTable(
+      std::shared_ptr<StoreClient<ObjectID, ObjectTableDataList, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kObjectTable;
   }
 };
 
 class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
  public:
-  explicit GcsNodeTable(std::shared_ptr<StoreClient<ClientID, GcsNodeInfo, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsNodeTable(
+      std::shared_ptr<StoreClient<ClientID, GcsNodeInfo, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kNodeTable;
   }
 };
 
 class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
  public:
-  explicit GcsNodeResourceTable(std::shared_ptr<StoreClient<ClientID, ResourceMap, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsNodeResourceTable(
+      std::shared_ptr<StoreClient<ClientID, ResourceMap, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kNodeResourceTable;
   }
 };
 
 class GcsHeartbeatTable : public GcsTable<ClientID, HeartbeatTableData> {
  public:
-  explicit GcsHeartbeatTable(std::shared_ptr<StoreClient<ClientID, HeartbeatTableData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsHeartbeatTable(
+      std::shared_ptr<StoreClient<ClientID, HeartbeatTableData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kHeartbeatTable;
   }
 };
 
 class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData> {
  public:
-  explicit GcsHeartbeatBatchTable(std::shared_ptr<StoreClient<ClientID, HeartbeatBatchTableData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsHeartbeatBatchTable(
+      std::shared_ptr<StoreClient<ClientID, HeartbeatBatchTableData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kHeartbeatBatchTable;
   }
 };
 
 class GcsErrorInfoTable : public GcsTable<JobID, ErrorTableData> {
  public:
-  explicit GcsErrorInfoTable(std::shared_ptr<StoreClient<JobID, ErrorTableData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsErrorInfoTable(
+      std::shared_ptr<StoreClient<JobID, ErrorTableData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kErrorInfoTable;
   }
 };
 
 class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
-  explicit GcsProfileTable(std::shared_ptr<StoreClient<UniqueID, ProfileTableData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsProfileTable(
+      std::shared_ptr<StoreClient<UniqueID, ProfileTableData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kProfileTable;
   }
 };
 
 class GcsWorkerFailureTable : public GcsTable<WorkerID, WorkerFailureData> {
  public:
-  explicit GcsWorkerFailureTable(std::shared_ptr<StoreClient<WorkerID, WorkerFailureData, JobID>> store_client) : GcsTable(store_client) {
+  explicit GcsWorkerFailureTable(
+      std::shared_ptr<StoreClient<WorkerID, WorkerFailureData, JobID>> store_client)
+      : GcsTable(store_client) {
     table_name_ = kWorkerFailureTable;
   }
 };
@@ -208,24 +232,45 @@ class GcsWorkerFailureTable : public GcsTable<WorkerID, WorkerFailureData> {
 class GcsTableStorage {
  public:
   explicit GcsTableStorage(std::shared_ptr<RedisClient> redis_client) {
-    std::shared_ptr<StoreClient<JobID, JobTableData, JobID>> job_table_store_client;
-//        std::make_shared<StoreClient<JobID, JobTableData, JobID>>(redis_client);
-    job_table_.reset(new GcsJobTable(job_table_store_client));
-
-//    actor_table_.reset(new GcsActorTable(store_client));
-//    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client));
-//    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client));
-//    task_table_.reset(new GcsTaskTable(store_client));
-//    task_lease_table_.reset(new GcsTaskLeaseTable(store_client));
-//    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client));
-//    object_table_.reset(new GcsObjectTable(store_client));
-//    node_table_.reset(new GcsNodeTable(store_client));
-//    node_resource_table_.reset(new GcsNodeResourceTable(store_client));
-//    heartbeat_table_.reset(new GcsHeartbeatTable(store_client));
-//    heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client));
-//    error_info_table_.reset(new GcsErrorInfoTable(store_client));
-//    profile_table_.reset(new GcsProfileTable(store_client));
-//    worker_failure_table_.reset(new GcsWorkerFailureTable(store_client));
+    job_table_.reset(new GcsJobTable(
+        std::make_shared<RedisStoreClient<JobID, JobTableData, JobID>>(redis_client)));
+    actor_table_.reset(new GcsActorTable(
+        std::make_shared<RedisStoreClient<ActorID, ActorTableData, JobID>>(
+            redis_client)));
+    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(
+        std::make_shared<RedisStoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>(
+            redis_client)));
+    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(
+        std::make_shared<RedisStoreClient<ActorID, ActorCheckpointIdData, JobID>>(
+            redis_client)));
+    task_table_.reset(new GcsTaskTable(
+        std::make_shared<RedisStoreClient<TaskID, TaskTableData, JobID>>(redis_client)));
+    task_lease_table_.reset(new GcsTaskLeaseTable(
+        std::make_shared<RedisStoreClient<TaskID, TaskLeaseData, JobID>>(redis_client)));
+    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(
+        std::make_shared<RedisStoreClient<TaskID, TaskReconstructionData, JobID>>(
+            redis_client)));
+    object_table_.reset(new GcsObjectTable(
+        std::make_shared<RedisStoreClient<ObjectID, ObjectTableDataList, JobID>>(
+            redis_client)));
+    node_table_.reset(new GcsNodeTable(
+        std::make_shared<RedisStoreClient<ClientID, GcsNodeInfo, JobID>>(redis_client)));
+    node_resource_table_.reset(new GcsNodeResourceTable(
+        std::make_shared<RedisStoreClient<ClientID, ResourceMap, JobID>>(redis_client)));
+    heartbeat_table_.reset(new GcsHeartbeatTable(
+        std::make_shared<RedisStoreClient<ClientID, HeartbeatTableData, JobID>>(
+            redis_client)));
+    heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(
+        std::make_shared<RedisStoreClient<ClientID, HeartbeatBatchTableData, JobID>>(
+            redis_client)));
+    error_info_table_.reset(new GcsErrorInfoTable(
+        std::make_shared<RedisStoreClient<JobID, ErrorTableData, JobID>>(redis_client)));
+    profile_table_.reset(new GcsProfileTable(
+        std::make_shared<RedisStoreClient<UniqueID, ProfileTableData, JobID>>(
+            redis_client)));
+    worker_failure_table_.reset(new GcsWorkerFailureTable(
+        std::make_shared<RedisStoreClient<WorkerID, WorkerFailureData, JobID>>(
+            redis_client)));
   }
 
   GcsJobTable &JobTable() {
