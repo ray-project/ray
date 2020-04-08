@@ -13,14 +13,14 @@ RedisMessagePublisher::RedisMessagePublisher(
 Status RedisMessagePublisher::Init() {
   auto io_services = io_service_pool_->GetAll();
   Status status = redis_client_->Connect(io_services);
-  RAY_LOG(INFO) << "RedisMessagePublisher::Connect finished with status "
+  RAY_LOG(INFO) << "RedisMessagePublisher::Init finished with status "
                 << status.ToString();
   return status;
 }
 
 void RedisMessagePublisher::Shutdown() {
   redis_client_->Disconnect();
-  RAY_LOG(INFO) << "RedisMessagePublisher disconnected.";
+  RAY_LOG(INFO) << "RedisMessagePublisher::Shutdown.";
 }
 
 Status RedisMessagePublisher::PublishMessage(const std::string &channel,
