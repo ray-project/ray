@@ -10,8 +10,6 @@ import java.util.Random;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
-import io.ray.runtime.RayMultiWorkerNativeRuntime;
-import io.ray.runtime.actor.NativeRayActor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.DataMessage;
