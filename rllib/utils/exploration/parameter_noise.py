@@ -272,7 +272,7 @@ class ParameterNoise(Exploration):
             if tf_sess is not None:
                 current_scale = tf_sess.run(current_scale)
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
-                    current_scale
+                current_scale
 
         # Adjust stddev according to the calculated action-distance.
         if distance <= delta:

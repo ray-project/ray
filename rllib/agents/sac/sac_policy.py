@@ -13,12 +13,10 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf, try_import_tfp
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_ops import minimize_and_clip, make_tf_callable
+from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -398,35 +396,6 @@ class ActorCriticOptimizerMixin:
                     "critic_learning_rate"]))
         self._alpha_optimizer = tf.train.AdamOptimizer(
             learning_rate=config["optimization"]["entropy_learning_rate"])
-
-
-#class TargetNetworkMixin:
-#    def __init__(self, config):
-#        @make_tf_callable(self.get_session())
-#        def update_target_fn(tau):
-#            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-#            update_target_expr = []
-#            model_vars = self.model.trainable_variables()
-#            target_model_vars = self.target_model.trainable_variables()
-#            assert len(model_vars) == len(target_model_vars), \
-#                (model_vars, target_model_vars)
-#            for var, var_target in zip(model_vars, target_model_vars):
-#                update_target_expr.append(
-#                    var_target.assign(tau * var + (1.0 - tau) * var_target))
-#                logger.debug("Update target op {}".format(var_target))
-#            return tf.group(*update_target_expr)
-
-#        # Hard initial update
-#        self._do_update = update_target_fn
-#        self.update_target(tau=1.0)
-
-#    # support both hard and soft sync
-#    def update_target(self, tau=None):
-#        self._do_update(np.float32(tau or self.config.get("tau")))
-
-#    @override(TFPolicy)
-#    def variables(self):
-#        return self.model.variables() + self.target_model.variables()
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):

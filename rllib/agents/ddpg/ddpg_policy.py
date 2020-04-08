@@ -133,11 +133,11 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    with tf.variable_scope(POLICY_SCOPE, reuse=True) as scope:
-        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    with tf.variable_scope(POLICY_SCOPE, reuse=True):
+        # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
         policy_t = model.get_policy_output(model_out_t)
-        policy_batchnorm_update_ops = list(
-            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+        # policy_batchnorm_update_ops = list(
+        #    set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     with tf.variable_scope(POLICY_TARGET_SCOPE):
         policy_tp1 = \
@@ -161,8 +161,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             policy_tp1_smoothed = policy_tp1
 
     # Q-net(s) evaluation.
-    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-    with tf.variable_scope(Q_SCOPE) as scope:
+    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    with tf.variable_scope(Q_SCOPE):
         # Q-values for given actions & observations in given current
         q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
 
@@ -171,19 +171,19 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     if twin_q:
-        with tf.variable_scope(TWIN_Q_SCOPE) as scope:
+        with tf.variable_scope(TWIN_Q_SCOPE):
             twin_q_t = model.get_twin_q_values(
                 model_out_t, train_batch[SampleBatch.ACTIONS])
-    q_batchnorm_update_ops = list(
-        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    # q_batchnorm_update_ops = list(
+    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
-    with tf.variable_scope(Q_TARGET_SCOPE) as scope:
+    with tf.variable_scope(Q_TARGET_SCOPE):
         q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
                                                  policy_tp1_smoothed)
 
     if twin_q:
-        with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
+        with tf.variable_scope(TWIN_Q_TARGET_SCOPE):
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1_smoothed)
 
@@ -261,10 +261,7 @@ def make_ddpg_optimizers(policy, config):
         learning_rate=config["critic_lr"])
     return None
 
-    # Create global step for counting the number of update operations.
-    #self.global_step = tf.train.get_or_create_global_step()
-
-    #TFPolicy.__init__(
+    # TFPolicy.__init__(
     #    self,
     #    observation_space,
     #    action_space,
