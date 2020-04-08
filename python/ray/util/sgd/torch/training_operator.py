@@ -230,7 +230,7 @@ class TrainingOperator:
         """
         features, target = batch
         # Create non_blocking tensors for distributed training
-        if torch.cuda.is_available():
+        if self._use_gpu:
             features = features.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
@@ -309,7 +309,7 @@ class TrainingOperator:
                 calculate averages.
         """
         features, target = batch
-        if torch.cuda.is_available():
+        if self._use_gpu:
             features = features.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
