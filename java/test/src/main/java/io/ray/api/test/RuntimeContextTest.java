@@ -1,12 +1,11 @@
 package io.ray.api.test;
 
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;

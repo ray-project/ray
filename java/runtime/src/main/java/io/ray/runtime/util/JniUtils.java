@@ -3,10 +3,10 @@ package io.ray.runtime.util;
 import com.google.common.base.Strings;
 import com.google.common.collect.Sets;
 import com.sun.jna.NativeLibrary;
+import io.ray.runtime.config.RayConfig;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.Set;
-import io.ray.runtime.config.RayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,22 +1,21 @@
 package io.ray.api.test;
 
+import io.ray.api.BaseActor;
+import io.ray.api.Ray;
+import io.ray.api.RayActor;
+import io.ray.api.RayObject;
+import io.ray.api.TestUtils;
+import io.ray.api.options.ActorCreationOptions;
+import io.ray.runtime.AbstractRayRuntime;
+import io.ray.runtime.functionmanager.FunctionDescriptor;
+import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-
-import io.ray.api.options.ActorCreationOptions;
 import org.apache.commons.io.FileUtils;
-import io.ray.api.BaseActor;
-import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.TestUtils;
-import io.ray.runtime.AbstractRayRuntime;
-import io.ray.runtime.functionmanager.FunctionDescriptor;
-import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;

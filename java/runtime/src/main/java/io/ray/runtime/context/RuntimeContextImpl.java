@@ -1,7 +1,6 @@
 package io.ray.runtime.context;
 
 import com.google.common.base.Preconditions;
-import java.util.List;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.runtimecontext.NodeInfo;
@@ -9,6 +8,7 @@ import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.generated.Common.TaskType;
+import java.util.List;
 
 public class RuntimeContextImpl implements RuntimeContext {
 

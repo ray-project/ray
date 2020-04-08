@@ -1,8 +1,8 @@
 package io.ray.exercise;
 
-import java.io.Serializable;
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
+import java.io.Serializable;
 
 /**
  * Define a remote function, and execute multiple remote functions in parallel.

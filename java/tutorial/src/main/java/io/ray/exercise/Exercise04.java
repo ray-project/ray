@@ -1,10 +1,10 @@
 package io.ray.exercise;
 
 import com.google.common.collect.ImmutableList;
-import java.util.List;
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
+import java.util.List;
 
 /**
  * Use Ray.wait to ignore stragglers

@@ -1,16 +1,16 @@
 package io.ray.api.benchmark;
 
 import com.google.common.util.concurrent.RateLimiter;
-import java.io.Serializable;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.test.BaseTest;
+import java.io.Serializable;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

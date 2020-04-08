@@ -1,8 +1,6 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.concurrent.TimeUnit;
-
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
@@ -11,6 +9,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.object.RayObjectImpl;
 import io.ray.runtime.runner.RunManager;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

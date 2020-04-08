@@ -1,8 +1,8 @@
 package io.ray.runtime.functionmanager;
 
+import io.ray.runtime.generated.Common.Language;
 import java.util.Arrays;
 import java.util.List;
-import io.ray.runtime.generated.Common.Language;
 
 /**
  * Represents metadata of a Python function.

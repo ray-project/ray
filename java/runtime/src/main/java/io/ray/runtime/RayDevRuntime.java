@@ -1,16 +1,15 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.util.concurrent.atomic.AtomicInteger;
 import io.ray.api.BaseActor;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
-import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

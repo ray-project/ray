@@ -1,10 +1,6 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
@@ -16,6 +12,10 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

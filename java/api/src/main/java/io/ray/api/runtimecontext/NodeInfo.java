@@ -1,8 +1,7 @@
 package io.ray.api.runtimecontext;
 
-import java.util.Map;
-
 import io.ray.api.id.UniqueId;
+import java.util.Map;
 
 /**
  * A class that represents the information of a node.

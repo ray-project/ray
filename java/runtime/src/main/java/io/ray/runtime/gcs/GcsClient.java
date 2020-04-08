@@ -2,12 +2,6 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import org.apache.commons.lang3.ArrayUtils;
 import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
@@ -20,6 +14,12 @@ import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.TablePrefix;
 import io.ray.runtime.util.IdUtil;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

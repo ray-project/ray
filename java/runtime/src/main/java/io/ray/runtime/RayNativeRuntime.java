@@ -1,16 +1,11 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.io.File;
-import java.io.IOException;
-import java.util.Map;
-import org.apache.commons.io.FileUtils;
 import io.ray.api.BaseActor;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
-import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.gcs.RedisClient;
@@ -21,6 +16,10 @@ import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.JniUtils;
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,11 +1,10 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.Ray;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.List;
-
-import io.ray.api.Ray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

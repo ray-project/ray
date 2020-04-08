@@ -4,8 +4,6 @@ import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
-import io.ray.runtime.functionmanager.FunctionManager;
-import io.ray.runtime.generated.Common.WorkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

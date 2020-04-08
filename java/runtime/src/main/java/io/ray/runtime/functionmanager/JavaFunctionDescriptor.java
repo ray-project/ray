@@ -2,8 +2,8 @@ package io.ray.runtime.functionmanager;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
-import java.util.List;
 import io.ray.runtime.generated.Common.Language;
+import java.util.List;
 
 /**
  * Represents metadata of Java function.

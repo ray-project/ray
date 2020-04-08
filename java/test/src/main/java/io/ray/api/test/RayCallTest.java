@@ -2,12 +2,11 @@ package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.util.List;
-import java.util.Map;
-
 import io.ray.api.Ray;
 import io.ray.api.TestUtils;
 import io.ray.api.id.ObjectId;
+import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

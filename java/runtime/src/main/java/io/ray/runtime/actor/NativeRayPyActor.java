@@ -1,10 +1,10 @@
 package io.ray.runtime.actor;
 
 import com.google.common.base.Preconditions;
-import java.io.IOException;
-import java.io.ObjectInput;
 import io.ray.api.RayPyActor;
 import io.ray.runtime.generated.Common.Language;
+import java.io.IOException;
+import java.io.ObjectInput;
 
 /**
  * Python actor handle implementation for cluster mode.

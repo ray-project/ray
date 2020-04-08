@@ -1,14 +1,13 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.function.BiConsumer;
-
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.options.ActorCreationOptions;
+import java.util.function.BiConsumer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;

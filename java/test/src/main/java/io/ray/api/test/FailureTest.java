@@ -1,10 +1,5 @@
 package io.ray.api.test;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.List;
-
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
@@ -14,6 +9,10 @@ import io.ray.api.exception.RayException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.function.RayFunc0;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;

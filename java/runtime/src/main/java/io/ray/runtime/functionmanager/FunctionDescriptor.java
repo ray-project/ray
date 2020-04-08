@@ -1,7 +1,7 @@
 package io.ray.runtime.functionmanager;
 
-import java.util.List;
 import io.ray.runtime.generated.Common.Language;
+import java.util.List;
 
 /**
  * Base interface of a Ray task's function descriptor.

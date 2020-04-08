@@ -1,6 +1,13 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import io.ray.api.Ray;
+import io.ray.api.RayActor;
+import io.ray.api.RayObject;
+import io.ray.api.TestUtils;
+import io.ray.api.WaitResult;
+import io.ray.api.exception.RayException;
+import io.ray.api.id.ActorId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -9,13 +16,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import io.ray.api.exception.RayException;
-import io.ray.api.id.ActorId;
-import io.ray.api.Ray;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.TestUtils;
-import io.ray.api.WaitResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

@@ -1,16 +1,16 @@
 package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * A class that is used to put/get objects to/from the object store.

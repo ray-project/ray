@@ -1,13 +1,13 @@
 package io.ray.runtime.actor;
 
+import io.ray.api.RayActor;
+import io.ray.api.id.ActorId;
+import io.ray.api.id.ObjectId;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.concurrent.atomic.AtomicReference;
-import io.ray.api.RayActor;
-import io.ray.api.id.ActorId;
-import io.ray.api.id.ObjectId;
 
 /**
  * Implementation of actor handle for local mode.

@@ -1,9 +1,9 @@
 package io.ray.runtime.object;
 
-import java.io.Serializable;
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
+import java.io.Serializable;
 
 /**
  * Implementation of {@link RayObject}.

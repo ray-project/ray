@@ -1,7 +1,7 @@
 package io.ray.api.benchmark;
 
-import java.io.Serializable;
 import io.ray.api.RayActor;
+import java.io.Serializable;
 
 public class PressureTestParameter implements Serializable {
 

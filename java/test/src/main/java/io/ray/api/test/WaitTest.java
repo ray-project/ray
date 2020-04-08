@@ -1,13 +1,12 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
-import java.util.List;
-
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.WaitResult;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

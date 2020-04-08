@@ -1,7 +1,5 @@
 package io.ray.runtime.task;
 
-import java.util.ArrayList;
-import java.util.List;
 import io.ray.api.Ray;
 import io.ray.api.RayObject;
 import io.ray.api.id.ObjectId;
@@ -9,6 +7,8 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Helper methods to convert arguments from/to objects.

@@ -1,14 +1,13 @@
 package io.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.TestUtils;
 import io.ray.api.options.ActorCreationOptions;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

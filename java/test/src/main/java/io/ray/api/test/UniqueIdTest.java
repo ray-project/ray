@@ -1,11 +1,10 @@
 package io.ray.api.test;
 
+import io.ray.api.id.UniqueId;
+import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
-
-import io.ray.api.id.UniqueId;
-import io.ray.runtime.util.IdUtil;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

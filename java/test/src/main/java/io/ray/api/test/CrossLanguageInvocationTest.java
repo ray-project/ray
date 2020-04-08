@@ -2,11 +2,6 @@ package io.ray.api.test;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Map;
-
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
@@ -14,9 +9,13 @@ import io.ray.api.RayPyActor;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyRemoteFunction;
-import org.apache.commons.io.FileUtils;
 import io.ray.runtime.actor.NativeRayActor;
 import io.ray.runtime.actor.NativeRayPyActor;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

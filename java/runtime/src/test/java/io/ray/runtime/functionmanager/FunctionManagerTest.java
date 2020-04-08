@@ -1,5 +1,9 @@
 package io.ray.runtime.functionmanager;
 
+import io.ray.api.function.RayFunc0;
+import io.ray.api.function.RayFunc1;
+import io.ray.api.id.JobId;
+import io.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -9,10 +13,6 @@ import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import io.ray.api.function.RayFunc0;
-import io.ray.api.function.RayFunc1;
-import io.ray.api.id.JobId;
-import io.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;

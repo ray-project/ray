@@ -1,9 +1,8 @@
 package io.ray.api.runtimecontext;
 
-import java.util.List;
-
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import java.util.List;
 
 /**
  * A class used for getting information of Ray runtime.

@@ -1,13 +1,13 @@
 package io.ray.runtime.object;
 
-import java.util.Arrays;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.util.Serializer;
 import io.ray.runtime.generated.Gcs.ErrorType;
+import io.ray.runtime.util.Serializer;
+import java.util.Arrays;
 
 /**
  * Serialize to and deserialize from {@link NativeRayObject}. Metadata is generated during

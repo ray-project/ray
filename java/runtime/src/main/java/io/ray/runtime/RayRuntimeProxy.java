@@ -1,11 +1,11 @@
 package io.ray.runtime;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import io.ray.api.exception.RayException;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.runtime.config.RunMode;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
 /**
  * Protect a ray runtime with context checks for all methods of {@link RayRuntime} (except {@link

@@ -5,9 +5,9 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.task.LocalModeTaskSubmitter;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
+import io.ray.runtime.task.LocalModeTaskSubmitter;
 
 /**
  * Worker context for local mode.

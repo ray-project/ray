@@ -1,11 +1,5 @@
 package io.ray.api.test;
 
-import static io.ray.runtime.util.SystemUtil.pid;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 import io.ray.api.Checkpointable;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
@@ -14,6 +8,10 @@ import io.ray.api.exception.RayActorException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.runtime.util.SystemUtil;
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -40,7 +38,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     public int getPid() {
-      return pid();
+      return SystemUtil.pid();
     }
   }
 
