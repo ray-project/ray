@@ -15,7 +15,7 @@ class MessagePublisher {
  public:
   virtual ~MessagePublisher() {}
 
-  virtual Status Init(std::shared_ptr<IOServicePool> io_service_pool) = 0;
+  virtual Status Init() = 0;
 
   virtual void Shutdown() = 0;
 

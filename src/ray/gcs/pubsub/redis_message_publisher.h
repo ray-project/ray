@@ -10,9 +10,10 @@ namespace gcs {
 
 class RedisMessagePublisher : public MessagePublisher {
  public:
-  RedisMessagePublisher(const RedisClientOptions &options);
+  RedisMessagePublisher(const RedisClientOptions &options,
+                        std::shared_ptr<IOServicePool> io_service_pool);
 
-  Status Init(std::shared_ptr<IOServicePool> io_service_pool) override;
+  Status Init() override;
 
   void Shutdown() override;
 
@@ -21,6 +22,7 @@ class RedisMessagePublisher : public MessagePublisher {
 
  private:
   std::shared_ptr<RedisClient> redis_client_;
+  std::shared_ptr<IOServicePool> io_service_pool_;
 };
 
 }  // namespace gcs

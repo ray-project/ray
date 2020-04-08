@@ -1,14 +1,17 @@
-#include "ray/gcs/redis_message_publisher.h"
+#include "ray/gcs/pubsub/redis_message_publisher.h"
+#include "ray/gcs/redis_context.h"
 
 namespace ray {
 
 namespace gcs {
 
-RedisMessagePublisher::RedisMessagePublisher(const RedisClientOptions &options)
-    : redis_client_(new RedisClient(options)) {}
+RedisMessagePublisher::RedisMessagePublisher(
+    const RedisClientOptions &options, std::shared_ptr<IOServicePool> io_service_pool)
+    : redis_client_(new RedisClient(options)),
+      io_service_pool_(std::move(io_service_pool)) {}
 
-Status RedisMessagePublisher::Init(std::shared_ptr<IOServicePool> io_service_pool) {
-  auto io_services = io_service_pool->GetAll();
+Status RedisMessagePublisher::Init() {
+  auto io_services = io_service_pool_->GetAll();
   Status status = redis_client_->Connect(io_services);
   RAY_LOG(INFO) << "RedisMessagePublisher::Connect finished with status "
                 << status.ToString();
@@ -28,7 +31,6 @@ Status RedisMessagePublisher::PublishMessage(const std::string &channel,
   RedisCallback pub_callback = nullptr;
   if (callback) {
     pub_callback = [callback](std::shared_ptr<CallbackReply> reply) {
-      int64_t subscriber_count = reply->ReadAsInteger();
       callback(Status::OK());
     };
   }
