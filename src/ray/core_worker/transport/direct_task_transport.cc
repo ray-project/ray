@@ -98,8 +98,8 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     auto &lease_id = it->second.second;
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
     RAY_UNUSED(lease_client->CancelWorkerLease(
-        lease_id, [this, lease_id, scheduling_key](
-                      const Status &status, const rpc::CancelWorkerLeaseReply &reply) {
+        lease_id, [this, scheduling_key](const Status &status,
+                                         const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
           if (status.ok() && !reply.success()) {
             // The cancellation request can fail if the raylet does not have
