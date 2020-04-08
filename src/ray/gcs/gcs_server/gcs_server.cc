@@ -124,13 +124,14 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_);
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors());
 }
 
 void GcsServer::InitGcsActorManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
-  gcs_actor_manager_ = std::make_shared<GcsActorManager>(main_service_, redis_gcs_client_,
-                                                         *gcs_node_manager_);
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

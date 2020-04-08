@@ -13,13 +13,12 @@
 // limitations under the License.
 
 #include <ray/gcs/gcs_server/test/gcs_test_util.h>
-#include <ray/gcs/redis_gcs_client.h>
 
 #include <memory>
 #include "gtest/gtest.h"
 
 namespace ray {
-class GcsActorSchedulerTest : public RedisServiceManagerForTest {
+class GcsActorSchedulerTest : public ::testing::Test {
  public:
   explicit GcsActorSchedulerTest(size_t node_count = 1)
       : node_count_(node_count), to_be_scheduled_actors_(actor_count_) {}
@@ -42,27 +41,27 @@ class GcsActorSchedulerTest : public RedisServiceManagerForTest {
 
  protected:
   void Init() {
-    gcs::GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-    redis_gcs_client_ = std::make_shared<gcs::RedisGcsClient>(options);
-    RAY_CHECK_OK(redis_gcs_client_->Connect(io_service_));
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, node_info_accessor_, error_info_accessor_);
 
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(io_service_, redis_gcs_client_);
-
-    gcs_actor_scheduler_ = std::make_shared<Mocker::MockedGcsActorScheduler>(
-        io_service_, redis_gcs_client_, *gcs_node_manager_);
-    // Set schedule failed handler.
-    gcs_actor_scheduler_->SetScheduleFailureHandler(
+    gcs_actor_scheduler_ = std::make_shared<gcs::GcsActorScheduler>(
+        io_service_, actor_info_accessor_, *gcs_node_manager_,
         [this](std::shared_ptr<gcs::GcsActor> actor) {
+          actor->UpdateAddress(rpc::Address());
+          actor->UpdateState(rpc::ActorTableData::RECONSTRUCTING);
           failed_actors_.emplace_back(std::move(actor));
           TryNotify();
-        });
-
-    // Set schedule success handler.
-    gcs_actor_scheduler_->SetScheduleSuccessHandler(
+        },
         [this](std::shared_ptr<gcs::GcsActor> actor) {
+          actor->UpdateState(rpc::ActorTableData::ALIVE);
           succeed_actors_.emplace_back(std::move(actor));
           TryNotify();
+        },
+        [](const rpc::Address &address) {
+          return std::make_shared<Mocker::MockedWorkerLeaseImpl>(address);
+        },
+        [](const rpc::Address &address) {
+          return std::make_shared<Mocker::MockedCoreWorkerClientImpl>(address);
         });
 
     // Init actors.
@@ -80,8 +79,6 @@ class GcsActorSchedulerTest : public RedisServiceManagerForTest {
   }
 
   void Run() {
-    FlushAll();
-
     // Schedule asynchronously.
     io_service_.post([this] {
       for (auto &actor : to_be_scheduled_actors_) {
@@ -136,9 +133,11 @@ class GcsActorSchedulerTest : public RedisServiceManagerForTest {
   size_t node_count_ = 1;
 
   boost::asio::io_service io_service_;
-  std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;
+  Mocker::MockedNodeInfoAccessor node_info_accessor_;
+  Mocker::MockedErrorInfoAccessor error_info_accessor_;
+  Mocker::MockedActorInfoAccessor actor_info_accessor_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<Mocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
   std::unique_ptr<std::thread> io_thread_;
   // Timeout waiting for gcs server reply, default is 5s
   const uint64_t timeout_ms_ = 2000;
@@ -166,6 +165,7 @@ class TwoNodeTest : public GcsActorSchedulerTest {
 };
 
 TEST_F(ZeroNodeTest, GcsActorSchedulerTest) {
+  Mocker::Reset();
   RunAndWait();
 
   ASSERT_EQ(0, succeed_actors_.size());
@@ -174,17 +174,6 @@ TEST_F(ZeroNodeTest, GcsActorSchedulerTest) {
 
 TEST_F(OneNodeTest, TestLeaseWorkerSuccess) {
   Mocker::Reset();
-
-  Mocker::mock_lease_worker = [](std::shared_ptr<gcs::GcsActor> actor,
-                                 std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 rpc::RequestWorkerLeaseReply *reply) {
-    reply->mutable_worker_address()->set_raylet_id(node->node_id());
-    reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    return true;
-  };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
-
   RunAndWait();
 
   ASSERT_EQ(0, failed_actors_.size());
@@ -199,17 +188,6 @@ TEST_F(OneNodeTest, TestLeaseWorkerSuccess) {
 
 TEST_F(TwoNodeTest, TestLeaseWorkerSuccess) {
   Mocker::Reset();
-
-  Mocker::mock_lease_worker = [](std::shared_ptr<gcs::GcsActor> actor,
-                                 std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 rpc::RequestWorkerLeaseReply *reply) {
-    reply->mutable_worker_address()->set_raylet_id(node->node_id());
-    reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    return true;
-  };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
-
   RunAndWait();
 
   ASSERT_EQ(0, failed_actors_.size());
@@ -233,20 +211,18 @@ TEST_F(TwoNodeTest, TestLeaseWorkerSpillbackToOneNode) {
   auto under_resourced_node_id = iter->first.Binary();
   auto well_resourced_node_id = (++iter)->first.Binary();
 
-  Mocker::mock_lease_worker = [under_resourced_node_id, well_resourced_node_id](
-                                  std::shared_ptr<gcs::GcsActor> actor,
-                                  std::shared_ptr<rpc::GcsNodeInfo> node,
-                                  rpc::RequestWorkerLeaseReply *reply) {
-    if (node->node_id() == under_resourced_node_id) {
+  Mocker::worker_lease_delegate = [under_resourced_node_id, well_resourced_node_id](
+                                      const rpc::Address &node_address,
+                                      const TaskSpecification &task_spec,
+                                      rpc::RequestWorkerLeaseReply *reply) {
+    if (node_address.raylet_id() == under_resourced_node_id) {
       reply->mutable_retry_at_raylet_address()->set_raylet_id(well_resourced_node_id);
     } else {
-      reply->mutable_worker_address()->set_raylet_id(node->node_id());
+      reply->mutable_worker_address()->set_raylet_id(well_resourced_node_id);
       reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
     }
-    return true;
+    return Status::OK();
   };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
 
   RunAndWait();
 
@@ -258,14 +234,12 @@ TEST_F(TwoNodeTest, TestLeaseWorkerSpillbackToOneNode) {
   }
 }
 
-TEST_F(TwoNodeTest, TestFailedToLeaseWorkerFromAllNodes) {
+TEST_F(TwoNodeTest, TestNetworkErrorOnAllNodes) {
   Mocker::Reset();
 
-  Mocker::mock_lease_worker = [](std::shared_ptr<gcs::GcsActor> actor,
-                                 std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 rpc::RequestWorkerLeaseReply *reply) { return false; };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
+  Mocker::worker_lease_delegate =
+      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
+         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
 
   RunAndWait();
 
@@ -282,24 +256,26 @@ TEST_F(TwoNodeTest, TestOneNodeFailed) {
   auto iter = nodes.begin();
   auto failed_node_id = iter->first;
 
-  Mocker::mock_lease_worker = [failed_node_id](std::shared_ptr<gcs::GcsActor> actor,
-                                               std::shared_ptr<rpc::GcsNodeInfo> node,
-                                               rpc::RequestWorkerLeaseReply *reply) {
-    auto node_id = ClientID::FromBinary(node->node_id());
+  Mocker::worker_lease_delegate = [failed_node_id](const rpc::Address &node_address,
+                                                   const TaskSpecification &task_spec,
+                                                   rpc::RequestWorkerLeaseReply *reply) {
+    auto node_id = ClientID::FromBinary(node_address.raylet_id());
     if (node_id == failed_node_id) {
-      return false;
+      return Status::IOError("IO Error!");
     }
-    reply->mutable_worker_address()->set_raylet_id(node->node_id());
+    reply->mutable_worker_address()->set_raylet_id(node_address.raylet_id());
     reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    return true;
+    return Status::OK();
   };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
 
   Run();
 
   execute_after(io_service_,
                 [this, failed_node_id] {
+                  ASSERT_NE(0, succeed_actors_.size());
+                  ASSERT_NE(actor_count_, succeed_actors_.size());
+                  ASSERT_EQ(0, failed_actors_.size());
+                  ASSERT_EQ(0, canceled_actors_.size());
                   gcs_node_manager_->RemoveNode(failed_node_id);
                   CancelOnNode(failed_node_id);
                 },
@@ -316,16 +292,17 @@ TEST_F(TwoNodeTest, TestOneNodeFailed) {
 TEST_F(TwoNodeTest, TestTwoNodeFailed) {
   Mocker::Reset();
 
-  Mocker::mock_lease_worker = [](std::shared_ptr<gcs::GcsActor> actor,
-                                 std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 rpc::RequestWorkerLeaseReply *reply) { return false; };
-
-  Mocker::mock_create_actor = Mocker::default_actor_creator;
+  Mocker::worker_lease_delegate =
+      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
+         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
 
   Run();
 
   execute_after(io_service_,
                 [this] {
+                  ASSERT_EQ(0, succeed_actors_.size());
+                  ASSERT_EQ(0, failed_actors_.size());
+                  ASSERT_EQ(0, canceled_actors_.size());
                   auto nodes = gcs_node_manager_->GetAllAliveNodes();
                   for (auto &node : nodes) {
                     gcs_node_manager_->RemoveNode(node.first);
@@ -341,24 +318,18 @@ TEST_F(TwoNodeTest, TestTwoNodeFailed) {
   ASSERT_EQ(actor_count_, canceled_actors_.size());
 }
 
-TEST_F(TwoNodeTest, TestWorkerFailed) {
+TEST_F(TwoNodeTest, TestPartialWorkerFailed) {
   Mocker::Reset();
 
-  Mocker::mock_lease_worker = [](std::shared_ptr<gcs::GcsActor> actor,
-                                 std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 rpc::RequestWorkerLeaseReply *reply) {
-    auto worker_id = WorkerID::FromRandom();
-    reply->mutable_worker_address()->set_raylet_id(node->node_id());
-    reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
-    return true;
-  };
-
-  Mocker::mock_create_actor = [](const TaskSpecification &actor_creation_task,
-                                 const std::function<void()> &on_done) {
-    if (actor_creation_task.ActorCreationId().Hash() % 2 == 0) {
-      return;
+  Mocker::push_normal_task_delegate = [](const rpc::Address &worker_address,
+                                         std::unique_ptr<rpc::PushTaskRequest> request,
+                                         rpc::PushTaskReply *reply) {
+    auto actor_id =
+        ActorID::FromBinary(request->task_spec().actor_creation_task_spec().actor_id());
+    if (actor_id.Hash() % 2 == 0) {
+      return Status::IOError("IO Error!");
     }
-    on_done();
+    return Status::OK();
   };
 
   Run();
@@ -366,7 +337,7 @@ TEST_F(TwoNodeTest, TestWorkerFailed) {
   execute_after(io_service_,
                 [this] {
                   auto node_to_workers =
-                      gcs_actor_scheduler_->GetNodeToWorkersInPhaseOfCreating();
+                      gcs_actor_scheduler_->GetWorkersInPhaseOfCreating();
                   ASSERT_NE(0, node_to_workers.size());
                   for (auto &node_entry : node_to_workers) {
                     for (auto &worker_entry : node_entry.second) {
@@ -388,9 +359,5 @@ TEST_F(TwoNodeTest, TestWorkerFailed) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

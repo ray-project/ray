@@ -1257,17 +1257,6 @@ void NodeManager::ProcessDisconnectClientMessage(
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
 
-    if (RayConfig::instance().gcs_service_enabled()) {
-      auto iter = leased_worker_to_actor_.find(worker->WorkerId());
-      if (iter != leased_worker_to_actor_.end()) {
-        // Erase the leased actor worker and its indexer as the leased worker is dead.
-        // For more details please see the protocol of actor management based on gcs.
-        // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-        actor_to_leased_worker_.erase(iter->second);
-        leased_worker_to_actor_.erase(iter);
-      }
-    }
-
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
         self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
@@ -1670,68 +1659,6 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   }
 }
 
-static void FillResourcesToReply(
-    rpc::RequestWorkerLeaseReply *reply,
-    std::shared_ptr<TaskResourceInstances> allocated_resources,
-    std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler) {
-// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
-#define ZERO_CAPACITY 1.0e-5
-  auto predefined_resources = allocated_resources->predefined_resources;
-  ::ray::rpc::ResourceMapEntry *resource;
-  for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
-    bool first = true;  // Set resource name only if at least one of its
-    // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-         inst_idx++) {
-      if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
-        if (first) {
-          resource = reply->add_resource_mapping();
-          resource->set_name(new_resource_scheduler->GetResourceNameFromIndex(res_idx));
-          first = false;
-        }
-        auto rid = resource->add_resource_ids();
-        rid->set_index(inst_idx);
-        rid->set_quantity(predefined_resources[res_idx][inst_idx]);
-      }
-    }
-  }
-  auto custom_resources = allocated_resources->custom_resources;
-  for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-    bool first = true;  // Set resource name only if at least one of its
-    // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-      if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
-        if (first) {
-          resource = reply->add_resource_mapping();
-          resource->set_name(new_resource_scheduler->GetResourceNameFromIndex(it->first));
-          first = false;
-        }
-        auto rid = resource->add_resource_ids();
-        rid->set_index(inst_idx);
-        rid->set_quantity(it->second[inst_idx]);
-      }
-    }
-  }
-}
-
-static void FillResourcesToReply(rpc::RequestWorkerLeaseReply *reply,
-                                 const ResourceIdSet &resource_ids) {
-  for (const auto &mapping : resource_ids.AvailableResources()) {
-    auto resource = reply->add_resource_mapping();
-    resource->set_name(mapping.first);
-    for (const auto &id : mapping.second.WholeIds()) {
-      auto rid = resource->add_resource_ids();
-      rid->set_index(id);
-      rid->set_quantity(1.0);
-    }
-    for (const auto &id : mapping.second.FractionalIds()) {
-      auto rid = resource->add_resource_ids();
-      rid->set_index(id.first);
-      rid->set_quantity(id.second.ToDouble());
-    }
-  }
-}
-
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
@@ -1743,32 +1670,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
-    if (RayConfig::instance().gcs_service_enabled()) {
-      // When restart, the gcs server will lease a worker from raylet and send actor
-      // creation task to the leased worker, if the raylet is still alive and the actor
-      // is is already tied with a leased worker in `actor_to_leased_worker_`, the raylet
-      // should reply back the leased worker to gcs server immediately and do nothing.
-      // For more details please see the protocol of actor management based on gcs.
-      // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-      auto iter = actor_to_leased_worker_.find(actor_id);
-      if (iter != actor_to_leased_worker_.end()) {
-        // The actor is already leased a worker, reply directly.
-        auto worker = iter->second;
-        reply->mutable_worker_address()->set_ip_address(
-            initial_config_.node_manager_address);
-        reply->mutable_worker_address()->set_port(worker->Port());
-        reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-        reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-        if (new_scheduler_enabled_) {
-          FillResourcesToReply(reply, worker->GetLifetimeAllocatedInstances(),
-                               new_resource_scheduler_);
-        } else {
-          FillResourcesToReply(reply, worker->GetLifetimeResourceIds());
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-        return;
-      }
-    }
 
     // Save the actor creation task spec to GCS, which is needed to
     // reconstruct the actor when raylet detect it dies.
@@ -1791,23 +1692,52 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
+            leased_workers_[worker->WorkerId()] = worker;
+// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
+#define ZERO_CAPACITY 1.0e-5
             std::shared_ptr<TaskResourceInstances> allocated_resources;
             if (task_spec.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();
             } else {
               allocated_resources = worker->GetAllocatedInstances();
             }
-            FillResourcesToReply(reply, allocated_resources, new_resource_scheduler_);
-            leased_workers_[worker->WorkerId()] = worker;
-            if (RayConfig::instance().gcs_service_enabled() &&
-                task_spec.IsActorCreationTask()) {
-              // Successfully leased worker from current node, just tied the worker with
-              // the actor. For more details please see the protocol of actor management
-              // based on gcs.
-              // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-              auto actor_id = task_spec.ActorCreationId();
-              actor_to_leased_worker_[actor_id] = worker;
-              leased_worker_to_actor_[worker->WorkerId()] = actor_id;
+            auto predefined_resources = allocated_resources->predefined_resources;
+            ::ray::rpc::ResourceMapEntry *resource;
+            for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+              bool first = true;  // Set resource name only if at least one of its
+                                  // instances has available capacity.
+              for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
+                   inst_idx++) {
+                if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
+                  if (first) {
+                    resource = reply->add_resource_mapping();
+                    resource->set_name(
+                        new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+                    first = false;
+                  }
+                  auto rid = resource->add_resource_ids();
+                  rid->set_index(inst_idx);
+                  rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+                }
+              }
+            }
+            auto custom_resources = allocated_resources->custom_resources;
+            for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
+              bool first = true;  // Set resource name only if at least one of its
+                                  // instances has available capacity.
+              for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
+                if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+                  if (first) {
+                    resource = reply->add_resource_mapping();
+                    resource->set_name(
+                        new_resource_scheduler_->GetResourceNameFromIndex(it->first));
+                    first = false;
+                  }
+                  auto rid = resource->add_resource_ids();
+                  rid->set_index(inst_idx);
+                  rid->set_quantity(it->second[inst_idx]);
+                }
+              }
             }
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -1829,28 +1759,33 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   TaskID task_id = task.GetTaskSpecification().TaskId();
   rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
-      [this, actor_id, is_actor_creation_task, reply, send_reply_callback](
+      [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-        FillResourcesToReply(reply, resource_ids);
+        for (const auto &mapping : resource_ids.AvailableResources()) {
+          auto resource = reply->add_resource_mapping();
+          resource->set_name(mapping.first);
+          for (const auto &id : mapping.second.WholeIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id);
+            rid->set_quantity(1.0);
+          }
+          for (const auto &id : mapping.second.FractionalIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id.first);
+            rid->set_quantity(id.second.ToDouble());
+          }
+        }
         send_reply_callback(Status::OK(), nullptr, nullptr);
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
         auto worker = std::static_pointer_cast<Worker>(granted);
         leased_workers_[worker_id] = worker;
-        if (RayConfig::instance().gcs_service_enabled() && is_actor_creation_task) {
-          // Successfully leased worker from current node, just tied the worker with
-          // the actor. For more details please see the protocol of actor management based
-          // on gcs.
-          // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-          actor_to_leased_worker_[actor_id] = worker;
-          leased_worker_to_actor_[worker->WorkerId()] = actor_id;
-        }
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,

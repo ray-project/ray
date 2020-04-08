@@ -13,23 +13,18 @@
 // limitations under the License.
 
 #include <ray/gcs/gcs_server/test/gcs_test_util.h>
-#include <ray/gcs/redis_gcs_client.h>
 
 #include <memory>
 #include "gtest/gtest.h"
 
 namespace ray {
-class GcsNodeManagerTest : public RedisServiceManagerForTest {};
+class GcsNodeManagerTest : public ::testing::Test {};
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  FlushAll();
-
   boost::asio::io_service io_service;
-  gcs::GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-  auto gcs_client = std::make_shared<gcs::RedisGcsClient>(options);
-  RAY_CHECK_OK(gcs_client->Connect(io_service));
-
-  gcs::GcsNodeManager node_manager(io_service, gcs_client);
+  auto node_info_accessor = Mocker::MockedNodeInfoAccessor();
+  auto error_info_accessor = Mocker::MockedErrorInfoAccessor();
+  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -42,14 +37,10 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  FlushAll();
-
   boost::asio::io_service io_service;
-  gcs::GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-  auto gcs_client = std::make_shared<gcs::RedisGcsClient>(options);
-  RAY_CHECK_OK(gcs_client->Connect(io_service));
-
-  gcs::GcsNodeManager node_manager(io_service, gcs_client);
+  auto node_info_accessor = Mocker::MockedNodeInfoAccessor();
+  auto error_info_accessor = Mocker::MockedErrorInfoAccessor();
+  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -90,9 +81,5 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

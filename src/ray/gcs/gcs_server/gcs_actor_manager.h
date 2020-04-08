@@ -30,7 +30,7 @@ namespace gcs {
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
-/// This class is not thread-safety, do not share between multiple threads.
+/// This class is not thread-safe.
 class GcsActor {
  public:
   /// Create a GcsActor
@@ -70,32 +70,28 @@ class GcsActor {
   rpc::ActorTableData actor_table_data_;
 };
 
+using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
-/// This class is not thread-safety, do not share between multiple threads.
+/// This class is not thread-safe.
 class GcsActorManager {
  public:
-  /// This constructor allows us to pass in a mocked GcsActorScheduler, which is very
-  /// helpful for writing unit tests.
-  ///
-  /// \param redis_gcs_client Used to communicate with storage, it will be replaced with
-  /// StorageClient later.
-  /// \param gcs_node_manager The actor manager needs to listen to the node change events
-  /// inside gcs_node_manager.
-  /// \param gcs_actor_scheduler The scheduler to schedule the actor creation task.
-  explicit GcsActorManager(std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client,
-                           gcs::GcsNodeManager &gcs_node_manager,
-                           std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler);
-
   /// Create a GcsActorManager
   ///
   /// \param io_context The main event loop.
-  /// \param redis_gcs_client Used to communicate with storage, it will be replaced with
-  /// StorageClient later.
+  /// \param actor_info_accessor Used to flush actor data to storage.
   /// \param gcs_node_manager The actor manager needs to listen to the node change events
   /// inside gcs_node_manager.
+  /// \param lease_client_factory Factory to create remote lease client, it will be passed
+  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
+  /// default factory inside itself if it is not set.
+  /// \param client_factory Factory to create remote core worker client, it will be passed
+  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
+  /// default factory inside itself if it is not set.
   explicit GcsActorManager(boost::asio::io_context &io_context,
-                           std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-                           gcs::GcsNodeManager &gcs_node_manager);
+                           gcs::ActorInfoAccessor &actor_info_accessor,
+                           gcs::GcsNodeManager &gcs_node_manager,
+                           LeaseClientFactoryFn lease_client_factory = nullptr,
+                           rpc::ClientFactoryFn client_factory = nullptr);
 
   virtual ~GcsActorManager() = default;
 
@@ -105,29 +101,38 @@ class GcsActorManager {
   /// \param callback Will be invoked after the meta info is flushed to the storage or be
   /// invoked immediately if the meta info already exists.
   void RegisterActor(const rpc::CreateActorRequest &request,
-                     std::function<void(std::shared_ptr<GcsActor>)> callback);
+                     RegisterActorCallback callback);
 
-  /// Reconstruct all actors associated with the specified node id, including actors that
-  /// are being scheduled or have been created on this node
+  /// Reconstruct all actors associated with the specified node id, including actors which
+  /// are scheduled or have been created on this node. Triggered when the given node goes
+  /// down.
   ///
   /// \param node_id The specified node id.
   void ReconstructActorsOnNode(const ClientID &node_id);
 
   /// Reconstruct actor associated with the specified node_id and worker_id.
-  /// The actor may be scheduling or has been created.
+  /// The actor may be pending or already created.
   ///
   /// \param node_id ID of the node where the worker is located
   /// \param worker_id  ID of the worker that the actor is creating/created on
-  /// \param need_reschedule Weather to reschedule the actor creation task, sometimes
+  /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be rescheduled
   /// again.
   void ReconstructActorOnWorker(const ClientID &node_id, const WorkerID &worker_id,
                                 bool need_reschedule = true);
 
   /// Get all registered actors.
+  /// This method is used in unit test.
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetAllRegisteredActors()
       const {
     return registered_actors_;
+  }
+
+  /// Get all pending register callbacks.
+  /// This method is used in unit test.
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+      &GetRegisterCallbacks() const {
+    return actor_to_register_callbacks_;
   }
 
  protected:
@@ -138,12 +143,17 @@ class GcsActorManager {
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.
-  /// \param need_reschedule Weather to reschedule the actor creation task, sometimes
+  /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
   void ReconstructActor(std::shared_ptr<GcsActor> actor, bool need_reschedule = true);
 
  private:
+  /// Callbacks of requests with actor information not yet flushed.
+  /// This map just is just used to filter the duplicated messages come from Driver/Worker
+  /// caused by some network problems.
+  absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+      actor_to_register_callbacks_;
   /// All registered actors (pending actors are also included).
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
@@ -153,8 +163,8 @@ class GcsActorManager {
   /// Map contains the relationship of node and created actors.
   absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
       node_to_created_actors_;
-  /// The client to communicate with redis to access actor table data.
-  std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;
+  /// The access info accessor.
+  gcs::ActorInfoAccessor &actor_info_accessor_;
   /// The scheduler to schedule all registered actors.
   std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
 };

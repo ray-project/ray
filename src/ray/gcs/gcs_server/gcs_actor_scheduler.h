@@ -18,8 +18,9 @@
 #include <ray/common/id.h>
 #include <ray/common/task/task_execution_spec.h>
 #include <ray/common/task/task_spec.h>
-#include <ray/gcs/redis_gcs_client.h>
+#include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs_service.pb.h>
+#include <ray/raylet/raylet_client.h>
 #include <ray/rpc/node_manager/node_manager_client.h>
 #include <ray/rpc/worker/core_worker_client.h>
 #include <queue>
@@ -31,9 +32,12 @@
 namespace ray {
 namespace gcs {
 
+using LeaseClientFactoryFn =
+    std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &address)>;
+
 class GcsActor;
 /// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
-/// This class is not thread-safety, do not share between multiple threads.
+/// This class is not thread-safe.
 class GcsActorScheduler {
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -47,15 +51,15 @@ class GcsActorScheduler {
     ///
     /// \param address the Address of the remote leased worker.
     /// \param resources the resources that leased from the remote node(raylet).
-    /// \param client_call_manager is shared by all `CoreWorkerClient`s.
+    /// \param client_factory Factory to create CoreWorkerClient.
     explicit GcsLeasedWorker(rpc::Address address,
                              std::vector<rpc::ResourceMapEntry> resources,
                              boost::asio::io_context &io_context,
-                             rpc::ClientCallManager &client_call_manager)
+                             rpc::ClientFactoryFn client_factory)
         : address_(std::move(address)),
           resources_(std::move(resources)),
           io_context_(io_context),
-          client_call_manager_(client_call_manager) {}
+          client_factory_(std::move(client_factory)) {}
     virtual ~GcsLeasedWorker() = default;
 
     /// Create the specified actor on the leased worker asynchronously.
@@ -64,8 +68,8 @@ class GcsActorScheduler {
     /// actor.
     /// \param on_done Callback of the create request, which will be invoked only
     /// when success, otherwise it will never be triggered.
-    virtual void CreateActor(const TaskSpecification &actor_creation_task,
-                             const std::function<void()> &on_done);
+    void CreateActor(const TaskSpecification &actor_creation_task,
+                     const std::function<void()> &on_done);
 
     /// Get the Address of this leased worker.
     const rpc::Address &GetAddress() const { return address_; }
@@ -85,21 +89,26 @@ class GcsActorScheduler {
     /// Get the id of the actor which is assigned to this leased worker.
     ActorID GetAssignedActorID() const { return assigned_actor_id_; }
 
+    /// Get the id of the actor which is assigned to this leased worker and set the
+    /// assigned_actor_id_ to nil.
+    ActorID TakeAssignedActorID() {
+      auto actor_id = assigned_actor_id_;
+      assigned_actor_id_ = ActorID::Nil();
+      return actor_id;
+    }
+
    private:
     /// Get or create CoreWorkerClient to communicate with the remote leased worker.
     /// If the client_ is nullptr then create and cache it, otherwise return the client_.
-    std::shared_ptr<rpc::CoreWorkerClient> GetOrCreateClient() {
+    std::shared_ptr<rpc::CoreWorkerClientInterface> GetOrCreateClient() {
       if (client_ == nullptr) {
         rpc::Address address;
         address.set_ip_address(GetIpAddress());
         address.set_port(GetPort());
-        client_ = std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+        client_ = client_factory_(address);
       }
       return client_;
     }
-
-    /// Reset the client so that we can create a new one when retry creating actors.
-    void ResetClient() { client_.reset(); }
 
    protected:
     /// The address of the remote leased worker.
@@ -109,10 +118,10 @@ class GcsActorScheduler {
     /// The io loop which is used to construct `client_call_manager_` and delay execution
     /// of tasks(e.g. execute_after).
     boost::asio::io_context &io_context_;
-    /// The `ClientCallManager` object that is shared by all `CoreWorkerClient`s.
-    rpc::ClientCallManager &client_call_manager_;
     /// The client to communicate with the remote leased worker.
-    std::shared_ptr<rpc::CoreWorkerClient> client_;
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
+    /// Factory for producing new core worker clients.
+    rpc::ClientFactoryFn client_factory_;
     /// Id of the actor which is assigned to this worker.
     ActorID assigned_actor_id_;
   };
@@ -121,12 +130,23 @@ class GcsActorScheduler {
   /// Create a GcsActorScheduler
   ///
   /// \param io_context The main event loop.
-  /// \param redis_gcs_client Used to communicate with storage, it will be replaced with
-  /// StorageClient later.
+  /// \param actor_info_accessor Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  explicit GcsActorScheduler(boost::asio::io_context &io_context,
-                             std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client,
-                             const GcsNodeManager &gcs_node_manager);
+  /// \param schedule_failure_handler Invoked when there are no available nodes to
+  /// schedule actors.
+  /// \param schedule_success_handler Invoked when actors are created on the worker
+  /// successfully.
+  /// \param lease_client_factory Factory to create remote lease client, default factor
+  /// will be used if not set.
+  /// \param client_factory Factory to create remote core worker client, default factor
+  /// will be used if not set.
+  explicit GcsActorScheduler(
+      boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
+      const GcsNodeManager &gcs_node_manager,
+      std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+      LeaseClientFactoryFn lease_client_factory = nullptr,
+      rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
 
   /// Schedule the specified actor.
@@ -135,24 +155,6 @@ class GcsActorScheduler {
   ///
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor);
-
-  /// Set the failed handler of scheduling.
-  ///
-  /// \param handler Invoked when there are no available nodes to schedule the actor.
-  void SetScheduleFailureHandler(
-      std::function<void(std::shared_ptr<GcsActor>)> &&handler) {
-    RAY_CHECK(handler);
-    schedule_failed_handler_ = std::move(handler);
-  }
-
-  /// Set the success handler of scheduling.
-  ///
-  /// \param handler Invoked when the actor is created on the worker successfully.
-  void SetScheduleSuccessHandler(
-      std::function<void(std::shared_ptr<GcsActor>)> &&handler) {
-    RAY_CHECK(handler);
-    schedule_success_handler_ = std::move(handler);
-  }
 
   /// Cancel the scheduling actors associated with the specified node id.
   ///
@@ -167,14 +169,22 @@ class GcsActorScheduler {
   /// \return ID of actor associated with the specified node id and worker id.
   ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id);
 
+  /// Get leased workers in phase of creating.
+  /// This method is used in unit test.
+  const absl::flat_hash_map<
+      ClientID, absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
+      &GetWorkersInPhaseOfCreating() {
+    return node_to_workers_when_creating_;
+  }
+
  protected:
   /// Lease a worker from the specified node for the specified actor.
   ///
   /// \param actor This object has the resources needed to lease workers from the
   /// specified node.
   /// \param node The node that the worker will be leased from.
-  virtual void LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                   std::shared_ptr<rpc::GcsNodeInfo> node);
+  void LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
+                           std::shared_ptr<rpc::GcsNodeInfo> node);
   /// Handler to process `WorkerLeasedReply`.
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
@@ -192,14 +202,9 @@ class GcsActorScheduler {
   /// Select a node from alive nodes randomly.
   std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
 
-  /// Get or create a node client by the specified node info.
-  ///
-  /// \param node_id ID of the specified node.
-  /// \param node The node info which contains the node address.
-  /// \return New node client if there is no cached client related to the node id, else
-  /// the cached one.
-  std::shared_ptr<rpc::NodeManagerWorkerClient> GetOrCreateNodeClient(
-      const ClientID &node_id, const rpc::GcsNodeInfo &node);
+  /// Get an existing lease client or connect a new one.
+  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+      const rpc::Address &raylet_address);
 
   /// Add actor to `node_to_leasing_actor_` map.
   /// When leasing worker for actor, it need to record the information of the leasing
@@ -229,22 +234,14 @@ class GcsActorScheduler {
   ActorID RemoveWorkerInPhaseOfCreating(const ClientID &node_id,
                                         const WorkerID &worker_id);
 
-  /// The factory of GcsLeasedWorker.
-  ///
-  /// \param address the Address of the remote leased worker.
-  /// \param resources the resources that leased from the remote node(raylet).
-  /// \return The instance of GcsLeasedWorker.
-  virtual std::shared_ptr<GcsLeasedWorker> CreateLeasedWorker(
-      rpc::Address address, std::vector<rpc::ResourceMapEntry> resources);
-
  protected:
   /// The io loop which is used to construct `client_call_manager_` and delay execution of
   /// tasks(e.g. execute_after).
   boost::asio::io_context &io_context_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
-  /// The client to communicate with redis to access actor table data.
-  std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;
+  /// The actor info accessor.
+  gcs::ActorInfoAccessor &actor_info_accessor_;
   /// Map which contains the relationship of node and actor id set in phase of leasing
   /// worker.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<ActorID>>
@@ -254,14 +251,18 @@ class GcsActorScheduler {
                       absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
   /// The cached node clients which are used to communicate with raylet to lease workers.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::NodeManagerWorkerClient>>
-      node_to_client_;
-  /// The handler to handle the scheduling failures.
-  std::function<void(std::shared_ptr<GcsActor>)> schedule_failed_handler_;
-  /// The handler to handle the successful scheduling.
-  std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
+  absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
+      remote_lease_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+  /// The handler to handle the scheduling failures.
+  std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler_;
+  /// The handler to handle the successful scheduling.
+  std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
+  /// Factory for producing new clients to request leases from remote nodes.
+  LeaseClientFactoryFn lease_client_factory_;
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
 };
 
 }  // namespace gcs

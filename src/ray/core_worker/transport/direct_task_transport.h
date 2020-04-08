@@ -149,7 +149,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const ClientID local_raylet_id_;
 
-  /// The helper to creat actor asynchronously.
+  /// The helper to creat an actor asynchronously.
   std::function<Status(const TaskSpecification &task_spec,
                        const gcs::StatusCallback &callback)>
       actor_create_helper_;

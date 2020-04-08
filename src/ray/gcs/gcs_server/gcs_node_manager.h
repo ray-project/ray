@@ -16,6 +16,7 @@
 #define RAY_GCS_NODE_MANAGER_H
 
 #include <ray/common/id.h>
+#include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
 #include "absl/container/flat_hash_map.h"
@@ -23,17 +24,19 @@
 
 namespace ray {
 namespace gcs {
-class RedisGcsClient;
 /// GcsNodeManager is responsible for managing and monitoring nodes.
-/// This class is not thread-safety, do not share between multiple threads.
+/// This class is not thread-safe.
 class GcsNodeManager {
  public:
   /// Create a GcsNodeManager.
   ///
   /// \param io_service The event loop to run the monitor on.
-  /// \param gcs_client The client of gcs to access/pub/sub data.
+  /// \param node_info_accessor The node info accessor.
+  /// \param error_info_accessor The error info accessor, which is used to report error
+  /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
-                          std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+                          gcs::NodeInfoAccessor &node_info_accessor,
+                          gcs::ErrorInfoAccessor &error_info_accessor);
 
   /// Add an alive node.
   ///
@@ -105,8 +108,10 @@ class GcsNodeManager {
  private:
   /// Alive nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
-  /// A client to the GCS, through which heartbeats are received.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  /// Node info accessor.
+  gcs::NodeInfoAccessor &node_info_accessor_;
+  /// Error info accessor.
+  gcs::ErrorInfoAccessor &error_info_accessor_;
   /// The number of heartbeats that can be missed before a node is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.

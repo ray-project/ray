@@ -24,24 +24,26 @@
 #include <ray/util/asio_util.h>
 
 #include <memory>
+#include <utility>
 
 namespace ray {
 
 struct Mocker {
   static void Reset() {
-    mock_create_actor = nullptr;
-    mock_lease_worker = nullptr;
+    push_normal_task_delegate = nullptr;
+    worker_lease_delegate = nullptr;
+    async_update_delegate = nullptr;
   }
-  static std::function<void(const TaskSpecification &actor_creation_task,
-                            const std::function<void()> &on_done)>
-      mock_create_actor;
-  static std::function<void(const TaskSpecification &actor_creation_task,
-                            const std::function<void()> &on_done)>
-      default_actor_creator;
-  static std::function<bool(std::shared_ptr<gcs::GcsActor> actor,
-                            std::shared_ptr<rpc::GcsNodeInfo> node,
-                            rpc::RequestWorkerLeaseReply *)>
-      mock_lease_worker;
+  static std::function<Status(const rpc::Address &, std::unique_ptr<rpc::PushTaskRequest>,
+                              rpc::PushTaskReply *)>
+      push_normal_task_delegate;
+  static std::function<Status(const rpc::Address &, const ray::TaskSpecification &,
+                              ray::rpc::RequestWorkerLeaseReply *)>
+      worker_lease_delegate;
+  static std::function<Status(const ActorID &,
+                              const std::shared_ptr<rpc::ActorTableData> &,
+                              const gcs::StatusCallback &)>
+      async_update_delegate;
 
   static TaskSpecification GenActorCreationTask(const JobID &job_id) {
     TaskSpecBuilder builder;
@@ -91,75 +93,261 @@ struct Mocker {
     return status == std::future_status::ready;
   }
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
-    using gcs::GcsActorScheduler::GcsActorScheduler;
-    class MockedGcsLeasedWorker : public gcs::GcsActorScheduler::GcsLeasedWorker {
-     public:
-      using gcs::GcsActorScheduler::GcsLeasedWorker::GcsLeasedWorker;
-      void CreateActor(const TaskSpecification &actor_creation_task,
-                       const std::function<void()> &on_done) override {
-        if (Mocker::mock_create_actor) {
-          assigned_actor_id_ = actor_creation_task.ActorCreationId();
-          Mocker::mock_create_actor(actor_creation_task, on_done);
-        } else {
-          gcs::GcsActorScheduler::GcsLeasedWorker::CreateActor(actor_creation_task,
-                                                               on_done);
-        }
-      }
-    };
-
-   protected:
-    std::shared_ptr<GcsLeasedWorker> CreateLeasedWorker(
-        rpc::Address address, std::vector<rpc::ResourceMapEntry> resources) override {
-      return std::make_shared<MockedGcsLeasedWorker>(
-          std::move(address), std::move(resources), io_context_, client_call_manager_);
-    }
-
-    void LeaseWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
-                             std::shared_ptr<rpc::GcsNodeInfo> node) override {
-      if (Mocker::mock_lease_worker) {
-        io_context_.post([this, actor, node] {
-          if (gcs_node_manager_.GetNode(ClientID::FromBinary(node->node_id()))) {
-            rpc::RequestWorkerLeaseReply reply;
-            if (Mocker::mock_lease_worker(actor, node, &reply)) {
-              HandleWorkerLeasedReply(actor, reply);
-            } else {
-              execute_after(io_context_,
-                            [this, actor, node] {
-                              if (gcs_node_manager_.GetNode(
-                                      ClientID::FromBinary(node->node_id()))) {
-                                LeaseWorkerFromNode(actor, node);
-                              }
-                            },
-                            200);
-            }
-          }
-        });
-      } else {
-        gcs::GcsActorScheduler::LeaseWorkerFromNode(actor, node);
-      }
-    }
-
+  class MockedWorkerLeaseImpl : public WorkerLeaseInterface {
    public:
-    absl::flat_hash_map<ClientID,
-                        absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
-    GetNodeToWorkersInPhaseOfCreating() const {
-      return node_to_workers_when_creating_;
+    explicit MockedWorkerLeaseImpl(rpc::Address address) : address_(std::move(address)) {}
+
+    ray::Status RequestWorkerLease(
+        const ray::TaskSpecification &resource_spec,
+        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
+        override {
+      if (worker_lease_delegate) {
+        ray::rpc::RequestWorkerLeaseReply reply;
+        auto status = worker_lease_delegate(address_, resource_spec, &reply);
+        callback(status, reply);
+        return Status::OK();
+      }
+      if (callback) {
+        ray::rpc::RequestWorkerLeaseReply reply;
+        reply.mutable_worker_address()->set_raylet_id(address_.raylet_id());
+        reply.mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+        callback(ray::Status::OK(), reply);
+      }
+      return ray::Status::OK();
+    }
+
+    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                             bool disconnect_worker) override {
+      return ray::Status::OK();
+    }
+
+   private:
+    rpc::Address address_;
+  };
+
+  class MockedCoreWorkerClientImpl : public rpc::CoreWorkerClientInterface {
+   public:
+    explicit MockedCoreWorkerClientImpl(rpc::Address address)
+        : address_(std::move(address)) {}
+
+    ray::Status PushNormalTask(
+        std::unique_ptr<rpc::PushTaskRequest> request,
+        const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+      if (push_normal_task_delegate) {
+        rpc::PushTaskReply reply;
+        auto status = push_normal_task_delegate(address_, std::move(request), &reply);
+        callback(status, reply);
+        return ray::Status::OK();
+      }
+      if (callback) {
+        callback(ray::Status::OK(), rpc::PushTaskReply());
+      }
+      return ray::Status::OK();
+    }
+
+   private:
+    rpc::Address address_;
+  };
+
+  class MockedActorInfoAccessor : public gcs::ActorInfoAccessor {
+   public:
+    Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncGet(
+        const ActorID &actor_id,
+        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncCreateActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
+                         const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncUpdate(const ActorID &actor_id,
+                       const std::shared_ptr<rpc::ActorTableData> &data_ptr,
+                       const gcs::StatusCallback &callback) override {
+      if (async_update_delegate) {
+        RAY_CHECK_OK(async_update_delegate(actor_id, data_ptr, callback));
+        return Status::OK();
+      }
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
+    }
+
+    Status AsyncSubscribeAll(
+        const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncSubscribe(
+        const ActorID &actor_id,
+        const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncUnsubscribe(const ActorID &actor_id,
+                            const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+                              const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncGetCheckpoint(
+        const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
+        const gcs::OptionalItemCallback<rpc::ActorCheckpointData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncGetCheckpointID(
+        const ActorID &actor_id,
+        const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
+      return Status::NotImplemented("");
+    }
+  };
+
+  class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
+   public:
+    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+      return Status::NotImplemented("");
+    }
+
+    Status UnregisterSelf() override { return Status::NotImplemented(""); }
+
+    const ClientID &GetSelfId() const override {
+      static ClientID node_id;
+      return node_id;
+    }
+
+    const rpc::GcsNodeInfo &GetSelfInfo() const override {
+      static rpc::GcsNodeInfo node_info;
+      return node_info;
+    }
+
+    Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                         const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncUnregister(const ClientID &node_id,
+                           const gcs::StatusCallback &callback) override {
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
+    }
+
+    Status AsyncGetAll(
+        const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
+      if (callback) {
+        callback(Status::OK(), {});
+      }
+      return Status::OK();
+    }
+
+    Status AsyncSubscribeToNodeChange(
+        const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const override {
+      return boost::none;
+    }
+
+    const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const override {
+      static std::unordered_map<ClientID, rpc::GcsNodeInfo> node_info_list;
+      return node_info_list;
+    }
+
+    bool IsRemoved(const ClientID &node_id) const override { return false; }
+
+    Status AsyncGetResources(
+        const ClientID &node_id,
+        const gcs::OptionalItemCallback<ResourceMap> &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                                const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncDeleteResources(const ClientID &node_id,
+                                const std::vector<std::string> &resource_names,
+                                const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncSubscribeToResources(
+        const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
+            &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                                const gcs::StatusCallback &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncSubscribeHeartbeat(
+        const gcs::SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncReportBatchHeartbeat(
+        const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+        const gcs::StatusCallback &callback) override {
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
+    }
+
+    Status AsyncSubscribeBatchHeartbeat(
+        const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+        const gcs::StatusCallback &done) override {
+      return Status::NotImplemented("");
+    }
+  };
+
+  class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
+   public:
+    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+                               const gcs::StatusCallback &callback) override {
+      if (callback) {
+        callback(Status::OK());
+      }
+      return Status::OK();
     }
   };
 };
-std::function<void(const TaskSpecification &actor_creation_task,
-                   const std::function<void()> &on_done)>
-    Mocker::mock_create_actor = nullptr;
-std::function<void(const TaskSpecification &actor_creation_task,
-                   const std::function<void()> &on_done)>
-    Mocker::default_actor_creator =
-        [](const TaskSpecification &actor_creation_task,
-           const std::function<void()> &on_done) { on_done(); };
-std::function<bool(std::shared_ptr<gcs::GcsActor> actor,
-                   std::shared_ptr<rpc::GcsNodeInfo> node,
-                   rpc::RequestWorkerLeaseReply *)>
-    Mocker::mock_lease_worker = nullptr;
+
+std::function<Status(const rpc::Address &, std::unique_ptr<rpc::PushTaskRequest>,
+                     rpc::PushTaskReply *)>
+    Mocker::push_normal_task_delegate = nullptr;
+std::function<Status(const rpc::Address &, const ray::TaskSpecification &,
+                     ray::rpc::RequestWorkerLeaseReply *)>
+    Mocker::worker_lease_delegate = nullptr;
+std::function<Status(const ActorID &, const std::shared_ptr<rpc::ActorTableData> &,
+                     const gcs::StatusCallback &)>
+    Mocker::async_update_delegate = nullptr;
 
 }  // namespace ray
 

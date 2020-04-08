@@ -14,7 +14,6 @@
 
 #include "gcs_actor_manager.h"
 #include <ray/common/ray_config.h>
-#include <ray/gcs/redis_gcs_client.h>
 
 #include <utility>
 
@@ -67,12 +66,39 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(
-    std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client,
-    gcs::GcsNodeManager &gcs_node_manager,
-    std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler)
-    : redis_gcs_client_(redis_gcs_client),
-      gcs_actor_scheduler_(std::move(gcs_actor_scheduler)) {
+GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
+                                 gcs::ActorInfoAccessor &actor_info_accessor,
+                                 gcs::GcsNodeManager &gcs_node_manager,
+                                 LeaseClientFactoryFn lease_client_factory,
+                                 rpc::ClientFactoryFn client_factory)
+    : actor_info_accessor_(actor_info_accessor),
+      gcs_actor_scheduler_(new gcs::GcsActorScheduler(
+          io_context, actor_info_accessor, gcs_node_manager,
+          [this](std::shared_ptr<GcsActor> actor) {
+            // When there are no available nodes to schedule the actor the
+            // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+            // this case, the actor should be appended to the `pending_actors_` and wait
+            // for the registration of new node.
+            pending_actors_.emplace(std::move(actor));
+          },
+          [this](std::shared_ptr<GcsActor> actor) {
+            auto worker_id = actor->GetWorkerID();
+            RAY_CHECK(!worker_id.IsNil());
+            RAY_CHECK(worker_to_created_actor_.emplace(worker_id, actor).second);
+
+            auto actor_id = actor->GetActorID();
+            auto node_id = actor->GetNodeID();
+            RAY_CHECK(!node_id.IsNil());
+            RAY_CHECK(node_to_created_actors_[node_id].emplace(actor_id, actor).second);
+
+            actor->UpdateState(rpc::ActorTableData::ALIVE);
+            auto actor_table_data =
+                std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
+            // The backend storage is reliable in the future, so the status must be ok.
+            RAY_CHECK_OK(
+                actor_info_accessor_.AsyncUpdate(actor_id, actor_table_data, nullptr));
+          },
+          std::move(lease_client_factory), std::move(client_factory))) {
   RAY_LOG(INFO) << "Initializing GcsActorManager.";
   gcs_node_manager.AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
@@ -86,42 +112,8 @@ GcsActorManager::GcsActorManager(
     // node manager.
     ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
   });
-
-  gcs_actor_scheduler_->SetScheduleFailureHandler(
-      [this](std::shared_ptr<GcsActor> actor) {
-        // When there are no available nodes to schedule the actor the gcs_actor_scheduler
-        // will treat it as failed and invoke this handler. In this case, the actor should
-        // be appended to the `pending_actors_` and wait for the registration of new node.
-        pending_actors_.emplace(std::move(actor));
-      });
-
-  gcs_actor_scheduler_->SetScheduleSuccessHandler(
-      [this](std::shared_ptr<GcsActor> actor) {
-        auto worker_id = actor->GetWorkerID();
-        RAY_CHECK(!worker_id.IsNil());
-        RAY_CHECK(worker_to_created_actor_.emplace(worker_id, actor).second);
-
-        auto actor_id = actor->GetActorID();
-        auto node_id = actor->GetNodeID();
-        RAY_CHECK(!node_id.IsNil());
-        RAY_CHECK(node_to_created_actors_[node_id].emplace(actor_id, actor).second);
-
-        actor->UpdateState(rpc::ActorTableData::ALIVE);
-        auto actor_table_data =
-            std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
-        // The backend storage is reliable in the future, so the status must be ok.
-        RAY_CHECK_OK(
-            redis_gcs_client_->Actors().AsyncUpdate(actor_id, actor_table_data, nullptr));
-      });
   RAY_LOG(INFO) << "Finished initialing GcsActorManager.";
 }
-
-GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
-                                 std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-                                 gcs::GcsNodeManager &gcs_node_manager)
-    : GcsActorManager(gcs_client, gcs_node_manager,
-                      std::unique_ptr<gcs::GcsActorScheduler>(new gcs::GcsActorScheduler(
-                          io_context, gcs_client, gcs_node_manager))) {}
 
 void GcsActorManager::RegisterActor(
     const ray::rpc::CreateActorRequest &request,
@@ -143,6 +135,17 @@ void GcsActorManager::RegisterActor(
     return;
   }
 
+  auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
+  if (pending_register_iter != actor_to_register_callbacks_.end()) {
+    // It is a duplicate message, just pending the callback and invoke it after the
+    // related actor is flushed.
+    pending_register_iter->second.emplace_back(std::move(callback));
+    return;
+  }
+
+  // Pending the callback and invoke it after the related actor is flushed.
+  actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
+
   auto actor_table_data = std::make_shared<rpc::ActorTableData>();
   actor_table_data->set_actor_id(actor_id.Binary());
   actor_table_data->set_job_id(request.task_spec().job_id());
@@ -158,7 +161,7 @@ void GcsActorManager::RegisterActor(
   actor_table_data->mutable_owner_address()->CopyFrom(
       request.task_spec().caller_address());
 
-  actor_table_data->set_state(ActorTableData::PENDING);
+  actor_table_data->set_state(rpc::ActorTableData::PENDING);
   actor_table_data->mutable_task_spec()->CopyFrom(request.task_spec());
 
   actor_table_data->mutable_address()->set_raylet_id(ClientID::Nil().Binary());
@@ -166,12 +169,20 @@ void GcsActorManager::RegisterActor(
 
   auto actor = std::make_shared<GcsActor>(*actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(redis_gcs_client_->Actors().AsyncUpdate(
-      actor_id, actor_table_data, [this, actor, callback](Status status) {
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor_id, actor_table_data, [this, actor](Status status) {
         RAY_CHECK_OK(status);
         registered_actors_.emplace(actor->GetActorID(), actor);
         gcs_actor_scheduler_->Schedule(actor);
-        callback(actor);
+        // Invoke all callbacks for all registration requests of this actor (duplicated
+        // requests are included) and remove all of them from
+        // actor_to_register_callbacks_.
+        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
+        for (auto &callback : iter->second) {
+          callback(actor);
+        }
+        actor_to_register_callbacks_.erase(iter);
       }));
 }
 
@@ -254,18 +265,18 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(redis_gcs_client_->Actors().AsyncUpdate(
-        actor->GetActorID(), actor_table_data, [this, actor](Status status) {
-          RAY_CHECK_OK(status);
-          gcs_actor_scheduler_->Schedule(actor);
-        }));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data,
+                                                  [this, actor](Status status) {
+                                                    RAY_CHECK_OK(status);
+                                                    gcs_actor_scheduler_->Schedule(actor);
+                                                  }));
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(redis_gcs_client_->Actors().AsyncUpdate(actor->GetActorID(),
-                                                         actor_table_data, nullptr));
+    RAY_CHECK_OK(
+        actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
   }
 }
 
