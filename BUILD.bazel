@@ -921,13 +921,11 @@ cc_library(
     name = "store_client",
     srcs = [
         "src/ray/gcs/store_client/redis_store_client.cc",
-        "src/ray/gcs/store_client/store_tables.cc",
     ],
     hdrs = [
         "src/ray/gcs/callback.h",
         "src/ray/gcs/store_client/redis_store_client.h",
         "src/ray/gcs/store_client/store_client.h",
-        "src/ray/gcs/store_client/store_tables.h",
     ],
     copts = COPTS,
     deps = [
@@ -965,11 +963,11 @@ cc_test(
 )
 
 cc_library(
-    name = "gcs_service_discovery_client",
-    srcs = ["src/ray/gcs/service_discovery/store_based_gcs_service_discovery_client.cc"],
+    name = "service_discovery_client",
+    srcs = ["src/ray/gcs/service_discovery/store_based_service_discovery_client.cc"],
     hdrs = [
-        "src/ray/gcs/service_discovery/gcs_service_discovery_client.h",
-        "src/ray/gcs/service_discovery/store_based_gcs_service_discovery_client.h",
+        "src/ray/gcs/service_discovery/service_discovery_client.h",
+        "src/ray/gcs/service_discovery/store_based_service_discovery_client.h",
     ],
     copts = COPTS,
     deps = [

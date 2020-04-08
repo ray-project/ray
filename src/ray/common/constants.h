@@ -43,7 +43,7 @@ constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
 
 constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
-/// Prefix of the gcs server table name.
-constexpr char kGcsServerInfoTableNamePrefix[] = "GcsServerInfoTable";
+/// Prefix of the service discovery table name.
+constexpr char kServiceDiscoveryTableNamePrefix[] = "ServiceDiscoveryTable";
 
 #endif  // RAY_CONSTANTS_H_
