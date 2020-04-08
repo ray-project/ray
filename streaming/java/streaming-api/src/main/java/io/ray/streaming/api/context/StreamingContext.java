@@ -1,6 +1,10 @@
 package io.ray.streaming.api.context;
 
 import com.google.common.base.Preconditions;
+import io.ray.streaming.api.stream.StreamSink;
+import io.ray.streaming.jobgraph.JobGraph;
+import io.ray.streaming.jobgraph.JobGraphBuilder;
+import io.ray.streaming.schedule.JobScheduler;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -9,10 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicInteger;
-import io.ray.streaming.api.stream.StreamSink;
-import io.ray.streaming.jobgraph.JobGraph;
-import io.ray.streaming.jobgraph.JobGraphBuilder;
-import io.ray.streaming.schedule.JobScheduler;
 
 /**
  * Encapsulate the context information of a streaming Job.

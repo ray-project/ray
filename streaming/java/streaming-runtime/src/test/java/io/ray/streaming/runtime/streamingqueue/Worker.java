@@ -1,12 +1,5 @@
 package io.ray.streaming.runtime.streamingqueue;
 
-import java.lang.management.ManagementFactory;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
@@ -17,6 +10,13 @@ import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.util.Config;
+import java.lang.management.ManagementFactory;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

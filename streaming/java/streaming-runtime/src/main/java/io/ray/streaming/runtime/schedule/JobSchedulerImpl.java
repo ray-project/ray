@@ -1,8 +1,5 @@
 package io.ray.streaming.runtime.schedule;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
@@ -19,6 +16,9 @@ import io.ray.streaming.runtime.python.GraphPbBuilder;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.WorkerContext;
 import io.ray.streaming.schedule.JobScheduler;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * JobSchedulerImpl schedules workers by the Plan and the resource information

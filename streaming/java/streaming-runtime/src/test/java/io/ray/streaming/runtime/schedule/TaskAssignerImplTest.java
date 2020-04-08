@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.schedule;
 
 import com.google.common.collect.Lists;
-import java.util.List;
 import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.impl.RoundRobinPartition;
@@ -15,6 +14,7 @@ import io.ray.streaming.runtime.core.graph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

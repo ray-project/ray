@@ -1,9 +1,9 @@
 package io.ray.streaming.runtime.core.processor;
 
-import java.util.List;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.operator.Operator;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

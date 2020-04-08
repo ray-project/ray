@@ -1,9 +1,9 @@
 package io.ray.streaming.runtime.core.processor;
 
-import java.io.Serializable;
-import java.util.List;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
+import java.io.Serializable;
+import java.util.List;
 
 public interface Processor<T> extends Serializable {
 

@@ -1,7 +1,7 @@
 package io.ray.streaming.jobgraph;
 
-import java.io.Serializable;
 import io.ray.streaming.api.partition.Partition;
+import java.io.Serializable;
 
 /**
  * Job edge is connection and partition rules of upstream and downstream execution nodes.

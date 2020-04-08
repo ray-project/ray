@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.transfer;
 
-import com.google.common.base.Preconditions;
 import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;

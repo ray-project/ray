@@ -1,7 +1,7 @@
 package io.ray.streaming.api.partition.impl;
 
-import java.util.stream.IntStream;
 import io.ray.streaming.api.partition.Partition;
+import java.util.stream.IntStream;
 
 /**
  * Broadcast the record to all downstream partitions.

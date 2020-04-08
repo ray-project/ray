@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.schedule;
 
-import java.io.Serializable;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
+import java.io.Serializable;
 
 /**
  * Interface of the task assigning strategy.

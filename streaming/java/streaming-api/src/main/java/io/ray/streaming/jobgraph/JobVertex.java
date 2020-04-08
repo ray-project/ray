@@ -1,9 +1,9 @@
 package io.ray.streaming.jobgraph;
 
 import com.google.common.base.MoreObjects;
-import java.io.Serializable;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.operator.StreamOperator;
+import java.io.Serializable;
 
 /**
  * Job vertex is a cell node where logic is executed.

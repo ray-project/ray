@@ -1,12 +1,12 @@
 package io.ray.streaming.runtime.master.scheduler.strategy;
 
-import java.util.List;
-import java.util.Map;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ContainerID;
 import io.ray.streaming.runtime.core.resource.Resources;
 import io.ray.streaming.runtime.core.resource.Slot;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The SlotAssignStrategy managers a set of slots. When a container is

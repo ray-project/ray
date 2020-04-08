@@ -1,13 +1,13 @@
 package io.ray.streaming.runtime.core.resource;
 
 import com.google.common.base.MoreObjects;
+import io.ray.api.id.UniqueId;
+import io.ray.streaming.runtime.config.master.ResourceConfig;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import io.ray.api.id.UniqueId;
-import io.ray.streaming.runtime.config.master.ResourceConfig;
 
 /**
  * Resource description of ResourceManager.

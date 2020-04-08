@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.core.graph;
 
-import java.io.Serializable;
 import io.ray.streaming.api.partition.Partition;
+import java.io.Serializable;
 
 /**
  * An edge in the physical execution graph.

@@ -1,8 +1,5 @@
 package io.ray.streaming.runtime.worker;
 
-import java.io.Serializable;
-import java.util.Map;
-import io.ray.api.Ray;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -19,6 +16,8 @@ import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
 import io.ray.streaming.util.Config;
+import java.io.Serializable;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -2,9 +2,9 @@ package io.ray.streaming.runtime.worker.context;
 
 import static io.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
 
-import java.util.Map;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
+import java.util.Map;
 
 /**
  * Use Ray to implement RuntimeContext.

@@ -1,9 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler.strategy.impl;
 
 import com.google.common.base.Preconditions;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import io.ray.streaming.runtime.config.types.SlotAssignStrategyType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
@@ -13,6 +10,9 @@ import io.ray.streaming.runtime.core.resource.ContainerID;
 import io.ray.streaming.runtime.core.resource.Resources;
 import io.ray.streaming.runtime.core.resource.Slot;
 import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

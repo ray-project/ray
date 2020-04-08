@@ -1,6 +1,5 @@
 package io.ray.streaming.api.stream;
 
-import java.io.Serializable;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.api.partition.impl.RoundRobinPartition;
@@ -8,6 +7,7 @@ import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 import io.ray.streaming.python.stream.PythonStream;
+import java.io.Serializable;
 
 /**
  * Abstract base class of all stream types.

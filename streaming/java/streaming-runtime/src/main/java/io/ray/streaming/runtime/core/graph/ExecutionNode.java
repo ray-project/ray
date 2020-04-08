@@ -1,11 +1,11 @@
 package io.ray.streaming.runtime.core.graph;
 
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A node in the physical execution graph.

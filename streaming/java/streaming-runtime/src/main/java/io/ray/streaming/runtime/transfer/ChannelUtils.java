@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.transfer;
 
-import java.util.Map;
 import io.ray.streaming.runtime.generated.Streaming;
 import io.ray.streaming.util.Config;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,6 +1,5 @@
 package io.ray.streaming.operator.impl;
 
-import java.util.List;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.impl.SourceFunction;
@@ -8,6 +7,7 @@ import io.ray.streaming.api.function.impl.SourceFunction.SourceContext;
 import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.StreamOperator;
+import java.util.List;
 
 public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
 

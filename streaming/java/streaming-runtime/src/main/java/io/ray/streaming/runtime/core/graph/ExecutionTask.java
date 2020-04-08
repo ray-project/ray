@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.core.graph;
 
-import java.io.Serializable;
 import io.ray.api.BaseActor;
+import java.io.Serializable;
 
 /**
  * ExecutionTask is minimal execution unit.

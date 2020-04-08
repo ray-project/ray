@@ -1,9 +1,5 @@
 package io.ray.streaming.runtime.schedule;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
@@ -15,6 +11,10 @@ import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
 import io.ray.streaming.runtime.worker.JobWorker;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class TaskAssignerImpl implements TaskAssigner {
 

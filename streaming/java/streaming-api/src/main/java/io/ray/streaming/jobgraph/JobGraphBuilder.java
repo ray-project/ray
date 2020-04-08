@@ -1,15 +1,15 @@
 package io.ray.streaming.jobgraph;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.api.stream.StreamSource;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class JobGraphBuilder {
 

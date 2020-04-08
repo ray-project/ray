@@ -1,13 +1,13 @@
 package io.ray.streaming.runtime.core.collector;
 
-import java.nio.ByteBuffer;
-import java.util.Collection;
 import io.ray.runtime.util.Serializer;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.message.Record;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.DataWriter;
+import java.nio.ByteBuffer;
+import java.util.Collection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

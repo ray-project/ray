@@ -1,7 +1,7 @@
 package io.ray.streaming.api.collector;
 
-import java.util.List;
 import io.ray.streaming.message.Record;
+import java.util.List;
 
 /**
  * Combination of multiple collectors.

@@ -1,8 +1,8 @@
 package io.ray.streaming.schedule;
 
 
-import java.util.Map;
 import io.ray.streaming.jobgraph.JobGraph;
+import java.util.Map;
 
 /**
  * Interface of the job scheduler.

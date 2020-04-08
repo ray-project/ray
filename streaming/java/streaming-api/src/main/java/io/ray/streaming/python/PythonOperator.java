@@ -1,10 +1,10 @@
 package io.ray.streaming.python;
 
-import java.util.List;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.StreamOperator;
+import java.util.List;
 
 /**
  * Represents a {@link StreamOperator} that wraps python {@link PythonFunction}.

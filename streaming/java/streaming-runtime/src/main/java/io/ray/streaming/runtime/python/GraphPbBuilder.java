@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.python;
 
 import com.google.protobuf.ByteString;
-import java.util.Arrays;
 import io.ray.runtime.actor.NativeRayActor;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.partition.Partition;
@@ -13,6 +12,7 @@ import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.generated.Streaming;
+import java.util.Arrays;
 
 public class GraphPbBuilder {
 

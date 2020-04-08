@@ -1,10 +1,5 @@
 package io.ray.streaming.runtime.resourcemanager;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.aeonbits.owner.util.Collections;
 import io.ray.api.Ray;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.BaseUnitTest;
@@ -13,18 +8,22 @@ import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
-import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
-import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import io.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.ResourceType;
 import io.ray.streaming.runtime.core.resource.Slot;
 import io.ray.streaming.runtime.graph.ExecutionGraphTest;
 import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
+import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import io.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.aeonbits.owner.util.Collections;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
