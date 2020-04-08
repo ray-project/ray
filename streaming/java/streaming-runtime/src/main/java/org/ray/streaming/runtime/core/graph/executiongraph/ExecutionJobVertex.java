@@ -72,7 +72,7 @@ public class ExecutionJobVertex {
 
     for (int subIndex = 0; subIndex < parallelism; subIndex++) {
       executionVertices.add(new ExecutionVertex(
-        idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
+          idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
     }
     return executionVertices;
   }
