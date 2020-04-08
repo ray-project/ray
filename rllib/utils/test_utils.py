@@ -187,15 +187,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                             rtol=rtol,
                             false=false)
         if torch is not None:
-            # y should never be a Tensor (y=expected value).
-            if isinstance(y, torch.Tensor):
-                raise ValueError("`y` (expected value) must not be a Tensor. "
-                                 "Use numpy.ndarray instead")
             if isinstance(x, torch.Tensor):
-                try:
-                    x = x.numpy()
-                except RuntimeError:
-                    x = x.detach().numpy()
+                x = x.detach().numpy()
+            if isinstance(y, torch.Tensor):
+                y = y.detach().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:

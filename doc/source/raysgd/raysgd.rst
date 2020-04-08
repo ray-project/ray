@@ -11,11 +11,6 @@ The main features are:
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
-.. note::
-
-  This API is new and may be revised in future Ray releases. If you encounter
-  any bugs, please file an `issue on GitHub`_.
-
 .. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 

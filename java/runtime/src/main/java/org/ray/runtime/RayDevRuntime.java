@@ -1,12 +1,12 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.BaseActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.LocalModeWorkerContext;
-import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.object.LocalModeObjectStore;
 import org.ray.runtime.task.LocalModeTaskExecutor;
 import org.ray.runtime.task.LocalModeTaskSubmitter;
@@ -19,18 +19,31 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
-  public RayDevRuntime(RayConfig rayConfig, FunctionManager functionManager) {
-    super(rayConfig, functionManager);
+  public RayDevRuntime(RayConfig rayConfig) {
+    super(rayConfig);
+  }
+
+  @Override
+  public void start() {
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
-    taskSubmitter = new LocalModeTaskSubmitter(this, (LocalModeObjectStore) objectStore,
-        rayConfig.numberExecThreadsForDevRuntime);
+    taskSubmitter = new LocalModeTaskSubmitter(this, taskExecutor,
+        (LocalModeObjectStore) objectStore);
     ((LocalModeObjectStore) objectStore).addObjectPutCallback(
-        objectId -> ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId));
+        objectId -> {
+          if (taskSubmitter != null) {
+            ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId);
+          }
+        });
+  }
+
+  @Override
+  public void run() {
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -60,6 +73,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public void setAsyncContext(Object asyncContext) {
+    Preconditions.checkArgument(asyncContext == null);
+    super.setAsyncContext(asyncContext);
   }
 
   private JobId nextJobId() {

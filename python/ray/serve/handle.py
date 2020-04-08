@@ -1,3 +1,4 @@
+import ray
 from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.exceptions import RayServeException
@@ -105,9 +106,13 @@ class RayServeHandle:
     def get_http_endpoint(self):
         return DEFAULT_HTTP_ADDRESS
 
+    def get_traffic_policy(self):
+        master_actor = serve.api._get_master_actor()
+        return ray.get(
+            master_actor.get_traffic_policy.remote(self.endpoint_name))
+
     def _ensure_backend_unique(self, backend_tag=None):
-        global_state = serve.api._get_global_state()
-        traffic_policy = global_state.get_traffic_policy(self.endpoint_name)
+        traffic_policy = self.get_traffic_policy()
         if backend_tag is None:
             assert len(traffic_policy) == 1, (
                 "Multiple backends detected. "

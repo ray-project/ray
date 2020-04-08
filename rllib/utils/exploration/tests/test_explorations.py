@@ -31,8 +31,8 @@ def do_test_explorations(run,
     # Test all frameworks.
     for fw in framework_iterator(config):
         if fw == "torch" and \
-                run in [ddpg.DDPGTrainer, dqn.DQNTrainer, dqn.SimpleQTrainer,
-                        impala.ImpalaTrainer, sac.SACTrainer, td3.TD3Trainer]:
+                run in [ddpg.DDPGTrainer, impala.ImpalaTrainer,
+                        sac.SACTrainer, td3.TD3Trainer]:
             continue
         elif fw == "eager" and run in [
                 ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
@@ -68,7 +68,7 @@ def do_test_explorations(run,
             # Make sure actions drawn are different
             # (around some mean value), given constant observations.
             actions = []
-            for _ in range(50):
+            for _ in range(100):
                 actions.append(
                     trainer.compute_action(
                         observation=dummy_obs,
@@ -123,8 +123,8 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_simple_dqn(self):
-        do_test_explorations(dqn.SimpleQTrainer,
-                             "CartPole-v0", dqn.DEFAULT_CONFIG,
+        do_test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
+                             dqn.SIMPLE_Q_DEFAULT_CONFIG,
                              np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_dqn(self):

@@ -60,6 +60,7 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
+                 device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
@@ -81,6 +82,7 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._device_ids = device_ids
         self._use_gpu = use_gpu and torch.cuda.is_available()
         self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
@@ -327,21 +329,27 @@ class TrainingOperator:
         }
 
     def state_dict(self):
-        """Override this to return a representation of the operator state."""
+        """Override this to return a representation of the operator state.
+
+        Returns:
+            dict: The state dict of the operator."""
         pass
 
     def load_state_dict(self, state_dict):
-        """Override this to load the representation of the operator state."""
+        """Override this to load the representation of the operator state.
+
+        Args:
+            state_dict (dict): State dict as returned by the operator. """
         pass
 
     @property
     def device(self):
-        """The torch device, at your convenience."""
+        """torch.device: The appropriate torch device, at your convenience."""
         return self._device
 
     @property
     def config(self):
-        """Dictionary as provided into TorchTrainer."""
+        """dict: Provided into TorchTrainer."""
         return self._config
 
     @property
@@ -366,21 +374,18 @@ class TrainingOperator:
 
     @property
     def train_loader(self):
-        """
-        Data loader for the validation dataset created by the ``data_creator``.
+        """Iterable: 1st Dataloader from ``data_creator``.
         """
         return self._train_loader
 
     @property
     def validation_loader(self):
-        """
-        Data loader for the train dataset created by the ``data_creator``.
-        """
+        """Iterable: 2nd Dataloader from ``data_creator``."""
         return self._validation_loader
 
     @property
     def world_rank(self):
-        """The rank of the parent runner. Always 0 if not distributed."""
+        """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
 
     @property
@@ -401,13 +406,21 @@ class TrainingOperator:
 
     @property
     def use_fp16(self):
-        """Whether the model and optimizer have been FP16 enabled."""
+        """bool: Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
 
     @property
     def use_tqdm(self):
-        """Whether tqdm progress bars are enabled."""
+        """bool: Whether tqdm progress bars are enabled."""
         return self._use_tqdm
+
+    @property
+    def device_ids(self):
+        """List[int]: Device IDs for the model.
+
+        This is useful for using batch norm with DistributedDataParallel.
+        """
+        return self._device_ids
 
 
 class _TestingOperator(TrainingOperator):

@@ -34,19 +34,19 @@
 
 using MessageType = ray::protocol::MessageType;
 
-static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+namespace ray {
+
+static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
 
-static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+static int write_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
-
-namespace ray {
 
 raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
                                            const std::string &raylet_socket,
@@ -62,12 +62,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    local_stream_protocol::endpoint endpoint(raylet_socket);
-#else
-    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
-#endif
-    if (!conn_.connect(endpoint, ec)) {
+    if (!conn_.connect(parse_url_endpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {
