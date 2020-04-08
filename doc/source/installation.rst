@@ -1,8 +1,9 @@
 Installing Ray
 ==============
 
-Ray currently supports MacOS and Linux. Windows support
-is planned for the future.
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
+Ray currently supports MacOS and Linux. Windows support is planned for the future.
 
 Latest stable version
 ---------------------
@@ -30,15 +31,18 @@ master branch). To install these wheels, run the following command:
 ===================  ===================
        Linux                MacOS
 ===================  ===================
+`Linux Python 3.8`_  `MacOS Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_
 `Linux Python 3.5`_  `MacOS Python 3.5`_
 ===================  ===================
 
 
+.. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-manylinux1_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 .. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
@@ -58,24 +62,6 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
-
-Installing Ray with Anaconda
-----------------------------
-
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
-
-.. code-block:: bash
-
-  conda create --name ray
-  conda activate ray
-  conda install --name ray pip
-  pip install ray
-
-Use ``pip list`` to confirm that ``ray`` is installed.
-
-.. _`Anaconda`: https://www.anaconda.com/
-
-
 Building Ray from Source
 ------------------------
 
@@ -87,8 +73,7 @@ both Linux and MacOS.
 Dependencies
 ~~~~~~~~~~~~
 
-To build Ray, first install the following dependencies. We recommend using
-`Anaconda`_.
+To build Ray, first install the following dependencies.
 
 For Ubuntu, run the following commands:
 
@@ -97,11 +82,7 @@ For Ubuntu, run the following commands:
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc
 
-  # If you are not using Anaconda, you need the following.
-  sudo apt-get install python-dev  # For Python 2.
-  sudo apt-get install python3-dev  # For Python 3.
-
-  pip install cython==0.29.0
+  pip install cython==0.29.0 pytest
 
 For MacOS, run the following commands:
 
@@ -110,13 +91,7 @@ For MacOS, run the following commands:
   brew update
   brew install wget
 
-  pip install cython==0.29.0
-
-If you are using Anaconda, you may also need to run the following.
-
-.. code-block:: bash
-
-  conda install libgcc
+  pip install cython==0.29.0 pytest
 
 
 Install Ray
@@ -173,6 +148,23 @@ the dashboard. For example,
   <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
+
+
+Installing Ray with Anaconda
+----------------------------
+
+If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+
+.. code-block:: bash
+
+  conda create --name ray
+  conda activate ray
+  conda install --name ray pip
+  pip install ray
+
+Use ``pip list`` to confirm that ``ray`` is installed.
+
+.. _`Anaconda`: https://www.anaconda.com/
 
 
 Docker Source Images

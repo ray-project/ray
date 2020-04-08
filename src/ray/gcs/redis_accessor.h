@@ -27,14 +27,16 @@ namespace gcs {
 
 class RedisGcsClient;
 
-/// \class RedisActorInfoAccessor
-/// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// \class RedisLogBasedActorInfoAccessor
+/// `RedisLogBasedActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisActorInfoAccessor : public ActorInfoAccessor {
+class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
  public:
-  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisLogBasedActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisActorInfoAccessor() {}
+  virtual ~RedisLogBasedActorInfoAccessor() {}
+
+  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
@@ -66,6 +68,10 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
+ protected:
+  virtual std::vector<ActorID> GetAllActorID() const;
+  virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
+
  private:
   /// Add checkpoint id to GCS asynchronously.
   ///
@@ -76,7 +82,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
                               const ActorCheckpointID &checkpoint_id,
                               const StatusCallback &callback);
 
- private:
+ protected:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for actor subscription. Because:
   // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
@@ -86,6 +92,45 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID subscribe_id_{ClientID::FromRandom()};
 
+ private:
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+      ActorSubscriptionExecutor;
+  ActorSubscriptionExecutor log_based_actor_sub_executor_;
+};
+
+/// \class RedisActorInfoAccessor
+/// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
+ public:
+  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisActorInfoAccessor() {}
+
+  Status AsyncGet(const ActorID &actor_id,
+                  const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                       const StatusCallback &callback) override;
+
+  Status AsyncUpdate(const ActorID &actor_id,
+                     const std::shared_ptr<ActorTableData> &data_ptr,
+                     const StatusCallback &callback) override;
+
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                           const StatusCallback &done) override;
+
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                        const StatusCallback &done) override;
+
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+
+ protected:
+  std::vector<ActorID> GetAllActorID() const override;
+  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
+
+ private:
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
@@ -351,6 +396,11 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
+
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

@@ -5,10 +5,12 @@ from ray.rllib.utils.annotations import override
 
 
 class TestPolicy(Policy):
+    """A dummy Policy that returns a random (batched) int for compute_actions.
     """
-    A dummy Policy that returns a random (batched) int for compute_actions
-    and implements all other abstract methods of Policy with "pass".
-    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
 
     @override(Policy)
     def compute_actions(self,

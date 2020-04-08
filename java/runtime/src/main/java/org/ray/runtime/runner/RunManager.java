@@ -226,7 +226,7 @@ public class RunManager {
     }
 
     // start gcs server
-    if (System.getenv("RAY_GCS_SERVICE_ENABLED") != null) {
+    if (rayConfig.gcsServiceEnabled) {
       String redisPasswordOption = "";
       if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
         redisPasswordOption = rayConfig.headRedisPassword;

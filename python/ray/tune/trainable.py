@@ -178,7 +178,7 @@ class Trainable:
                         "slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
@@ -213,7 +213,7 @@ class Trainable:
         """
         return ""
 
-    def current_ip(self):
+    def get_current_ip(self):
         logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
@@ -419,8 +419,8 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored on %s from checkpoint: %s", self.current_ip(),
-                    checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s",
+                    self.get_current_ip(), checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
@@ -473,13 +473,16 @@ class Trainable:
         export model to local directory.
 
         Args:
-            export_formats (list): List of formats that should be exported.
+            export_formats (Union[list,str]): Format or list of (str) formats
+                that should be exported.
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
+        if isinstance(export_formats, str):
+            export_formats = [export_formats]
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 

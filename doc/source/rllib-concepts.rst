@@ -275,7 +275,7 @@ Now let's take a look at the ``update_kl`` function. This is used to adaptively 
             # multi-agent
             trainer.workers.local_worker().foreach_trainable_policy(update)
 
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
 
 .. code-block:: python
 

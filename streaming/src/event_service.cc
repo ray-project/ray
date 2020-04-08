@@ -1,6 +1,7 @@
 #include <unordered_set>
 
 #include "event_service.h"
+
 namespace ray {
 namespace streaming {
 
@@ -105,7 +106,11 @@ Event &EventQueue::Front() {
 }
 
 EventService::EventService(uint32_t event_size)
-    : event_queue_(std::make_shared<EventQueue>(event_size)), stop_flag_(false) {}
+    : worker_id_(CoreWorkerProcess::IsInitialized()
+                     ? CoreWorkerProcess::GetCoreWorker().GetWorkerID()
+                     : WorkerID::Nil()),
+      event_queue_(std::make_shared<EventQueue>(event_size)),
+      stop_flag_(false) {}
 EventService::~EventService() {
   stop_flag_ = true;
   // No need to join if loop thread has never been created.
@@ -154,6 +159,9 @@ void EventService::Execute(Event &event) {
 }
 
 void EventService::LoopThreadHandler() {
+  if (CoreWorkerProcess::IsInitialized()) {
+    CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
+  }
   while (true) {
     if (stop_flag_) {
       break;

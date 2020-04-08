@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-from packaging import version
 
 import ray.ray_constants as ray_constants
 
@@ -38,8 +37,6 @@ class RayParams:
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        local_mode (bool): True if the code should be executed serially
-            without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -99,7 +96,6 @@ class RayParams:
                  node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
-                 local_mode=False,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -135,7 +131,6 @@ class RayParams:
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
-        self.local_mode = local_mode
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -208,6 +203,9 @@ class RayParams:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
 
-        if version.parse(np.__version__) < version.parse("1.16.0"):
+        # Parse the numpy version.
+        numpy_version = np.__version__.split(".")
+        numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
+        if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")

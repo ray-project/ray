@@ -58,6 +58,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
 
+  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
@@ -89,12 +91,13 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
+ protected:
+  ClientID subscribe_id_;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
 
@@ -325,6 +328,11 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
+
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

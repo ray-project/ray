@@ -1,5 +1,5 @@
 import logging
-import six.moves.queue as queue
+import queue
 import threading
 import traceback
 
@@ -90,6 +90,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         logger.info("Starting connector server at {}:{}".format(address, port))
         logger.info("")
         thread = threading.Thread(name="server", target=self.serve_forever)
+        thread.daemon = True
         thread.start()
 
     @override(InputReader)

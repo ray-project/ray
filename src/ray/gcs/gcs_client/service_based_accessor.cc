@@ -77,9 +77,14 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
+    : subscribe_id_(ClientID::FromRandom()),
+      client_impl_(client_impl),
+      actor_sub_executor_(client_impl->GetRedisGcsClient().log_based_actor_table()) {}
+
+Status ServiceBasedActorInfoAccessor::GetAll(
+    std::vector<ActorTableData> *actor_table_data_list) {
+  return Status::Invalid("Not implemented");
+}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
@@ -866,6 +871,26 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
         }
         RAY_LOG(DEBUG) << "Finished reporting worker failure, "
                        << worker_address.DebugString() << ", status = " << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
+  rpc::RegisterWorkerRequest request;
+  request.set_worker_type(worker_type);
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+  client_impl_->GetGcsRpcClient().RegisterWorker(
+      request,
+      [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
       });
   return Status::OK();
 }
