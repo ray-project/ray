@@ -43,13 +43,13 @@ class DDPGModel(TFModelV2):
         should be defined in subclasses of DDPGActionModel.
         """
 
-        super(DDPGModel, self).__init__(obs_space, action_space,
-                                        num_outputs, model_config, name)
+        super(DDPGModel, self).__init__(obs_space, action_space, num_outputs,
+                                        model_config, name)
 
         actor_hidden_activation = getattr(tf.nn, actor_hidden_activation,
                                           tf.nn.relu)
         critic_hidden_activation = getattr(tf.nn, critic_hidden_activation,
-                                          tf.nn.relu)
+                                           tf.nn.relu)
 
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
@@ -66,8 +66,7 @@ class DDPGModel(TFModelV2):
                     last_layer = tf.keras.layers.LayerNormalization(
                         name="LayerNorm_{}".format(i))(last_layer)
             actor_out = tf.keras.layers.Dense(
-                self.action_dim, activation=None,
-                name="actor_out")(last_layer)
+                self.action_dim, activation=None, name="actor_out")(last_layer)
         else:
             actor_out = self.model_out
 
