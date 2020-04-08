@@ -2,18 +2,19 @@ from gym.spaces import Discrete
 import numpy as np
 
 import ray
-from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
-from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin
+from ray.rllib.agents.dqn.distributional_q_tf_model import \
+    DistributionalQTFModel
+from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
-from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
@@ -138,16 +139,16 @@ def build_q_model(policy, obs_space, action_space, config):
         num_outputs = action_space.n
 
     policy.q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="tf",
-        model_interface=DistributionalQModel,
+        model_interface=DistributionalQTFModel,
         name=Q_SCOPE,
         num_atoms=config["num_atoms"],
-        q_hiddens=config["hiddens"],
         dueling=config["dueling"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
@@ -159,16 +160,16 @@ def build_q_model(policy, obs_space, action_space, config):
         or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
         framework="tf",
-        model_interface=DistributionalQModel,
+        model_interface=DistributionalQTFModel,
         name=Q_TARGET_SCOPE,
         num_atoms=config["num_atoms"],
-        q_hiddens=config["hiddens"],
         dueling=config["dueling"],
+        q_hiddens=config["hiddens"],
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
@@ -257,12 +258,12 @@ def adam_optimizer(policy, config):
 
 
 def clip_gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
+    if policy.config["grad_clip"] is not None:
         grads_and_vars = minimize_and_clip(
             optimizer,
             loss,
             var_list=policy.q_func_vars,
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
     else:
         grads_and_vars = optimizer.compute_gradients(
             loss, var_list=policy.q_func_vars)

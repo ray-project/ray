@@ -1,8 +1,8 @@
 # To generate training data, first run:
 # $ ./train.py --run=PPO --env=CartPole-v0 \
 #      --stop='{"timesteps_total": 50000}' \
-#      --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
-cartpole-marwil:
+#      --config='{"use_pytorch": true, "output": "/tmp/out", "batch_mode": "complete_episodes"}'
+cartpole-marwil-torch:
     env: CartPole-v0
     run: MARWIL
     stop:

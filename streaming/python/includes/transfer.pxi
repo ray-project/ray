@@ -19,13 +19,10 @@ from ray.includes.unique_ids cimport (
 )
 from ray._raylet cimport (
     Buffer,
-    CoreWorker,
     ActorID,
     ObjectID,
     FunctionDescriptor,
 )
-
-from ray.includes.libcoreworker cimport CCoreWorker
 
 cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
@@ -52,16 +49,14 @@ cdef class ReaderClient:
         CReaderClient *client
 
     def __cinit__(self,
-                  CoreWorker worker,
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
         sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CReaderClient(core_worker, async_native_func, sync_native_func)
+        self.client = new CReaderClient(async_native_func, sync_native_func)
 
     def __dealloc__(self):
         del self.client
@@ -91,16 +86,14 @@ cdef class WriterClient:
         CWriterClient * client
 
     def __cinit__(self,
-                  CoreWorker worker,
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
         sync_native_func = CRayFunction(LANGUAGE_PYTHON, sync_func.descriptor)
-        self.client = new CWriterClient(core_worker, async_native_func, sync_native_func)
+        self.client = new CWriterClient(async_native_func, sync_native_func)
 
     def __dealloc__(self):
         del self.client
