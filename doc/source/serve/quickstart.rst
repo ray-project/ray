@@ -6,16 +6,16 @@ Ray Serve: Scalable and Programmable Serving
 
 Serve is a serving library built on top of ray. It is easy-to-use and flexible.
 
-- Serve allows you to write *stateless* logic in serve functions and *stateful* ones in serve actors.
-- Serve have *Flask-inspired API*. Your directly work with a Flask request object on each request.
-- Serve can grow as your project grow, it can *scale to a cluster* without changing any lines of code.
+- Serve allows you to write *stateless* logic in serve functions and *stateful* logic in serve actors.
+- Serve has *Flask-inspired API*. You directly work with a Flask request object on each request.
+- Serve grows as your project grows, it can *scale to a cluster* without changing any lines of code.
 - *Everything is in Python*. Instead of writing configuration YAML, the language to configure the serving system is the same as the language to write the application logic.
-- *Batching* and *SLO aware scheduling* are builtin features. Serve can automatically batch queries and reorder them to meet SLO constraint.
-- Deploy to any cloud (or Kubernetes) with Ray autoscaler.
+- *Batching* and *SLO aware scheduling* are built-in features. Serve can automatically batch queries and reorder them to meet SLO target.
+- Deploy to any cloud (or Kubernetes) with Ray Autoscaler.
 
 
-Quickstart
-----------
+Quick start
+-----------
 Serve a stateless function:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_function.py
@@ -25,9 +25,9 @@ Serve a stateful class:
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
 
 
-``@serve.route`` decorator is similar to Flask decorator. You can decorate a
-function or a class. It specifies how request for HTTP is routed to your
-function.
+``@serve.route`` decorator is similar to the Flask ``route`` decorator. You can
+decorate a function or a class. It specifies how request for HTTP is routed to
+your function.
 
 To make your function servable, the function just need to take in a flask
 request as first argument. Your input for web request are just flask request
