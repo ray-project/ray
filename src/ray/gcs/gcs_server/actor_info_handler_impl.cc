@@ -75,9 +75,9 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
+      RAY_CHECK_OK(actor_pub_.Publish(actor_id, *actor_table_data, nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
-      RAY_CHECK_OK(actor_pub_.Publish(actor_id, *actor_table_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

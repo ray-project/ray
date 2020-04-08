@@ -40,8 +40,6 @@ void DefaultErrorInfoHandler::HandleReportJobError(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished reporting job error, job id = " << job_id
-                 << ", type = " << type;
 }
 
 }  // namespace rpc

@@ -57,14 +57,10 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
 
   auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
     if (status.ok()) {
+      RAY_CHECK_OK(object_pub_.Publish(
+          object_id, GenObjectChange(node_id, GcsChangeMode::APPEND_OR_ADD), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
                      << ", node id = " << node_id;
-      ObjectTableData object_table_data;
-      object_table_data.set_manager(node_id.Binary());
-      ObjectChange object_change;
-      object_change.set_change_mode(GcsChangeMode::APPEND_OR_ADD);
-      object_change.mutable_data()->CopyFrom(object_table_data);
-      RAY_CHECK_OK(object_pub_.Publish(object_id, object_change, nullptr));
     } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", object id = " << object_id << ", node id = " << node_id;
@@ -88,16 +84,11 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
 
   auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
     if (status.ok()) {
+      RAY_CHECK_OK(object_pub_.Publish(
+          object_id, GenObjectChange(node_id, GcsChangeMode::REMOVE), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;
-
-      ObjectTableData object_table_data;
-      object_table_data.set_manager(node_id.Binary());
-      ObjectChange object_change;
-      object_change.set_change_mode(GcsChangeMode::REMOVE);
-      object_change.mutable_data()->CopyFrom(object_table_data);
-      RAY_CHECK_OK(object_pub_.Publish(object_id, object_change, nullptr));
     } else {
       RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
@@ -110,6 +101,16 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
+}
+
+ObjectChange DefaultObjectInfoHandler::GenObjectChange(
+    const ClientID &node_id, const rpc::GcsChangeMode &change_mode) {
+  ObjectTableData object_table_data;
+  object_table_data.set_manager(node_id.Binary());
+  ObjectChange object_change;
+  object_change.set_change_mode(change_mode);
+  object_change.mutable_data()->CopyFrom(object_table_data);
+  return object_change;
 }
 
 }  // namespace rpc

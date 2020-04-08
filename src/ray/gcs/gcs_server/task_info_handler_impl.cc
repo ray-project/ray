@@ -31,9 +31,9 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
       RAY_LOG(ERROR) << "Failed to add task, job id = " << job_id
                      << ", task id = " << task_id;
     } else {
+      RAY_CHECK_OK(task_pub_.Publish(task_id, *task_table_data, nullptr));
       RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
                      << ", task id = " << task_id;
-      RAY_CHECK_OK(task_pub_.Publish(task_id, *task_table_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -78,27 +78,39 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   RAY_LOG(DEBUG) << "Deleting tasks, job id = " << job_id
                  << ", task id list size = " << task_ids.size();
 
-  // TODO(ffbin): get tasks
-  std::unordered_map<TaskID, TaskTableData> tasks;
+  auto tasks = std::make_shared<std::unordered_map<TaskID, TaskTableData>>();
+  for (auto &task_id : task_ids) {
+    auto on_done = [this, job_id, task_id, task_ids, tasks, request, reply,
+                    send_reply_callback](Status status,
+                                         const boost::optional<TaskTableData> &result) {
+      if (status.ok()) {
+        RAY_DCHECK(result);
+        (*tasks)[task_id] = *result;
 
-  auto on_done = [this, tasks, job_id, task_ids, request, reply,
-                  send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
-                     << ", task id list size = " << task_ids.size();
-    } else {
-      RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
-                     << ", task id list size = " << task_ids.size();
-      for (auto &task : tasks) {
-        RAY_CHECK_OK(task_pub_.Publish(task.first, task.second, nullptr));
+        if (tasks->size() == task_ids.size()) {
+          auto on_done = [this, job_id, task_ids, tasks, request, reply,
+                          send_reply_callback](Status status) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
+                             << ", task id list size = " << task_ids.size();
+            } else {
+              for (auto &task : *tasks) {
+                RAY_CHECK_OK(task_pub_.Publish(task.first, task.second, nullptr));
+              }
+              RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
+                             << ", task id list size = " << task_ids.size();
+            }
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          };
+
+          status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
+          if (!status.ok()) {
+            on_done(status);
+          }
+        }
       }
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
-  if (!status.ok()) {
-    on_done(status);
+    };
+    RAY_CHECK_OK(gcs_client_.Tasks().AsyncGet(task_id, on_done));
   }
 }
 
@@ -117,9 +129,9 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     } else {
+      RAY_CHECK_OK(task_lease_pub_.Publish(task_id, *task_lease_data, nullptr));
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
-      RAY_CHECK_OK(task_lease_pub_.Publish(task_id, *task_lease_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

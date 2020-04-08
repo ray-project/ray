@@ -34,9 +34,9 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
     } else {
+      RAY_CHECK_OK(worker_failure_pub_.Publish(worker_id, *worker_failure_data, nullptr));
       RAY_LOG(DEBUG) << "Finished reporting worker failure, "
                      << worker_address.DebugString();
-      RAY_CHECK_OK(worker_failure_pub_.Publish(worker_id, *worker_failure_data, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

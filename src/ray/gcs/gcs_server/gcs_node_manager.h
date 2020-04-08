@@ -130,7 +130,7 @@ class GcsNodeManager {
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
-
+  /// A publisher for publishing heartbeat batch messages.
   gcs::GcsHeartbeatBatchTablePubSub heartbeat_batch_pub_;
 };
 

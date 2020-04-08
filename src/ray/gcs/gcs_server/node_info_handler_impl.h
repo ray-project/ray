@@ -62,10 +62,30 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
                              SendReplyCallback send_reply_callback) override;
 
  private:
+  void UnregisterNode(const ClientID &node_id, rpc::GcsNodeInfo &node_info,
+                      rpc::UnregisterNodeReply *reply,
+                      const SendReplyCallback &send_reply_callback);
+
+  void DeleteResources(const ClientID &node_id,
+                       const std::vector<std::string> &resource_names,
+                       const gcs::NodeInfoAccessor::ResourceMap &delete_resources,
+                       DeleteResourcesReply *reply,
+                       const SendReplyCallback &send_reply_callback);
+
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsNodeManager &gcs_node_manager_;
   gcs::GcsNodeTablePubSub node_pub_;
   gcs::GcsNodeResourceTablePubSub node_resource_pub_;
+
+  /// Mutex to protect the nodes_cache_ field.
+  absl::Mutex node_mutex_;
+  /// A mapping from node id to node info.
+  std::unordered_map<ClientID, rpc::GcsNodeInfo> nodes_cache_ GUARDED_BY(node_mutex_);
+  /// Mutex to protect the nodes_cache_ field.
+  absl::Mutex node_resource_mutex_;
+  /// A mapping from node id to node resource.
+  std::unordered_map<ClientID, gcs::NodeInfoAccessor::ResourceMap> nodes_resource_cache_
+      GUARDED_BY(node_resource_mutex_);
 };
 
 }  // namespace rpc
