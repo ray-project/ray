@@ -4,7 +4,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class DDPGModel(TFModelV2):
+class DDPGTFModel(TFModelV2):
     """Extension of standard TFModel to provide DDPG action- and q-outputs.
 
     Data flow:
@@ -43,8 +43,8 @@ class DDPGModel(TFModelV2):
         should be defined in subclasses of DDPGActionModel.
         """
 
-        super(DDPGModel, self).__init__(obs_space, action_space, num_outputs,
-                                        model_config, name)
+        super(DDPGTFModel, self).__init__(obs_space, action_space, num_outputs,
+                                          model_config, name)
 
         actor_hidden_activation = getattr(tf.nn, actor_hidden_activation,
                                           tf.nn.relu)

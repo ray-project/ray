@@ -135,8 +135,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         if explore:
             # Random exploration phase.
             if self.last_timestep <= self.random_timesteps:
-                action = self.random_exploration.get_torch_exploration_action(
-                    action_dist, True)
+                action, _ = \
+                    self.random_exploration.get_torch_exploration_action(
+                        action_dist, explore=True)
             # Apply base-scaled and time-annealed scaled OU-noise to
             # deterministic actions.
             else:
@@ -160,6 +161,6 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             action = action_dist.deterministic_sample()
 
         # Logp=always zero.
-        logp = torch.zeros(shape=(action.size()[0], ), dtype=torch.float32)
+        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
 
         return action, logp

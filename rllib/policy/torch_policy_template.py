@@ -25,6 +25,7 @@ def build_torch_policy(name,
                        action_sampler_fn=None,
                        action_distribution_fn=None,
                        make_model_and_action_dist=None,
+                       apply_gradients_fn=None,
                        mixins=None,
                        get_batch_divisibility_req=None):
     """Helper function for creating a torch policy at runtime.
@@ -59,6 +60,8 @@ def build_torch_policy(name,
             arguments as policy init and returns a tuple of model instance and
             torch action distribution class. If not specified, the default
             model and action dist from the catalog will be used
+        apply_gradients_fn (Optional[callable]): An optional callable that takes
+            a grads list and applies these to the Model's parameters.
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicy class
@@ -101,9 +104,9 @@ def build_torch_policy(name,
 
             TorchPolicy.__init__(
                 self,
-                obs_space,
-                action_space,
-                config,
+                observation_space=obs_space,
+                action_space=action_space,
+                config=config,
                 model=self.model,
                 loss=loss_fn,
                 action_distribution_class=dist_class,
@@ -140,6 +143,13 @@ def build_torch_policy(name,
                 return extra_grad_process_fn(self)
             else:
                 return TorchPolicy.extra_grad_process(self)
+
+        @override(TorchPolicy)
+        def apply_gradients(self, gradients):
+            if apply_gradients_fn:
+                apply_gradients_fn(self, gradients)
+            else:
+                TorchPolicy.apply_gradients(self, gradients)
 
         @override(TorchPolicy)
         def extra_action_out(self, input_dict, state_batches, model,

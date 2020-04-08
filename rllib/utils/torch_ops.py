@@ -21,6 +21,14 @@ def huber_loss(x, delta=1.0):
         torch.pow(x, 2.0) * 0.5, delta * (torch.abs(x) - 0.5 * delta))
 
 
+def l2_loss(x):
+    """Computes half the L2 norm of a tensor without the sqrt.
+
+    output = sum(x ** 2) / 2
+    """
+    return torch.sum(torch.power(x, 2.0)) / 2.0
+
+
 def reduce_mean_ignore_inf(x, axis):
     """Same as torch.mean() but ignores -inf values."""
     mask = torch.ne(x, float("-inf"))

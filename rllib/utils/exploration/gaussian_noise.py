@@ -136,7 +136,7 @@ class GaussianNoise(Exploration):
             if self.last_timestep <= self.random_timesteps:
                 action, _ = \
                     self.random_exploration.get_torch_exploration_action(
-                        action_dist, True)
+                        action_dist, explore=True)
             # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
             else:
                 det_actions = action_dist.deterministic_sample()
@@ -152,7 +152,7 @@ class GaussianNoise(Exploration):
             action = action_dist.deterministic_sample()
 
         # Logp=always zero.
-        logp = torch.zeros(shape=(action.size()[0], ), dtype=torch.float32)
+        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
 
         return action, logp
 

@@ -347,12 +347,11 @@ class ModelCatalog:
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
         elif framework == "torch":
-            if default_model:
-                return default_model(obs_space, action_space, num_outputs,
+            v2_class = default_model or \
+                       ModelCatalog._get_default_torch_model_class_v2(
+                           obs_space, action_space, num_outputs,
                                      model_config, name)
-            v2_class = ModelCatalog._get_default_torch_model_class_v2(
-                obs_space, action_space, num_outputs, model_config, name)
-            # wrap in the requested interface
+            # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)

@@ -4,13 +4,15 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
-from ray.rllib.agents.ddpg.noop_model import NoopModel
+from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
+from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
+from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Deterministic
+from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -54,7 +56,7 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = NoopModel
+        default_model = TorchNoopModel if config["use_pytorch"] else NoopModel
         num_outputs = int(np.product(observation_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
@@ -62,8 +64,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="tf",
-        model_interface=DDPGModel,
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=DDPGTorchModel if config["use_pytorch"] else
+            DDPGTFModel,
         default_model=default_model,
         name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -80,8 +83,9 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
-        framework="tf",
-        model_interface=DDPGModel,
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=DDPGTorchModel if config["use_pytorch"] else
+            DDPGTFModel,
         default_model=default_model,
         name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -101,14 +105,17 @@ def get_distribution_inputs_and_class(policy,
                                       obs_batch,
                                       *,
                                       explore=True,
+                                      is_training=False,
                                       **kwargs):
     model_out, _ = model({
         "obs": obs_batch,
-        "is_training": policy._get_is_training_placeholder()
+        "is_training": is_training,
     }, [], None)
     dist_inputs = model.get_policy_output(model_out)
 
-    return dist_inputs, Deterministic, []  # []=state out
+    return dist_inputs,\
+        TorchDeterministic if policy.config["use_pytorch"] else Deterministic,\
+        []  # []=state out
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):
@@ -121,11 +128,11 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
     input_dict = {
         "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": True,
     }
     input_dict_next = {
         "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": True,
     }
 
     model_out_t, _ = model(input_dict, [], None)
