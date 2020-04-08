@@ -5,7 +5,6 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.generated.Common.TaskType;
-import io.ray.runtime.util.Serializer;
 
 /**
  * The context of worker.
