@@ -84,7 +84,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        std::function<Status()> check_signals,
                        std::function<void()> gc_collect,
                        std::function<void(std::string *)> get_lang_stack,
-                       bool ref_counting_enabled, std::function<void()> kill_main)
+                       bool ref_counting_enabled, std::function<bool()> kill_main)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -1411,11 +1411,12 @@ void CoreWorker::TryKillTask(const TaskID &task_id, int num_tries) {
     absl::MutexLock lock(&mutex_);
     if (main_thread_task_id_ == task_id) {
       RAY_LOG(INFO) << "Interrupting main: " << main_thread_task_id_;
-      kill_main_thread_();
-      return;
+      if (kill_main_thread_()) {
+        return;
+      }
     }
   }
-  kill_retry_timer_.expires_from_now(boost::asio::chrono::milliseconds(50));
+  kill_retry_timer_.expires_from_now(boost::asio::chrono::milliseconds(500));
   kill_retry_timer_.async_wait(
       boost::bind(&CoreWorker::TryKillTask, this, task_id, num_tries - 1));
 }

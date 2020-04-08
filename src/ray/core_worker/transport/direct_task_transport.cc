@@ -235,18 +235,18 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
   absl::MutexLock lock(&mu_);
-  auto scheduld_tasks = task_queues_.find(scheduling_key);
+  auto scheduled_tasks = task_queues_.find(scheduling_key);
 
   // See if task has not been shipped yet
-  if (scheduld_tasks != task_queues_.end()) {
-    for (auto spec = scheduld_tasks->second.begin(); spec != scheduld_tasks->second.end();
-         spec++) {
+  if (scheduled_tasks != task_queues_.end()) {
+    for (auto spec = scheduled_tasks->second.begin();
+         spec != scheduled_tasks->second.end(); spec++) {
       if (spec->TaskId() == task_spec.TaskId()) {
-        scheduld_tasks->second.erase(spec);
+        scheduled_tasks->second.erase(spec);
         task_finisher_->CancelTask(task_spec.TaskId());
 
         // Erase an empty queue
-        if (scheduld_tasks->second.size() == 0) {
+        if (scheduled_tasks->second.size() == 0) {
           task_queues_.erase(scheduling_key);
         }
         return Status::OK();

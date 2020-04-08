@@ -187,8 +187,6 @@ message KillActorReply {
 message KillTaskRequest {
   // ID of Task that should be killed.
   bytes intended_task_id = 1; 
-  // Whether to kill while running.
-  bool force_kill = 2;
 }
 
 message KillTaskReply {

@@ -553,10 +553,12 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
-cdef void kill_main_task() nogil:
+cdef c_bool kill_main_task() nogil:
     with gil:
-        if setproctitle.getproctitle() != "ray::IDLE":
-            _thread.interrupt_main()
+        if setproctitle.getproctitle() == "ray::IDLE":
+            return False
+        _thread.interrupt_main()
+        return True
 
 
 cdef CRayStatus check_signals() nogil:

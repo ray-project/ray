@@ -93,7 +93,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::function<void()> gc_collect = nullptr,
              std::function<void(std::string *)> get_lang_stack = nullptr,
              bool ref_counting_enabled = false,
-             std::function<void()> kill_main = nullptr);
+             std::function<bool()> kill_main = nullptr);
 
   virtual ~CoreWorker();
 
@@ -705,7 +705,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::function<Status()> check_signals_;
 
   // Function that tries to interrupt the currently running Python thread.
-  std::function<void()> kill_main_thread_;
+  std::function<bool()> kill_main_thread_;
 
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
