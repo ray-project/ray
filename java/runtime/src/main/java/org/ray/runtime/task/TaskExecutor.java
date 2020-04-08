@@ -5,6 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
@@ -97,7 +98,8 @@ public abstract class TaskExecutor<T extends ActorContext> {
         }
         actor = actorContext.currentActor;
       }
-      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
+      Object[] args = ArgumentsBuilder
+          .unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       // Execute the task.
       Object result;
       try {
