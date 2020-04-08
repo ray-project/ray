@@ -6,7 +6,7 @@ set -x
 set -e
 
 # As the supported Python versions change, edit this array:
-SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" )
+SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" "3.8" )
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 

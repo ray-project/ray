@@ -20,11 +20,9 @@ namespace streaming {
 
 class StreamingQueueTestSuite {
  public:
-  StreamingQueueTestSuite(std::shared_ptr<CoreWorker> core_worker, ActorID &peer_actor_id,
-                          std::vector<ObjectID> queue_ids,
+  StreamingQueueTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
                           std::vector<ObjectID> rescale_queue_ids)
-      : core_worker_(core_worker),
-        peer_actor_id_(peer_actor_id),
+      : peer_actor_id_(peer_actor_id),
         queue_ids_(queue_ids),
         rescale_queue_ids_(rescale_queue_ids) {}
 
@@ -52,7 +50,6 @@ class StreamingQueueTestSuite {
   std::string current_test_;
   bool status_;
   std::shared_ptr<std::thread> executor_thread_;
-  std::shared_ptr<CoreWorker> core_worker_;
   ActorID peer_actor_id_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
@@ -60,11 +57,9 @@ class StreamingQueueTestSuite {
 
 class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
  public:
-  StreamingQueueWriterTestSuite(std::shared_ptr<CoreWorker> core_worker,
-                                ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
+  StreamingQueueWriterTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
                                 std::vector<ObjectID> rescale_queue_ids)
-      : StreamingQueueTestSuite(core_worker, peer_actor_id, queue_ids,
-                                rescale_queue_ids) {
+      : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"streaming_writer_exactly_once_test",
          std::bind(&StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest,
@@ -135,11 +130,9 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
 class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
  public:
-  StreamingQueueReaderTestSuite(std::shared_ptr<CoreWorker> core_worker,
-                                ActorID peer_actor_id, std::vector<ObjectID> queue_ids,
+  StreamingQueueReaderTestSuite(ActorID peer_actor_id, std::vector<ObjectID> queue_ids,
                                 std::vector<ObjectID> rescale_queue_ids)
-      : StreamingQueueTestSuite(core_worker, peer_actor_id, queue_ids,
-                                rescale_queue_ids) {
+      : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"streaming_writer_exactly_once_test",
          std::bind(&StreamingQueueReaderTestSuite::StreamingWriterExactlyOnceTest,
@@ -247,7 +240,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 class TestSuiteFactory {
  public:
   static std::shared_ptr<StreamingQueueTestSuite> CreateTestSuite(
-      std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMessage> message) {
+      std::shared_ptr<TestInitMessage> message) {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
     queue::protobuf::StreamingQueueTestRole role = message->Role();
@@ -258,14 +251,14 @@ class TestSuiteFactory {
     if (role == queue::protobuf::StreamingQueueTestRole::WRITER) {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueWriterTestSuite>(
-            worker, peer_actor_id, queue_ids, rescale_queue_ids);
+            peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsurported suite_name: " << suite_name;
       }
     } else {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueReaderTestSuite>(
-            worker, peer_actor_id, queue_ids, rescale_queue_ids);
+            peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsupported suite_name: " << suite_name;
       }
@@ -280,10 +273,30 @@ class StreamingWorker {
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
                   int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
-    worker_ = std::make_shared<CoreWorker>(
-        WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-        JobID::FromInt(1), gcs_options, "", "127.0.0.1", node_manager_port,
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7));
+    CoreWorkerOptions options = {
+        WorkerType::WORKER,  // worker_type
+        Language::PYTHON,    // langauge
+        store_socket,        // store_socket
+        raylet_socket,       // raylet_socket
+        JobID::FromInt(1),   // job_id
+        gcs_options,         // gcs_options
+        "",                  // log_dir
+        true,                // install_failure_signal_handler
+        "127.0.0.1",         // node_ip_address
+        node_manager_port,   // node_manager_port
+        "",                  // driver_name
+        "",                  // stdout_file
+        "",                  // stderr_file
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
+                  _7),  // task_execution_callback
+        nullptr,        // check_signals
+        nullptr,        // gc_collect
+        nullptr,        // get_lang_stack
+        true,           // ref_counting_enabled
+        false,          // is_local_mode
+        1,              // num_workers
+    };
+    CoreWorkerProcess::Initialize(options);
 
     RayFunction reader_async_call_func{ray::Language::PYTHON,
                                        ray::FunctionDescriptorBuilder::BuildPython(
@@ -298,16 +311,16 @@ class StreamingWorker {
         ray::Language::PYTHON,
         ray::FunctionDescriptorBuilder::BuildPython("writer_sync_call_func", "", "", "")};
 
-    reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func,
-                                                    reader_sync_call_func);
-    writer_client_ = std::make_shared<WriterClient>(worker_.get(), writer_async_call_func,
-                                                    writer_sync_call_func);
+    reader_client_ =
+        std::make_shared<ReaderClient>(reader_async_call_func, reader_sync_call_func);
+    writer_client_ =
+        std::make_shared<WriterClient>(writer_async_call_func, writer_sync_call_func);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
-  void StartExecutingTasks() {
+  void RunTaskExecutionLoop() {
     // Start executing tasks.
-    worker_->StartExecutingTasks();
+    CoreWorkerProcess::RunTaskExecutionLoop();
   }
 
  private:
@@ -403,7 +416,8 @@ class StreamingWorker {
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
-    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized, ObjectID::Nil());
+    CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
+        actor_handle_serialized, ObjectID::Nil());
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
     STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();
@@ -421,12 +435,11 @@ class StreamingWorker {
       STREAMING_LOG(INFO) << "rescale queue: " << qid;
     }
 
-    test_suite_ = TestSuiteFactory::CreateTestSuite(worker_, message);
+    test_suite_ = TestSuiteFactory::CreateTestSuite(message);
     STREAMING_CHECK(test_suite_ != nullptr);
   }
 
  private:
-  std::shared_ptr<CoreWorker> worker_;
   std::shared_ptr<ReaderClient> reader_client_;
   std::shared_ptr<WriterClient> writer_client_;
   std::shared_ptr<std::thread> test_thread_;
@@ -446,6 +459,6 @@ int main(int argc, char **argv) {
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
                                          gcs_options);
-  worker.StartExecutingTasks();
+  worker.RunTaskExecutionLoop();
   return 0;
 }

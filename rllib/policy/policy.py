@@ -10,9 +10,6 @@ from ray.rllib.utils.from_config import from_config
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
 
-ACTION_PROB = "action_prob"
-ACTION_LOGP = "action_logp"
-
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
@@ -51,10 +48,12 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
-        self.exploration = self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class = None
 
     @abstractmethod
     @DeveloperAPI
@@ -363,23 +362,26 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    def _create_exploration(self, action_space, config):
+    def _create_exploration(self):
         """Creates the Policy's Exploration object.
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
+        if getattr(self, "exploration", None) is not None:
+            return self.exploration
+
         exploration = from_config(
             Exploration,
-            config.get("exploration_config", {"type": "StochasticSampling"}),
-            action_space=action_space,
-            num_workers=config.get("num_workers", 0),
-            worker_index=config.get("worker_index", 0),
+            self.config.get("exploration_config",
+                            {"type": "StochasticSampling"}),
+            action_space=self.action_space,
+            policy_config=self.config,
+            model=getattr(self, "model", None),
+            num_workers=self.config.get("num_workers", 0),
+            worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
-        # If config is further passed around, it'll contain an already
-        # instantiated object.
-        config["exploration_config"] = exploration
         return exploration
 
 
