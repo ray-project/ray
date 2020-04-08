@@ -289,7 +289,7 @@ Getting Involved
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   serve.rst
+   serve_in_depth.rst
 
 .. toctree::
    :maxdepth: -1
