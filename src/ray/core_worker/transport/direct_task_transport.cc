@@ -93,6 +93,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 
   auto it = pending_lease_requests_.find(scheduling_key);
   if (it != pending_lease_requests_.end()) {
+    // There is an in-flight lease request. Cancel it.
     auto &lease_client = it->second.first;
     auto &lease_id = it->second.second;
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
@@ -100,9 +101,15 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
         lease_id, [this, lease_id, scheduling_key](
                       const Status &status, const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
-          if (!status.ok() || reply.success()) {
-            RequestNewWorkerIfNeeded(scheduling_key);
-          } else {
+          if (status.ok() && !reply.success()) {
+            // The cancellation request can fail if the raylet does not have
+            // the request queued. This can happen if: a) due to message
+            // reordering, the raylet has not yet received the worker lease
+            // request, or b) we have already returned the worker lease
+            // request. In the former case, we should try the cancellation
+            // request again. In the latter case, the in-flight lease request
+            // should already have been removed from our local state, so we no
+            // longer need to cancel.
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         }));

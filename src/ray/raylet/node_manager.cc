@@ -1753,13 +1753,14 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
       removed_task.OnCancellation()();
       task_dependency_manager_.TaskCanceled(task_id);
       task_dependency_manager_.UnsubscribeGetDependencies(task_id);
-      reply->set_success(true);
     } else {
       // We already granted the worker lease and sent the reply, so the
       // cancellation failed.
       local_queues_.QueueTasks({removed_task}, removed_task_state);
-      reply->set_success(false);
     }
+    // In both cases, we have now sent the reply to the original lease request,
+    // so the request has been successfully canceled.
+    reply->set_success(true);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
