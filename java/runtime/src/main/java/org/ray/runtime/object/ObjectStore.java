@@ -86,7 +86,7 @@ public abstract class ObjectStore {
    * @return A list of GetResult objects.
    */
   @SuppressWarnings("unchecked")
-  public <T> List<T> get(List<ObjectId> ids) {
+  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
     // Pass -1 as timeout to wait until all objects are available in object store.
     List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
 
@@ -96,7 +96,7 @@ public abstract class ObjectStore {
       Object object = null;
       if (dataAndMeta != null) {
         object = ObjectSerializer
-            .deserialize(dataAndMeta, ids.get(i), workerContext.getCurrentClassLoader());
+            .deserialize(dataAndMeta, ids.get(i), elementType);
       }
       if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
