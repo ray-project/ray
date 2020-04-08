@@ -1,5 +1,6 @@
 package org.ray.api;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
@@ -62,23 +63,41 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get an object from the object store.
+   * Get an object by id from the object store.
    *
    * @param objectId The ID of the object to get.
+   * @param objectType The type of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(ObjectId objectId) {
-    return runtime.get(objectId);
+  public static <T> T get(ObjectId objectId, Class<T> objectType) {
+    return runtime.get(objectId, objectType);
   }
 
   /**
-   * Get a list of objects from the object store.
+   * Get a list of objects by ids from the object store.
    *
    * @param objectIds The list of object IDs.
+   * @param objectType The type of object.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<ObjectId> objectIds) {
-    return runtime.get(objectIds);
+  public static <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType) {
+    return runtime.get(objectIds, objectType);
+  }
+
+  /**
+   * Get a list of objects by RayObjects from the object store.
+   *
+   * @param objectList A list of RayObject to get.
+   * @return A list of Java objects.
+   */
+  public static <T> List<T> get(List<RayObject<T>> objectList) {
+    List<ObjectId> objectIds = new ArrayList<>();
+    Class<T> objectType = null;
+    for (RayObject<T> o : objectList) {
+      objectIds.add(o.getId());
+      objectType = o.getType();
+    }
+    return runtime.get(objectIds, objectType);
   }
 
   /**
