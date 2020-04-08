@@ -25,7 +25,7 @@ def request_with_retries(endpoint, verify_response, timeout=30):
 
 def test_http_proxy_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("endpoint", "/api", methods=["GET"])
+    serve.create_endpoint("endpoint", "/endpoint", methods=["GET"])
 
     def function(flask_request):
         return "hello1"
@@ -36,11 +36,11 @@ def test_http_proxy_failure(serve_instance):
     def verify_response(response):
         assert response.text == "hello1"
 
-    request_with_retries("/api", verify_response, timeout=0)
+    request_with_retries("/endpoint", verify_response, timeout=0)
 
     _kill_http_proxy()
 
-    request_with_retries("/api", verify_response, timeout=30)
+    request_with_retries("/endpoint", verify_response, timeout=30)
 
     _kill_http_proxy()
 
@@ -53,4 +53,4 @@ def test_http_proxy_failure(serve_instance):
     def verify_response(response):
         assert response.text == "hello2"
 
-    request_with_retries("/api", verify_response, timeout=30)
+    request_with_retries("/endpoint", verify_response, timeout=30)
