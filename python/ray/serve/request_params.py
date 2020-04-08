@@ -1,5 +1,6 @@
 import time
 from ray.serve.constants import DEFAULT_LATENCY_SLO_MS
+import ray.cloudpickle as pickle
 
 
 class RequestMetadata:
@@ -37,3 +38,11 @@ class RequestMetadata:
             slo_ms = DEFAULT_LATENCY_SLO_MS
         current_time_ms = time.time() * 1000
         return current_time_ms + slo_ms
+
+    def ray_serialize(self):
+        return pickle.dumps(self.__dict__, protocol=5)
+
+    @staticmethod
+    def ray_deserialize(value):
+        kwargs = pickle.loads(value)
+        return RequestMetadata(**kwargs)

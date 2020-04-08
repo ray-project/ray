@@ -10,12 +10,7 @@ class PerWorkerGaussianNoise(GaussianNoise):
     See Ape-X paper.
     """
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 num_workers,
-                 worker_index,
-                 framework="tf",
+    def __init__(self, action_space, *, framework, num_workers, worker_index,
                  **kwargs):
         """
         Args:

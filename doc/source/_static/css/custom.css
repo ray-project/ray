@@ -1,8 +1,3 @@
-/* Max window size */
-.wy-nav-content{
-    max-width: 1000px;
-}
-
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
     display: block;
@@ -18,4 +13,8 @@
 .rst-content dl dt em.property {
     color: #2980B9;
     text-transform: uppercase
+}
+
+.rst-content .section ol p, .rst-content .section ul p {
+    margin-bottom: 0px;
 }

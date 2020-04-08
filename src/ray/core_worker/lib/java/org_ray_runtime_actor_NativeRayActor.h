@@ -24,35 +24,35 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetLanguage
- * Signature: (J[B)I
+ * Signature: ([B)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
-    JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jint JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetActorCreationTaskFunctionDescriptor
- * Signature: (J[B)Ljava/util/List;
+ * Signature: ([B)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *, jclass, jlong, jbyteArray);
+    JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeSerialize
- * Signature: (J[B)[B
+ * Signature: ([B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(
-    JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeDeserialize
- * Signature: (J[B)[B
+ * Signature: ([B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
-    JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(JNIEnv *, jclass, jbyteArray);
 
 #ifdef __cplusplus
 }
