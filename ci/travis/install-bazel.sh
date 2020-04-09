@@ -50,20 +50,14 @@ else
   target="./install.sh"
   curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  "${target}" --user > /dev/null
+  if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    sudo "${target}" > /dev/null  # system-wide install for CI
+    command -V bazel 1>&2
+  else
+    "${target}" --user > /dev/null
+  fi
   rm -f "${target}"
 fi
-
-add_missing_lines() {
-  local file="$1"
-  shift
-  local line
-  for line in "$@"; do
-    grep -q -F -x -- "${line}" "${file}" || printf "%s\n" "${line}" >> "${file}"
-  done
-}
-
-add_missing_lines "${HOME}/.bashrc" 'export PATH="${HOME}/bin:${PATH}"'
 
 if [ "${TRAVIS-}" = true ]; then
   # Use bazel disk cache if this script is running in Travis.
