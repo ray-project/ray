@@ -6,7 +6,7 @@ import ray
 from ray import serve
 import ray.serve.context as context
 from ray.serve.policy import RoundRobinPolicyQueueActor
-from ray.serve.task_runner import create_backend_worker, wrap_to_ray_error
+from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.request_params import RequestMetadata
 from ray.serve.backend_config import BackendConfig
 

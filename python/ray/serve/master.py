@@ -6,7 +6,7 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
-from ray.serve.task_runner import create_backend_worker
+from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import expand, get_random_letters
 
 import numpy as np
