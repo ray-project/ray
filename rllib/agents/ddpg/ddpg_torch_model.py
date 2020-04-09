@@ -1,9 +1,7 @@
-from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils import merge_dicts
 
 torch, nn = try_import_torch()
 
@@ -57,18 +55,22 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         ins = obs_space.shape[-1]
         self.obs_ins = ins
         for i, n in enumerate(actor_hiddens):
-            self.action_model.add_module("action_{}".format(i), nn.Linear(ins, n))
+            self.action_model.add_module("action_{}".format(i),
+                                         nn.Linear(ins, n))
             # Add activations if necessary.
             if actor_hidden_activation == "relu":
-                self.action_model.add_module("action_activation_{}".format(i), nn.ReLU())
+                self.action_model.add_module("action_activation_{}".format(i),
+                                             nn.ReLU())
             elif actor_hidden_activation == "tanh":
-                self.action_model.add_module("action_activation_{}".format(i), nn.Tanh())
+                self.action_model.add_module("action_activation_{}".format(i),
+                                             nn.Tanh())
             # Add LayerNorm after each Dense.
             if add_layer_norm:
-                self.action_model.add_module(
-                    "LayerNorm_A_{}".format(i), nn.LayerNorm(n))
+                self.action_model.add_module("LayerNorm_A_{}".format(i),
+                                             nn.LayerNorm(n))
             ins = n
-        self.action_model.add_module("action_out", nn.Linear(ins, self.action_dim))
+        self.action_model.add_module("action_out",
+                                     nn.Linear(ins, self.action_dim))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
@@ -77,12 +79,15 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
             q_net = nn.Sequential()
             ins = self.obs_ins + self.action_dim
             for i, n in enumerate(critic_hiddens):
-                q_net.add_module("{}_hidden_{}".format(name_, i), nn.Linear(ins, n))
+                q_net.add_module("{}_hidden_{}".format(name_, i),
+                                 nn.Linear(ins, n))
                 # Add activations if necessary.
                 if critic_hidden_activation == "relu":
-                    q_net.add_module("{}_activation_{}".format(name_, i), nn.ReLU())
+                    q_net.add_module("{}_activation_{}".format(name_, i),
+                                     nn.ReLU())
                 elif critic_hidden_activation == "tanh":
-                    q_net.add_module("{}_activation_{}".format(name_, i), nn.Tanh())
+                    q_net.add_module("{}_activation_{}".format(name_, i),
+                                     nn.Tanh())
                 ins = n
 
             q_net.add_module("{}_out".format(name_), nn.Linear(ins, 1))
@@ -109,7 +114,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
             tensor of shape [BATCH_SIZE].
         """
         return self.q_net(torch.cat([model_out, actions], -1))
-    
+
     def get_twin_q_values(self, model_out, actions):
         """Same as get_q_values but using the twin Q net.
 
@@ -150,7 +155,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
-            return {**self.q_net.state_dict(),
-                **(self.twin_q_net.state_dict() if self.twin_q_net else {})}
+            return {
+                **self.q_net.state_dict(),
+                **(self.twin_q_net.state_dict() if self.twin_q_net else {})
+            }
         return list(self.q_net.parameters()) + \
-               (list(self.twin_q_net.parameters()) if self.twin_q_net else [])
+            (list(self.twin_q_net.parameters()) if self.twin_q_net else [])

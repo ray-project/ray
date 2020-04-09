@@ -60,8 +60,8 @@ def build_torch_policy(name,
             arguments as policy init and returns a tuple of model instance and
             torch action distribution class. If not specified, the default
             model and action dist from the catalog will be used
-        apply_gradients_fn (Optional[callable]): An optional callable that takes
-            a grads list and applies these to the Model's parameters.
+        apply_gradients_fn (Optional[callable]): An optional callable that
+            takes a grads list and applies these to the Model's parameters.
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicy class

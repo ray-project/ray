@@ -57,8 +57,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         clipped_normal_sample = torch.clamp(
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
-                std=policy.config["target_noise"]),
-            -target_noise_clip,
+                std=policy.config["target_noise"]), -target_noise_clip,
             target_noise_clip)
         policy_tp1_smoothed = torch.clamp(
             policy_tp1 + clipped_normal_sample,
@@ -77,8 +76,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     if twin_q:
-        twin_q_t = model.get_twin_q_values(
-            model_out_t, train_batch[SampleBatch.ACTIONS])
+        twin_q_t = model.get_twin_q_values(model_out_t,
+                                           train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
     #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
@@ -160,11 +159,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
     policy._actor_optimizer = torch.optim.Adam(
-        params=policy.model.policy_variables(),
-        lr=config["actor_lr"])
+        params=policy.model.policy_variables(), lr=config["actor_lr"])
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(),
-        lr=config["critic_lr"])
+        params=policy.model.q_variables(), lr=config["critic_lr"])
     return policy._actor_optimizer, policy._critic_optimizer
 
 
@@ -182,11 +179,7 @@ def apply_gradients_fn(policy):
 
 def gradients_fn(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"] is not None:
-        for param_group in optimizer.param_groups:
-            for p in param_group["params"]:
-                if p.grad is not None:
-                    torch.nn.utils.clip_grad_norm_(
-                        grad, policy.config["grad_norm_clipping"])
+        minimize_and_clip(optimizer, policy.config["grad_norm_clipping"])
     return {}
 
 
@@ -245,7 +238,6 @@ class TargetNetworkMixin:
         else:
             model_vars = self.model.variables()
             target_model_vars = self.target_model.variables()
-            #print("model-var={} target-var={}".format(model_vars[0][0][0], target_model_vars[0][0][0]))
             assert len(model_vars) == len(target_model_vars), \
                 (model_vars, target_model_vars)
             for var, var_target in zip(model_vars, target_model_vars):

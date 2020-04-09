@@ -36,17 +36,16 @@ def reduce_mean_ignore_inf(x, axis):
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
-def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
-    """Minimized `objective` using `optimizer` w.r.t. variables in
-    `var_list` while ensure the norm of the gradients for each
-    variable is clipped to `clip_val`
+def minimize_and_clip(optimizer, clip_val=10):
+    """Clips gradients found in `optimizer.param_groups` to given value.
+
+    Ensures the norm of the gradients for each variable is clipped to
+    `clip_val`
     """
-    gradients = optimizer.compute_gradients(objective, var_list=var_list)
-    for i, (grad, var) in enumerate(gradients):
-        if grad is not None:
-            gradients[i] = (torch.nn.utils.clip_grad_norm_(grad, clip_val),
-                            var)
-    return gradients
+    for param_group in optimizer.param_groups:
+        for p in param_group["params"]:
+            if p.grad is not None:
+                torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
 def sequence_mask(lengths, maxlen, dtype=None):

@@ -65,8 +65,8 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel if config["use_pytorch"] else
-            DDPGTFModel,
+        model_interface=DDPGTorchModel
+        if config["use_pytorch"] else DDPGTFModel,
         default_model=default_model,
         name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
@@ -84,8 +84,8 @@ def build_ddpg_models(policy, observation_space, action_space, config):
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        model_interface=DDPGTorchModel if config["use_pytorch"] else
-            DDPGTFModel,
+        model_interface=DDPGTorchModel
+        if config["use_pytorch"] else DDPGTFModel,
         default_model=default_model,
         name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],

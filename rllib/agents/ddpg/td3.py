@@ -6,7 +6,6 @@ TD3 paper.
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
 
-
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,
     {

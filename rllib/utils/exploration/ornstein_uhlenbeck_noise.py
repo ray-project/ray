@@ -76,7 +76,6 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         # action is computed).
         self.ou_state = get_variable(
             np.array(self.action_space.low.size * [.0], dtype=np.float32),
-            #self.action_space.low.size * [.0],
             framework=self.framework,
             tf_name="ou_state",
             torch_tensor=True)
@@ -148,18 +147,16 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=torch.zeros(self.ou_state.size()),
-                    std=1.0)
+                    mean=torch.zeros(self.ou_state.size()), std=1.0)
                 ou_new = self.ou_theta * -self.ou_state + \
                     self.ou_sigma * gaussian_sample
                 self.ou_state += ou_new
                 noise = scale * self.ou_base_scale * self.ou_state * \
                     torch.Tensor(
                         self.action_space.high - self.action_space.low)
-                action = torch.clamp(
-                    det_actions + noise,
-                    self.action_space.low[0],
-                    self.action_space.high[0])
+                action = torch.clamp(det_actions + noise,
+                                     self.action_space.low[0],
+                                     self.action_space.high[0])
 
         # No exploration -> Return deterministic actions.
         else:

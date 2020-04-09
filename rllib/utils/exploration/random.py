@@ -89,8 +89,9 @@ class Random(Exploration):
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
             a = self.action_space.sample()
-            req = force_tuple(action_dist.required_model_output_shape(
-                self.action_space, self.model.model_config))
+            req = force_tuple(
+                action_dist.required_model_output_shape(
+                    self.action_space, self.model.model_config))
             # Add a batch dimension.
             if len(action_dist.inputs.shape) == len(req) + 1:
                 a = [a]
