@@ -122,8 +122,8 @@ class DistributedTorchRunner(TorchRunner):
         to_gpu = self.use_gpu and torch.cuda.is_available()
         state_dict = torch.load(
             _buffer,
-            map_location=(
-                "cpu" if not to_gpu else lambda storage, loc: storage.cuda()))
+            map_location=("cpu" if not to_gpu else
+                          lambda storage, loc: storage.cuda()))
         return self.load_state_dict(state_dict)
 
     def _wrap_dataloaders(self):
