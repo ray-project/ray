@@ -421,7 +421,6 @@ class StreamingWorker {
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
     STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();
-    ;
 
     // STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
     // peer_actor_handle_ =
