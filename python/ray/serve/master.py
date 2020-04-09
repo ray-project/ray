@@ -46,13 +46,23 @@ class ServeMaster:
         return [self.router]
 
     def start_http_proxy(self, host, port):
+        """Start the HTTP proxy on the given host:port.
+
+        On startup (or restart), the HTTP proxy will fetch its config via
+        get_http_proxy_config.
+        """
         assert self.http_proxy is None, "HTTP proxy already started."
         assert self.router is not None, (
             "Router must be started before HTTP proxy.")
         self.http_proxy = HTTPProxyActor.options(
-            max_concurrency=ASYNC_CONCURRENCY).remote()
-        self.http_proxy.run.remote(host, port)
-        ray.get(self.http_proxy.set_router_handle.remote(self.router))
+            max_concurrency=ASYNC_CONCURRENCY,
+            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        ).remote(host, port)
+
+    async def get_http_proxy_config(self):
+        route_table = self.route_table.list_service(
+            include_methods=True, include_headless=False)
+        return route_table, self.get_router()
 
     def get_http_proxy(self):
         assert self.http_proxy is not None, "HTTP proxy not started yet."
