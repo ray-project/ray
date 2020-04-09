@@ -117,6 +117,8 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
@@ -154,6 +156,7 @@ class TorchTrainer:
             num_workers=1,
             use_gpu="auto",
             backend="auto",
+            wrap_ddp=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
@@ -218,6 +221,7 @@ class TorchTrainer:
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
@@ -292,7 +296,9 @@ class TorchTrainer:
             self.local_worker.setup()
         else:
             params.update(
-                backend=self.backend, add_dist_sampler=self.add_dist_sampler)
+                backend=self.backend,
+                add_dist_sampler=self.add_dist_sampler,
+                wrap_ddp=self.wrap_ddp)
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(

@@ -6,7 +6,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class DistributionalQModel(TFModelV2):
+class DistributionalQTFModel(TFModelV2):
     """Extension of standard TFModel to provide distributional Q values.
 
     It also supports options for noisy nets and parameter space noise.
@@ -41,10 +41,15 @@ class DistributionalQModel(TFModelV2):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            q_hiddens (list): defines size of hidden layers for the q head.
-                These will be used to postprocess the model output for the
-                purposes of computing Q values.
-            dueling (bool): whether to build the state value head for DDQN
+            q_hiddens (List[int]): List of layer-sizes after(!) the
+                Advantages(A)/Value(V)-split. Hence, each of the A- and V-
+                branches will have this structure of Dense layers. To define
+                the NN before this A/V-split, use - as always -
+                config["model"]["fcnet_hiddens"].
+            dueling (bool): Whether to build the advantage(A)/value(V) heads
+                for DDQN. If True, Q-values are calculated as:
+                Q = (A - mean[A]) + V. If False, raw NN output is interpreted
+                as Q-values.
             num_atoms (int): if >1, enables distributional DQN
             use_noisy (bool): use noisy nets
             v_min (float): min value support for distributional DQN
@@ -57,7 +62,7 @@ class DistributionalQModel(TFModelV2):
         should be defined in subclasses of DistributionalQModel.
         """
 
-        super(DistributionalQModel, self).__init__(
+        super(DistributionalQTFModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
         # setup the Q head output (i.e., model for get_q_values)
@@ -87,6 +92,7 @@ class DistributionalQModel(TFModelV2):
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
                 action_out = model_out
+
             if use_noisy:
                 action_scores = self._noisy_layer(
                     "output",
@@ -131,14 +137,12 @@ class DistributionalQModel(TFModelV2):
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
                                                   state_out, q_hiddens[i],
                                                   sigma0)
-                elif add_layer_norm:
-                    state_out = tf.keras.layers.Dense(
-                        units=q_hiddens[i], activation=tf.nn.relu)(state_out)
-                    state_out = \
-                        tf.keras.layers.LayerNormalization()(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i], activation=tf.nn.relu)(state_out)
+                    if add_layer_norm:
+                        state_out = tf.keras.layers.LayerNormalization()(
+                            state_out)
             if use_noisy:
                 state_score = self._noisy_layer(
                     "dueling_output",

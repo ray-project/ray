@@ -1,5 +1,6 @@
 package org.ray.api;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
@@ -44,7 +45,7 @@ public final class Ray extends RayCall {
   /**
    * Shutdown Ray runtime.
    */
-  public static void shutdown() {
+  public static synchronized void shutdown() {
     if (runtime != null) {
       runtime.shutdown();
       runtime = null;
@@ -62,23 +63,41 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get an object from the object store.
+   * Get an object by id from the object store.
    *
    * @param objectId The ID of the object to get.
+   * @param objectType The type of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(ObjectId objectId) {
-    return runtime.get(objectId);
+  public static <T> T get(ObjectId objectId, Class<T> objectType) {
+    return runtime.get(objectId, objectType);
   }
 
   /**
-   * Get a list of objects from the object store.
+   * Get a list of objects by ids from the object store.
    *
    * @param objectIds The list of object IDs.
+   * @param objectType The type of object.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<ObjectId> objectIds) {
-    return runtime.get(objectIds);
+  public static <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType) {
+    return runtime.get(objectIds, objectType);
+  }
+
+  /**
+   * Get a list of objects by RayObjects from the object store.
+   *
+   * @param objectList A list of RayObject to get.
+   * @return A list of Java objects.
+   */
+  public static <T> List<T> get(List<RayObject<T>> objectList) {
+    List<ObjectId> objectIds = new ArrayList<>();
+    Class<T> objectType = null;
+    for (RayObject<T> o : objectList) {
+      objectIds.add(o.getId());
+      objectType = o.getType();
+    }
+    return runtime.get(objectIds, objectType);
   }
 
   /**
@@ -137,6 +156,11 @@ public final class Ray extends RayCall {
     runtime.setAsyncContext(asyncContext);
   }
 
+  // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
+  // the current thread to the one before `setAsyncContext` is called.
+
+  // TODO (kfstorm): unify the `wrap*` methods.
+
   /**
    * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
    * objects with this method.
@@ -155,7 +179,7 @@ public final class Ray extends RayCall {
    * @param callable The callable to wrap.
    * @return The wrapped callable.
    */
-  public static Callable wrapCallable(Callable callable) {
+  public static <T> Callable<T> wrapCallable(Callable<T> callable) {
     return runtime.wrapCallable(callable);
   }
 

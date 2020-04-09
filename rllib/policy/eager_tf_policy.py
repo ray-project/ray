@@ -357,7 +357,9 @@ def build_eager_tf_policy(name,
                             action_distribution_fn(
                                 self, self.model,
                                 input_dict[SampleBatch.CUR_OBS],
-                                explore=explore, timestep=timestep)
+                                explore=explore,
+                                timestep=timestep,
+                                is_training=False)
                     else:
                         dist_class = self.dist_class
                         dist_inputs, state_out = self.model(
@@ -420,7 +422,11 @@ def build_eager_tf_policy(name,
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:
                 dist_inputs, dist_class, _ = action_distribution_fn(
-                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+                    self,
+                    self.model,
+                    input_dict[SampleBatch.CUR_OBS],
+                    explore=False,
+                    is_training=False)
                 action_dist = dist_class(dist_inputs, self.model)
                 log_likelihoods = action_dist.logp(actions)
             # Default log-likelihood calculation.
@@ -560,6 +566,7 @@ def build_eager_tf_policy(name,
                 }
             else:
                 fetches[LEARNER_STATS_KEY] = {}
+
             if extra_learn_fetches_fn:
                 fetches.update(
                     {k: v

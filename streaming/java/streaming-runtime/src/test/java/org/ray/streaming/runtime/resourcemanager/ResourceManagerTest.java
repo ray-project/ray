@@ -94,7 +94,7 @@ public class ResourceManagerTest extends BaseUnitTest {
     });
     Assert.assertEquals(container1.getAvailableResource().get(ResourceType.CPU.name()), 14.0);
     Assert.assertEquals(container2.getAvailableResource().get(ResourceType.CPU.name()), 14.0);
-    Assert.assertEquals(container1.getAvailableResource().get(ResourceType.MEM.name()), 118.0);
-    Assert.assertEquals(container2.getAvailableResource().get(ResourceType.MEM.name()), 118.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceType.MEM.name()), 126.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceType.MEM.name()), 126.0);
   }
 }
