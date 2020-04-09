@@ -325,8 +325,8 @@ cc_library(
         ":gcs",
         ":gcs_service_rpc",
         ":node_manager_rpc",
-        ":worker_rpc",
         ":raylet_lib",
+        ":worker_rpc",
     ],
 )
 
@@ -786,8 +786,8 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
-        ":service_based_gcs_client_lib",
         ":gcs_server_lib",
+        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

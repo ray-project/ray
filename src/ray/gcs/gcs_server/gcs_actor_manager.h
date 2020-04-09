@@ -148,10 +148,15 @@ class GcsActorManager {
   /// again.
   void ReconstructActor(std::shared_ptr<GcsActor> actor, bool need_reschedule = true);
 
- private:
-  /// Callbacks of requests with actor information not yet flushed.
-  /// This map just is just used to filter the duplicated messages come from Driver/Worker
-  /// caused by some network problems.
+  /// This method is a callback of gcs_actor_scheduler when actor is created successfully.
+  /// It will update the state of actor as well as the worker_to_created_actor_ and
+  /// node_to_created_actors_ and flush the actor data to the storage.
+  void OnActorCreateSuccess(std::shared_ptr<GcsActor> actor);
+
+ protected:
+  /// Callbacks of actor registration requests that are not yet flushed.
+  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
+  /// network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
   /// All registered actors (pending actors are also included).

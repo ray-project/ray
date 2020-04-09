@@ -65,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_create_helper_(std::move(actor_create_helper)) {}
+        actor_create_callback_(std::move(actor_create_helper)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -149,10 +149,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const ClientID local_raylet_id_;
 
-  /// The helper to creat an actor asynchronously.
+  /// A function to override actor creation. The callback will be called once the actor
+  /// creation task has been accepted for submission, but the actor may not be created
+  /// yet.
   std::function<Status(const TaskSpecification &task_spec,
                        const gcs::StatusCallback &callback)>
-      actor_create_helper_;
+      actor_create_callback_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

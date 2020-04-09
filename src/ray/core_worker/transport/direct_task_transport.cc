@@ -23,14 +23,14 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (RayConfig::instance().gcs_service_enabled() && task_spec.IsActorCreationTask()) {
-      RAY_CHECK(actor_create_helper_ != nullptr);
+      RAY_CHECK(actor_create_callback_ != nullptr);
       // If gcs actor management is enabled, the actor creation task will be sent to gcs
       // server directly after the in-memory dependent objects are resolved.
       // For more details please see the protocol of actor management based on gcs.
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
-      auto status = actor_create_helper_(task_spec, [actor_id](Status status) {
+      auto status = actor_create_callback_(task_spec, [actor_id](Status status) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
         } else {

@@ -1554,32 +1554,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  if (RayConfig::instance().gcs_service_enabled() &&
-      request.task_spec().type() == TaskType::ACTOR_CREATION_TASK) {
-    // When GCS server recovers from a failure, it will re-send the actor creation task to
-    // this core worker. In this case, we can just ignore this actor creation task.
-    // For more details please see the protocol of actor management based on gcs.
-    // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-    ActorID current_actor_id;
-    WorkerID current_worker_id;
-    {
-      absl::MutexLock lock(&mutex_);
-      current_actor_id = actor_id_;
-      current_worker_id = worker_context_.GetWorkerID();
-    }
-    if (!current_actor_id.IsNil()) {
-      auto to_be_created_actor_id =
-          ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
-      RAY_CHECK(current_actor_id == to_be_created_actor_id);
-      RAY_LOG(WARNING)
-          << "Ignoring duplicated actor creation task for actor "
-          << to_be_created_actor_id << " in worker " << current_worker_id
-          << ". This is mostly likely because GCS was recovered from failure.";
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-  }
-
   task_queue_length_ += 1;
   task_execution_service_.post([=] {
     // We have posted an exit task onto the main event loop,
