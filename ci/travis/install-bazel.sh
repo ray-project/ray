@@ -77,7 +77,6 @@ if [ -n "${GITHUB_WORKFLOW-}" ]; then
   cat <<"EOF" >> "${HOME}/.profile"
 # Set up environment variables the CI user needs on login to run Bazel on each platform.
 if [ "${OSTYPE}" = "msys" ]; then
-  export USE_CLANG_CL=1
   export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
   latest_python_bin=""  # Detect the system Python from the registry
   for latest_python_bin in /proc/registry/HKEY_LOCAL_MACHINE/Software/Python/PythonCore/*/InstallPath/@; do

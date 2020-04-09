@@ -11,15 +11,12 @@ jobs:
       matrix:
         # Useful info: https://help.github.com/en/articles/workflow-syntax-for-github-actions
         include:
-          - name: ubuntu-clang
+          - name: ubuntu
             os: ubuntu-16.04
-            compiler: clang
-          - name: windows-clang
+          - name: windows
             os: windows-2019
-            compiler: clang-cl
-          - name: macos-clang
+          - name: macos
             os: macos-10.15
-            compiler: clang
     steps:
     - name: Pre-checkout system configuration
       # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
@@ -43,9 +40,7 @@ jobs:
       run: ./ci/travis/install-bazel.sh
     - name: Install C/C++ toolchains
       shell: bash -e -o pipefail -l {0}
-      env:
-        CC: ${{ matrix.compiler }}
-      run: ./ci/travis/install-toolchains.sh "${CC%%-*}"
+      run: ./ci/travis/install-toolchains.sh
     - name: Perform build
       shell: bash -e -o pipefail -l {0}
       run: |

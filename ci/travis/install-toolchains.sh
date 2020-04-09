@@ -4,7 +4,7 @@ set -euxo pipefail
 
 LLVM_VERSION="9.0.0"
 
-install_clang() {
+install_toolchains() {
   local osversion="" url="" urlbase="https://releases.llvm.org" targetdir="/usr/local"
   case "${OSTYPE}" in
     msys)
@@ -40,4 +40,4 @@ install_clang() {
   "${targetdir}"/bin/clang --version 1>&2
 }
 
-install_"$@"
+install_toolchains "$@"
