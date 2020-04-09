@@ -4,7 +4,6 @@ FROM ray-project/base-deps
 
 # We install ray and boto3 to enable the ray autoscaler as
 # a test runner.
-RUN conda install -y numpy
 RUN pip install -U pip
 RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 RUN pip install -U boto3
