@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import io.ray.runtime.util.Serializer;
+import io.ray.runtime.serializer.Serializer;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.transfer.Message;
 import io.ray.streaming.runtime.worker.JobWorker;

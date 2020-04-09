@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.core.collector;
 
-import io.ray.runtime.util.Serializer;
+import io.ray.runtime.serializer.Serializer;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.message.Record;
