@@ -138,11 +138,16 @@ def build_torch_policy(name,
                 return sample_batch
 
         @override(TorchPolicy)
-        def extra_grad_process(self):
+        def extra_grad_process(self, optimizer, loss):
+            """Called after optimizer.zero_grad() and loss.backward() calls.
+
+            Allows for gradient processing before optimizer.step() is called.
+            E.g. for gradient clipping.
+            """
             if extra_grad_process_fn:
-                return extra_grad_process_fn(self)
+                return extra_grad_process_fn(self, optimizer, loss)
             else:
-                return TorchPolicy.extra_grad_process(self)
+                return TorchPolicy.extra_grad_process(self, optimizer, loss)
 
         @override(TorchPolicy)
         def apply_gradients(self, gradients):

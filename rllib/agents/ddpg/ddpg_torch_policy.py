@@ -56,9 +56,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         target_noise_clip = policy.config["target_noise_clip"]
         clipped_normal_sample = torch.clamp(
             torch.normal(
-                mean=0.0,
-                stddev=policy.config["target_noise"],
-                size=policy_tp1.size()), -target_noise_clip,
+                mean=torch.zeros(policy_tp1.size()),
+                std=policy.config["target_noise"]),
+            -target_noise_clip,
             target_noise_clip)
         policy_tp1_smoothed = torch.clamp(
             policy_tp1 + clipped_normal_sample,
@@ -127,11 +127,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
     # Add l2-regularization if required.
     if l2_reg is not None:
-        TODO: var names in torch AND add torch img to toc-tree for DQN!!!
         for name, var in policy.model.policy_variables(as_dict=True).items():
             if "bias" not in name:
                 actor_loss += (l2_reg * l2_loss(var))
-        for name, var in policy.model.q_variables(as_dict=True).items:
+        for name, var in policy.model.q_variables(as_dict=True).items():
             if "bias" not in name:
                 critic_loss += (l2_reg * l2_loss(var))
 
@@ -155,7 +154,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
     # Return one loss value (even though we treat them separately in our
     # 2 optimizers: actor and critic).
-    return policy.critic_loss + policy.actor_loss
+    return policy.actor_loss, policy.critic_loss
 
 
 def make_ddpg_optimizers(policy, config):
@@ -166,68 +165,39 @@ def make_ddpg_optimizers(policy, config):
     policy._critic_optimizer = torch.optim.Adam(
         params=policy.model.q_variables(),
         lr=config["critic_lr"])
-    return None
+    return policy._actor_optimizer, policy._critic_optimizer
 
 
-def apply_gradients_fn(policy, optimizer, grads_and_vars):
+def apply_gradients_fn(policy):
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
-    #should_apply_actor_opt = tf.equal(
-    #    tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
-
-    #def make_apply_op():
-    #    return policy._actor_optimizer.apply_gradients(
-    #        policy._actor_grads_and_vars)
-
     if policy.global_step % policy.config["policy_delay"] == 0:
-        policy._actor_optimizer.apply_gradients(
-            policy._actor_grads_and_vars)
-    #actor_op = tf.cond(
-    #    should_apply_actor_opt,
-    #    true_fn=make_apply_op,
-    #    false_fn=lambda: tf.no_op())
-    
-    policy._critic_optimizer.apply_gradients(
-        policy._critic_grads_and_vars)
+        policy._actor_optimizer.step()
+
+    policy._critic_optimizer.step()
 
     # Increment global step & apply ops.
     policy.global_step += 1
-    #with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
-    #    return tf.group(actor_op, critic_op)
 
 
 def gradients_fn(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"] is not None:
-        actor_grads_and_vars = minimize_and_clip(
-            policy._actor_optimizer,
-            policy.actor_loss,
-            var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-        critic_grads_and_vars = minimize_and_clip(
-            policy._critic_optimizer,
-            policy.critic_loss,
-            var_list=policy.model.q_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-    else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
-            policy.actor_loss, var_list=policy.model.policy_variables())
-        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
-            policy.critic_loss, var_list=policy.model.q_variables())
-    # Save these for later use in build_apply_op.
-    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                    if g is not None]
-    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                     if g is not None]
-    grads_and_vars = policy._actor_grads_and_vars + \
-        policy._critic_grads_and_vars
-    return grads_and_vars
+        for param_group in optimizer.param_groups:
+            for p in param_group["params"]:
+                if p.grad is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        grad, policy.config["grad_norm_clipping"])
+    return {}
 
 
 def build_ddpg_stats(policy, batch):
     stats = {
+        "actor_loss": policy.actor_loss,
+        "critic_loss": policy.critic_loss,
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
+        "td_error": policy.td_error
     }
     return stats
 

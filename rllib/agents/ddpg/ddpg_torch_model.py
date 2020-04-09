@@ -3,6 +3,7 @@ import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils import merge_dicts
 
 torch, nn = try_import_torch()
 
@@ -140,13 +141,16 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.action_model(model_out)
 
-    def policy_variables(self):
+    def policy_variables(self, as_dict=False):
         """Return the list of variables for the policy net."""
-
+        if as_dict:
+            return self.action_model.state_dict()
         return list(self.action_model.parameters())
 
-    def q_variables(self):
+    def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
-
+        if as_dict:
+            return {**self.q_net.state_dict(),
+                **(self.twin_q_net.state_dict() if self.twin_q_net else {})}
         return list(self.q_net.parameters()) + \
                (list(self.twin_q_net.parameters()) if self.twin_q_net else [])

@@ -142,7 +142,7 @@ class GaussianNoise(Exploration):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=0.0, stddev=self.stddev, size=det_actions.size())
+                    mean=torch.zeros(det_actions.size()), std=self.stddev)
                 action = torch.clamp(
                     det_actions + gaussian_sample,
                     self.action_space.low * torch.ones_like(det_actions),

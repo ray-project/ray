@@ -298,7 +298,7 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    0.0, self.stddev, size=self.noise[i].size())
+                    mean=torch.zeros(self.noise[i].size()), std=self.stddev)
 
     def _tf_sample_new_noise_op(self):
         added_noises = []

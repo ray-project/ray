@@ -26,7 +26,7 @@ def l2_loss(x):
 
     output = sum(x ** 2) / 2
     """
-    return torch.sum(torch.power(x, 2.0)) / 2.0
+    return torch.sum(torch.pow(x, 2.0)) / 2.0
 
 
 def reduce_mean_ignore_inf(x, axis):
