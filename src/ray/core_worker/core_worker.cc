@@ -350,8 +350,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
-  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
-
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -460,6 +458,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                              /*pin_object=*/pin_object));
           },
           RayConfig::instance().lineage_pinning_enabled()));
+
+  // Start the IO thread after all other members have been initialized, in case
+  // the thread calls back into any of our members.
+  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 }
 
 void CoreWorker::Shutdown() {
