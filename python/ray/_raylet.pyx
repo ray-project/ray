@@ -92,6 +92,8 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.utils import decode
+import gc
+import msgpack
 
 cimport cpython
 
@@ -105,8 +107,6 @@ include "includes/libcoreworker.pxi"
 
 
 logger = logging.getLogger(__name__)
-
-MEMCOPY_THREADS = 6
 
 
 def set_internal_config(dict options):
@@ -257,8 +257,9 @@ cdef int prepare_resources(
     return 0
 
 
-cdef void prepare_args(
-        CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
+cdef prepare_args(
+        CoreWorker core_worker,
+        Language language, args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -274,6 +275,13 @@ cdef void prepare_args(
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
+            metadata = serialized_arg.metadata
+            if language != Language.PYTHON:
+                if metadata not in [
+                        ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
+                        ray_constants.OBJECT_METADATA_TYPE_RAW]:
+                    raise Exception("Can't transfer {} data to {}".format(
+                        metadata, language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectIDs are spilled to
@@ -283,12 +291,14 @@ cdef void prepare_args(
             if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
-                write_serialized_object(serialized_arg, arg_data)
+                if size > 0:
+                    (<SerializedObject>serialized_arg).write_to(
+                        Buffer.make(arg_data))
                 for object_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        arg_data, string_to_buffer(metadata),
                         inlined_ids)))
                 inlined_ids.clear()
             else:
@@ -463,10 +473,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls)
+                                              error.cause_cls, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__)
+                                              error.__class__, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
@@ -616,29 +626,6 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
-cdef write_serialized_object(
-        serialized_object, const shared_ptr[CBuffer]& buf):
-    from ray.serialization import Pickle5SerializedObject, RawSerializedObject
-
-    if isinstance(serialized_object, RawSerializedObject):
-        if buf.get() != NULL and buf.get().Size() > 0:
-            size = serialized_object.total_bytes
-            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
-                parallel_memcopy(buf.get().Data(),
-                                 <const uint8_t*> serialized_object.value,
-                                 size, kMemcopyDefaultBlocksize,
-                                 MEMCOPY_THREADS)
-            else:
-                memcpy(buf.get().Data(),
-                       <const uint8_t*>serialized_object.value, size)
-
-    elif isinstance(serialized_object, Pickle5SerializedObject):
-        (<Pickle5Writer>serialized_object.writer).write_to(
-            serialized_object.inband, buf, MEMCOPY_THREADS)
-    else:
-        raise TypeError("Unsupported serialization type.")
-
-
 cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
@@ -780,7 +767,9 @@ cdef class CoreWorker:
             &c_object_id, &data)
 
         if not object_already_exists:
-            write_serialized_object(serialized_object, data)
+            if total_bytes > 0:
+                (<SerializedObject>serialized_object).write_to(
+                    Buffer.make(data))
             if self.is_local_mode:
                 c_object_id_vector.push_back(c_object_id)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
@@ -875,7 +864,7 @@ cdef class CoreWorker:
                 num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
@@ -908,7 +897,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -944,7 +933,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(
@@ -1133,8 +1122,9 @@ cdef class CoreWorker:
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() != NULL:
-                write_serialized_object(
-                    serialized_object, returns[0][i].get().GetData())
+                if returns[0][i].get().HasData():
+                    (<SerializedObject>serialized_object).write_to(
+                        Buffer.make(returns[0][i].get().GetData()))
                 if self.is_local_mode:
                     return_ids_vector.push_back(return_ids[i])
                     check_status(
