@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 def build_ddpg_models_and_action_dist(policy, obs_space, action_space, config):
     model = build_ddpg_models(policy, obs_space, action_space, config)
+    # TODO(sven): Unify this once we generically support creating more than
+    #  one Model per policy. Note: Device placement is done automatically
+    #  already for `policy.model` (but not for the target model).
+    device = (
+        torch.device("cuda") if torch.cuda.is_available() else
+        torch.device("cpu"))
+    policy.target_model = policy.target_model.to(device)
     return model, TorchDeterministic
 
 
