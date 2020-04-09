@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_table_pub_sub.h"
+#include "gcs_pub_sub.h"
 #include "ray/gcs/redis_context.h"
 
 namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Publish(const ID &id, const Data &data,
-                                         const StatusCallback &done) {
+Status GcsPubSub<ID, Data>::Publish(const std::string &channel, const ID &id,
+                                    const Data &data, const StatusCallback &done) {
   rpc::GcsMessage message;
   message.set_id(id.Binary());
   std::string data_str;
@@ -34,34 +34,39 @@ Status GcsTablePubSub<ID, Data>::Publish(const ID &id, const Data &data,
   };
 
   return redis_client_->GetPrimaryContext()->PublishAsync(
-      GenChannelPattern(id), message.SerializeAsString(), on_done);
+      GenChannelPattern(channel, id), message.SerializeAsString(), on_done);
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Subscribe(const ID &id, const Callback &subscribe,
-                                           const StatusCallback &done) {
-  return Subscribe(boost::optional<ID>(id), subscribe, done);
+Status GcsPubSub<ID, Data>::Subscribe(const std::string &channel, const ID &id,
+                                      const Callback &subscribe,
+                                      const StatusCallback &done) {
+  return Subscribe(channel, boost::optional<ID>(id), subscribe, done);
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::SubscribeAll(const Callback &subscribe,
-                                              const StatusCallback &done) {
-  return Subscribe(boost::none, subscribe, done);
+Status GcsPubSub<ID, Data>::SubscribeAll(const std::string &channel,
+                                         const Callback &subscribe,
+                                         const StatusCallback &done) {
+  return Subscribe(channel, boost::none, subscribe, done);
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Unsubscribe(const ID &id, const StatusCallback &done) {
+Status GcsPubSub<ID, Data>::Unsubscribe(const std::string &channel, const ID &id,
+                                        const StatusCallback &done) {
   if (done) {
-    unsubscribe_callbacks_[GenChannelPattern(id)] = done;
+    unsubscribe_callbacks_[GenChannelPattern(channel, id)] = done;
   }
-  return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(GenChannelPattern(id));
+  return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(
+      GenChannelPattern(channel, id));
 }
 
 template <typename ID, typename Data>
-Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
-                                           const Callback &subscribe,
-                                           const StatusCallback &done) {
-  std::string pattern = GenChannelPattern(id);
+Status GcsPubSub<ID, Data>::Subscribe(const std::string &channel,
+                                      const boost::optional<ID> &id,
+                                      const Callback &subscribe,
+                                      const StatusCallback &done) {
+  std::string pattern = GenChannelPattern(channel, id);
   auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
     if (!reply->IsNil()) {
       if (reply->GetMessageType() == "punsubscribe") {
@@ -97,9 +102,10 @@ Status GcsTablePubSub<ID, Data>::Subscribe(const boost::optional<ID> &id,
 }
 
 template <typename ID, typename Data>
-std::string GcsTablePubSub<ID, Data>::GenChannelPattern(const boost::optional<ID> &id) {
+std::string GcsPubSub<ID, Data>::GenChannelPattern(const std::string &channel,
+                                                   const boost::optional<ID> &id) {
   std::stringstream pattern;
-  pattern << pub_sub_channel_ << ":";
+  pattern << channel << ":";
   if (id) {
     pattern << id->Binary();
   } else {
@@ -108,16 +114,16 @@ std::string GcsTablePubSub<ID, Data>::GenChannelPattern(const boost::optional<ID
   return pattern.str();
 }
 
-template class GcsTablePubSub<JobID, JobTableData>;
-template class GcsTablePubSub<ActorID, ActorTableData>;
-template class GcsTablePubSub<TaskID, TaskTableData>;
-template class GcsTablePubSub<TaskID, TaskLeaseData>;
-template class GcsTablePubSub<ObjectID, ObjectChange>;
-template class GcsTablePubSub<ClientID, GcsNodeInfo>;
-template class GcsTablePubSub<ClientID, ResourceChange>;
-template class GcsTablePubSub<ClientID, HeartbeatTableData>;
-template class GcsTablePubSub<ClientID, HeartbeatBatchTableData>;
-template class GcsTablePubSub<WorkerID, WorkerFailureData>;
+template class GcsPubSub<JobID, JobTableData>;
+template class GcsPubSub<ActorID, ActorTableData>;
+template class GcsPubSub<TaskID, TaskTableData>;
+template class GcsPubSub<TaskID, TaskLeaseData>;
+template class GcsPubSub<ObjectID, ObjectChange>;
+template class GcsPubSub<ClientID, GcsNodeInfo>;
+template class GcsPubSub<ClientID, ResourceChange>;
+template class GcsPubSub<ClientID, HeartbeatTableData>;
+template class GcsPubSub<ClientID, HeartbeatBatchTableData>;
+template class GcsPubSub<WorkerID, WorkerFailureData>;
 
 }  // namespace gcs
 }  // namespace ray

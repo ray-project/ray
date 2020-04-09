@@ -306,15 +306,15 @@ cc_binary(
 )
 
 cc_library(
-    name = "gcs_table_pub_sub_lib",
+    name = "gcs_pub_sub_lib",
     srcs = glob(
         [
-            "src/ray/gcs/pubsub/gcs_table_pub_sub.cc",
+            "src/ray/gcs/pubsub/gcs_pub_sub.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/gcs/pubsub/gcs_table_pub_sub.h",
+            "src/ray/gcs/pubsub/gcs_pub_sub.h",
         ],
     ),
     copts = COPTS,
@@ -326,8 +326,8 @@ cc_library(
 )
 
 cc_test(
-    name = "gcs_table_pub_sub_test",
-    srcs = ["src/ray/gcs/pubsub/test/gcs_table_pub_sub_test.cc"],
+    name = "gcs_pub_sub_test",
+    srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
     args = ["$(location redis-server) $(location redis-cli)"],
     copts = COPTS,
     data = [
@@ -335,7 +335,7 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
-        ":gcs_table_pub_sub_lib",
+        ":gcs_pub_sub_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
