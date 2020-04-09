@@ -41,5 +41,5 @@ popd
 
 pushd $ROOT_DIR
 echo "Testing maven install."
-mvn clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
 popd
