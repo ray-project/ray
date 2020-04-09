@@ -145,31 +145,32 @@ AUX_SG_WITH_RULES["IpPermissions"][0]["UserIdGroupPairs"] = [{
     "GroupId": AUX_SG["GroupId"]
 }]
 
+# Secondary security group once default inbound rules are applied
+# (if using separate security groups for head and worker nodes).
+AUX_SG_DUAL_GROUP_RULES = copy.deepcopy(AUX_SG_WITH_RULES)
+AUX_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].insert(
+    0, {"GroupId": DEFAULT_SG["GroupId"]})
+
+# Default security group with only default cross-group rules.
+# (if using separate security groups for head and worker nodes).
+DEFAULT_SG_DUAL_GROUP_RULES_ONLY = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
+DEFAULT_SG_DUAL_GROUP_RULES_ONLY["IpPermissions"].pop(1)
+
 # Worker security group after inbound rules are applied from
 # ray/autoscaler/aws/example-security-groups.yaml
-EXAMPLE_WORKERS_SECURITY_GROUP = copy.deepcopy(AUX_SG_WITH_RULES)
-EXAMPLE_WORKERS_SECURITY_GROUP["IpPermissions"][0]["UserIdGroupPairs"].insert(
-    0, {"GroupId": DEFAULT_SG["GroupId"]})
-EXAMPLE_WORKERS_SECURITY_GROUP["IpPermissions"][1]["IpRanges"] = [{
-    "CidrIp": "10.1.0.0/16"
-}, {
-    "CidrIp": "192.168.1.0/24"
-}]
-EXAMPLE_WORKERS_SECURITY_GROUP["IpPermissions"][1].setdefault(
-    "Ipv6Ranges", [{
-        "CidrIpv6": "2002::1234:abcd:ffff:c0a8:101/128"
-    }])
+EXAMPLE_WORKERS_SECURITY_GROUP = copy.deepcopy(AUX_SG_DUAL_GROUP_RULES)
+EXAMPLE_WORKERS_SECURITY_GROUP["IpPermissions"].pop(1)
 
-# Head security group after inbound rules are applied from
-# ray/autoscaler/aws/example-security-groups.yaml
-EXAMPLE_HEAD_SECURITY_GROUP = copy.deepcopy(DEFAULT_SG_WITH_RULES)
-EXAMPLE_HEAD_SECURITY_GROUP["IpPermissions"][0]["UserIdGroupPairs"].append({
+# Head security group after required rules have been appended that are missing
+# from ray/autoscaler/aws/example-security-groups.yaml
+EXAMPLE_HEAD_SG_REQUIRED_RULES = copy.deepcopy(DEFAULT_SG_WITH_RULES)
+EXAMPLE_HEAD_SG_REQUIRED_RULES["IpPermissions"][0]["UserIdGroupPairs"].append({
     "GroupId": EXAMPLE_WORKERS_SECURITY_GROUP["GroupId"]
 })
-EXAMPLE_HEAD_SECURITY_GROUP["IpPermissions"][1]["IpRanges"] = [{
+EXAMPLE_HEAD_SG_REQUIRED_RULES["IpPermissions"][1]["IpRanges"] = [{
     "CidrIp": "0.0.0.0/0"
 }]
-EXAMPLE_HEAD_SECURITY_GROUP["IpPermissions"].append({
+EXAMPLE_HEAD_SG_REQUIRED_RULES["IpPermissions"].append({
     "FromPort": 80,
     "ToPort": 80,
     "IpProtocol": "tcp",
@@ -182,6 +183,11 @@ EXAMPLE_HEAD_SECURITY_GROUP["IpPermissions"].append({
         "CidrIpv6": "2002::1234:abcd:ffff:c0a8:101/128"
     }]
 })
+
+# Head security group after inbound rules are applied from
+# ray/autoscaler/aws/example-security-groups.yaml
+EXAMPLE_HEAD_SECURITY_GROUP = copy.deepcopy(EXAMPLE_HEAD_SG_REQUIRED_RULES)
+EXAMPLE_HEAD_SECURITY_GROUP["IpPermissions"].pop(0)
 
 
 def _load_aws_security_group_example_config():
@@ -300,31 +306,34 @@ def _describe_sg_echo_stub(ec2_client_stub, security_group):
         service_response={"SecurityGroups": [security_group]})
 
 
+def _create_sg_different_rules_same_vpc_stubs(ec2):
+    # head and worker nodes have no custom subnets defined,
+    # so return only the default subnet for both security groups
+    _describe_subnets_echo_stub(ec2, DEFAULT_SUBNET)
+    # given no existing security groups within the VPC...
+    _describe_no_security_groups_stub(ec2)
+    # expect new default security group creation on the head/worker node VPC
+    _create_sg_echo_stub(ec2, DEFAULT_SG)
+    # expect new default security group details to be retrieved after creation
+    _describe_sgs_on_vpc_stub(ec2, [DEFAULT_SUBNET["VpcId"]], [DEFAULT_SG])
+
+    # given different head/worker inbound rule configs...
+    # expect an attempt to retrieve the aux group on the shared VPC
+    _describe_sgs_on_vpc_stub(ec2, [DEFAULT_SUBNET["VpcId"]], [DEFAULT_SG])
+    # given only the default security group on the shared VPC...
+    # expect the aux security group to be created
+    _create_sg_echo_stub(ec2, AUX_SG)
+    # expect new aux security group details to be retrieved following creation
+    _describe_sgs_on_vpc_stub(ec2, [DEFAULT_SUBNET["VpcId"]],
+                              [DEFAULT_SG, AUX_SG])
+
+
 def test_create_sg_different_rules_same_vpc(iam_client_stub, ec2_client_stub):
     # use default stubs to skip ahead to security group configuration
     _skip_to_configure_sg_stubs(ec2_client_stub, iam_client_stub)
 
-    # head and worker nodes have no custom subnets defined,
-    # so return only the default subnet for both security groups
-    _describe_subnets_echo_stub(ec2_client_stub, DEFAULT_SUBNET)
-    # given no existing security groups within the VPC...
-    _describe_no_security_groups_stub(ec2_client_stub)
-    # expect new default security group creation on the head/worker node VPC
-    _create_sg_echo_stub(ec2_client_stub, DEFAULT_SG)
-    # expect new default security group details to be retrieved after creation
-    _describe_sgs_on_vpc_stub(ec2_client_stub, [DEFAULT_SUBNET["VpcId"]],
-                              [DEFAULT_SG])
-
-    # given different head/worker inbound rule configs...
-    # expect an attempt to retrieve the aux group on the shared VPC
-    _describe_sgs_on_vpc_stub(ec2_client_stub, [DEFAULT_SUBNET["VpcId"]],
-                              [DEFAULT_SG])
-    # given only the default security group on the shared VPC...
-    # expect the aux security group to be created
-    _create_sg_echo_stub(ec2_client_stub, AUX_SG)
-    # expect new aux security group details to be retrieved following creation
-    _describe_sgs_on_vpc_stub(ec2_client_stub, [DEFAULT_SUBNET["VpcId"]],
-                              [DEFAULT_SG, AUX_SG])
+    # use default stubs to skip ahead to security group rule authorization
+    _create_sg_different_rules_same_vpc_stubs(ec2_client_stub)
 
     # given no existing default security group inbound rules...
     # expect to authorize all configured head inbound rules
@@ -333,12 +342,21 @@ def test_create_sg_different_rules_same_vpc(iam_client_stub, ec2_client_stub):
     # expect the next read of ip_permissions to reload them
     _describe_sg_echo_stub(ec2_client_stub, EXAMPLE_HEAD_SECURITY_GROUP)
 
+    # given no cross-security-group rules for the default security group...
+    # expect to authorize all required cross-security-group rules
+    _authorize_sg_ingress_stub(ec2_client_stub,
+                               DEFAULT_SG_DUAL_GROUP_RULES_ONLY)
+
     # given no existing aux security group inbound rules...
     # expect to authorize all configured worker inbound rules
     _authorize_sg_ingress_stub(ec2_client_stub, EXAMPLE_WORKERS_SECURITY_GROUP)
     # given this modification to the aux security group...
     # expect the next read of ip_permissions to reload them
     _describe_sg_echo_stub(ec2_client_stub, EXAMPLE_WORKERS_SECURITY_GROUP)
+
+    # given the prior modification to the default security group...
+    # expect the next read of one of its properties to reload it
+    _describe_sg_echo_stub(ec2_client_stub, EXAMPLE_HEAD_SG_REQUIRED_RULES)
 
     # expect the finalized config to have different head and worker node
     # security groups on the same subnet
@@ -352,8 +370,11 @@ def test_create_sg_different_rules_same_vpc(iam_client_stub, ec2_client_stub):
         assert config["worker_nodes"]["SubnetIds"] == \
             [DEFAULT_SUBNET["SubnetId"]]
 
+    # patch get_or_create_head_node so that it only validates its input config
     _get_or_create_head_node_patch(_mock_get_or_create_head)
 
+    # given our mocks and the security group example config file as input...
+    # expect create_or_update_cluster to load and bootstrap config successfully
     config_file = _load_aws_security_group_example_config()
     create_or_update_cluster(config_file, None, None, True, False, True, None)
 
@@ -392,8 +413,6 @@ CONFIG_DEFAULT_RULES_DIFFERENT_VPC = {
 
 
 def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
-    config = copy.deepcopy(CONFIG_DEFAULT_RULES_DIFFERENT_VPC)
-
     # use default stubs to skip ahead to security group configuration
     _skip_to_configure_sg_stubs(ec2_client_stub, iam_client_stub)
 
@@ -430,14 +449,113 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # expect the next read of a worker security group property to reload it
     _describe_sg_echo_stub(ec2_client_stub, DEFAULT_SG_WITH_RULES_AUX_SUBNET)
 
-    config = ray.autoscaler.aws.config.bootstrap_aws(config)
+    # given our mocks and test config as input...
+    # expect the test config to be bootstrapped successfully
+    config = ray.autoscaler.aws.config.bootstrap_aws(
+        copy.deepcopy(CONFIG_DEFAULT_RULES_DIFFERENT_VPC))
 
-    # expect config to show different head and worker security groups residing
-    # on different subnets
+    # expect the bootstrapped config to show different head and worker security
+    # groups residing on different subnets
     assert config["head_node"]["SecurityGroupIds"] == [DEFAULT_SG["GroupId"]]
     assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
     assert config["worker_nodes"]["SecurityGroupIds"] == [AUX_SG["GroupId"]]
     assert config["worker_nodes"]["SubnetIds"] == [AUX_SUBNET["SubnetId"]]
+
+    # expect no pending responses left in IAM or EC2 client stub queues
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
+CONFIG_DEFAULT_RULES_EQUIVALENT_RULES = {
+    "cluster_name": "security-groups",
+    "min_workers": 1,
+    "max_workers": 1,
+    "provider": {
+        "type": "aws",
+        "region": "us-west-2",
+        "availability_zone": "us-west-2a",
+        "head_inbound_rules": [{
+            "channel": {
+                "from_port": 80,
+                "to_port": 80,
+                "ip_protocol": "tcp"
+            },
+            "targets": {
+                "cidr_ips": ["64.39.64.0/18", "64.39.96.0/18"],
+                "cidr_ipv6s": ["2Aa2:0:0:1234::/64", "2aA2::1234:0:0:0:0/64"]
+            }
+        }]
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+    },
+    "head_node": {},
+    "worker_nodes": {}
+}
+
+
+def test_create_sg_equivalent_rule_dedupes(iam_client_stub, ec2_client_stub):
+    # prepare an expected security group with deterministically deduped rules
+    sg_with_deduped_rules = copy.deepcopy(DEFAULT_SG)
+    sg_with_deduped_rules["IpPermissions"] = [{
+        "FromPort": 80,
+        "ToPort": 80,
+        "IpProtocol": "tcp",
+        "IpRanges": [{
+            "CidrIp": "64.39.64.0/18"
+        }],
+        "Ipv6Ranges": [{
+            "CidrIpv6": "2aa2:0:0:1234::/64"
+        }]
+    }]
+
+    # prepare an expected final security group with deduped and required rules
+    sg_with_deduped_and_required_rules = copy.deepcopy(sg_with_deduped_rules)
+    sg_with_deduped_and_required_rules["IpPermissions"].append(
+        copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]))
+
+    # use default stubs to skip ahead to security group configuration
+    _skip_to_configure_sg_stubs(ec2_client_stub, iam_client_stub)
+
+    # use default stubs to skip ahead to security group rule authorization
+    _create_sg_different_rules_same_vpc_stubs(ec2_client_stub)
+
+    # given no existing default security group inbound rules...
+    # expect to authorize all configured head inbound rules
+    # expect all equivalent rules to be deterministically deduped
+    _authorize_sg_ingress_stub(ec2_client_stub, sg_with_deduped_rules)
+    # given this modification to the default security group...
+    # expect the next read of ip_permissions to reload them
+    _describe_sg_echo_stub(ec2_client_stub, sg_with_deduped_rules)
+
+    # given no cross-security-group rules for the default security group...
+    # expect to authorize all required cross-security-group rules
+    _authorize_sg_ingress_stub(ec2_client_stub,
+                               DEFAULT_SG_DUAL_GROUP_RULES_ONLY)
+
+    # given no existing aux security group inbound rules...
+    # expect to authorize all default worker inbound rules
+    _authorize_sg_ingress_stub(ec2_client_stub, AUX_SG_DUAL_GROUP_RULES)
+
+    # given the prior modification to the default security group...
+    # expect the next read of one of its properties to reload it
+    _describe_sg_echo_stub(ec2_client_stub, sg_with_deduped_and_required_rules)
+
+    # given the prior modification to the aux security group...
+    # expect the next read of one of its properties to reload it
+    _describe_sg_echo_stub(ec2_client_stub, AUX_SG_WITH_RULES)
+
+    # given our mocks and test config as input...
+    # expect the test config to be bootstrapped successfully
+    config = ray.autoscaler.aws.config.bootstrap_aws(
+        copy.deepcopy(CONFIG_DEFAULT_RULES_EQUIVALENT_RULES))
+
+    # expect config to show different head and worker security groups residing
+    # on the same subnet
+    assert config["head_node"]["SecurityGroupIds"] == [DEFAULT_SG["GroupId"]]
+    assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+    assert config["worker_nodes"]["SecurityGroupIds"] == [AUX_SG["GroupId"]]
+    assert config["worker_nodes"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
 
     # expect no pending responses left in IAM or EC2 client stub queues
     iam_client_stub.assert_no_pending_responses()

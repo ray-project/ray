@@ -3,6 +3,7 @@ import json
 import os
 import time
 import logging
+import ipaddress
 
 import boto3
 from botocore.config import Config
@@ -375,31 +376,32 @@ def _create_security_group(config, vpc_id, group_name):
     return security_group
 
 
-def _upsert_security_group_rules(config, security_groups, rules_group_name):
-    head_rules = config["provider"].get("head_inbound_rules", {})
-    worker_rules = config["provider"].get("worker_inbound_rules", {})
+def _upsert_security_group_rules(conf, security_groups, rules_group_name):
+    head_rules = conf["provider"].get("head_inbound_rules", {})
+    worker_rules = conf["provider"].get("worker_inbound_rules", {})
 
-    head_security_group = security_groups["head"]
-    worker_security_group = security_groups["workers"]
+    head_sg = security_groups["head"]
+    worker_sg = security_groups["workers"]
 
     if head_rules != worker_rules:
-        if head_security_group.id == worker_security_group.id:
-            worker_security_group = _get_or_create_security_group(
-                config, worker_security_group.vpc_id, rules_group_name)
-            security_groups["workers"] = worker_security_group
+        if head_sg.id == worker_sg.id:
+            worker_sg = _get_or_create_security_group(conf, worker_sg.vpc_id,
+                                                      rules_group_name)
+            security_groups["workers"] = worker_sg
 
-    sgids = {head_security_group.id, worker_security_group.id}
+    sgids = {head_sg.id, worker_sg.id}
 
-    head_channel_rules = _group_rules_by_channel(config, head_rules)
-    _update_inbound_rules(head_security_group, head_channel_rules, sgids)
-    worker_channel_rules = _group_rules_by_channel(config, worker_rules)
-    _update_inbound_rules(worker_security_group, worker_channel_rules, sgids)
+    head_channel_rules = _group_rules_by_channel(conf, head_rules, head_sg)
+    _update_inbound_rules(head_sg, head_channel_rules, sgids)
+    wrkr_channel_rules = _group_rules_by_channel(conf, worker_rules, worker_sg)
+    _update_inbound_rules(worker_sg, wrkr_channel_rules, sgids)
 
 
-def _group_rules_by_channel(config, rules):
+def _group_rules_by_channel(config, rules, security_group):
     """Group rules by network "channel" (from_port, to_port, ip_protocol)"""
     channel_rules = {}
 
+    # add rules specified explicitly by channel
     for inbound_rule in rules:
         rule_channel = inbound_rule["channel"]
         channel_group_key = (rule_channel["from_port"],
@@ -409,6 +411,7 @@ def _group_rules_by_channel(config, rules):
             inbound_rule.get("targets", {}),
             channel_rules.setdefault(channel_group_key, {}))
 
+    # add sources for all default channels if configured and not already set
     default_sources = config["provider"].get("default_inbound_sources", {})
     if default_sources:
         valid_source = _target_exists(default_sources)
@@ -417,23 +420,46 @@ def _group_rules_by_channel(config, rules):
             if not channel_rules.setdefault(default_channel, {}):
                 _union_targets(default_sources, channel_rules[default_channel])
 
+    # revoke all unspecified rules if one or more authorized rules exist
+    if channel_rules:
+        for ip_permission in security_group.ip_permissions:
+            channel_rules.setdefault(_get_ipp_channel(ip_permission), {})
+
     return channel_rules
 
 
+def _get_ipp_channel(ip_permission):
+    return (ip_permission.get("FromPort", -1), ip_permission.get("ToPort", -1),
+            ip_permission.get("IpProtocol"))
+
+
 def _union_targets(rule_targets, channel_targets):
-    cidr_ips = set(rule_targets.get("cidr_ips", []))
-    cidr_ipv6s = {_.lower() for _ in rule_targets.get("cidr_ipv6s", [])}
+    cidr_ips = _canonicalize_cidr_ips(rule_targets.get("cidr_ips", []))
+    cidr_ipv6s = _canonicalize_cidr_ips(rule_targets.get("cidr_ipv6s", []))
     plids = {_.lower() for _ in rule_targets.get("prefix_list_ids", [])}
     sgids = {_.lower() for _ in rule_targets.get("security_group_ids", [])}
 
-    channel_targets["cidr_ips"] = channel_targets.get(
-        "cidr_ips", set(cidr_ips)).union(cidr_ips)
+    channel_targets["cidr_ips"] = channel_targets.get("cidr_ips",
+                                                      cidr_ips).union(cidr_ips)
     channel_targets["cidr_ipv6s"] = channel_targets.get(
-        "cidr_ipv6s", set(cidr_ipv6s)).union(cidr_ipv6s)
+        "cidr_ipv6s", cidr_ipv6s).union(cidr_ipv6s)
     channel_targets["prefix_list_ids"] = channel_targets.get(
-        "prefix_list_ids", set(plids)).union(plids)
+        "prefix_list_ids", plids).union(plids)
     channel_targets["security_group_ids"] = channel_targets.get(
-        "security_group_ids", set(sgids)).union(sgids)
+        "security_group_ids", sgids).union(sgids)
+
+
+def _canonicalize_cidr_ips(cidr_ips):
+    """
+    returns a string set containing the canonical form of all input CIDR IPs
+    this effectively deduplicates all equivalent, but unequal, input CIDR IPs
+    """
+    canonical_targets = set()
+    # sort CIDR IPs to ensure deterministic deduplication
+    # this primarily helps us write more precise stub-based boto3 unit tests
+    for cidr_ip in sorted(cidr_ips):
+        canonical_targets.add(str(ipaddress.ip_network(cidr_ip, False)))
+    return canonical_targets
 
 
 def _update_inbound_rules(sg, channel_rules, sgids):
@@ -447,10 +473,10 @@ def _update_security_group_ingress(sg, channel_rules, required_sgids, revoke):
     channel_rules_to_add = {}
 
     for channel, inbound_sources in channel_rules.items():
-        cidr_ips = inbound_sources.get("cidr_ips", [])
-        cidr_ipv6s = inbound_sources.get("cidr_ipv6s", [])
-        plids = inbound_sources.get("prefix_list_ids", [])
-        sgids = inbound_sources.get("security_group_ids", [])
+        cidr_ips = set(inbound_sources.get("cidr_ips", []))
+        cidr_ipv6s = set(inbound_sources.get("cidr_ipv6s", []))
+        plids = set(inbound_sources.get("prefix_list_ids", []))
+        sgids = set(inbound_sources.get("security_group_ids", []))
         if channel == ALL_TRAFFIC_CHANNEL:
             sgids = sgids.union(required_sgids)
 
@@ -463,7 +489,7 @@ def _update_security_group_ingress(sg, channel_rules, required_sgids, revoke):
             })
 
         sg_ipps = sg.ip_permissions
-        for ipp in (_ for _ in sg_ipps if _match_ipp_channel(channel, _)):
+        for ipp in (_ for _ in sg_ipps if channel == _get_ipp_channel(_)):
             _revoke_or_add(ipp, "IpRanges", "CidrIp", ipps_to_revoke, cidr_ips,
                            src_to_add["cidr_ips"])
             _revoke_or_add(ipp, "Ipv6Ranges", "CidrIpv6", ipps_to_revoke,
@@ -488,12 +514,6 @@ def _update_security_group_ingress(sg, channel_rules, required_sgids, revoke):
         sg.authorize_ingress(IpPermissions=ipps_to_authorize)
 
 
-def _match_ipp_channel(channel, ip_permission):
-    return channel[FROM_PORT] == ip_permission.get("FromPort", -1) and \
-           channel[TO_PORT] == ip_permission.get("ToPort", -1) and \
-           channel[IP_PROTOCOL] == ip_permission.get("IpProtocol")
-
-
 def _revoke_or_add(ipp, srcs_key, src_key, ipp_revokes, whitelist, add_srcs):
     for ipp_srcs in (_ for _ in ipp.get(srcs_key, []) if _.get(src_key)):
         ipp_revokes.append({
@@ -505,11 +525,10 @@ def _revoke_or_add(ipp, srcs_key, src_key, ipp_revokes, whitelist, add_srcs):
            else add_srcs.remove(ipp_srcs[src_key])
 
 
-def _target_exists(inbound_sources):
+def _target_exists(targets):
     return bool(
-        inbound_sources.get("cidr_ips") or inbound_sources.get("cidr_ipv6s")
-        or inbound_sources.get("prefix_list_ids")
-        or inbound_sources.get("security_group_ids"))
+        targets.get("cidr_ips") or targets.get("cidr_ipv6s")
+        or targets.get("prefix_list_ids") or targets.get("security_group_ids"))
 
 
 def _get_required_channel_rules(sg, channel_rules, sgids):
@@ -518,9 +537,9 @@ def _get_required_channel_rules(sg, channel_rules, sgids):
             "security_group_ids": set(sgids)
         }
     }
+    sg_ipp_channels = {(_get_ipp_channel(_) for _ in sg.ip_permissions)}
     for channel in DEFAULT_INBOUND_CHANNELS:
-        rules_exist = _target_exists(channel_rules.get(channel, {})) or \
-            any(_ for _ in sg.ip_permissions if _match_ipp_channel(channel, _))
+        rules_exist = bool(channel_rules) or channel in sg_ipp_channels
         if not rules_exist:
             default_targets = {"cidr_ips": ["0.0.0.0/0"]}
             required_channel_rules[channel] = default_targets
@@ -529,28 +548,38 @@ def _get_required_channel_rules(sg, channel_rules, sgids):
 
 def _create_ip_permissions(channel_rules):
     ip_permissions = []
+    # sort channels for deterministic ordering of IP permission list
+    # this primarily helps us write more precise boto3 unit test stubs
     for channel in sorted(channel_rules.keys()):
-        src = channel_rules[channel]
-        ipp = {
-            "FromPort": channel[FROM_PORT],
-            "ToPort": channel[TO_PORT],
-            "IpProtocol": channel[IP_PROTOCOL],
-        }
-        _append_ipp_sources(src.get("cidr_ips"), ipp, "IpRanges", "CidrIp")
-        _append_ipp_sources(
-            src.get("cidr_ipv6s"), ipp, "Ipv6Ranges", "CidrIpv6")
-        _append_ipp_sources(
-            src.get("security_group_ids"), ipp, "UserIdGroupPairs", "GroupId")
-        _append_ipp_sources(
-            src.get("prefix_list_ids"), ipp, "PrefixListIds", "PrefixListId")
-        ip_permissions.append(ipp)
+        targets = channel_rules[channel]
+        if _target_exists(targets):
+            _create_ip_permission(channel, targets, ip_permissions)
 
     return ip_permissions
 
 
-def _append_ipp_sources(sources_to_add, ipp, ipp_sources_key, src_key):
-    if sources_to_add:
-        ipp[ipp_sources_key] = [{src_key: _} for _ in sorted(sources_to_add)]
+def _create_ip_permission(channel, targets, ip_permissions):
+    ipp = {
+        "FromPort": channel[FROM_PORT],
+        "ToPort": channel[TO_PORT],
+        "IpProtocol": channel[IP_PROTOCOL],
+    }
+    _append_ipp_targets(targets.get("cidr_ips"), ipp, "IpRanges", "CidrIp")
+    _append_ipp_targets(
+        targets.get("cidr_ipv6s"), ipp, "Ipv6Ranges", "CidrIpv6")
+    _append_ipp_targets(
+        targets.get("security_group_ids"), ipp, "UserIdGroupPairs", "GroupId")
+    _append_ipp_targets(
+        targets.get("prefix_list_ids"), ipp, "PrefixListIds", "PrefixListId")
+
+    ip_permissions.append(ipp)
+
+
+def _append_ipp_targets(targets_to_add, ipp, ipp_sources_key, src_key):
+    if targets_to_add:
+        # sort targets for deterministic ordering of IP permission targets list
+        # this primarily helps us write more precise boto3 unit test stubs
+        ipp[ipp_sources_key] = [{src_key: _} for _ in sorted(targets_to_add)]
 
 
 def _get_role(role_name, config):

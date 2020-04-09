@@ -16,11 +16,10 @@ provider:
     availability_zone: us-west-2a
 
     # AWS EC2 instance inbound rules to use with the head node security group.
-    # These rules can be used to either authorize new inbound connection
-    # sources to the head node, or revoke existing unauthorized inbound
-    # connection sources. However, default rules authorizing
-    # cross-communication between head and worker node security groups cannot
-    # be revoked.
+    # Specifying one or more rules below represents a directive to both add
+    # them to the security group if they don't already exist, and to revoke any
+    # unspecified rules. However, default rules authorizing cross-communication
+    # between head and worker node security groups cannot be revoked.
     head_inbound_rules:
           # The network channel that this rule applies to, specified as a port
           # range and protocol. Any redundant rules specified for the same
@@ -61,35 +60,25 @@ provider:
                   - 192.168.1.0/24
                   - 10.1.0.0/16
 
-          # A rule with a channel but no targets revokes all communication on
-          # that channel. Thus, the below config effectively ensures that any
-          # rule permitting unrestricted inbound traffic across all ports and
-          # protocols is revoked. However, note that this rule still does not
-          # revoke any rules required for proper functionality of your Ray
-          # cluster, such as those permitting arbitrary traffic to pass between
-          # head/worker node security groups.
-        - channel:
-              # Set port and protocol to -1 for the "All Traffic" channel
-              from_port: -1
-              to_port: -1
-              ip_protocol: "-1"
-
     # AWS EC2 instance inbound rules for the worker node security group.
     worker_inbound_rules:
           # This rule overrides the default inbound SSH sources specified in
-          # "default_inbound_sources" below.
+          # "default_inbound_sources" below. A rule with a channel but no
+          # targets revokes all communication on that channel, so the below
+          # rule ensures that all inbound SSH connection sources are revoked
+          # from the worker security group.
         - channel:
               from_port: 22
               to_port: 22
               ip_protocol: "tcp"
-          targets:
-              cidr_ips:
-                  - 192.168.1.0/24
-                  - 10.1.0.0/16
-              cidr_ipv6s:
-                  - 2002::1234:abcd:ffff:c0a8:101/128
 
+          # Note that specifying the below rule has no effect, since all rules
+          # on any unspecified channel would be revoked anyways, and any
+          # requests to revoke rules required for proper functionality of
+          # your Ray cluster, like those permitting all traffic to pass between
+          # head/worker nodes, will be discarded.
         - channel:
+              # Set port and protocol to -1 for the "All Traffic" channel
               from_port: -1
               to_port: -1
               ip_protocol: "-1"
