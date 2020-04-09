@@ -154,9 +154,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                     self.ou_sigma * gaussian_sample
                 self.ou_state += ou_new
                 noise = scale * self.ou_base_scale * self.ou_state * \
-                    torch.Tensor(
-                        self.action_space.high - self.action_space.low,
-                        device=self.device).to(self.device)
+                    torch.from_numpy(
+                        self.action_space.high - self.action_space.low) \
+                        .to(self.device)
                 action = torch.clamp(det_actions + noise,
                                      self.action_space.low[0],
                                      self.action_space.high[0])
