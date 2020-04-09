@@ -13,15 +13,19 @@
 // limitations under the License.
 
 #include "gcs_pub_sub.h"
+#include "ray/gcs/redis_context.h"
 
 namespace ray {
 namespace gcs {
 
-Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
-                          const std::string &data, const StatusCallback &done) {
-  rpc::PubSubMessage message;
-  message.set_id(id);
-  message.set_data(data);
+template <typename ID, typename Data>
+Status GcsPubSub<ID, Data>::Publish(const std::string &channel, const ID &id,
+                                    const Data &data, const StatusCallback &done) {
+  rpc::GcsMessage message;
+  message.set_id(id.Binary());
+  std::string data_str;
+  data.SerializeToString(&data_str);
+  message.set_data(data_str);
 
   auto on_done = [done](std::shared_ptr<CallbackReply> reply) {
     if (done) {
@@ -30,42 +34,56 @@ Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
   };
 
   return redis_client_->GetPrimaryContext()->PublishAsync(
-      GenChannelPattern(channel, boost::optional<std::string>(id)),
-      message.SerializeAsString(), on_done);
+      GenChannelPattern(channel, id), message.SerializeAsString(), on_done);
 }
 
-Status GcsPubSub::Subscribe(const std::string &channel, const std::string &id,
-                            const Callback &subscribe, const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, boost::optional<std::string>(id));
+template <typename ID, typename Data>
+Status GcsPubSub<ID, Data>::Subscribe(const std::string &channel, const ID &id,
+                                      const Callback &subscribe,
+                                      const StatusCallback &done) {
+  return Subscribe(channel, boost::optional<ID>(id), subscribe, done);
 }
 
-Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subscribe,
-                               const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done);
+template <typename ID, typename Data>
+Status GcsPubSub<ID, Data>::SubscribeAll(const std::string &channel,
+                                         const Callback &subscribe,
+                                         const StatusCallback &done) {
+  return Subscribe(channel, boost::none, subscribe, done);
 }
 
-Status GcsPubSub::Unsubscribe(const std::string &channel, const std::string &id) {
+template <typename ID, typename Data>
+Status GcsPubSub<ID, Data>::Unsubscribe(const std::string &channel, const ID &id,
+                                        const StatusCallback &done) {
+  if (done) {
+    unsubscribe_callbacks_[GenChannelPattern(channel, id)] = done;
+  }
   return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(
-      GenChannelPattern(channel, boost::optional<std::string>(id)));
+      GenChannelPattern(channel, id));
 }
 
-Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &subscribe,
-                                    const StatusCallback &done,
-                                    const boost::optional<std::string> &id) {
+template <typename ID, typename Data>
+Status GcsPubSub<ID, Data>::Subscribe(const std::string &channel,
+                                      const boost::optional<ID> &id,
+                                      const Callback &subscribe,
+                                      const StatusCallback &done) {
   std::string pattern = GenChannelPattern(channel, id);
   auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
     if (!reply->IsNil()) {
-      if (reply->IsUnsubscribeCallback()) {
-        absl::MutexLock lock(&mutex_);
+      if (reply->GetMessageType() == "punsubscribe") {
+        if (unsubscribe_callbacks_.count(pattern)) {
+          unsubscribe_callbacks_[pattern](Status::OK());
+          unsubscribe_callbacks_.erase(pattern);
+        }
         ray::gcs::RedisCallbackManager::instance().remove(
             subscribe_callback_index_[pattern]);
-        subscribe_callback_index_.erase(pattern);
       } else {
         const auto reply_data = reply->ReadAsPubsubData();
         if (!reply_data.empty()) {
-          rpc::PubSubMessage message;
+          rpc::GcsMessage message;
           message.ParseFromString(reply_data);
-          subscribe(message.id(), message.data());
+          Data data;
+          data.ParseFromString(message.data());
+          subscribe(ID::FromBinary(message.id()), data);
         }
       }
     }
@@ -75,7 +93,6 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &
   auto status = redis_client_->GetPrimaryContext()->PSubscribeAsync(pattern, callback,
                                                                     &out_callback_index);
   if (id) {
-    absl::MutexLock lock(&mutex_);
     subscribe_callback_index_[pattern] = out_callback_index;
   }
   if (done) {
@@ -84,17 +101,29 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel, const Callback &
   return status;
 }
 
-std::string GcsPubSub::GenChannelPattern(const std::string &channel,
-                                         const boost::optional<std::string> &id) {
+template <typename ID, typename Data>
+std::string GcsPubSub<ID, Data>::GenChannelPattern(const std::string &channel,
+                                                   const boost::optional<ID> &id) {
   std::stringstream pattern;
   pattern << channel << ":";
   if (id) {
-    pattern << *id;
+    pattern << id->Binary();
   } else {
     pattern << "*";
   }
   return pattern.str();
 }
+
+template class GcsPubSub<JobID, JobTableData>;
+template class GcsPubSub<ActorID, ActorTableData>;
+template class GcsPubSub<TaskID, TaskTableData>;
+template class GcsPubSub<TaskID, TaskLeaseData>;
+template class GcsPubSub<ObjectID, ObjectChange>;
+template class GcsPubSub<ClientID, GcsNodeInfo>;
+template class GcsPubSub<ClientID, ResourceChange>;
+template class GcsPubSub<ClientID, HeartbeatTableData>;
+template class GcsPubSub<ClientID, HeartbeatBatchTableData>;
+template class GcsPubSub<WorkerID, WorkerFailureData>;
 
 }  // namespace gcs
 }  // namespace ray
