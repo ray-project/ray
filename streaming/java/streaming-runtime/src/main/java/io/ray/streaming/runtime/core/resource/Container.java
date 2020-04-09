@@ -7,41 +7,90 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.UniqueId;
+import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Resource manager unit abstraction.
- * Container identifies the available resource(cpu,mem) and allocated slots.
+ * Container is physical resource abstraction. It identifies the available resources(cpu,mem,etc.)
+ * and allocated actors.
  */
 public class Container implements Serializable {
 
-  private ContainerID containerId;
-  private UniqueId nodeId;
+  private static final Logger LOG = LoggerFactory.getLogger(Container.class);
+
+  /**
+   * container id
+   */
+  private ContainerID id;
+
+  /**
+   * Container address
+   */
   private String address;
+
+  /**
+   * Container hostname
+   */
   private String hostname;
 
-  private Map<String, Double> availableResource = new HashMap<>();
-  private List<Slot> slots = new ArrayList<>();
+  /**
+   * Container unique id fetched from raylet
+   */
+  private UniqueId nodeId;
+
+  /**
+   * Container available resources
+   */
+  private Map<String, Double> availableResources = new HashMap<>();
+
+  /**
+   * List of {@link org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex} ids
+   * belong to the container.
+   */
+  private List<Integer> executionVertexIds = new ArrayList<>();
+
+  /**
+   * Capacity is max actor number could be allocated in the container
+   */
+  private int capacity = 0;
 
   public Container() {
   }
 
-  public Container(UniqueId nodeId, String address, String hostname) {
-    this.containerId = new ContainerID();
-    this.nodeId = nodeId;
+  public Container(
+      String address,
+      UniqueId nodeId, String hostname,
+      Map<String, Double> availableResources) {
+
+    this.id = new ContainerID();
     this.address = address;
     this.hostname = hostname;
+    this.nodeId = nodeId;
+    this.availableResources = availableResources;
   }
 
-  public void setContainerId(ContainerID containerId) {
-    this.containerId = containerId;
+  public static Container from(NodeInfo nodeInfo) {
+    return new Container(
+        nodeInfo.nodeAddress,
+        nodeInfo.nodeId,
+        nodeInfo.nodeHostname,
+        nodeInfo.resources
+    );
   }
 
-  public ContainerID getContainerId() {
-    return containerId;
+  public ContainerID getId() {
+    return id;
+  }
+
+  public void setId(ContainerID id) {
+    this.id = id;
   }
 
   public String getName() {
-    return containerId.toString();
+    return id.toString();
   }
 
   public String getAddress() {
@@ -56,31 +105,92 @@ public class Container implements Serializable {
     return hostname;
   }
 
-  public Map<String, Double> getAvailableResource() {
-    return availableResource;
+  public Map<String, Double> getAvailableResources() {
+    return availableResources;
   }
 
-  public void setAvailableResource(Map<String, Double> availableResource) {
-    this.availableResource = availableResource;
+  public int getCapacity() {
+    return capacity;
   }
 
-  public List<Slot> getSlots() {
-    return slots;
+
+  public void updateCapacity(int capacity) {
+    LOG.info("Update container capacity, old value: {}, new value: {}.", this.capacity, capacity);
+    this.capacity = capacity;
   }
 
-  public void setSlots(List<Slot> slots) {
-    this.slots = slots;
+  public int getRemainingCapacity() {
+    return capacity - getAllocatedActorNum();
+  }
+
+  public int getAllocatedActorNum() {
+    return executionVertexIds.size();
+  }
+
+  public boolean isFull() {
+    return getAllocatedActorNum() >= capacity;
+  }
+
+  public boolean isEmpty() {
+    return getAllocatedActorNum() == 0;
+  }
+
+  public void allocateActor(ExecutionVertex vertex) {
+    LOG.info("Allocating vertex [{}] in container [{}].", vertex, this);
+
+    executionVertexIds.add(vertex.getId());
+    vertex.setContainerIfNotExist(this.getId());
+    // Binding dynamic resource
+    vertex.getResources().put(getName(), 1.0);
+    decreaseResource(vertex.getResources());
+  }
+
+  public void releaseActor(ExecutionVertex vertex) {
+    LOG.info("Release actor, vertex: {}, container: {}.", vertex, vertex.getContainerId());
+    if (executionVertexIds.contains(vertex.getId())) {
+      executionVertexIds.removeIf(id -> id == vertex.getId());
+      reclaimResource(vertex.getResources());
+    } else {
+      throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
+          this, vertex.getJobVertexName()));
+    }
+  }
+
+  public List<Integer> getExecutionVertexIds() {
+    return executionVertexIds;
+  }
+
+  private void decreaseResource(Map<String, Double> allocatedResource) {
+    allocatedResource.forEach((k, v) -> {
+      Preconditions.checkArgument(this.availableResources.get(k) >= v,
+          String.format("Available resource %s not >= decreased resource %s",
+              this.availableResources.get(k), v));
+      Double newValue = this.availableResources.get(k) - v;
+      LOG.info("Decrease container {} resource [{}], from {} to {}.",
+          this.address, k, this.availableResources.get(k), newValue);
+      this.availableResources.put(k, newValue);
+    });
+  }
+
+  private void reclaimResource(Map<String, Double> allocatedResource) {
+    allocatedResource.forEach((k, v) -> {
+      Double newValue = this.availableResources.get(k) + v;
+      LOG.info("Reclaim container {} resource [{}], from {} to {}.",
+          this.address, k, this.availableResources.get(k), newValue);
+      this.availableResources.put(k, newValue);
+    });
   }
 
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("containerId", containerId)
-        .add("nodeId", nodeId)
+        .add("id", id)
         .add("address", address)
         .add("hostname", hostname)
-        .add("availableResource", availableResource)
-        .add("slots", slots)
+        .add("nodeId", nodeId)
+        .add("availableResources", availableResources)
+        .add("executionVertexIds", executionVertexIds)
+        .add("capacity", capacity)
         .toString();
   }
 }

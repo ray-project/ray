@@ -1,53 +1,19 @@
 package io.ray.streaming.runtime.master.resourcemanager;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.streaming.runtime.core.resource.Container;
-import io.ray.streaming.runtime.core.resource.Resources;
-import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import java.util.List;
-import java.util.Map;
+import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 
 /**
- * The resource manager is responsible for resource de-/allocation and monitoring ray cluster.
+ * ResourceManager(RM) is responsible for resource de-/allocation and monitoring ray cluster.
  */
-public interface ResourceManager {
+public interface ResourceManager extends ResourceAssignStrategy {
 
   /**
-   * Get all registered container as a list.
+   * Get registered containers
    *
-   * @return A list of containers.
+   * @return the registered container list
    */
-  List<Container> getRegisteredContainers();
+  ImmutableList<Container> getRegisteredContainers();
 
-  /**
-   * Allocate resource to actor.
-   *
-   * @param container Specify the container to be allocated.
-   * @param requireResource Resource size to be requested.
-   * @return Allocated resource.
-   */
-  Map<String, Double> allocateResource(final Container container,
-      final Map<String, Double> requireResource);
-
-  /**
-   * Deallocate resource to actor.
-   *
-   * @param container  Specify the container to be deallocate.
-   * @param releaseResource Resource to be released.
-   */
-  void deallocateResource(final Container container,
-      final Map<String, Double> releaseResource);
-
-  /**
-   * Get the current slot-assign strategy from manager.
-   *
-   * @return Current slot-assign strategy.
-   */
-  SlotAssignStrategy getSlotAssignStrategy();
-
-  /**
-   * Get resources from manager.
-   *
-   * @return Current resources in manager.
-   */
-  Resources getResources();
 }

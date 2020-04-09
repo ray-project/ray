@@ -70,7 +70,7 @@ public interface ResourceConfig extends Config {
    */
   @DefaultValue(value = "500")
   @Key(MAX_ACTOR_NUM_PER_CONTAINER)
-  int maxActorNumPerContainer();
+  int customActorNumPerContainer();
 
   /**
    * The interval between detecting ray cluster nodes.
