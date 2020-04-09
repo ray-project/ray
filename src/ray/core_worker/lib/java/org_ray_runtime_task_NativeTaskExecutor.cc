@@ -27,9 +27,9 @@ extern "C" {
 using ray::ClientID;
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
-  auto &core_worker = *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env,
+                                                                     jclass) {
+  auto &core_worker = ray::CoreWorkerProcess::GetCoreWorker();
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
   const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();
   RAY_CHECK(task_spec->IsActorTask());
@@ -44,11 +44,12 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
 
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray checkpointId) {
-  auto &core_worker = *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
+    JNIEnv *env, jclass, jbyteArray checkpointId) {
+  const auto &actor_id =
+      ray::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
   const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
-  auto status = core_worker.NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().NotifyActorResumedFromCheckpoint(
+      actor_id, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

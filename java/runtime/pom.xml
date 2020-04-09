@@ -63,6 +63,11 @@
   <version>3.4</version>
 </dependency>
 <dependency>
+  <groupId>org.msgpack</groupId>
+  <artifactId>msgpack-core</artifactId>
+  <version>0.8.20</version>
+</dependency>
+<dependency>
   <groupId>org.ow2.asm</groupId>
   <artifactId>asm</artifactId>
   <version>6.0</version>

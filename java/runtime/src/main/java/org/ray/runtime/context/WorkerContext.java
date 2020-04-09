@@ -5,6 +5,7 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskType;
+import org.ray.runtime.serializer.Serializer;
 
 /**
  * The context of worker.
@@ -28,7 +29,7 @@ public interface WorkerContext {
 
   /**
    * The class loader that is associated with the current job. It's used for locating classes when
-   * dealing with serialization and deserialization in {@link org.ray.runtime.util.Serializer}.
+   * dealing with serialization and deserialization in {@link Serializer}.
    */
   ClassLoader getCurrentClassLoader();
 
