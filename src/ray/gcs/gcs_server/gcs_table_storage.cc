@@ -13,14 +13,9 @@
 // limitations under the License.
 
 #include "gcs_table_storage.h"
-#include "ray/common/common_protocol.h"
-#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/protobuf/gcs.pb.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
@@ -68,11 +63,7 @@ Status GcsTable<Key, Data>::Delete(const JobID &job_id, const std::vector<Key> &
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const JobID &job_id, const StatusCallback &callback) {
-  RAY_LOG(INFO) << "Deleting table " << table_name_ << " item, job id = " << job_id;
-  auto status = store_client_->AsyncDeleteByIndex(table_name_, job_id, callback);
-  RAY_LOG(INFO) << "Finished deleting table " << table_name_
-                << " item, job id = " << job_id;
-  return status;
+  return store_client_->AsyncDeleteByIndex(table_name_, job_id, callback);
 }
 
 template class GcsTable<JobID, JobTableData>;

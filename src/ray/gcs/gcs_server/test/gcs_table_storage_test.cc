@@ -26,29 +26,12 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
 
   virtual ~GcsTableStorageTest() {}
 
-  //  virtual void SetUp() override {
-  //    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
-  //    io_service_pool_->Run();
-  //
-  //    gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-  //    redis_client_ = std::make_shared<gcs::RedisClient>(options);
-  //    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
-  //    RAY_LOG(INFO) << "999999999999999999999999999";
-  //  }
-  //
-  //  virtual void TearDown() override {
-  //    io_service_pool_->Stop();
-  //    io_service_pool_.reset();
-  //  }
-
   void InitStoreClient() override {
     gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
     redis_client_ = std::make_shared<gcs::RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
-    store_client_ =
-        std::make_shared<gcs::RedisStoreClient<ActorID, rpc::ActorTableData, JobID>>(
-            redis_client_);
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(redis_client_);
   }
 
   void DisconnectStoreClient() override { redis_client_->Disconnect(); }
@@ -236,13 +219,11 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
   }
 
   std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
 TEST_F(GcsTableStorageTest, TestJobTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<JobID, rpc::JobTableData, JobID>>(
-          redis_client_);
-  gcs::GcsJobTable table(store_client);
+  auto table = gcs_table_storage_->JobTable();
   JobID job1_id = JobID::FromInt(1);
   JobID job2_id = JobID::FromInt(2);
 
@@ -255,20 +236,14 @@ TEST_F(GcsTableStorageTest, TestJobTableApi) {
   std::vector<std::pair<JobID, rpc::JobTableData>> all_values;
   ASSERT_EQ(Get(table, job2_id, job2_id, values), 1);
   ASSERT_EQ(Get(table, job2_id, job2_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job1_id, all_values), 2);
 
   // Delete.
   Delete(table, job1_id, job1_id);
   ASSERT_EQ(Get(table, job1_id, job1_id, values), 0);
-  //  Delete(table, job2_id);
-  //  ASSERT_EQ(GetAll(table, job2_id, all_values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestActorTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ActorID, rpc::ActorTableData, JobID>>(
-          redis_client_);
-  gcs::GcsActorTable table(store_client);
+  auto table = gcs_table_storage_->ActorTable();
   JobID job_id = JobID::FromInt(3);
   ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
 
@@ -278,7 +253,6 @@ TEST_F(GcsTableStorageTest, TestActorTableApi) {
   // Get.
   std::vector<rpc::ActorTableData> values;
   ASSERT_EQ(Get(table, job_id, actor_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, actor_id);
@@ -286,10 +260,7 @@ TEST_F(GcsTableStorageTest, TestActorTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
-  auto store_client = std::make_shared<
-      gcs::RedisStoreClient<ActorCheckpointID, rpc::ActorCheckpointData, JobID>>(
-      redis_client_);
-  gcs::GcsActorCheckpointTable table(store_client);
+  auto table = gcs_table_storage_->ActorCheckpointTable();
   JobID job_id = JobID::FromInt(1);
   ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
@@ -300,7 +271,6 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
   // Get.
   std::vector<rpc::ActorCheckpointData> values;
   ASSERT_EQ(Get(table, job_id, checkpoint_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, checkpoint_id);
@@ -308,10 +278,7 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ActorID, rpc::ActorCheckpointIdData, JobID>>(
-          redis_client_);
-  gcs::GcsActorCheckpointIdTable table(store_client);
+  auto table = gcs_table_storage_->ActorCheckpointIdTable();
   JobID job_id = JobID::FromInt(1);
   ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
@@ -322,7 +289,6 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
   // Get.
   std::vector<rpc::ActorCheckpointIdData> values;
   ASSERT_EQ(Get(table, job_id, actor_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, actor_id);
@@ -330,10 +296,7 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestTaskTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<TaskID, rpc::TaskTableData, JobID>>(
-          redis_client_);
-  gcs::GcsTaskTable table(store_client);
+  auto table = gcs_table_storage_->TaskTable();
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
 
@@ -343,7 +306,6 @@ TEST_F(GcsTableStorageTest, TestTaskTableApi) {
   // Get.
   std::vector<rpc::TaskTableData> values;
   ASSERT_EQ(Get(table, job_id, task_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, task_id);
@@ -351,10 +313,7 @@ TEST_F(GcsTableStorageTest, TestTaskTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<TaskID, rpc::TaskLeaseData, JobID>>(
-          redis_client_);
-  gcs::GcsTaskLeaseTable table(store_client);
+  auto table = gcs_table_storage_->TaskLeaseTable();
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   ClientID node_id = ClientID::FromRandom();
@@ -365,7 +324,6 @@ TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
   // Get.
   std::vector<rpc::TaskLeaseData> values;
   ASSERT_EQ(Get(table, job_id, task_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, task_id);
@@ -373,10 +331,7 @@ TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<TaskID, rpc::TaskReconstructionData, JobID>>(
-          redis_client_);
-  gcs::GcsTaskReconstructionTable table(store_client);
+  auto table = gcs_table_storage_->TaskReconstructionTable();
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   ClientID node_id = ClientID::FromRandom();
@@ -387,7 +342,6 @@ TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
   // Get.
   std::vector<rpc::TaskReconstructionData> values;
   ASSERT_EQ(Get(table, job_id, task_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, task_id);
@@ -395,10 +349,7 @@ TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestObjectTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ObjectID, rpc::ObjectTableDataList, JobID>>(
-          redis_client_);
-  gcs::GcsObjectTable table(store_client);
+  auto table = gcs_table_storage_->ObjectTable();
   JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
   ObjectID object_id = ObjectID::FromRandom();
@@ -409,7 +360,6 @@ TEST_F(GcsTableStorageTest, TestObjectTableApi) {
   // Get.
   std::vector<rpc::ObjectTableDataList> values;
   ASSERT_EQ(Get(table, job_id, object_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, object_id);
@@ -417,10 +367,7 @@ TEST_F(GcsTableStorageTest, TestObjectTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestNodeTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ClientID, rpc::GcsNodeInfo, JobID>>(
-          redis_client_);
-  gcs::GcsNodeTable table(store_client);
+  auto table = gcs_table_storage_->NodeTable();
   JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
@@ -430,7 +377,6 @@ TEST_F(GcsTableStorageTest, TestNodeTableApi) {
   // Get.
   std::vector<rpc::GcsNodeInfo> values;
   ASSERT_EQ(Get(table, job_id, node_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, node_id);
@@ -438,10 +384,7 @@ TEST_F(GcsTableStorageTest, TestNodeTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestNodeResourceTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ClientID, rpc::ResourceMap, JobID>>(
-          redis_client_);
-  gcs::GcsNodeResourceTable table(store_client);
+  auto table = gcs_table_storage_->NodeResourceTable();
   JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
@@ -451,7 +394,6 @@ TEST_F(GcsTableStorageTest, TestNodeResourceTableApi) {
   // Get.
   std::vector<rpc::ResourceMap> values;
   ASSERT_EQ(Get(table, job_id, node_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, node_id);
@@ -459,10 +401,7 @@ TEST_F(GcsTableStorageTest, TestNodeResourceTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestHeartbeatTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<ClientID, rpc::HeartbeatTableData, JobID>>(
-          redis_client_);
-  gcs::GcsHeartbeatTable table(store_client);
+  auto table = gcs_table_storage_->HeartbeatTable();
   JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
@@ -472,7 +411,6 @@ TEST_F(GcsTableStorageTest, TestHeartbeatTableApi) {
   // Get.
   std::vector<rpc::HeartbeatTableData> values;
   ASSERT_EQ(Get(table, job_id, node_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, node_id);
@@ -480,10 +418,7 @@ TEST_F(GcsTableStorageTest, TestHeartbeatTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestHeartbeatBatchTableApi) {
-  auto store_client = std::make_shared<
-      gcs::RedisStoreClient<ClientID, rpc::HeartbeatBatchTableData, JobID>>(
-      redis_client_);
-  gcs::GcsHeartbeatBatchTable table(store_client);
+  auto table = gcs_table_storage_->HeartbeatBatchTable();
   JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
@@ -493,7 +428,6 @@ TEST_F(GcsTableStorageTest, TestHeartbeatBatchTableApi) {
   // Get.
   std::vector<rpc::HeartbeatBatchTableData> values;
   ASSERT_EQ(Get(table, job_id, node_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, node_id);
@@ -501,10 +435,7 @@ TEST_F(GcsTableStorageTest, TestHeartbeatBatchTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestErrorInfoTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<JobID, rpc::ErrorTableData, JobID>>(
-          redis_client_);
-  gcs::GcsErrorInfoTable table(store_client);
+  auto table = gcs_table_storage_->ErrorInfoTable();
   JobID job_id = JobID::FromInt(1);
 
   // Put.
@@ -513,7 +444,6 @@ TEST_F(GcsTableStorageTest, TestErrorInfoTableApi) {
   // Get.
   std::vector<rpc::ErrorTableData> values;
   ASSERT_EQ(Get(table, job_id, job_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, job_id);
@@ -521,10 +451,7 @@ TEST_F(GcsTableStorageTest, TestErrorInfoTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestProfileTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<UniqueID, rpc::ProfileTableData, JobID>>(
-          redis_client_);
-  gcs::GcsProfileTable table(store_client);
+  auto table = gcs_table_storage_->ProfileTable();
   JobID job_id = JobID::FromInt(1);
   UniqueID unique_id = UniqueID::FromRandom();
 
@@ -534,7 +461,6 @@ TEST_F(GcsTableStorageTest, TestProfileTableApi) {
   // Get.
   std::vector<rpc::ProfileTableData> values;
   ASSERT_EQ(Get(table, job_id, unique_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, unique_id);
@@ -542,10 +468,7 @@ TEST_F(GcsTableStorageTest, TestProfileTableApi) {
 }
 
 TEST_F(GcsTableStorageTest, TestWorkerFailureTableApi) {
-  auto store_client =
-      std::make_shared<gcs::RedisStoreClient<WorkerID, rpc::WorkerFailureData, JobID>>(
-          redis_client_);
-  gcs::GcsWorkerFailureTable table(store_client);
+  auto table = gcs_table_storage_->WorkerFailureTable();
   JobID job_id = JobID::FromInt(1);
   WorkerID worker_id = WorkerID::FromRandom();
 
@@ -555,7 +478,6 @@ TEST_F(GcsTableStorageTest, TestWorkerFailureTableApi) {
   // Get.
   std::vector<rpc::WorkerFailureData> values;
   ASSERT_EQ(Get(table, job_id, worker_id, values), 1);
-  //  ASSERT_EQ(GetAll(table, job_id, values), 1);
 
   // Delete.
   Delete(table, job_id, worker_id);

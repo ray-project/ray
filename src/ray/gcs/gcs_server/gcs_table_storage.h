@@ -15,14 +15,9 @@
 #ifndef RAY_GCS_GCS_TABLE_STORAGE_H_
 #define RAY_GCS_GCS_TABLE_STORAGE_H_
 
-#include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
-#include "ray/gcs/callback.h"
-#include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include <utility>
+
 #include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/gcs/store_client/store_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -46,22 +41,28 @@ using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
 using rpc::WorkerFailureData;
 
-static const std::string kJobTable = "JOB";
-static const std::string kActorTable = "ACTOR";
-static const std::string kActorCheckpointTable = "ACTOR_CHECKPOINT";
-static const std::string kActorCheckpointIdTable = "ACTOR_CHECKPOINT_ID";
-static const std::string kTaskTable = "TASK";
-static const std::string kTaskLeaseTable = "TASK_LEASE";
-static const std::string kTaskReconstructionTable = "TASK_RECONSTRUCTION";
-static const std::string kObjectTable = "OBJECT";
-static const std::string kNodeTable = "NODE";
-static const std::string kHeartbeatTable = "HEARTBEAT";
-static const std::string kHeartbeatBatchTable = "HEARTBEAT_BATCH";
-static const std::string kNodeResourceTable = "NODE_RESOURCE";
-static const std::string kErrorInfoTable = "ERROR_INFO";
-static const std::string kProfileTable = "PROFILE";
-static const std::string kWorkerFailureTable = "WORKER_FAILURE";
+#define JOB_TABLE_NAME "JOB";
+#define ACTOR_TABLE_NAME "ACTOR";
+#define ACTOR_CHECKPOINT_TABLE_NAME "ACTOR_CHECKPOINT";
+#define ACTOR_CHECKPOINT_ID_TABLE_NAME "ACTOR_CHECKPOINT_ID";
+#define TASK_TABLE_NAME "TASK";
+#define TASK_LEASE_TABLE_NAME "TASK_LEASE";
+#define TASK_RECONSTRUCTION_TABLE_NAME "TASK_RECONSTRUCTION";
+#define OBJECT_TABLE_NAME "OBJECT";
+#define NODE_TABLE_NAME "NODE";
+#define NODE_RESOURCE_TABLE_NAME "NODE_RESOURCE";
+#define HEARTBEAT_TABLE_NAME "HEARTBEAT";
+#define HEARTBEAT_BATCH_TABLE_NAME "HEARTBEAT_BATCH";
+#define ERROR_INFO_TABLE_NAME "ERROR_INFO";
+#define PROFILE_TABLE_NAME "PROFILE";
+#define WORKER_FAILURE_TABLE_NAME "WORKER_FAILURE";
 
+/// \class GcsTable
+///
+/// GcsTable supports putting, getting and deleting of GCS table data.
+/// This class is not meant to be used directly. All gcs table classes should
+/// derive from this class and override the table_name_ member with a unique value
+/// for that table.
 template <typename Key, typename Data>
 class GcsTable {
  public:
@@ -97,8 +98,8 @@ class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
   explicit GcsJobTable(
       std::shared_ptr<StoreClient<JobID, JobTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kJobTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = JOB_TABLE_NAME;
   }
 };
 
@@ -106,8 +107,8 @@ class GcsActorTable : public GcsTable<ActorID, ActorTableData> {
  public:
   explicit GcsActorTable(
       std::shared_ptr<StoreClient<ActorID, ActorTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kActorTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = ACTOR_TABLE_NAME;
   }
 };
 
@@ -116,8 +117,8 @@ class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpoi
   explicit GcsActorCheckpointTable(
       std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>
           store_client)
-      : GcsTable(store_client) {
-    table_name_ = kActorCheckpointTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = ACTOR_CHECKPOINT_TABLE_NAME;
   }
 };
 
@@ -125,8 +126,8 @@ class GcsActorCheckpointIdTable : public GcsTable<ActorID, ActorCheckpointIdData
  public:
   explicit GcsActorCheckpointIdTable(
       std::shared_ptr<StoreClient<ActorID, ActorCheckpointIdData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kActorCheckpointIdTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = ACTOR_CHECKPOINT_ID_TABLE_NAME;
   }
 };
 
@@ -134,8 +135,8 @@ class GcsTaskTable : public GcsTable<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(
       std::shared_ptr<StoreClient<TaskID, TaskTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kTaskTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = TASK_TABLE_NAME;
   }
 };
 
@@ -143,8 +144,8 @@ class GcsTaskLeaseTable : public GcsTable<TaskID, TaskLeaseData> {
  public:
   explicit GcsTaskLeaseTable(
       std::shared_ptr<StoreClient<TaskID, TaskLeaseData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kTaskLeaseTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = TASK_LEASE_TABLE_NAME;
   }
 };
 
@@ -152,8 +153,8 @@ class GcsTaskReconstructionTable : public GcsTable<TaskID, TaskReconstructionDat
  public:
   explicit GcsTaskReconstructionTable(
       std::shared_ptr<StoreClient<TaskID, TaskReconstructionData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kTaskReconstructionTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = TASK_RECONSTRUCTION_TABLE_NAME;
   }
 };
 
@@ -161,8 +162,8 @@ class GcsObjectTable : public GcsTable<ObjectID, ObjectTableDataList> {
  public:
   explicit GcsObjectTable(
       std::shared_ptr<StoreClient<ObjectID, ObjectTableDataList, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kObjectTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = OBJECT_TABLE_NAME;
   }
 };
 
@@ -170,8 +171,8 @@ class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(
       std::shared_ptr<StoreClient<ClientID, GcsNodeInfo, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kNodeTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = NODE_TABLE_NAME;
   }
 };
 
@@ -179,8 +180,8 @@ class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
  public:
   explicit GcsNodeResourceTable(
       std::shared_ptr<StoreClient<ClientID, ResourceMap, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kNodeResourceTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = NODE_RESOURCE_TABLE_NAME;
   }
 };
 
@@ -188,8 +189,8 @@ class GcsHeartbeatTable : public GcsTable<ClientID, HeartbeatTableData> {
  public:
   explicit GcsHeartbeatTable(
       std::shared_ptr<StoreClient<ClientID, HeartbeatTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kHeartbeatTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = HEARTBEAT_TABLE_NAME;
   }
 };
 
@@ -197,8 +198,8 @@ class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData
  public:
   explicit GcsHeartbeatBatchTable(
       std::shared_ptr<StoreClient<ClientID, HeartbeatBatchTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kHeartbeatBatchTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = HEARTBEAT_BATCH_TABLE_NAME;
   }
 };
 
@@ -206,8 +207,8 @@ class GcsErrorInfoTable : public GcsTable<JobID, ErrorTableData> {
  public:
   explicit GcsErrorInfoTable(
       std::shared_ptr<StoreClient<JobID, ErrorTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kErrorInfoTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = ERROR_INFO_TABLE_NAME;
   }
 };
 
@@ -215,8 +216,8 @@ class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
   explicit GcsProfileTable(
       std::shared_ptr<StoreClient<UniqueID, ProfileTableData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kProfileTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = PROFILE_TABLE_NAME;
   }
 };
 
@@ -224,8 +225,8 @@ class GcsWorkerFailureTable : public GcsTable<WorkerID, WorkerFailureData> {
  public:
   explicit GcsWorkerFailureTable(
       std::shared_ptr<StoreClient<WorkerID, WorkerFailureData, JobID>> store_client)
-      : GcsTable(store_client) {
-    table_name_ = kWorkerFailureTable;
+      : GcsTable(std::move(store_client)) {
+    table_name_ = WORKER_FAILURE_TABLE_NAME;
   }
 };
 
