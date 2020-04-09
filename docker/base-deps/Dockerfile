@@ -9,6 +9,7 @@ RUN apt-get update \
         build-essential \
         curl \
         unzip \
+        libgtk2.0-dev \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
