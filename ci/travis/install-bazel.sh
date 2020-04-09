@@ -50,7 +50,7 @@ else
   target="./install.sh"
   curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  "${target}" --user
+  "${target}" --user > /dev/null
   rm -f "${target}"
 fi
 
