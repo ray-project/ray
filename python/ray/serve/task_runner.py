@@ -3,6 +3,7 @@ import traceback
 import inspect
 
 import ray
+from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
@@ -19,6 +20,8 @@ class TaskRunner:
     """
 
     def __init__(self, func_to_run):
+        serve.init()
+
         self.func = func_to_run
 
         # This parameter let argument inspection work with inner function.
