@@ -144,7 +144,8 @@ def get_variable(value,
                  framework="tf",
                  trainable=False,
                  tf_name="unnamed-variable",
-                 torch_tensor=False):
+                 torch_tensor=False,
+                 device=None):
     """
     Args:
         value (any): The initial value to use. In the non-tf case, this will
@@ -171,7 +172,7 @@ def get_variable(value,
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
-        var_ = torch.from_numpy(value)
+        var_ = torch.from_numpy(value).to(device)
         var_.requires_grad = trainable
         return var_
     # torch or None: Return python primitive.

@@ -141,7 +141,7 @@ class EpsilonGreedy(Exploration):
             # Pick either random or greedy.
             action = torch.where(
                 torch.empty((batch_size, )).uniform_() < epsilon,
-                random_actions, exploit_action)
+                random_actions, exploit_action).to(self.device)
 
             return action, action_logp
         # Return the deterministic "sample" (argmax) over the logits.
