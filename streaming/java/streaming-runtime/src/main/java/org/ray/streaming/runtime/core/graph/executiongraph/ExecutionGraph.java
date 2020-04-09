@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.ray.api.RayActor;
+import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical plan.
@@ -54,7 +56,7 @@ public class ExecutionGraph implements Serializable {
     return jobName;
   }
 
-  public List<ExecutionJobVertex> getExecutionJobVertexLices() {
+  public List<ExecutionJobVertex> getExecutionJobVertices() {
     return new ArrayList<ExecutionJobVertex>(executionJobVertexMap.values());
   }
 
@@ -134,6 +136,70 @@ public class ExecutionGraph implements Serializable {
       }
     }
     throw new RuntimeException("Vertex " + vertexId + " does not exist!");
+  }
+
+  /**
+   * Get all actors by graph.
+   *
+   * @return actor list
+   */
+  public List<RayActor<JobWorker>> getAllActors() {
+    return getActorsFromJobVertices(getExecutionJobVertices());
+  }
+
+  /**
+   * Get source actors by graph.
+   *
+   * @return actor list
+   */
+  public List<RayActor<JobWorker>> getSourceActors() {
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+        .filter(ExecutionJobVertex::isSourceVertex)
+        .collect(Collectors.toList());
+
+    return getActorsFromJobVertices(executionJobVertices);
+  }
+
+  /**
+   * Get transformation and sink actors by graph.
+   *
+   * @return actor list
+   */
+  public List<RayActor<JobWorker>> getNonSourceActors() {
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+        .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
+            || executionJobVertex.isSinkVertex())
+        .collect(Collectors.toList());
+
+    return getActorsFromJobVertices(executionJobVertices);
+  }
+
+  /**
+   * Get sink actors by graph.
+   *
+   * @return actor list
+   */
+  public List<RayActor<JobWorker>> getSinkActors() {
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+        .filter(ExecutionJobVertex::isSinkVertex)
+        .collect(Collectors.toList());
+
+    return getActorsFromJobVertices(executionJobVertices);
+  }
+
+  /**
+   * Get actors according to job vertices.
+   *
+   * @param executionJobVertices specified job vertices
+   * @return actor list
+   */
+  public List<RayActor<JobWorker>> getActorsFromJobVertices(
+      List<ExecutionJobVertex> executionJobVertices) {
+    return executionJobVertices.stream()
+        .map(ExecutionJobVertex::getExecutionVertices)
+        .flatMap(Collection::stream)
+        .map(ExecutionVertex::getWorkerActor)
+        .collect(Collectors.toList());
   }
 
 }

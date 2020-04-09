@@ -38,7 +38,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
-    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexLices();
+    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertices();
 
     Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertexList().size());
 
