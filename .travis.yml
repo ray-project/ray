@@ -5,11 +5,15 @@ dist: xenial
 matrix:
   include:
     - os: linux
-      env: PYTHON=3.6 PYTHONWARNINGS=ignore
+      env:
+        - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.6 PYTHONWARNINGS=ignore
+      env:
+        - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
 
     - os: linux
       env:
@@ -91,7 +95,9 @@ matrix:
         - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
-      env: LINT=1 PYTHONWARNINGS=ignore
+      env:
+        - LINT=1
+        - PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
       install: []
@@ -137,7 +143,10 @@ matrix:
 
     # Build Linux wheels.
     - os: linux
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
+      env:
+        - LINUX_WHEELS=1
+        - PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -163,7 +172,10 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
+      env:
+        - MAC_WHEELS=1
+        - PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -180,7 +192,8 @@ matrix:
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
+        - RLLIB_TESTING=1
+        - RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -201,7 +214,8 @@ matrix:
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
+        - RLLIB_TESTING=1
+        - RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
         - TORCH_VERSION=1.4
@@ -222,7 +236,8 @@ matrix:
     # Agent single tests (compilation, loss-funcs, etc..).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
+        - RLLIB_TESTING=1
+        - RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -245,7 +260,8 @@ matrix:
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
+        - RLLIB_TESTING=1
+        - RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -268,7 +284,8 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_I=1
+        - RLLIB_TESTING=1
+        - RLLIB_TESTS_DIR_TESTS_A_TO_I=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -288,7 +305,8 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
+        - RLLIB_TESTING=1
+        - RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
