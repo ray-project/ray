@@ -173,3 +173,6 @@ tools/prometheus*
 
 # ray project files
 project-id
+
+# Jupyter
+.ipynb_checkpoints/
