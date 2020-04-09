@@ -17,12 +17,13 @@ RUN apt-get update \
     && /bin/bash /tmp/anaconda.sh -b -p /opt/conda \
     && rm /tmp/anaconda.sh \
     && /opt/conda/bin/conda install -y \
-        libgcc python=3.6.9 opencv \
+        libgcc python=3.6.9 \
     && /opt/conda/bin/conda clean -y --all \
     && /opt/conda/bin/pip install \
         flatbuffers \
         cython==0.29.0 \
-        numpy==1.15.4
+        numpy==1.15.4 \
+        opencv-python
 
 # To avoid the following error on Jenkins:
 # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
