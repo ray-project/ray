@@ -82,6 +82,7 @@ class Random(Exploration):
         return action, logp
 
     def get_torch_exploration_action(self, action_dist, explore):
+        device = next(self.model.parameters()).device
         tensor_fn = torch.LongTensor if \
             type(self.action_space) in [Discrete, MultiDiscrete] else \
             torch.FloatTensor
@@ -95,8 +96,10 @@ class Random(Exploration):
             # Add a batch dimension.
             if len(action_dist.inputs.shape) == len(req) + 1:
                 a = [a]
-            action = tensor_fn(a)
+            action = tensor_fn(a, device=device)
         else:
-            action = tensor_fn(action_dist.deterministic_sample())
-        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
+            action = tensor_fn(
+                action_dist.deterministic_sample(), device=device)
+        logp = torch.zeros(
+            (action.size()[0], ), dtype=torch.float32, device=device)
         return action, logp
