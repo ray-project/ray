@@ -361,6 +361,7 @@ class Node:
         redirect_output = self._ray_params.redirect_output
 
         if redirect_output is None:
+            # Make the default behavior match that of glog.
             redirect_output = os.getenv("GLOG_logtostderr") != "1"
 
         if not redirect_output:
