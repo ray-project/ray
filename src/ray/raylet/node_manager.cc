@@ -1341,7 +1341,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     RAY_LOG(DEBUG) << "Driver (pid=" << worker->GetProcess().GetId()
                    << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
+                   << "job_id: " << job_id;
   }
 
   client->Close();
