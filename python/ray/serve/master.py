@@ -6,6 +6,7 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
+from ray.serve.task_runner import create_backend_worker
 from ray.serve.utils import expand, get_random_letters
 
 import numpy as np
@@ -94,6 +95,9 @@ class ServeMaster:
             for _ in range(-delta_num_replicas):
                 self._remove_backend_replica(backend_tag)
 
+    async def get_backend_replica_config(self, replica_tag):
+        return [self.tag_to_actor_handles[replica_tag]], self.get_router()
+
     async def _start_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
@@ -101,25 +105,23 @@ class ServeMaster:
         replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
 
         # Fetch the info to start the replica from the backend table.
-        creator = self.backend_table.get_backend_creator(backend_tag)
+        backend_actor = ray.remote(
+            self.backend_table.get_backend_creator(backend_tag))
         backend_config_dict = self.backend_table.get_info(backend_tag)
         backend_config = BackendConfig(**backend_config_dict)
-        init_args = self.backend_table.get_init_args(backend_tag)
+        init_args = [
+            backend_tag, replica_tag,
+            self.backend_table.get_init_args(backend_tag)
+        ]
         kwargs = backend_config.get_actor_creation_args(init_args)
 
-        runner_handle = creator(kwargs)
-        self.tag_to_actor_handles[replica_tag] = runner_handle
-
-        # Set up the worker.
-
-        await runner_handle._ray_serve_setup.remote(backend_tag,
-                                                    self.get_router()[0],
-                                                    runner_handle)
-        ray.get(runner_handle._ray_serve_fetch.remote())
+        # Start the worker.
+        worker_handle = backend_actor._remote(**kwargs)
+        self.tag_to_actor_handles[replica_tag] = worker_handle
 
         # Register the worker in config tables and metric monitor.
         self.backend_table.add_replica(backend_tag, replica_tag)
-        self.get_metric_monitor()[0].add_target.remote(runner_handle)
+        self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
     def _remove_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
@@ -181,18 +183,19 @@ class ServeMaster:
                 self.route_table.list_service(
                     include_methods=True, include_headless=False)))
 
-    async def create_backend(self, backend_tag, creator, backend_config,
-                             arg_list):
+    async def create_backend(self, backend_tag, backend_config, func_or_class,
+                             actor_init_args):
         backend_config_dict = dict(backend_config)
+        backend_worker = create_backend_worker(func_or_class)
 
         # Save creator which starts replicas.
-        self.backend_table.register_backend(backend_tag, creator)
+        self.backend_table.register_backend(backend_tag, backend_worker)
 
         # Save information about configurations needed to start the replicas.
         self.backend_table.register_info(backend_tag, backend_config_dict)
 
         # Save the initial arguments needed by replicas.
-        self.backend_table.save_init_args(backend_tag, arg_list)
+        self.backend_table.save_init_args(backend_tag, actor_init_args)
 
         # Set the backend config inside the router
         # (particularly for max-batch-size).

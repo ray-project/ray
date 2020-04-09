@@ -10,7 +10,6 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
-from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.serve.utils import block_until_http_ready
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
@@ -208,8 +207,8 @@ def create_backend(func_or_class,
     """Create a backend using func_or_class and assign backend_tag.
 
     Args:
-        func_or_class (callable, class): a function or a class implements
-            __call__ protocol.
+        func_or_class (callable, class): a function or a class implementing
+            __call__.
         backend_tag (str): a unique tag assign to this backend. It will be used
             to associate services in traffic policy.
         backend_config (BackendConfig): An object defining backend properties
@@ -224,41 +223,26 @@ def create_backend(func_or_class,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
 
-    # Make sure the batch size is correct
+    # Validate that func_or_class is a function or class.
+    if inspect.isfunction(func_or_class):
+        if len(actor_init_args) != 0:
+            raise ValueError(
+                "actor_init_args not supported for function backend.")
+    elif not inspect.isclass(func_or_class):
+        raise ValueError(
+            "Backend must be a function or class, it is {}.".format(
+                type(func_or_class)))
+
+    # Make sure the batch size is correct.
     should_accept_batch = backend_config.max_batch_size is not None
     if should_accept_batch and not _backend_accept_batch(func_or_class):
         raise batch_annotation_not_found
     if _backend_accept_batch(func_or_class):
         backend_config.has_accept_batch_annotation = True
 
-    arg_list = []
-    if inspect.isfunction(func_or_class):
-        # arg list for a fn is function itself
-        arg_list = [func_or_class]
-        # ignore lint on lambda expression
-        creator = lambda kwrgs: TaskRunnerActor._remote(**kwrgs)  # noqa: E731
-    elif inspect.isclass(func_or_class):
-        # Python inheritance order is right-to-left. We put RayServeMixin
-        # on the left to make sure its methods are not overriden.
-        @ray.remote
-        class CustomActor(RayServeMixin, func_or_class):
-            @wraps(func_or_class.__init__)
-            def __init__(self, *args, **kwargs):
-                # Initialize serve so it can be used in backends.
-                init()
-                super().__init__(*args, **kwargs)
-
-        arg_list = actor_init_args
-        # ignore lint on lambda expression
-        creator = lambda kwargs: CustomActor._remote(**kwargs)  # noqa: E731
-    else:
-        raise TypeError(
-            "Backend must be a function or class, it is {}.".format(
-                type(func_or_class)))
-
     ray.get(
-        master_actor.create_backend.remote(backend_tag, creator,
-                                           backend_config, arg_list))
+        master_actor.create_backend.remote(backend_tag, backend_config,
+                                           func_or_class, actor_init_args))
 
 
 @_ensure_connected

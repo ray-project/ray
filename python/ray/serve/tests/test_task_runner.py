@@ -6,20 +6,40 @@ import ray
 from ray import serve
 import ray.serve.context as context
 from ray.serve.policy import RoundRobinPolicyQueueActor
-from ray.serve.task_runner import (RayServeMixin, TaskRunner, TaskRunnerActor,
-                                   wrap_to_ray_error)
+from ray.serve.task_runner import create_backend_worker, wrap_to_ray_error
 from ray.serve.request_params import RequestMetadata
 from ray.serve.backend_config import BackendConfig
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_runner_basic():
-    def echo(i):
-        return i
+def setup_worker(name, func_or_class, router_handle, init_args=None):
+    if init_args is None:
+        init_args = ()
 
-    r = TaskRunner(echo)
-    assert r(1) == 1
+    @ray.remote
+    class WorkerActor:
+        def setup(self, self_handle, router_handle):
+            self.worker = create_backend_worker(func_or_class)(
+                name,
+                name + ":tag",
+                init_args,
+                self_handle=self_handle[0],
+                router_handle=router_handle[0],
+                start_running=False)
+
+        def get_metrics(self):
+            return self.worker.get_metrics()
+
+        def run(self):
+            self.worker.backend.mark_idle_in_router()
+
+        async def handle_request(self, *args, **kwargs):
+            return await self.worker.handle_request(*args, **kwargs)
+
+    worker = WorkerActor.remote()
+    ray.get(worker.setup.remote([worker], [router_handle]))
+    return worker
 
 
 async def test_runner_wraps_error():
@@ -36,9 +56,8 @@ async def test_runner_actor(serve_instance):
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "prod"
 
-    runner = TaskRunnerActor.remote(echo)
-    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
-    runner._ray_serve_fetch.remote()
+    worker = setup_worker(CONSUMER_NAME, echo, q)
+    await worker.run.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -62,14 +81,8 @@ async def test_ray_serve_mixin(serve_instance):
         def __call__(self, flask_request, i=None):
             return i + self.increment
 
-    @ray.remote
-    class CustomActor(MyAdder, RayServeMixin):
-        pass
-
-    runner = CustomActor.remote(3)
-
-    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
-    runner._ray_serve_fetch.remote()
+    worker = setup_worker(CONSUMER_NAME, MyAdder, q, init_args=(3, ))
+    await worker.run.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -90,10 +103,8 @@ async def test_task_runner_check_context(serve_instance):
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
-    runner = TaskRunnerActor.remote(echo)
-
-    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
-    runner._ray_serve_fetch.remote()
+    worker = setup_worker(CONSUMER_NAME, echo, q)
+    await worker.run.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
     query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
@@ -113,17 +124,11 @@ async def test_task_runner_custom_method_single(serve_instance):
         def b(self, _):
             return "b"
 
-    @ray.remote
-    class CustomActor(NonBatcher, RayServeMixin):
-        pass
-
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
-    runner = CustomActor.remote()
-
-    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
-    runner._ray_serve_fetch.remote()
+    worker = setup_worker(CONSUMER_NAME, NonBatcher, q)
+    await worker.run.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -154,16 +159,10 @@ async def test_task_runner_custom_method_batch(serve_instance):
         def b(self, _):
             return ["b-{}".format(i) for i in range(serve.context.batch_size)]
 
-    @ray.remote
-    class CustomActor(Batcher, RayServeMixin):
-        pass
-
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
-    runner = CustomActor.remote()
-
-    ray.get(runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner))
+    worker = setup_worker(CONSUMER_NAME, Batcher, q)
 
     await q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
     await q.set_backend_config.remote(
@@ -177,7 +176,7 @@ async def test_task_runner_custom_method_batch(serve_instance):
     futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
     futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
 
-    await runner._ray_serve_fetch.remote()
+    await worker.run.remote()
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
