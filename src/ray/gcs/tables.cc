@@ -356,6 +356,8 @@ Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
     }
   };
   std::string str = data->SerializeAsString();
+  RAY_LOG(INFO) << "Set<ID, Data>::Add id size = " << id.Binary().size();
+  RAY_LOG(INFO) << "Set<ID, Data>::Add data size = " << str.size();
   return GetRedisContext(id)->RunAsync("RAY.SET_ADD", id, str.data(), str.length(),
                                        prefix_, pubsub_channel_, std::move(callback));
 }
@@ -855,6 +857,52 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, data, done));
   };
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
+}
+
+std::vector<ObjectID> GetObjectIDByJob(redisContext *redis_context,
+                                                 const std::string &table_prefix,
+                                                 const JobID &job_id) {
+  std::unordered_set<ObjectID> object_id_set;
+  size_t cursor = 0;
+  do {
+    auto r = redisCommand(redis_context, "SCAN %d match %s* count 100", cursor,
+                          table_prefix.c_str());
+    auto reply = reinterpret_cast<redisReply *>(r);
+    RAY_CHECK(reply != nullptr && reply->type == REDIS_REPLY_ARRAY);
+    RAY_CHECK(reply->elements == 2);
+
+    // current cursor
+    redisReply *cursor_reply = reply->element[0];
+    RAY_CHECK(cursor_reply != nullptr && cursor_reply->type == REDIS_REPLY_STRING);
+    cursor = std::stoi(std::string(cursor_reply->str, cursor_reply->len));
+
+    // object ids
+    redisReply *array_reply = reply->element[1];
+    RAY_CHECK(array_reply != nullptr && array_reply->type == REDIS_REPLY_ARRAY);
+    for (size_t i = 0; i < array_reply->elements; ++i) {
+      redisReply *id_reply = array_reply->element[i];
+      RAY_CHECK(id_reply != nullptr && id_reply->type == REDIS_REPLY_STRING);
+      auto id_with_prefix = std::string(id_reply->str, id_reply->len);
+      RAY_LOG(INFO) << "id_reply->len = " << id_reply->len;
+      // The key of actor_checkpoint table and actor_checkpoint_id table have the same
+      // prefix of `ACTOR`, so we should check the length of the key to filter them.
+      if (id_with_prefix.size() == table_prefix.size() + ObjectID::Size()) {
+        auto id = ObjectID::FromBinary(id_with_prefix.substr(table_prefix.size()));
+        if (id.TaskId().JobId() == job_id) {
+          object_id_set.emplace(id);
+        }
+      }
+    }
+  } while (cursor != 0);
+  std::vector<ObjectID> object_id_list;
+  object_id_list.reserve(object_id_set.size());
+  object_id_list.insert(object_id_list.end(), object_id_set.begin(), object_id_set.end());
+  return object_id_list;
+}
+
+std::vector<ObjectID> ObjectTable::GetObjectIdByJob(const JobID &job_id) {
+  auto redis_context = client_->primary_context()->sync_context();
+  return GetObjectIDByJob(redis_context, TablePrefix_Name(prefix_), job_id);
 }
 
 template class Log<ObjectID, ObjectTableData>;

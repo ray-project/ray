@@ -321,6 +321,16 @@ class ObjectInfoAccessor {
   virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
                                              const StatusCallback &done) = 0;
 
+  /// Get object id of node by job from GCS asynchronously.
+  ///
+  /// \param job_id The ID of job to lookup in GCS.
+  /// \param node_id The ID of node to lookup in GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetObjectIdOfNodeByJob(
+      const JobID &job_id, const ClientID &node_id,
+      const MultiItemCallback<ObjectID> &callback) = 0;
+
  protected:
   ObjectInfoAccessor() = default;
 };

@@ -790,6 +790,12 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
   return status;
 }
 
+Status ServiceBasedObjectInfoAccessor::AsyncGetObjectIdOfNodeByJob(const JobID &job_id, const ClientID &node_id,
+                                   const MultiItemCallback<ObjectID> &callback) {
+  client_impl_->GetRedisGcsClient().object_table().;
+
+}
+
 ServiceBasedStatsInfoAccessor::ServiceBasedStatsInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

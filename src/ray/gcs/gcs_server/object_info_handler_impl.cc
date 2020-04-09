@@ -102,5 +102,35 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
                  << ", node id = " << node_id;
 }
 
+void DefaultObjectInfoHandler::HandleGetObjectsOfNode(const GetObjectsOfNodeRequest &request,
+                            GetObjectsOfNodeReply *reply,
+                            SendReplyCallback send_reply_callback) {
+  JobID job_id = JobID::FromBinary(request.job_id());
+  ClientID node_id = ClientID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "Getting objects of node, job id = " << job_id
+                 << ", node id = " << node_id;
+
+  auto on_done = [job_id, node_id, reply, send_reply_callback](Status status,
+                                                               const std::vector<ObjectID> &result) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to getting objects of node, job id = " << job_id
+                     << ", node id = " << node_id;
+    } else {
+      for (const ObjectID &object_id : result) {
+        reply->add_object_id_list(object_id.Binary());
+      }
+      RAY_LOG(DEBUG) << "Finished getting objects of node, job id = " << job_id
+                     << ", node id = " << node_id;
+    }
+
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  Status status = gcs_client_.Objects().AsyncGetObjectIdOfNodeByJob(job_id, node_id, on_done);
+  if (!status.ok()) {
+    on_done(status, std::vector<ObjectID>());
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray

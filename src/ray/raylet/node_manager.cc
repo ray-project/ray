@@ -325,6 +325,9 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
   // call it last.
   local_queues_.RemoveTasks(tasks_to_remove);
+
+  // Remove object of plasma
+  this->gcs_client_->Objects().AsyncGetObjectIdOfNodeByJob()
 }
 
 void NodeManager::Heartbeat() {

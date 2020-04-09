@@ -497,6 +497,35 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
   return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
 }
 
+Status RedisObjectInfoAccessor::AsyncGetObjectIdOfNodeByJob(
+    const JobID &job_id, const ClientID &node_id,
+    const MultiItemCallback<ObjectID> &callback) {
+  ObjectTable &object_table = client_impl_->object_table();
+  auto object_ids = object_table.GetObjectIdByJob(job_id);
+  auto finished_count = std::make_shared<int>(0);
+  auto out_object_ids = std::make_shared<std::vector<ObjectID>>();
+  int size = object_ids.size();
+  for (ObjectID &object_id : object_ids) {
+    auto on_done = [finished_count, size, node_id, object_id, out_object_ids, callback](
+        Status status, const std::vector<ObjectTableData> &result) {
+      auto const &it = std::find_if(
+          result.begin(), result.end(),
+          [node_id](const ObjectTableData &object_data) {
+            return object_data.manager() == node_id.Binary();
+          });
+      if (it != result.end()) {
+        out_object_ids->push_back(object_id);
+      }
+      ++(*finished_count);
+      if (*finished_count == size) {
+        callback(Status::OK(), *out_object_ids);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetLocations(object_id, on_done));
+  }
+  return Status::OK();
+}
+
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
       resource_sub_executor_(client_impl_->resource_table()),

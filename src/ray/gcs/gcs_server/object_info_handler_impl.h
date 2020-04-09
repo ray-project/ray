@@ -39,6 +39,10 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
                                   RemoveObjectLocationReply *reply,
                                   SendReplyCallback send_reply_callback) override;
 
+  virtual void HandleGetObjectsOfNode(const GetObjectsOfNodeRequest &request,
+                                      GetObjectsOfNodeReply *reply,
+                                      SendReplyCallback send_reply_callback) override;
+
  private:
   gcs::RedisGcsClient &gcs_client_;
 };

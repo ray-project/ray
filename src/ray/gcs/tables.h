@@ -679,6 +679,8 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
     prefix_ = TablePrefix::OBJECT;
   };
 
+  std::vector<ObjectID> GetObjectIdByJob(const JobID &job_id);
+
   virtual ~ObjectTable(){};
 };
 

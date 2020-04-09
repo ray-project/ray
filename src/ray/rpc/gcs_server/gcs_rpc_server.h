@@ -230,6 +230,10 @@ class ObjectInfoGcsServiceHandler {
   virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest &request,
                                           RemoveObjectLocationReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetObjectsOfNode(const GetObjectsOfNodeRequest &request,
+                                      GetObjectsOfNodeReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectInfoGcsServiceHandler`.
