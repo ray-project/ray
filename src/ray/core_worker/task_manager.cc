@@ -202,7 +202,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-void TaskManager::CancelTask(const TaskID &task_id, bool pending) {
+void TaskManager::MarkTaskCanceled(const TaskID &task_id, bool store_output) {
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -212,7 +212,7 @@ void TaskManager::CancelTask(const TaskID &task_id, bool pending) {
     it->second.num_retries_left = 0;
     it->second.canceled = true;
   }
-  if (pending) {
+  if (store_output) {
     MarkPendingTaskFailed(task_id, GetTaskSpec(task_id), rpc::ErrorType::TASK_CANCELLED);
   }
 }

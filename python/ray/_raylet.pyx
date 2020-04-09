@@ -555,11 +555,9 @@ cdef void async_plasma_callback(CObjectID object_id,
 
 cdef c_bool kill_main_task() nogil:
     with gil:
-        x = asyncio.get_event_loop()
-        print(x)
-        if setproctitle.getproctitle() == "ray::IDLE":
-            return False
         _thread.interrupt_main()
+        #if setproctitle.getproctitle() != "ray::IDLE":
+        #    _thread.interrupt_main()
         return True
 
 
@@ -942,12 +940,12 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().KillActor(
                   c_actor_id, True, no_reconstruction))
 
-    def kill_task(self, ObjectID object_id):
+    def kill_task(self, ObjectID object_id, c_bool force_kill):
         cdef:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().KillTask(c_object_id))
+            check_status(self.core_worker.get().KillTask(c_object_id, force_kill))
 
     def resource_ids(self):
         cdef:

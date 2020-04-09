@@ -897,12 +897,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillTask(const ObjectID &object_id) {
+Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
   auto task_id = object_id.TaskId();
   if (task_manager_->IsTaskPending(task_id)) {
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
     if (!task_spec.IsActorCreationTask())
-      RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec));
+      RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec, force_kill));
     RAY_LOG(ERROR) << "YEET";
   }
   return Status::OK();
@@ -1096,7 +1096,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;
-    TryKillTask();
+    TryForceKillTask();
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -1403,12 +1403,12 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                                             owner_address, ref_removed_callback);
 }
 
-void CoreWorker::TryKillTask() {
+void CoreWorker::TryForceKillTask() {
   if (task_to_kill_.IsNil()) {
     return;
   }
   if (main_thread_task_id_ == task_to_kill_) {
-    RAY_LOG(INFO) << "Killing worker: " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Force killing worker running: " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     if (log_dir_ != "") {
       RayLog::ShutDownRayLog();
@@ -1423,9 +1423,17 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   // Try to kill the task immediately, if it fails, it will try again twice. This it to
   // avoid the situation where a cancellation RPC is processed before the execute RPC.
+
+  if (!request.force_kill()) {
+    if (main_thread_task_id_ == task_id) {
+      RAY_LOG(INFO) << "Soft killing worker running: " << main_thread_task_id_;
+      kill_main_thread_();
+    }
+    return;
+  }
   absl::MutexLock lock(&mutex_);
   task_to_kill_ = task_id;
-  TryKillTask();
+  TryForceKillTask();
   // Exit(true);
   // RAY_LOG(ERROR) << "Trying to kill";
   // task_manager_->CancelTask(task_id);

@@ -73,7 +73,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Either remove a pending task or send an RPC to kill a running task
   ///
   /// \param[in] task_spec The task to kill.
-  Status KillTask(TaskSpecification task_spec);
+  Status KillTask(TaskSpecification task_spec, bool force_kill);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if

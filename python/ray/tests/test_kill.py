@@ -1,45 +1,183 @@
 import ray
 import time
 import pytest
-from ray.exceptions import RayCancellationError
+from ray.exceptions import RayCancellationError, RayTimeoutError
+from ray.test_utils import SignalActor
 
 
-def test_basic_kill(shutdown_only):
-    ray.init(num_cpus=1)
+def kill_chain(use_force):
+    """A helper method for chain of events tests"""
+    signaler = SignalActor.remote()
 
     @ray.remote
-    def micro_sleep_for(t):
-        for _ in range(t * 1000):
-            time.sleep(1 / 1000)
+    def wait_for(t):
+        return ray.get(t[0])
+
+    obj1 = wait_for.remote([signaler.wait.remote()])
+    obj2 = wait_for.remote([obj1])
+    obj3 = wait_for.remote([obj2])
+    obj4 = wait_for.remote([obj3])
+
+    assert len(ray.wait([obj1], timeout=.1)[0]) == 0
+    ray.kill(obj1, use_force)
+    for ob in [obj1, obj2, obj3, obj4]:
+        with pytest.raises(RayCancellationError):
+            ray.get(ob)
+
+    signaler2 = SignalActor.remote()
+    obj1 = wait_for.remote([signaler2.wait.remote()])
+    obj2 = wait_for.remote([obj1])
+    obj3 = wait_for.remote([obj2])
+    obj4 = wait_for.remote([obj3])
+
+    assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+    ray.kill(obj3, use_force)
+    for ob in [obj3, obj4]:
+        with pytest.raises(RayCancellationError):
+            ray.get(ob)
+
+    with pytest.raises(RayTimeoutError):
+        ray.get(obj1, timeout=.1)
+
+    signaler2.send.remote()
+    ray.get(obj1, timeout=.1)
+
+
+def kill_multiple_dependents(use_force):
+    """A helper method for multiple waiters on events tests"""
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def wait_for(t):
+        return ray.get(t[0])
+
+    head = wait_for.remote([signaler.wait.remote()])
+    deps = []
+    for _ in range(3):
+        deps.append(wait_for.remote([head]))
+
+    assert len(ray.wait([head], timeout=.1)[0]) == 0
+    ray.kill(head, use_force)
+    for d in deps:
+        with pytest.raises(RayCancellationError):
+            ray.get(d)
+
+    head2 = wait_for.remote([signaler.wait.remote()])
+
+    deps2 = []
+    for _ in range(3):
+        deps2.append(wait_for.remote([head]))
+
+    for d in deps2:
+        ray.kill(d, use_force)
+
+    for d in deps2:
+        with pytest.raises(RayCancellationError):
+            ray.get(d)
+
+    signaler.send.remote()
+    ray.get(head2, timeout=.1)
+
+
+def test_kill_chain_force(ray_start_regular):
+    kill_chain(True)
+
+
+def test_kill_chain_no_force(ray_start_regular):
+    kill_chain(False)
+
+
+def test_kill_mutiple_dependents_force(ray_start_regular):
+    kill_multiple_dependents(True)
+
+
+def test_kill_mutiple_dependents_no_force(ray_start_regular):
+    kill_multiple_dependents(False)
+
+
+def test_single_cpu_kill(shutdown_only):
+    ray.init(num_cpus=1)
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def wait_for(t):
+        return ray.get(t[0])
+
+    obj1 = wait_for.remote([signaler.wait.remote()])
+    ray.kill(obj1, True)
+    with pytest.raises(RayCancellationError):
+        ray.get(obj1, 0.1)
+    obj2 = wait_for.remote([signaler.wait.remote()])
+    obj3 = wait_for.remote([signaler.wait.remote()])
+    ray.kill(obj3, True)
+    with pytest.raises(RayCancellationError):
+        ray.get(obj3, 0.1)
+    ray.kill(obj2, True)
+    with pytest.raises(RayCancellationError):
+        ray.get(obj2, 0.1)
+
+    assert ray.get(wait_for.remote(
+        [signaler.wait.remote(should_wait=False)])) == None
+
+
+def test_kill_dependency_waiting(ray_start_regular):
+    #import ray, time
+    #ray.init()
+
+    @ray.remote
+    def slp(t):
+        time.sleep(t)
         return t
 
-    obj1 = micro_sleep_for.remote(100)
-    ray.kill(obj1)
+    a1 = slp.remote(1000)
+    a2 = slp.remote(a1)
+    a3 = slp.remote(a2)
+
+    ray.kill(a3, True)
+
+    # with pytest.raises(RayCancellationError):
+    #     ray.get(a3, 10)
+
+    ray.kill(a1, True)
+
     with pytest.raises(RayCancellationError):
-        ray.get(obj1, 10)
-    obj2 = micro_sleep_for.remote(100)
-    obj3 = micro_sleep_for.remote(100)
-    ray.kill(obj3)
+        ray.get(a1, 10)
+
     with pytest.raises(RayCancellationError):
-        ray.get(obj3, 10)
-    ray.kill(obj2)
-    with pytest.raises(RayCancellationError):
-        ray.get(obj2, 10)
-    assert ray.get(micro_sleep_for.remote(0)) == 0
+        ray.get(a2, 10)
 
 
-def test_cascading_kill(ray_start_regular):
+def test_comprehensive(ray_start_regular):
+    signaler = SignalActor.remote()
+
     @ray.remote
-    def wait_for(x):
-        for i in range(100 * x):
-            time.sleep(1 / 100)
-        return x
+    def wait_for(t):
+        ray.get(t[0])
+        return 'Result'
 
-    first_wait = wait_for.remote(100)
-    second_wait = wait_for.remote(first_wait)
-    ray.kill(first_wait)
+    @ray.remote
+    def combine(a, b):
+        return str(a) + str(b)
+
+    a = wait_for.remote([signaler.wait.remote()])
+    b = wait_for.remote([signaler.wait.remote()])
+    combo = combine.remote(a, b)
+    a2 = wait_for.remote([a])
+
+    assert len(ray.wait([a, b, a2, combo], timeout=1)[0]) == 0
+
+    ray.kill(a, False)
     with pytest.raises(RayCancellationError):
-        ray.get(second_wait, 10)
+        ray.get(a, 1)
+
+    with pytest.raises(RayCancellationError):
+        ray.get(a2, 1)
+
+    signaler.send.remote()
+    # ray.get(b)
+
+    with pytest.raises(RayCancellationError):
+        ray.get(combo, 10)
 
 
 if __name__ == "__main__":

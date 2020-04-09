@@ -236,7 +236,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   }
 }
 
-Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
+Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
+                                               bool force_kill) {
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
@@ -274,21 +275,20 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
     }
   }
   if (client == nullptr) {
+    task_finisher_->MarkTaskCanceled(task_spec.TaskId(), true);
     if (full_kill) {
-      task_finisher_->CancelTask(task_spec.TaskId(), false);
       task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                         rpc::ErrorType::TASK_CANCELLED);
-    } else {
-      task_finisher_->CancelTask(task_spec.TaskId(), true);
     }
     return Status::OK();
   }
 
   RAY_LOG(ERROR) << "Second place";
-  task_finisher_->CancelTask(task_spec.TaskId(), false);
+  task_finisher_->MarkTaskCanceled(task_spec.TaskId(), false);
   RAY_LOG(ERROR) << "third place";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
+  request.set_force_kill(force_kill);
   return client->KillTask(request, nullptr);
 }
 

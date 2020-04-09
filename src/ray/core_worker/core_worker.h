@@ -407,7 +407,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
   /// \param[out] Status
-  Status KillTask(const ObjectID &object_id);
+  Status KillTask(const ObjectID &object_id, bool force_kill);
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -685,7 +685,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Try to kill a task multiple times.
-  void TryKillTask() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void TryForceKillTask() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
