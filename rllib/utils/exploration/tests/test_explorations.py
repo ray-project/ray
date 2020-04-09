@@ -31,8 +31,7 @@ def do_test_explorations(run,
     # Test all frameworks.
     for fw in framework_iterator(core_config):
         if fw == "torch" and \
-                run in [ddpg.DDPGTrainer, impala.ImpalaTrainer,
-                        sac.SACTrainer, td3.TD3Trainer]:
+                run in [impala.ImpalaTrainer, sac.SACTrainer]:
             continue
         elif fw == "eager" and run in [
                 ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer

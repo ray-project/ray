@@ -148,14 +148,15 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=torch.zeros(self.ou_state.size()), std=1.0)
+                    mean=torch.zeros(self.ou_state.size()), std=1.0) \
+                    .to(self.device)
                 ou_new = self.ou_theta * -self.ou_state + \
                     self.ou_sigma * gaussian_sample
                 self.ou_state += ou_new
                 noise = scale * self.ou_base_scale * self.ou_state * \
                     torch.Tensor(
                         self.action_space.high - self.action_space.low,
-                        device=self.device)
+                        device=self.device).to(self.device)
                 action = torch.clamp(det_actions + noise,
                                      self.action_space.low[0],
                                      self.action_space.high[0])
