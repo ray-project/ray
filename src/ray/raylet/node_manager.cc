@@ -1832,12 +1832,12 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   Task removed_task;
   TaskState removed_task_state;
-  auto canceled = local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+  const auto canceled =
+      local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
   if (!canceled) {
     // We do not have the task. This could be because we haven't received the
     // lease request yet, or because we already granted the lease request and
     // it has already been returned.
-    reply->set_success(false);
   } else {
     if (removed_task.OnDispatch()) {
       // We have not yet granted the worker lease. Cancel it now.
@@ -1845,14 +1845,16 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
       task_dependency_manager_.TaskCanceled(task_id);
       task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     } else {
-      // We already granted the worker lease and sent the reply, so the
-      // cancellation failed.
+      // We already granted the worker lease and sent the reply. Re-queue the
+      // task and wait for the requester to return the leased worker.
       local_queues_.QueueTasks({removed_task}, removed_task_state);
     }
-    // In both cases, we have now sent the reply to the original lease request,
-    // so the request has been successfully canceled.
-    reply->set_success(true);
   }
+  // The task cancellation failed if we did not have the task queued, since
+  // this means that we may not have received the task request yet. It is
+  // successful if we did have the task queued, since we have now replied to
+  // the client that requested the lease.
+  reply->set_success(canceled);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
