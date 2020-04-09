@@ -10,6 +10,8 @@ RUN apt-get update \
         curl \
         unzip \
         libgtk2.0-dev \
+        zlib1g-dev \
+        libgl1-mesa-dev \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
@@ -23,8 +25,8 @@ RUN apt-get update \
     && /opt/conda/bin/pip install \
         flatbuffers \
         cython==0.29.0 \
-        numpy==1.15.4 \
-        opencv-python
+        numpy==1.15.4
+        
 
 # To avoid the following error on Jenkins:
 # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
