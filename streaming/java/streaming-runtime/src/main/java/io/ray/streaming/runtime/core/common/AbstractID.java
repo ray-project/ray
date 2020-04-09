@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.core.common;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.UUID;
-import com.google.common.base.MoreObjects;
 import org.ray.streaming.runtime.core.resource.ContainerID;
 
 /**
