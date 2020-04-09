@@ -152,7 +152,8 @@ class GaussianNoise(Exploration):
             action = action_dist.deterministic_sample()
 
         # Logp=always zero.
-        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
+        logp = torch.zeros(
+            (action.size()[0], ), dtype=torch.float32, device=self.device)
 
         return action, logp
 

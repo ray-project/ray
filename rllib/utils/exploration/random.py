@@ -1,4 +1,5 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
+import numpy as np
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -82,10 +83,10 @@ class Random(Exploration):
         return action, logp
 
     def get_torch_exploration_action(self, action_dist, explore):
-        device = next(self.model.parameters()).device
-        tensor_fn = torch.LongTensor if \
-            type(self.action_space) in [Discrete, MultiDiscrete] else \
-            torch.FloatTensor
+        #if type(self.action_space) in [Discrete, MultiDiscrete]:
+        #    tensor_fn = torch.LongTensor
+        #else:
+        #    tensor_fn = torch.FloatTensor
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
@@ -95,11 +96,10 @@ class Random(Exploration):
                     self.action_space, self.model.model_config))
             # Add a batch dimension.
             if len(action_dist.inputs.shape) == len(req) + 1:
-                a = [a]
-            action = tensor_fn(a, device=device)
+                a = np.expand_dims(a, 0)
+            action = torch.from_numpy(a).to(self.device)
         else:
-            action = tensor_fn(
-                action_dist.deterministic_sample(), device=device)
+            action = action_dist.deterministic_sample()
         logp = torch.zeros(
-            (action.size()[0], ), dtype=torch.float32, device=device)
+            (action.size()[0], ), dtype=torch.float32, device=self.device)
         return action, logp
