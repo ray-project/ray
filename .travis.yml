@@ -47,7 +47,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         # Streaming cpp test.
-        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
+        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
         - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
         - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
@@ -92,7 +92,7 @@ matrix:
       script:
         - if [ $RAY_CI_ONLY_RLLIB_AFFECTED == "1" ]; then exit; fi
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...
+        - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
       env:
@@ -208,7 +208,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 90 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed rllib/...
+        - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
@@ -230,7 +230,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 90 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed rllib/...
+        - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
@@ -252,10 +252,10 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - travis_wait 60 bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=-learning_tests,-quick_train,-examples,-tests_dir --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests,-quick_train,-examples,-tests_dir rllib/...
 
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
@@ -276,10 +276,10 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_A,examples_B --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_C --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_E,examples_L,examples_M,examples_P --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_U,examples_R,examples_S,examples_T --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_A,examples_B rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_C rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_E,examples_L,examples_M,examples_P rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_U,examples_R,examples_S,examples_T rllib/...
 
     # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
     - os: linux
@@ -300,7 +300,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I rllib/...
 
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
     - os: linux
@@ -321,7 +321,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
 
     # Cpp worker test
     - os: linux
@@ -335,7 +335,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - bazel test //cpp:all --build_tests_only --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed
+        - bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -359,10 +359,10 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)
-  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...
+  - ./ci/suppress_output bazel test --config=ci --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...
 
   # ray serve tests
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/serve/...; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
 
   # ray operator tests
   - cd ./deploy/ray-operator/
@@ -374,8 +374,8 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 deploy:
