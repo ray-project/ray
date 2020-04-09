@@ -20,7 +20,7 @@ def create_backend_worker(func_or_class):
     else:
         assert False, "func_or_class must be function or class."
 
-    class BackendWorker(object):
+    class RayServeWrappedWorker(object):
         def __init__(self,
                      backend_tag,
                      replica_tag,
@@ -57,7 +57,8 @@ def create_backend_worker(func_or_class):
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
 
-    return BackendWorker
+    RayServeWrappedWorker.__name__ = "RayServeWorker_" + func_or_class.__name__
+    return RayServeWrappedWorker
 
 
 def wrap_to_ray_error(exception):
