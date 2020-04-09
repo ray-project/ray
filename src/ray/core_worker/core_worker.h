@@ -685,7 +685,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Try to kill a task multiple times.
-  void TryKillTask(const TaskID &task_id, int num_tries);
+  void TryKillTask() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
@@ -734,6 +734,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// worker context.
   TaskID main_thread_task_id_;
 
+  /// Task to kill (this handles the situation where the cancellation rpc
+  // reaches the remort worker before the task begins executing)
+  TaskID task_to_kill_ GUARDED_BY(mutex_) = TaskID::Nil();
+
   // Flag indicating whether this worker has been shut down.
   bool shutdown_ = false;
 
@@ -751,8 +755,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
-
-  boost::asio::steady_timer kill_retry_timer_;
 
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;

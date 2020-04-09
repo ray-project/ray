@@ -24,6 +24,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     absl::MutexLock lock(&mu_);
+    if (canceled_resolving_tasks_.find(task_spec.TaskId()) !=
+        canceled_resolving_tasks_.end()) {
+      canceled_resolving_tasks_.erase(task_spec.TaskId());
+
+      return;
+    }
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
     const SchedulingKey scheduling_key(
@@ -234,37 +240,56 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec) {
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
-  absl::MutexLock lock(&mu_);
-  auto scheduled_tasks = task_queues_.find(scheduling_key);
-
-  // See if task has not been shipped yet
-  if (scheduled_tasks != task_queues_.end()) {
-    for (auto spec = scheduled_tasks->second.begin();
-         spec != scheduled_tasks->second.end(); spec++) {
-      if (spec->TaskId() == task_spec.TaskId()) {
-        scheduled_tasks->second.erase(spec);
-        task_finisher_->CancelTask(task_spec.TaskId());
-
-        // Erase an empty queue
-        if (scheduled_tasks->second.size() == 0) {
-          task_queues_.erase(scheduling_key);
+  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  bool full_kill = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto scheduled_tasks = task_queues_.find(scheduling_key);
+    RAY_LOG(ERROR) << "First place";
+    // See if task has not been shipped yet
+    if (scheduled_tasks != task_queues_.end()) {
+      for (auto spec = scheduled_tasks->second.begin();
+           spec != scheduled_tasks->second.end(); spec++) {
+        if (spec->TaskId() == task_spec.TaskId()) {
+          scheduled_tasks->second.erase(spec);
+          RAY_LOG(ERROR) << "Canceling task here";
+          full_kill = true;
+          // Erase an empty queue
+          if (scheduled_tasks->second.empty()) {
+            task_queues_.erase(scheduling_key);
+          }
+          break;
         }
-        return Status::OK();
+      }
+    } else {
+      auto rpc_client = sent_tasks_.find(task_spec.TaskId());
+      // No RPC handle for worker
+      if (rpc_client == sent_tasks_.end() ||
+          client_cache_.find(rpc_client->second) == client_cache_.end()) {
+        // Task has dependencies being resolved
+        canceled_resolving_tasks_.emplace(task_spec.TaskId());
+      } else {
+        client = client_cache_.find(rpc_client->second)->second;
       }
     }
   }
-
-  auto rpc_client = sent_tasks_.find(task_spec.TaskId());
-  // No RPC handle for worker
-  if (rpc_client == sent_tasks_.end() ||
-      client_cache_.find(rpc_client->second) == client_cache_.end()) {
+  if (client == nullptr) {
+    if (full_kill) {
+      task_finisher_->CancelTask(task_spec.TaskId(), false);
+      task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                        rpc::ErrorType::TASK_CANCELLED);
+    } else {
+      task_finisher_->CancelTask(task_spec.TaskId(), true);
+    }
     return Status::OK();
   }
 
-  auto client = client_cache_.find(rpc_client->second);
+  RAY_LOG(ERROR) << "Second place";
+  task_finisher_->CancelTask(task_spec.TaskId(), false);
+  RAY_LOG(ERROR) << "third place";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
-  return client->second->KillTask(request, nullptr);
+  return client->KillTask(request, nullptr);
 }
 
 };  // namespace ray

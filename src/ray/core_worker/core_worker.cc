@@ -99,7 +99,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
-      kill_retry_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
@@ -903,7 +902,8 @@ Status CoreWorker::KillTask(const ObjectID &object_id) {
   if (task_manager_->IsTaskPending(task_id)) {
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
     if (!task_spec.IsActorCreationTask())
-      return direct_task_submitter_->KillTask(task_spec);
+      RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec));
+    RAY_LOG(ERROR) << "YEET";
   }
   return Status::OK();
 }
@@ -1096,6 +1096,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;
+    TryKillTask();
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -1402,23 +1403,18 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                                             owner_address, ref_removed_callback);
 }
 
-void CoreWorker::TryKillTask(const TaskID &task_id, int num_tries) {
-  if (num_tries == 0) {
-    RAY_LOG(WARNING) << "Failed to Kill Task: " << task_id;
+void CoreWorker::TryKillTask() {
+  if (task_to_kill_.IsNil()) {
     return;
   }
-  {
-    absl::MutexLock lock(&mutex_);
-    if (main_thread_task_id_ == task_id) {
-      RAY_LOG(INFO) << "Interrupting main: " << main_thread_task_id_;
-      if (kill_main_thread_()) {
-        return;
-      }
+  if (main_thread_task_id_ == task_to_kill_) {
+    RAY_LOG(INFO) << "Killing worker: " << main_thread_task_id_;
+    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    if (log_dir_ != "") {
+      RayLog::ShutDownRayLog();
     }
+    exit(1);
   }
-  kill_retry_timer_.expires_from_now(boost::asio::chrono::milliseconds(500));
-  kill_retry_timer_.async_wait(
-      boost::bind(&CoreWorker::TryKillTask, this, task_id, num_tries - 1));
 }
 
 void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
@@ -1427,7 +1423,24 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   // Try to kill the task immediately, if it fails, it will try again twice. This it to
   // avoid the situation where a cancellation RPC is processed before the execute RPC.
-  TryKillTask(task_id, 3);
+  absl::MutexLock lock(&mutex_);
+  task_to_kill_ = task_id;
+  TryKillTask();
+  // Exit(true);
+  // RAY_LOG(ERROR) << "Trying to kill";
+  // task_manager_->CancelTask(task_id);
+  // RAY_LOG(ERROR) << "Trying to disc";
+  // Disconnect();
+  // RAY_LOG(ERROR) << "Trying to shutdown";
+  // Shutdown();
+  // return;
+  // absl::MutexLock lock(&mutex_);
+  // if (main_thread_task_id_ == task_id) {
+  //   RAY_LOG(INFO) << "Interrupting main: " << main_thread_task_id_;
+  //   if (kill_main_thread_()) {
+  //     return;
+  //   }
+  // }
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

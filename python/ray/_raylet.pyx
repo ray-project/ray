@@ -555,6 +555,8 @@ cdef void async_plasma_callback(CObjectID object_id,
 
 cdef c_bool kill_main_task() nogil:
     with gil:
+        x = asyncio.get_event_loop()
+        print(x)
         if setproctitle.getproctitle() == "ray::IDLE":
             return False
         _thread.interrupt_main()
