@@ -31,8 +31,8 @@ def test_http_proxy_failure(serve_instance):
     def function(flask_request):
         return "hello1"
 
-    serve.create_backend(function, "echo:v1")
-    serve.link("failure_endpoint", "echo:v1")
+    serve.create_backend(function, "failure:v1")
+    serve.link("failure_endpoint", "failure:v1")
 
     def verify_response(response):
         assert response.text == "hello1"
@@ -48,8 +48,8 @@ def test_http_proxy_failure(serve_instance):
     def function(flask_request):
         return "hello2"
 
-    serve.create_backend(function, "echo:v2")
-    serve.link("failure_endpoint", "echo:v2")
+    serve.create_backend(function, "failure:v2")
+    serve.link("failure_endpoint", "failure:v2")
 
     def verify_response(response):
         assert response.text == "hello2"
