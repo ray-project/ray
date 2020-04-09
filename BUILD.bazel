@@ -821,6 +821,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        ":redis_store_client",
     ],
 )
 
