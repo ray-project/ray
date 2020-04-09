@@ -84,7 +84,7 @@ namespace ray {
 
 namespace raylet {
 
-// A helper function to print the leased workers.
+// Helper function to print the leased workers.
 std::string LeasedWorkersSring(
     const std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
   std::stringstream buffer;
@@ -97,7 +97,7 @@ std::string LeasedWorkersSring(
   return buffer.str();
 }
 
-// A helper function to print the workers in worker_pool_.
+// Helper function to print the workers in worker_pool_.
 std::string WorkerPoolString(const std::vector<std::shared_ptr<Worker>> &worker_pool) {
   std::stringstream buffer;
   buffer << "   @worker_pool: (";
