@@ -127,7 +127,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
     # Add l2-regularization if required.
     if l2_reg is not None:
-        TODO: var names in torch
+        TODO: var names in torch AND add torch img to toc-tree for DQN!!!
         for name, var in policy.model.policy_variables(as_dict=True).items():
             if "bias" not in name:
                 actor_loss += (l2_reg * l2_loss(var))
