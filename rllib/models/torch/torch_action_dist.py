@@ -157,3 +157,28 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return np.prod(action_space.shape) * 2
+
+
+class TorchDeterministic(TorchDistributionWrapper):
+    """Action distribution that returns the input values directly.
+
+    This is similar to DiagGaussian with standard deviation zero (thus only
+    requiring the "mean" values as NN output).
+    """
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.inputs
+
+    @override(TorchDistributionWrapper)
+    def sampled_action_logp(self):
+        return 0.0
+
+    @override(TorchDistributionWrapper)
+    def sample(self):
+        return self.deterministic_sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)
