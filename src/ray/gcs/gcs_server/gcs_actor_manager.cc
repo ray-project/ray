@@ -80,7 +80,7 @@ GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
             // gcs_actor_scheduler will treat it as failed and invoke this handler. In
             // this case, the actor should be appended to the `pending_actors_` and wait
             // for the registration of new node.
-            pending_actors_.emplace(std::move(actor));
+            pending_actors_.emplace_back(std::move(actor));
           },
           /*schedule_success_handler=*/
           [this](std::shared_ptr<GcsActor> actor) {
@@ -292,12 +292,10 @@ void GcsActorManager::SchedulePendingActors() {
   }
 
   RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = " << pending_actors_.size();
-  // TODO(ZhuSenlin): This loop maybe inefficient, it will be optimized later.
   auto actors = std::move(pending_actors_);
-  while (!actors.empty()) {
-    auto actor = actors.front();
-    actors.pop();
-    gcs_actor_scheduler_->Schedule(actor);
+  for (auto &actor : actors) {
+    // TODO(ZhuSenlin): This loop maybe inefficient, it will be optimized later.
+    gcs_actor_scheduler_->Schedule(std::move(actor));
   }
 }
 

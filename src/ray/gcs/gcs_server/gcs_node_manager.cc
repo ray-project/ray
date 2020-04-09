@@ -52,8 +52,6 @@ void GcsNodeManager::Start() {
             // its heartbeat event.
             heartbeats_.emplace(ClientID::FromBinary(node_info.node_id()),
                                 num_heartbeats_timeout_);
-            // Add node to local cache.
-            AddNode(std::make_shared<rpc::GcsNodeInfo>(std::move(node_info)));
           }
         }
         Tick();

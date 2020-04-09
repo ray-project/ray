@@ -19,7 +19,6 @@
 #include <ray/common/task/task_execution_spec.h>
 #include <ray/common/task/task_spec.h>
 #include <ray/protobuf/gcs_service.pb.h>
-#include <queue>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -162,7 +161,7 @@ class GcsActorManager {
   /// All registered actors (pending actors are also included).
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
-  std::queue<std::shared_ptr<GcsActor>> pending_actors_;
+  std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of worker and created actor.
   absl::flat_hash_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
   /// Map contains the relationship of node and created actors.
