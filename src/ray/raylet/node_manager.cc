@@ -32,7 +32,7 @@ namespace {
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
-/// A helper function to return the expected actor counter for a given actor
+/// Helper function to return the expected actor counter for a given actor
 /// and actor handle, according to the given actor registry. If a task's
 /// counter is less than the returned value, then the task is a duplicate. If
 /// the task's counter is equal to the returned value, then the task should be
@@ -59,7 +59,7 @@ struct ActorStats {
   int max_num_handles = 0;
 };
 
-/// A helper function to return the statistical data of actors in this node manager.
+/// Helper function to return the statistical data of actors in this node manager.
 ActorStats GetActorStatisticalData(
     std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
   ActorStats item;
