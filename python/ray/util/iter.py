@@ -857,9 +857,9 @@ class LocalIterator(Generic[T]):
                 raise ValueError(
                     "other must be of type LocalIterator, got {}".format(
                         type(it)))
-        
+
         timeout = None if deterministic else 0
-        
+
         active = []
         parent_iters = [self] + list(others)
         shared_metrics = SharedMetrics(
