@@ -71,6 +71,12 @@ if [ "${TRAVIS-}" = true ]; then
   cat <<EOF >> "${HOME}/.bazelrc"
 build --disk_cache="${HOME}/ray-bazel-cache"
 build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
+# If we are in Travis, most of the compilation result will be cached.
+# This means we are I/O bounded. By default, Bazel set the number of concurrent
+# jobs to the the number cores on the machine, which are not efficient for
+# network bounded cache downloading workload. Therefore we increase the number
+# of jobs to 50
+build --jobs=50
 EOF
 fi
 if [ -n "${GITHUB_WORKFLOW-}" ]; then
