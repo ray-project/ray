@@ -186,4 +186,4 @@ def test_plasma_store_failed(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
