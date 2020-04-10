@@ -15,10 +15,10 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
-        for fw in framework_iterator(config, "torch"):
+        for fw in framework_iterator(config):
             # double-dueling DQN.
             plain_config = config.copy()
-            trainer = dqn.DQNTrainer(config=plain_config, env="SpaceInvadersNoFrameskip-v4")
+            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)

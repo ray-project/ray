@@ -110,7 +110,6 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
-    print(policy.q_model)
 
     policy.q_func_vars = policy.q_model.variables()
 

@@ -79,7 +79,8 @@ class ParameterNoise(Exploration):
                     np.zeros(var.shape, dtype=np.float32),
                     framework=self.framework,
                     tf_name=name_,
-                    torch_tensor=True))
+                    torch_tensor=True,
+                    device=self.device))
 
         # tf-specific ops to sample, assign and remove noise.
         if self.framework == "tf" and not tf.executing_eagerly():
