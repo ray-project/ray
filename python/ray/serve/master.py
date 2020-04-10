@@ -131,6 +131,8 @@ class ServeMaster:
             self.backend_table.get_init_args(backend_tag)
         ]
         kwargs = backend_config.get_actor_creation_args(init_args)
+        kwargs[
+            "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
 
         # Start the worker.
         worker_handle = backend_actor._remote(**kwargs)

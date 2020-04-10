@@ -288,7 +288,10 @@ class Router:
                     backend, buffer_queue, worker_queue, max_batch_size)
 
     async def _do_query(self, backend, worker, req):
+        # If the worker died, this will be a RayActorError. Just return it and
+        # let the HTTP proxy handle the retry logic.
         result = await worker.handle_request.remote(req)
+
         await self.mark_worker_idle(backend, worker)
         return result
 

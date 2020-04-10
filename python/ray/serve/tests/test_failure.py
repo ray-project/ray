@@ -25,23 +25,22 @@ def request_with_retries(endpoint, verify_response, timeout=30):
 
 def test_http_proxy_failure(serve_instance):
     serve.init()
-    serve.create_endpoint(
-        "failure_endpoint", "/failure_endpoint", methods=["GET"])
+    serve.create_endpoint("proxy_failure", "/proxy_failure", methods=["GET"])
 
     def function(flask_request):
         return "hello1"
 
     serve.create_backend(function, "failure:v1")
-    serve.link("failure_endpoint", "failure:v1")
+    serve.link("proxy_failure", "failure:v1")
 
     def verify_response(response):
         assert response.text == "hello1"
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=0)
+    request_with_retries("/proxy_failure", verify_response, timeout=0)
 
     _kill_http_proxy()
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=30)
+    request_with_retries("/proxy_failure", verify_response, timeout=30)
 
     _kill_http_proxy()
 
@@ -49,9 +48,42 @@ def test_http_proxy_failure(serve_instance):
         return "hello2"
 
     serve.create_backend(function, "failure:v2")
-    serve.link("failure_endpoint", "failure:v2")
+    serve.link("proxy_failure", "failure:v2")
 
     def verify_response(response):
         assert response.text == "hello2"
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=30)
+    request_with_retries("/proxy_failure", verify_response, timeout=30)
+
+
+def test_worker_failure(serve_instance):
+    serve.init()
+    serve.create_endpoint("worker_failure", "/worker_failure", methods=["GET"])
+
+    def function(flask_request):
+        return "hello1"
+
+    serve.create_backend(function, "failure:v1")
+    serve.link("worker_failure", "failure:v1")
+
+    def verify_response(response):
+        assert response.text == "hello1"
+
+    request_with_retries("/worker_failure", verify_response, timeout=0)
+
+    _kill_http_proxy()
+
+    request_with_retries("/worker_failure", verify_response, timeout=30)
+
+    _kill_http_proxy()
+
+    def function(flask_request):
+        return "hello2"
+
+    serve.create_backend(function, "failure:v2")
+    serve.link("worker_failure", "failure:v2")
+
+    def verify_response(response):
+        assert response.text == "hello2"
+
+    request_with_retries("/worker_failure", verify_response, timeout=30)
