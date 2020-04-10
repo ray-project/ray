@@ -105,8 +105,8 @@ class ServeMaster:
             for _ in range(-delta_num_replicas):
                 self._remove_backend_replica(backend_tag)
 
-    async def get_backend_replica_config(self, replica_tag):
-        return [self.tag_to_actor_handles[replica_tag]], self.get_router()
+    async def get_backend_worker_config(self):
+        return self.get_router()
 
     async def _start_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()

@@ -327,7 +327,8 @@ class CentralizedQueues:
                     requests_group[request.call_method].append(request)
 
                 for group in requests_group.values():
-                    future = worker.handle_request.remote(group).as_future()
+                    future = asyncio.get_event_loop().create_task(
+                        self._do_query(backend, worker, group))
                     future.add_done_callback(
                         _make_future_unwrapper(
                             client_futures=[req.async_future for req in group],

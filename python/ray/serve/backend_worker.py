@@ -25,7 +25,6 @@ def create_backend_worker(func_or_class):
                      backend_tag,
                      replica_tag,
                      init_args,
-                     self_handle=None,
                      router_handle=None):
             serve.init()
             if is_function:
@@ -33,29 +32,12 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            if self_handle is None:
-                assert router_handle is None
+            if router_handle is None:
                 master_actor = serve.api._get_master_actor()
-                # TODO(edoakes): this is a hacky workaround because there is
-                # a race condition when the master starts up a worker: the
-                # master starts the worker then adds its handle to a local map
-                # and the worker queries the master for its own handle from
-                # that map. If there's a large enough delay in the master, the
-                # handle may not have been added to the map yet (seen in CI).
-                # This will be fixed soon when the router just pushes tasks to
-                # the workers instead of the workers indicating that they're
-                # available.
-                start = time.time()
-                while time.time() - start < 5:
-                    try:
-                        [self_handle], [router_handle] = ray.get(
-                            master_actor.get_backend_replica_config.remote(
-                                replica_tag))
-                        break
-                    except ray.exceptions.RayTaskError:
-                        pass
+                [router_handle] = ray.get(
+                    master_actor.get_backend_worker_config.remote())
 
-            self.backend = RayServeWorker(backend_tag, _callable, self_handle,
+            self.backend = RayServeWorker(backend_tag, _callable,
                                           router_handle, is_function)
 
         def get_metrics(self):
@@ -91,11 +73,9 @@ def ensure_async(func):
 class RayServeWorker:
     """Fetches requests and handles them with the provided callable."""
 
-    def __init__(self, name, _callable, self_handle, router_handle,
-                 is_function):
+    def __init__(self, name, _callable, router_handle, is_function):
         self.name = name
         self.callable = _callable
-        self.self_handle = self_handle
         self.router_handle = router_handle
         self.is_function = is_function
 
