@@ -13,6 +13,8 @@ from ray.async_compat import sync_to_async
 
 
 def create_backend_worker(func_or_class):
+    """Creates a worker class wrapping the provided function or class."""
+
     if inspect.isfunction(func_or_class):
         is_function = True
     elif inspect.isclass(func_or_class):
@@ -54,7 +56,8 @@ def create_backend_worker(func_or_class):
 
 
 def wrap_to_ray_error(exception):
-    """Utility method that catch and seal exceptions in execution"""
+    """Utility method to wrap exceptions in user code."""
+
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
@@ -71,7 +74,7 @@ def ensure_async(func):
 
 
 class RayServeWorker:
-    """Fetches requests and handles them with the provided callable."""
+    """Handles requests with the provided callable."""
 
     def __init__(self, name, _callable, router_handle, is_function):
         self.name = name
