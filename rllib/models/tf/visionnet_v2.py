@@ -27,6 +27,7 @@ class VisionNetwork(TFModelV2):
 
         # Build the action layers
         for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
+            print("{}th layer: out_size={} kernel={} strides={}".format(i, out_size, kernel, stride))
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
