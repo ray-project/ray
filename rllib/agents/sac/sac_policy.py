@@ -41,12 +41,14 @@ def build_sac_model(policy, obs_space, action_space, config):
             "using a Tuple action space, or the multi-agent API.")
 
     if config["use_state_preprocessor"]:
-        default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = NoopModel
         num_outputs = int(np.product(obs_space.shape))
+    # Force-ignore any additionally provided hidden layer sizes.
+    # Everything should be configured using SAC's "Q_model" and "policy_model"
+    # settings.
+    config["model"]["fcnet_hiddens"] = []
 
     policy.model = ModelCatalog.get_model_v2(
         obs_space,
@@ -55,7 +57,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         config["model"],
         framework="tf",
         model_interface=SACModel,
-        default_model=default_model,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["hidden_activation"],
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
@@ -63,6 +64,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"])
+    policy.model.action_model.summary()
+    policy.model.q_net.summary()
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -71,7 +74,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         config["model"],
         framework="tf",
         model_interface=SACModel,
-        default_model=default_model,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["hidden_activation"],
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],

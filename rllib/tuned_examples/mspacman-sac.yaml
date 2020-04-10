@@ -1,10 +1,10 @@
 # Our implementation of SAC can reach ?? reward in ??k timesteps
 pong-sac-tf:
-    env: PongNoFrameskip-v4
+    env: MsPacmanNoFrameskip-v4
     run: SAC
     stop:
-        episode_reward_mean: 10
-        timesteps_total: 20000000
+        episode_reward_mean: 700
+        timesteps_total: 100000
     config:
         gamma: 0.99
         #horizon: 1000
@@ -23,9 +23,9 @@ pong-sac-tf:
         no_done_at_end: False
         n_step: 1
         rollout_fragment_length: 1
-        prioritized_replay: False
+        prioritized_replay: true
         train_batch_size: 64
-        timesteps_per_iteration: 1000
+        timesteps_per_iteration: 4
         learning_starts: 20000
         optimization:
             actor_learning_rate: 0.0003

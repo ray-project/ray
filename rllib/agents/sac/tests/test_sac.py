@@ -14,7 +14,7 @@ class TestSAC(unittest.TestCase):
         ray.init()
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        num_iterations = 1
+        num_iterations = 2
 
         # eager (discrete and cont. actions).
         for _ in framework_iterator(config, ["tf", "eager"]):
