@@ -769,6 +769,29 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
   return Status::OK();
 }
 
+Status ServiceBasedObjectInfoAccessor::AsyncGetObjectIdsOfNodeByJob(
+    const JobID &job_id, const ClientID &node_id,
+    const MultiItemCallback<ObjectID> &callback) {
+  RAY_LOG(DEBUG) << "Getting object ids of node, node id = " << node_id
+                 << ", job id = " << job_id;
+  rpc::GetObjectIdsOfNodeByJobRequest request;
+  request.set_job_id(job_id.Binary());
+  request.set_node_id(node_id.Binary());
+  client_impl_->GetGcsRpcClient().GetObjectIdsOfNodeByJob(
+      request, [node_id, job_id, callback](
+                   const Status &status, const rpc::GetObjectIdsOfNodeByJobReply &reply) {
+        std::vector<ObjectID> result;
+        result.reserve((reply.object_id_list_size()));
+        for (int index = 0; index < reply.object_id_list_size(); ++index) {
+          result.emplace_back(ObjectID::FromBinary(reply.object_id_list(index)));
+        }
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting object ids of node, node id = " << node_id
+                       << ", job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
     const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
@@ -788,12 +811,6 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
   auto status = object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
-}
-
-Status ServiceBasedObjectInfoAccessor::AsyncGetObjectIdOfNodeByJob(const JobID &job_id, const ClientID &node_id,
-                                   const MultiItemCallback<ObjectID> &callback) {
-  client_impl_->GetRedisGcsClient().object_table().;
-
 }
 
 ServiceBasedStatsInfoAccessor::ServiceBasedStatsInfoAccessor(

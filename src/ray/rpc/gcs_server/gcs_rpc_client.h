@@ -155,6 +155,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation,
                              object_info_grpc_client_, )
 
+  /// Get object ids of node by job from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectIdsOfNodeByJob,
+                             object_info_grpc_client_, )
+
   /// Add a task to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, task_info_grpc_client_, )
 

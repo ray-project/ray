@@ -253,7 +253,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
                                      const StatusCallback &done) override;
 
-  Status AsyncGetObjectIdOfNodeByJob(
+  Status AsyncGetObjectIdsOfNodeByJob(
       const JobID &job_id, const ClientID &node_id,
       const MultiItemCallback<ObjectID> &callback) override;
 

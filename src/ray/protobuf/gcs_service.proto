@@ -243,12 +243,12 @@ message RemoveObjectLocationReply {
   GcsStatus status = 1;
 }
 
-message GetObjectsOfNodeRequest {
+message GetObjectIdsOfNodeByJobRequest {
   bytes job_id = 1;
   bytes node_id = 2;
 }
 
-message GetObjectsOfNodeReply {
+message GetObjectIdsOfNodeByJobReply {
   GcsStatus status = 1;
   repeated bytes object_id_list = 2;
 }
@@ -262,8 +262,8 @@ service ObjectInfoGcsService {
   // Remove location of object from GCS Service.
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);
-  // Remove location of object from GCS Service.
-  rpc GetObjectsOfNode(GetObjectsOfNodeRequest) returns (GetObjectsOfNodeReply);
+  // Get object ids of node by job from GCS Service.
+  rpc GetObjectIdsOfNodeByJob(GetObjectIdsOfNodeByJobRequest) returns (GetObjectIdsOfNodeByJobReply);
 }
 
 message AddTaskRequest {

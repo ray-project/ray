@@ -231,9 +231,9 @@ class ObjectInfoGcsServiceHandler {
                                           RemoveObjectLocationReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetObjectsOfNode(const GetObjectsOfNodeRequest &request,
-                                      GetObjectsOfNodeReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetObjectIdsOfNodeByJob(
+      const GetObjectIdsOfNodeByJobRequest &request, GetObjectIdsOfNodeByJobReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectInfoGcsServiceHandler`.

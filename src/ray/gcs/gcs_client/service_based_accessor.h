@@ -261,6 +261,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
                              const StatusCallback &callback) override;
 
+  Status AsyncGetObjectIdsOfNodeByJob(
+      const JobID &job_id, const ClientID &node_id,
+      const MultiItemCallback<ObjectID> &callback) override;
+
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
@@ -268,9 +272,6 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
                                      const StatusCallback &done) override;
-
-  Status AsyncGetObjectIdOfNodeByJob(const JobID &job_id, const ClientID &node_id,
-                                     const MultiItemCallback<ObjectID> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

@@ -54,12 +54,13 @@ TEST_F(RedisAccessorMultiJobTest, TestJobTable) {
   auto callback = [this](Status status, const std::vector<ObjectID> &result) {
     RAY_LOG(INFO) << "Hello, get result size = " << result.size();
     for (auto &object_id : result) {
-      RAY_LOG(INFO) << "Hello , get object id = " << object_id << ", size = " << object_id.Binary().size();
+      RAY_LOG(INFO) << "Hello , get object id = " << object_id
+                    << ", size = " << object_id.Binary().size();
     }
     --pending_count_;
   };
   ++pending_count_;
-  RAY_CHECK_OK(object_accessor.AsyncGetObjectIdOfNodeByJob(job2_id, node1_id, callback));
+  RAY_CHECK_OK(object_accessor.AsyncGetObjectIdsOfNodeByJob(job2_id, node1_id, callback));
   WaitPendingDone(wait_pending_timeout_);
 }
 
