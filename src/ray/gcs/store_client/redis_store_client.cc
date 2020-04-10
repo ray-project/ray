@@ -113,8 +113,47 @@ template <typename Key, typename Data, typename IndexKey>
 Status RedisStoreClient<Key, Data, IndexKey>::AsyncGetAll(
     const std::string &table_name,
     const SegmentedCallback<std::pair<Key, Data>> &callback) {
-  RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
-  return Status::OK();
+  RAY_CHECK(callback);
+  std::string match_pattern = table_name + "*";
+  auto scanner = std::make_shared<RedisScanner>(redis_client_, match_pattern);
+  auto on_scan_callback =
+      [this, table_name, callback, scanner](
+          Status status, bool has_more,
+          const std::vector<std::pair<std::string, std::string>> &result) {
+        OnScanCallback(table_name, callback, scanner, status, has_more, result);
+      };
+  return scanner->ScanPartialRows(on_scan_callback);
+}
+
+template <typename Key, typename Data, typename IndexKey>
+void RedisStoreClient<Key, Data, IndexKey>::OnScanCallback(
+    const std::string &table_name,
+    const SegmentedCallback<std::pair<Key, Data>> &callback,
+    std::shared_ptr<RedisScanner> scanner, Status status, bool has_more,
+    const std::vector<std::pair<std::string, std::string>> &result) {
+  std::vector<std::pair<Key, Data>> decoded_result;
+  if (status.ok()) {
+    for (const auto &item : result) {
+      std::string triped_key_str = item.first.substr(table_name.length());
+      Key key = Key::FromBinary(triped_key_str);
+      Data data;
+      RAY_CHECK(data.ParseFromString(item.second));
+      decoded_result.emplace_back(key, data);
+    }
+  }
+
+  callback(status, has_more, decoded_result);
+
+  if (has_more) {
+    auto on_scan_callback =
+        [this, table_name, callback, scanner](
+            Status status, bool has_more,
+            const std::vector<std::pair<std::string, std::string>> &result) {
+          OnScanCallback(table_name, callback, scanner, status, has_more, result);
+        };
+
+    RAY_CHECK_OK(scanner->ScanPartialRows(on_scan_callback));
+  }
 }
 
 template <typename Key, typename Data, typename IndexKey>

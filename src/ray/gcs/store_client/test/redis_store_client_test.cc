@@ -112,7 +112,8 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   WaitPendingDone();
 }
 
-TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
+TEST_F(RedisStoreClientTest, AsyncGetAllTest) {
+  table_name_ += "AsyncGetAllTest";
   // AsyncPut
   auto put_calllback = [this](Status status) { --pending_count_; };
   for (const auto &elem : key_to_value_) {

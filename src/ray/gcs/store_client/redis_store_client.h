@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_scanner.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -57,6 +58,12 @@ class RedisStoreClient : public StoreClient<Key, Data, IndexKey> {
   Status DoPut(const std::string &key, const std::string &data,
                const StatusCallback &callback);
 
+  void OnScanCallback(const std::string &table_name,
+                      const SegmentedCallback<std::pair<Key, Data>> &callback,
+                      std::shared_ptr<RedisScanner> scanner, Status status, bool has_more,
+                      const std::vector<std::pair<std::string, std::string>> &result);
+
+ private:
   std::shared_ptr<RedisClient> redis_client_;
 };
 
