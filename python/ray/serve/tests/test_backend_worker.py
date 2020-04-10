@@ -19,14 +19,12 @@ def setup_worker(name, func_or_class, router_handle, init_args=None):
 
     @ray.remote
     class WorkerActor:
-        def setup(self, self_handle, router_handle):
+        def __init__(self, router_handle):
             self.worker = create_backend_worker(func_or_class)(
-                name,
-                name + ":tag",
-                init_args,
-                self_handle=self_handle[0],
-                router_handle=router_handle[0],
-                start_running=False)
+                name, name + ":tag", init_args, router_handle=router_handle[0])
+
+        def ready(self):
+            pass
 
         def get_metrics(self):
             return self.worker.get_metrics()
@@ -37,8 +35,8 @@ def setup_worker(name, func_or_class, router_handle, init_args=None):
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
 
-    worker = WorkerActor.remote()
-    ray.get(worker.setup.remote([worker], [router_handle]))
+    worker = WorkerActor.remote([router_handle])
+    ray.get(worker.ready.remote())
     return worker
 
 
@@ -57,7 +55,7 @@ async def test_runner_actor(serve_instance):
     PRODUCER_NAME = "prod"
 
     worker = setup_worker(CONSUMER_NAME, echo, q)
-    await worker.run.remote()
+    await q.add_new_worker.remote(CONSUMER_NAME, worker)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -82,7 +80,7 @@ async def test_ray_serve_mixin(serve_instance):
             return i + self.increment
 
     worker = setup_worker(CONSUMER_NAME, MyAdder, q, init_args=(3, ))
-    await worker.run.remote()
+    await q.add_new_worker.remote(CONSUMER_NAME, worker)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -104,7 +102,7 @@ async def test_task_runner_check_context(serve_instance):
     PRODUCER_NAME = "producer"
 
     worker = setup_worker(CONSUMER_NAME, echo, q)
-    await worker.run.remote()
+    await q.add_new_worker.remote(CONSUMER_NAME, worker)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
     query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
@@ -128,7 +126,7 @@ async def test_task_runner_custom_method_single(serve_instance):
     PRODUCER_NAME = "producer"
 
     worker = setup_worker(CONSUMER_NAME, NonBatcher, q)
-    await worker.run.remote()
+    await q.add_new_worker.remote(CONSUMER_NAME, worker)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -176,7 +174,7 @@ async def test_task_runner_custom_method_batch(serve_instance):
     futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
     futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
 
-    await worker.run.remote()
+    await q.add_new_worker.remote(CONSUMER_NAME, worker)
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}

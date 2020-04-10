@@ -13,6 +13,8 @@ from ray.async_compat import sync_to_async
 
 
 def create_backend_worker(func_or_class):
+    """Creates a worker class wrapping the provided function or class."""
+
     if inspect.isfunction(func_or_class):
         is_function = True
     elif inspect.isclass(func_or_class):
@@ -25,44 +27,20 @@ def create_backend_worker(func_or_class):
                      backend_tag,
                      replica_tag,
                      init_args,
-                     self_handle=None,
-                     router_handle=None,
-                     start_running=True):
+                     router_handle=None):
             serve.init()
             if is_function:
                 _callable = func_or_class
             else:
                 _callable = func_or_class(*init_args)
 
-            if self_handle is None:
-                assert router_handle is None
+            if router_handle is None:
                 master_actor = serve.api._get_master_actor()
-                # TODO(edoakes): this is a hacky workaround because there is
-                # a race condition when the master starts up a worker: the
-                # master starts the worker then adds its handle to a local map
-                # and the worker queries the master for its own handle from
-                # that map. If there's a large enough delay in the master, the
-                # handle may not have been added to the map yet (seen in CI).
-                # This will be fixed soon when the router just pushes tasks to
-                # the workers instead of the workers indicating that they're
-                # available.
-                start = time.time()
-                while time.time() - start < 5:
-                    try:
-                        print("Calling get_backend_replica_config")
-                        [self_handle], [router_handle] = ray.get(
-                            master_actor.get_backend_replica_config.remote(
-                                replica_tag))
-                        print("Got get_backend_replica_config")
-                        break
-                    except ray.exceptions.RayTaskError:
-                        pass
+                [router_handle] = ray.get(
+                    master_actor.get_backend_worker_config.remote())
 
-            self.backend = RayServeWorker(backend_tag, _callable, self_handle,
+            self.backend = RayServeWorker(backend_tag, _callable,
                                           router_handle, is_function)
-
-            if start_running:
-                self.backend.mark_idle_in_router()
 
         def get_metrics(self):
             return self.backend.get_metrics()
@@ -78,7 +56,8 @@ def create_backend_worker(func_or_class):
 
 
 def wrap_to_ray_error(exception):
-    """Utility method that catch and seal exceptions in execution"""
+    """Utility method to wrap exceptions in user code."""
+
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
@@ -95,13 +74,11 @@ def ensure_async(func):
 
 
 class RayServeWorker:
-    """Fetches requests and handles them with the provided callable."""
+    """Handles requests with the provided callable."""
 
-    def __init__(self, name, _callable, self_handle, router_handle,
-                 is_function):
+    def __init__(self, name, _callable, router_handle, is_function):
         self.name = name
         self.callable = _callable
-        self.self_handle = self_handle
         self.router_handle = router_handle
         self.is_function = is_function
 
@@ -123,10 +100,6 @@ class RayServeWorker:
                 "type": "list",
             },
         }
-
-    def mark_idle_in_router(self):
-        # Tell the router that this worker can accept tasks.
-        self.router_handle.dequeue_request.remote(self.name, self.self_handle)
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -257,6 +230,5 @@ class RayServeWorker:
         # re-assign to default values
         serve_context.web = False
         serve_context.batch_size = None
-        self.mark_idle_in_router()
 
         return result

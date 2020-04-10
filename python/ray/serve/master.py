@@ -105,8 +105,8 @@ class ServeMaster:
             for _ in range(-delta_num_replicas):
                 self._remove_backend_replica(backend_tag)
 
-    async def get_backend_replica_config(self, replica_tag):
-        return [self.tag_to_actor_handles[replica_tag]], self.get_router()
+    async def get_backend_worker_config(self):
+        return self.get_router()
 
     async def _start_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
@@ -138,6 +138,8 @@ class ServeMaster:
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
+        await self.get_router()[0].add_new_worker.remote(
+            backend_tag, worker_handle)
 
         # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
