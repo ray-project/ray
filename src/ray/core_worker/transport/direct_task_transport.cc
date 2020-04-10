@@ -192,8 +192,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (!status.ok()) {
     RetryLeaseRequest(status, lease_client, scheduling_key);
   }
-  pending_lease_requests_.emplace(scheduling_key,
-                                  std::make_pair(std::move(lease_client), task_id));
+  pending_lease_requests_.emplace(scheduling_key, std::make_pair(lease_client, task_id));
 }
 
 void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
