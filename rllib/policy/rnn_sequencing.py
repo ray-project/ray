@@ -158,7 +158,7 @@ def chop_into_sequences(episode_ids,
                         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
-    Arguments:
+    Args:
         episode_ids (list): List of episode ids for each step.
         unroll_ids (list): List of identifiers for the sample batch. This is
             used to make sure sequences are cut between sample batches.
