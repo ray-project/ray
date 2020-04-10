@@ -85,7 +85,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class CentralizedQueues:
     """A router that routes request to available workers.
 
-    Router aceepts each request from the `enqueue_request` method and enqueues
+    Router accepts each request from the `enqueue_request` method and enqueues
     it. It also accepts worker request to work (called work_intention in code)
     from workers via the `dequeue_request` method. The traffic policy is used
     to match requests with their corresponding workers.
@@ -161,7 +161,7 @@ class CentralizedQueues:
     def is_ready(self):
         return True
 
-    def _serve_metric(self):
+    def get_metrics(self):
         return {
             "backend_{}_queue_size".format(backend_name): {
                 "value": len(queue),
@@ -302,7 +302,7 @@ class CentralizedQueues:
             worker = await worker_queue.get()
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
-                future = worker._ray_serve_call.remote(request).as_future()
+                future = worker.handle_request.remote(request).as_future()
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
@@ -317,7 +317,7 @@ class CentralizedQueues:
                     requests_group[request.call_method].append(request)
 
                 for group in requests_group.values():
-                    future = worker._ray_serve_call.remote(group).as_future()
+                    future = worker.handle_request.remote(group).as_future()
                     future.add_done_callback(
                         _make_future_unwrapper(
                             client_futures=[req.async_future for req in group],

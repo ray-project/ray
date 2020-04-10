@@ -18,9 +18,9 @@ def make_task_runner_mock():
             self.query = None
             self.queries = []
 
-        async def _ray_serve_call(self, request_item):
-            self.query = request_item
-            self.queries.append(request_item)
+        async def handle_request(self, request):
+            self.query = request
+            self.queries.append(request)
             return "DONE"
 
         def get_recent_call(self):
