@@ -39,6 +39,49 @@ class GcsActor;
 /// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
 /// This class is not thread-safe.
 class GcsActorScheduler {
+ public:
+  /// Create a GcsActorScheduler
+  ///
+  /// \param io_context The main event loop.
+  /// \param actor_info_accessor Used to flush actor info to storage.
+  /// \param gcs_node_manager The node manager which is used when scheduling.
+  /// \param schedule_failure_handler Invoked when there are no available nodes to
+  /// schedule actors.
+  /// \param schedule_success_handler Invoked when actors are created on the worker
+  /// successfully.
+  /// \param lease_client_factory Factory to create remote lease client, default factor
+  /// will be used if not set.
+  /// \param client_factory Factory to create remote core worker client, default factor
+  /// will be used if not set.
+  explicit GcsActorScheduler(
+      boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
+      const GcsNodeManager &gcs_node_manager,
+      std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+      LeaseClientFactoryFn lease_client_factory = nullptr,
+      rpc::ClientFactoryFn client_factory = nullptr);
+  virtual ~GcsActorScheduler() = default;
+
+  /// Schedule the specified actor.
+  /// If there is no available nodes then the `schedule_failed_handler_` will be
+  /// triggered, otherwise the actor will be scheduled until succeed or canceled.
+  ///
+  /// \param actor to be scheduled.
+  void Schedule(std::shared_ptr<GcsActor> actor);
+
+  /// Cancel all actors that are being scheduled to the specified node.
+  ///
+  /// \param node_id ID of the node where the worker is located.
+  /// \return ID list of actors associated with the specified node id.
+  std::vector<ActorID> CancelOnNode(const ClientID &node_id);
+
+  /// Cancel the actor that is being scheduled to the specified worker.
+  ///
+  /// \param node_id ID of the node where the worker is located.
+  /// \param worker_id ID of the worker that the actor is creating on.
+  /// \return ID of actor associated with the specified node id and worker id.
+  ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id);
+
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
   /// contains the address of remote leased worker as well as the leased resources and the
@@ -91,58 +134,6 @@ class GcsActorScheduler {
     ActorID assigned_actor_id_;
   };
 
- public:
-  /// Create a GcsActorScheduler
-  ///
-  /// \param io_context The main event loop.
-  /// \param actor_info_accessor Used to flush actor info to storage.
-  /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param schedule_failure_handler Invoked when there are no available nodes to
-  /// schedule actors.
-  /// \param schedule_success_handler Invoked when actors are created on the worker
-  /// successfully.
-  /// \param lease_client_factory Factory to create remote lease client, default factor
-  /// will be used if not set.
-  /// \param client_factory Factory to create remote core worker client, default factor
-  /// will be used if not set.
-  explicit GcsActorScheduler(
-      boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
-      const GcsNodeManager &gcs_node_manager,
-      std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-      LeaseClientFactoryFn lease_client_factory = nullptr,
-      rpc::ClientFactoryFn client_factory = nullptr);
-  virtual ~GcsActorScheduler() = default;
-
-  /// Schedule the specified actor.
-  /// If there is no available nodes then the `schedule_failed_handler_` will be
-  /// triggered, otherwise the actor will be scheduled until succeed or canceled.
-  ///
-  /// \param actor to be scheduled.
-  void Schedule(std::shared_ptr<GcsActor> actor);
-
-  /// Cancel all actors that are being scheduled to the specified node.
-  ///
-  /// \param node_id ID of the node where the worker is located.
-  /// \return ID list of actors associated with the specified node id.
-  std::vector<ActorID> CancelOnNode(const ClientID &node_id);
-
-  /// Cancel the actor that is being scheduled to the specified worker.
-  ///
-  /// \param node_id ID of the node where the worker is located.
-  /// \param worker_id ID of the worker that the actor is creating on.
-  /// \return ID of actor associated with the specified node id and worker id.
-  ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id);
-
-  /// Get leased workers in phase of creating.
-  /// This method is used in unit test.
-  const absl::flat_hash_map<
-      ClientID, absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
-      &GetWorkersInPhaseOfCreating() const {
-    return node_to_workers_when_creating_;
-  }
-
- protected:
   /// Lease a worker from the specified node for the specified actor.
   ///
   /// \param actor A description of the actor to create. This object has the resource
@@ -160,6 +151,15 @@ class GcsActorScheduler {
   virtual void RetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
                                           std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// This method is only invoked inside `RetryLeasingWorkerFromNode`, the purpose of this
+  /// is to make it easy to write unit tests.
+  ///
+  /// \param actor A description of the actor to create. This object has the resource
+  /// specification needed to lease workers from the specified node.
+  /// \param node The node that the worker will be leased from.
+  void DoRetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
+                                    std::shared_ptr<rpc::GcsNodeInfo> node);
+
   /// Handler to process a granted lease.
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
@@ -174,13 +174,21 @@ class GcsActorScheduler {
   void CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                            std::shared_ptr<GcsLeasedWorker> worker);
 
-  /// Retry creating the specified actor on the specified worker.
+  /// Retry creating the specified actor on the specified worker asynchoronously.
   /// Make it a virtual method so that the io_context_ could be mocked out.
   ///
   /// \param actor The actor to be created.
   /// \param worker The worker that the actor will created on.
   virtual void RetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
                                           std::shared_ptr<GcsLeasedWorker> worker);
+
+  /// This method is only invoked inside `RetryCreatingActorOnWorker`, the purpose of this
+  /// is to make it easy to write unit tests.
+  ///
+  /// \param actor The actor to be created.
+  /// \param worker The worker that the actor will created on.
+  void DoRetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
+                                    std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Select a node from alive nodes randomly.
   std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;

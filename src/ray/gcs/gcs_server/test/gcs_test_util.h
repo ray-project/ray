@@ -29,23 +29,8 @@
 namespace ray {
 
 struct Mocker {
-  static void Reset() {
-    push_normal_task_delegate = nullptr;
-    worker_lease_delegate = nullptr;
-    async_update_delegate = nullptr;
-  }
-  static std::function<Status(const rpc::Address &, std::unique_ptr<rpc::PushTaskRequest>,
-                              rpc::PushTaskReply *)>
-      push_normal_task_delegate;
-  static std::function<Status(const rpc::Address &, const ray::TaskSpecification &,
-                              ray::rpc::RequestWorkerLeaseReply *)>
-      worker_lease_delegate;
-  static std::function<Status(const ActorID &,
-                              const std::shared_ptr<rpc::ActorTableData> &,
-                              const gcs::StatusCallback &)>
-      async_update_delegate;
-
-  static TaskSpecification GenActorCreationTask(const JobID &job_id) {
+  static TaskSpecification GenActorCreationTask(const JobID &job_id,
+                                                int max_reconstructions = 100) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
     ray::FunctionDescriptor empty_descriptor =
@@ -54,28 +39,14 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, 100);
+    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions);
     return builder.Build();
   }
 
-  static std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID &job_id) {
-    auto actor_creation_task_spec = GenActorCreationTask(job_id);
-    auto actor_table_data = std::make_shared<rpc::ActorTableData>();
-    ActorID actor_id = actor_creation_task_spec.ActorCreationId();
-    actor_table_data->set_actor_id(actor_id.Binary());
-    actor_table_data->set_job_id(job_id.Binary());
-    actor_table_data->set_state(
-        rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING);
-    actor_table_data->set_max_reconstructions(1);
-    actor_table_data->set_remaining_reconstructions(1);
-    actor_table_data->mutable_task_spec()->CopyFrom(
-        actor_creation_task_spec.GetMessage());
-    return actor_table_data;
-  }
-
-  static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id) {
+  static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
+                                                       int max_reconstructions = 100) {
     rpc::CreateActorRequest request;
-    auto actor_creation_task_spec = GenActorCreationTask(job_id);
+    auto actor_creation_task_spec = GenActorCreationTask(job_id, max_reconstructions);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
@@ -88,65 +59,123 @@ struct Mocker {
     return node;
   }
 
-  static bool WaitForReady(const std::future<bool> &future, uint64_t timeout_ms) {
-    auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    return status == std::future_status::ready;
-  }
-
-  class MockedWorkerLeaseImpl : public WorkerLeaseInterface {
+  class MockWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
-    explicit MockedWorkerLeaseImpl(rpc::Address address) : address_(std::move(address)) {}
-
-    ray::Status RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec,
-        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
-        override {
-      if (worker_lease_delegate) {
-        ray::rpc::RequestWorkerLeaseReply reply;
-        auto status = worker_lease_delegate(address_, resource_spec, &reply);
-        callback(status, reply);
-        return Status::OK();
-      }
-      if (callback) {
-        ray::rpc::RequestWorkerLeaseReply reply;
-        reply.mutable_worker_address()->set_raylet_id(address_.raylet_id());
-        reply.mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-        callback(ray::Status::OK(), reply);
-      }
-      return ray::Status::OK();
-    }
-
-    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                             bool disconnect_worker) override {
-      return ray::Status::OK();
-    }
-
-   private:
-    rpc::Address address_;
-  };
-
-  class MockedCoreWorkerClientImpl : public rpc::CoreWorkerClientInterface {
-   public:
-    explicit MockedCoreWorkerClientImpl(rpc::Address address)
-        : address_(std::move(address)) {}
-
     ray::Status PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
-      if (push_normal_task_delegate) {
-        rpc::PushTaskReply reply;
-        auto status = push_normal_task_delegate(address_, std::move(request), &reply);
-        callback(status, reply);
-        return ray::Status::OK();
+      callbacks.push_back(callback);
+      if (enable_auto_reply) {
+        ReplyPushTask();
       }
-      if (callback) {
-        callback(ray::Status::OK(), rpc::PushTaskReply());
-      }
-      return ray::Status::OK();
+      return Status::OK();
     }
 
-   private:
-    rpc::Address address_;
+    bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
+      if (callbacks.size() == 0) {
+        return false;
+      }
+      auto callback = callbacks.front();
+      auto reply = rpc::PushTaskReply();
+      if (exit) {
+        reply.set_worker_exiting(true);
+      }
+      callback(status, reply);
+      callbacks.pop_front();
+      return true;
+    }
+
+    bool enable_auto_reply = false;
+    std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  };
+
+  class MockRayletClient : public WorkerLeaseInterface {
+   public:
+    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                             bool disconnect_worker) override {
+      if (disconnect_worker) {
+        num_workers_disconnected++;
+      } else {
+        num_workers_returned++;
+      }
+      return Status::OK();
+    }
+
+    ray::Status RequestWorkerLease(
+        const ray::TaskSpecification &resource_spec,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
+      num_workers_requested += 1;
+      callbacks.push_back(callback);
+      if (!auto_grant_node_id.IsNil()) {
+        GrantWorkerLease("", 0, WorkerID::FromRandom(), auto_grant_node_id,
+                         ClientID::Nil());
+      }
+      return Status::OK();
+    }
+
+    // Trigger reply to RequestWorkerLease.
+    bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
+                          const ClientID &raylet_id, const ClientID &retry_at_raylet_id,
+                          Status status = Status::OK()) {
+      rpc::RequestWorkerLeaseReply reply;
+      if (!retry_at_raylet_id.IsNil()) {
+        reply.mutable_retry_at_raylet_address()->set_ip_address(address);
+        reply.mutable_retry_at_raylet_address()->set_port(port);
+        reply.mutable_retry_at_raylet_address()->set_raylet_id(
+            retry_at_raylet_id.Binary());
+      } else {
+        reply.mutable_worker_address()->set_ip_address(address);
+        reply.mutable_worker_address()->set_port(port);
+        reply.mutable_worker_address()->set_raylet_id(raylet_id.Binary());
+        reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
+      }
+      if (callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = callbacks.front();
+        callback(status, reply);
+        callbacks.pop_front();
+        return true;
+      }
+    }
+
+    ~MockRayletClient() {}
+
+    int num_workers_requested = 0;
+    int num_workers_returned = 0;
+    int num_workers_disconnected = 0;
+    ClientID auto_grant_node_id;
+    std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
+  };
+
+  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+   public:
+    using gcs::GcsActorScheduler::GcsActorScheduler;
+
+    void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
+      lease_client_factory_ = std::move(lease_client_factory);
+    }
+
+    void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
+      client_factory_ = std::move(client_factory);
+    }
+
+   protected:
+    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
+      ++num_retry_leasing_count_;
+      DoRetryLeasingWorkerFromNode(actor, node);
+    }
+
+    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<GcsLeasedWorker> worker) override {
+      ++num_retry_creating_count_;
+      DoRetryCreatingActorOnWorker(actor, worker);
+    }
+
+   public:
+    int num_retry_leasing_count_ = 0;
+    int num_retry_creating_count_ = 0;
   };
 
   class MockedActorInfoAccessor : public gcs::ActorInfoAccessor {
@@ -174,10 +203,6 @@ struct Mocker {
     Status AsyncUpdate(const ActorID &actor_id,
                        const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const gcs::StatusCallback &callback) override {
-      if (async_update_delegate) {
-        RAY_CHECK_OK(async_update_delegate(actor_id, data_ptr, callback));
-        return Status::OK();
-      }
       if (callback) {
         callback(Status::OK());
       }
@@ -338,16 +363,6 @@ struct Mocker {
     }
   };
 };
-
-std::function<Status(const rpc::Address &, std::unique_ptr<rpc::PushTaskRequest>,
-                     rpc::PushTaskReply *)>
-    Mocker::push_normal_task_delegate = nullptr;
-std::function<Status(const rpc::Address &, const ray::TaskSpecification &,
-                     ray::rpc::RequestWorkerLeaseReply *)>
-    Mocker::worker_lease_delegate = nullptr;
-std::function<Status(const ActorID &, const std::shared_ptr<rpc::ActorTableData> &,
-                     const gcs::StatusCallback &)>
-    Mocker::async_update_delegate = nullptr;
 
 }  // namespace ray
 

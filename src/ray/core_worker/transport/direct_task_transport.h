@@ -56,7 +56,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms,
       std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-          actor_create_helper = nullptr)
+          actor_create_callback = nullptr)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         client_factory_(client_factory),
@@ -65,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_create_callback_(std::move(actor_create_helper)) {}
+        actor_create_callback_(std::move(actor_create_callback)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///

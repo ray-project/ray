@@ -32,11 +32,39 @@ namespace gcs {
 /// This class is not thread-safe.
 class GcsActor {
  public:
-  /// Create a GcsActor
+  /// Create a GcsActor by actor_table_data.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   explicit GcsActor(rpc::ActorTableData actor_table_data)
       : actor_table_data_(std::move(actor_table_data)) {}
+
+  /// Create a GcsActor by CreateActorRequest.
+  ///
+  /// \param request Contains the actor creation task specification.
+  explicit GcsActor(const ray::rpc::CreateActorRequest &request) {
+    RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
+    actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
+    actor_table_data_.set_job_id(request.task_spec().job_id());
+    actor_table_data_.set_max_reconstructions(
+        actor_creation_task_spec.max_actor_reconstructions());
+    actor_table_data_.set_remaining_reconstructions(
+        actor_creation_task_spec.max_actor_reconstructions());
+
+    auto dummy_object =
+        TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
+    actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
+
+    actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
+    actor_table_data_.mutable_owner_address()->CopyFrom(
+        request.task_spec().caller_address());
+
+    actor_table_data_.set_state(rpc::ActorTableData::PENDING);
+    actor_table_data_.mutable_task_spec()->CopyFrom(request.task_spec());
+
+    actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
+    actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+  }
 
   /// Get the node id on which this actor is created.
   ClientID GetNodeID() const;
@@ -119,20 +147,6 @@ class GcsActorManager {
   /// again.
   void ReconstructActorOnWorker(const ClientID &node_id, const WorkerID &worker_id,
                                 bool need_reschedule = true);
-
-  /// Get all registered actors.
-  /// This method is used in unit test.
-  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetAllRegisteredActors()
-      const {
-    return registered_actors_;
-  }
-
-  /// Get all pending register callbacks.
-  /// This method is used in unit test.
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-      &GetRegisterCallbacks() const {
-    return actor_to_register_callbacks_;
-  }
 
  protected:
   /// Schedule actors in the `pending_actors_` queue.

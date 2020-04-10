@@ -15,346 +15,347 @@
 #include <ray/gcs/gcs_server/test/gcs_test_util.h>
 
 #include <memory>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {
+
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
-  explicit GcsActorSchedulerTest(size_t node_count = 1)
-      : node_count_(node_count), to_be_scheduled_actors_(actor_count_) {}
-
   void SetUp() override {
-    std::promise<bool> initialized;
-    io_thread_.reset(new std::thread([this, &initialized] {
-      Init();
-      initialized.set_value(true);
-      boost::asio::io_context::work worker(io_service_);
-      io_service_.run();
-    }));
-    Mocker::WaitForReady(initialized.get_future(), timeout_ms_);
-  }
-
-  void TearDown() override {
-    io_service_.stop();
-    io_thread_->join();
-  }
-
- protected:
-  void Init() {
+    raylet_client_ = std::make_shared<Mocker::MockRayletClient>();
+    worker_client_ = std::make_shared<Mocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_);
-
-    gcs_actor_scheduler_ = std::make_shared<gcs::GcsActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<Mocker::MockedGcsActorScheduler>(
         io_service_, actor_info_accessor_, *gcs_node_manager_,
+        /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor) {
-          actor->UpdateAddress(rpc::Address());
-          actor->UpdateState(rpc::ActorTableData::RECONSTRUCTING);
-          failed_actors_.emplace_back(std::move(actor));
-          TryNotify();
+          failure_actors_.emplace_back(std::move(actor));
         },
+        /*schedule_success_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor) {
-          actor->UpdateState(rpc::ActorTableData::ALIVE);
-          succeed_actors_.emplace_back(std::move(actor));
-          TryNotify();
+          success_actors_.emplace_back(std::move(actor));
         },
-        [](const rpc::Address &address) {
-          return std::make_shared<Mocker::MockedWorkerLeaseImpl>(address);
-        },
-        [](const rpc::Address &address) {
-          return std::make_shared<Mocker::MockedCoreWorkerClientImpl>(address);
-        });
-
-    // Init actors.
-    JobID job_id = JobID::FromInt(1);
-    for (size_t i = 0; i < actor_count_; ++i) {
-      auto actor_table_data = Mocker::GenActorTableData(job_id);
-      to_be_scheduled_actors_[i] =
-          std::make_shared<gcs::GcsActor>(std::move(*actor_table_data));
-    }
-
-    // Init nodes.
-    for (size_t i = 0; i < node_count_; ++i) {
-      gcs_node_manager_->AddNode(Mocker::GenNodeInfo());
-    }
-  }
-
-  void Run() {
-    // Schedule asynchronously.
-    io_service_.post([this] {
-      for (auto &actor : to_be_scheduled_actors_) {
-        gcs_actor_scheduler_->Schedule(actor);
-      }
-    });
-  }
-
-  void Wait() { Mocker::WaitForReady(promise_.get_future(), timeout_ms_); }
-
-  void RunAndWait() {
-    Run();
-    Wait();
-  }
-
-  void CancelOnNode(ClientID node_id) {
-    auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
-    canceled_actors_.insert(canceled_actors_.end(), actor_ids.begin(), actor_ids.end());
-    TryNotify();
-  }
-
-  void CancelOnWorker(ClientID node_id, WorkerID worker_id) {
-    auto actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-    if (!actor_id.IsNil()) {
-      canceled_actors_.emplace_back(actor_id);
-      TryNotify();
-    }
-  }
-
-  void TryNotify() {
-    if (canceled_actors_.size() + succeed_actors_.size() + failed_actors_.size() ==
-        actor_count_) {
-      promise_.set_value(true);
-    }
-  }
-
-  bool ElementsEqual(const std::vector<std::shared_ptr<gcs::GcsActor>> &expected,
-                     const std::vector<std::shared_ptr<gcs::GcsActor>> &target) const {
-    if (expected.size() != target.size()) {
-      return false;
-    }
-    for (auto &actor : expected) {
-      if (std::find(target.begin(), target.end(), actor) == target.end()) {
-        return false;
-      }
-    }
-    return true;
+        /*lease_client_factory=*/
+        [this](const rpc::Address &address) { return raylet_client_; },
+        /*client_factory=*/
+        [this](const rpc::Address &address) { return worker_client_; });
   }
 
  protected:
-  const size_t actor_count_ = 100;
-  size_t node_count_ = 1;
-
   boost::asio::io_service io_service_;
+  Mocker::MockedActorInfoAccessor actor_info_accessor_;
   Mocker::MockedNodeInfoAccessor node_info_accessor_;
   Mocker::MockedErrorInfoAccessor error_info_accessor_;
-  Mocker::MockedActorInfoAccessor actor_info_accessor_;
+
+  std::shared_ptr<Mocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<Mocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
-  std::unique_ptr<std::thread> io_thread_;
-  // Timeout waiting for gcs server reply, default is 5s
-  const uint64_t timeout_ms_ = 2000;
-
-  std::vector<std::shared_ptr<gcs::GcsActor>> to_be_scheduled_actors_;
-  std::vector<std::shared_ptr<gcs::GcsActor>> succeed_actors_;
-  std::vector<std::shared_ptr<gcs::GcsActor>> failed_actors_;
-  std::vector<ActorID> canceled_actors_;
-  std::promise<bool> promise_;
+  std::shared_ptr<Mocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
+  std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
 };
 
-class ZeroNodeTest : public GcsActorSchedulerTest {
- public:
-  ZeroNodeTest() : GcsActorSchedulerTest(0) {}
-};
+TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
+  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
-class OneNodeTest : public GcsActorSchedulerTest {
- public:
-  OneNodeTest() : GcsActorSchedulerTest(1) {}
-};
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-class TwoNodeTest : public GcsActorSchedulerTest {
- public:
-  TwoNodeTest() : GcsActorSchedulerTest(2) {}
-};
+  // Schedule the actor with zero node.
+  gcs_actor_scheduler_->Schedule(actor);
 
-TEST_F(ZeroNodeTest, GcsActorSchedulerTest) {
-  Mocker::Reset();
-  RunAndWait();
-
-  ASSERT_EQ(0, succeed_actors_.size());
-  ASSERT_TRUE(ElementsEqual(to_be_scheduled_actors_, failed_actors_));
+  // The lease request should not be send and the scheduling of actor should fail as there
+  // are no available nodes.
+  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(1, failure_actors_.size());
+  ASSERT_EQ(actor, failure_actors_.front());
 }
 
-TEST_F(OneNodeTest, TestLeaseWorkerSuccess) {
-  Mocker::Reset();
-  RunAndWait();
+TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_TRUE(ElementsEqual(to_be_scheduled_actors_, succeed_actors_));
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  std::unordered_set<ClientID> nodes;
-  for (auto &actor : succeed_actors_) {
-    nodes.emplace(actor->GetNodeID());
-  }
-  ASSERT_EQ(1, nodes.size());
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(1, success_actors_.size());
+  ASSERT_EQ(actor, success_actors_.front());
 }
 
-TEST_F(TwoNodeTest, TestLeaseWorkerSuccess) {
-  Mocker::Reset();
-  RunAndWait();
+TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_TRUE(ElementsEqual(to_be_scheduled_actors_, succeed_actors_));
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  std::unordered_set<ClientID> nodes;
-  for (auto &actor : succeed_actors_) {
-    nodes.emplace(actor->GetNodeID());
-  }
-  // Check all actors are created on the two nodes.
-  ASSERT_EQ(2, nodes.size());
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
+
+  // Mock a IOError reply, then the lease request will retry again.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil(), Status::IOError("")));
+  ASSERT_EQ(1, gcs_actor_scheduler_->num_retry_leasing_count_);
+  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(1, success_actors_.size());
+  ASSERT_EQ(actor, success_actors_.front());
 }
 
-TEST_F(TwoNodeTest, TestLeaseWorkerSpillbackToOneNode) {
-  Mocker::Reset();
+TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  auto &nodes = gcs_node_manager_->GetAllAliveNodes();
-  ASSERT_EQ(2, nodes.size());
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  auto iter = nodes.begin();
-  auto under_resourced_node_id = iter->first.Binary();
-  auto well_resourced_node_id = (++iter)->first.Binary();
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  Mocker::worker_lease_delegate = [under_resourced_node_id, well_resourced_node_id](
-                                      const rpc::Address &node_address,
-                                      const TaskSpecification &task_spec,
-                                      rpc::RequestWorkerLeaseReply *reply) {
-    if (node_address.raylet_id() == under_resourced_node_id) {
-      reply->mutable_retry_at_raylet_address()->set_raylet_id(well_resourced_node_id);
-    } else {
-      reply->mutable_worker_address()->set_raylet_id(well_resourced_node_id);
-      reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    }
-    return Status::OK();
-  };
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
-  RunAndWait();
+  // Reply a IOError, then the actor creation request will retry again.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
+  ASSERT_EQ(1, gcs_actor_scheduler_->num_retry_creating_count_);
+  ASSERT_EQ(1, worker_client_->callbacks.size());
 
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_TRUE(ElementsEqual(to_be_scheduled_actors_, succeed_actors_));
-
-  for (auto &actor : succeed_actors_) {
-    ASSERT_EQ(well_resourced_node_id, actor->GetNodeID().Binary());
-  }
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(1, success_actors_.size());
+  ASSERT_EQ(actor, success_actors_.front());
 }
 
-TEST_F(TwoNodeTest, TestNetworkErrorOnAllNodes) {
-  Mocker::Reset();
+TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  Mocker::worker_lease_delegate =
-      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
-         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  RunAndWait();
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
 
-  ASSERT_EQ(0, succeed_actors_.size());
-  ASSERT_EQ(0, failed_actors_.size());
+  // Remove the node and cancel the scheduling on this node, the scheduling should be
+  // interrupted.
+  gcs_node_manager_->RemoveNode(node_id);
+  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
+  auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
+  ASSERT_EQ(1, actor_ids.size());
+  ASSERT_EQ(actor->GetActorID(), actor_ids.front());
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+
+  // Grant a worker, which will influence nothing.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
+
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(TwoNodeTest, TestOneNodeFailed) {
-  Mocker::Reset();
+TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  auto &nodes = gcs_node_manager_->GetAllAliveNodes();
-  ASSERT_EQ(2, nodes.size());
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  auto iter = nodes.begin();
-  auto failed_node_id = iter->first;
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  Mocker::worker_lease_delegate = [failed_node_id](const rpc::Address &node_address,
-                                                   const TaskSpecification &task_spec,
-                                                   rpc::RequestWorkerLeaseReply *reply) {
-    auto node_id = ClientID::FromBinary(node_address.raylet_id());
-    if (node_id == failed_node_id) {
-      return Status::IOError("IO Error!");
-    }
-    reply->mutable_worker_address()->set_raylet_id(node_address.raylet_id());
-    reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    return Status::OK();
-  };
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
 
-  Run();
+  // Remove the node and cancel the scheduling on this node, the scheduling should be
+  // interrupted.
+  gcs_node_manager_->RemoveNode(node_id);
+  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
+  auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
+  ASSERT_EQ(1, actor_ids.size());
+  ASSERT_EQ(actor->GetActorID(), actor_ids.front());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
 
-  execute_after(io_service_,
-                [this, failed_node_id] {
-                  ASSERT_NE(0, succeed_actors_.size());
-                  ASSERT_NE(actor_count_, succeed_actors_.size());
-                  ASSERT_EQ(0, failed_actors_.size());
-                  ASSERT_EQ(0, canceled_actors_.size());
-                  gcs_node_manager_->RemoveNode(failed_node_id);
-                  CancelOnNode(failed_node_id);
-                },
-                500);
+  // Reply the actor creation request, which will influence nothing.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
-  Wait();
-
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_NE(0, succeed_actors_.size());
-  ASSERT_NE(0, canceled_actors_.size());
-  ASSERT_EQ(actor_count_, canceled_actors_.size() + succeed_actors_.size());
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(TwoNodeTest, TestTwoNodeFailed) {
-  Mocker::Reset();
+TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  Mocker::worker_lease_delegate =
-      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
-         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  Run();
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  execute_after(io_service_,
-                [this] {
-                  ASSERT_EQ(0, succeed_actors_.size());
-                  ASSERT_EQ(0, failed_actors_.size());
-                  ASSERT_EQ(0, canceled_actors_.size());
-                  auto nodes = gcs_node_manager_->GetAllAliveNodes();
-                  for (auto &node : nodes) {
-                    gcs_node_manager_->RemoveNode(node.first);
-                    CancelOnNode(node.first);
-                  }
-                },
-                500);
+  // Grant a worker, then the actor creation request should be send to the worker.
+  auto worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
 
-  Wait();
+  // Cancel the scheduling on this node, the scheduling should be interrupted.
+  ASSERT_EQ(actor->GetActorID(),
+            gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
+  ASSERT_EQ(1, worker_client_->callbacks.size());
 
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_EQ(0, succeed_actors_.size());
-  ASSERT_EQ(actor_count_, canceled_actors_.size());
+  // Reply the actor creation request, which will influence nothing.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
+
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(TwoNodeTest, TestPartialWorkerFailed) {
-  Mocker::Reset();
+TEST_F(GcsActorSchedulerTest, TestSpillback) {
+  auto node1 = Mocker::GenNodeInfo();
+  auto node_id_1 = ClientID::FromBinary(node1->node_id());
+  gcs_node_manager_->AddNode(node1);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  Mocker::push_normal_task_delegate = [](const rpc::Address &worker_address,
-                                         std::unique_ptr<rpc::PushTaskRequest> request,
-                                         rpc::PushTaskReply *reply) {
-    auto actor_id =
-        ActorID::FromBinary(request->task_spec().actor_creation_task_spec().actor_id());
-    if (actor_id.Hash() % 2 == 0) {
-      return Status::IOError("IO Error!");
-    }
-    return Status::OK();
-  };
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
 
-  Run();
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  execute_after(io_service_,
-                [this] {
-                  auto node_to_workers =
-                      gcs_actor_scheduler_->GetWorkersInPhaseOfCreating();
-                  ASSERT_NE(0, node_to_workers.size());
-                  for (auto &node_entry : node_to_workers) {
-                    for (auto &worker_entry : node_entry.second) {
-                      if (worker_entry.second->GetAssignedActorID().Hash() % 2 == 0) {
-                        CancelOnWorker(node_entry.first, worker_entry.first);
-                      }
-                    }
-                  }
-                },
-                500);
+  // Add another node.
+  auto node2 = Mocker::GenNodeInfo();
+  auto node_id_2 = ClientID::FromBinary(node2->node_id());
+  gcs_node_manager_->AddNode(node2);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
-  Wait();
+  // Grant with a spillback node(node2), and the lease request should be send to the
+  // node2.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
+                                               node2->node_manager_port(),
+                                               WorkerID::Nil(), node_id_1, node_id_2));
+  ASSERT_EQ(2, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  ASSERT_EQ(0, failed_actors_.size());
-  ASSERT_NE(0, succeed_actors_.size());
-  ASSERT_EQ(actor_count_, canceled_actors_.size() + succeed_actors_.size());
+  // Grant a worker, then the actor creation request should be send to the worker.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node2->node_manager_address(), node2->node_manager_port(), WorkerID::FromRandom(),
+      node_id_2, ClientID::Nil()));
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(1, worker_client_->callbacks.size());
+
+  // Reply the actor creation request, then the actor should be scheduled successfully.
+  ASSERT_TRUE(worker_client_->ReplyPushTask());
+  ASSERT_EQ(0, worker_client_->callbacks.size());
+
+  ASSERT_EQ(node_id_2, actor->GetNodeID());
+
+  ASSERT_EQ(0, failure_actors_.size());
+  ASSERT_EQ(1, success_actors_.size());
+  ASSERT_EQ(actor, success_actors_.front());
 }
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

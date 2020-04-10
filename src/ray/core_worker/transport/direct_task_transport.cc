@@ -22,8 +22,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (RayConfig::instance().gcs_service_enabled() && task_spec.IsActorCreationTask()) {
-      RAY_CHECK(actor_create_callback_ != nullptr);
+    if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to gcs
       // server directly after the in-memory dependent objects are resolved.
       // For more details please see the protocol of actor management based on gcs.

@@ -18,366 +18,151 @@
 #include "gtest/gtest.h"
 
 namespace ray {
+
+class MockedGcsActorManager : public gcs::GcsActorManager {
+ public:
+  explicit MockedGcsActorManager(boost::asio::io_context &io_context,
+                                 gcs::ActorInfoAccessor &actor_info_accessor,
+                                 gcs::GcsNodeManager &gcs_node_manager,
+                                 gcs::LeaseClientFactoryFn lease_client_factory = nullptr,
+                                 rpc::ClientFactoryFn client_factory = nullptr)
+      : gcs::GcsActorManager(io_context, actor_info_accessor, gcs_node_manager,
+                             lease_client_factory, client_factory) {
+    gcs_actor_scheduler_.reset(new Mocker::MockedGcsActorScheduler(
+        io_context, actor_info_accessor, gcs_node_manager,
+        /*schedule_failure_handler=*/
+        [this](std::shared_ptr<gcs::GcsActor> actor) {
+          // When there are no available nodes to schedule the actor the
+          // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+          // this case, the actor should be appended to the `pending_actors_` and wait
+          // for the registration of new node.
+          pending_actors_.emplace_back(std::move(actor));
+        },
+        /*schedule_success_handler=*/
+        [this](std::shared_ptr<gcs::GcsActor> actor) {
+          OnActorCreateSuccess(std::move(actor));
+        },
+        std::move(lease_client_factory), std::move(client_factory)));
+  }
+
+ public:
+  void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
+    auto gcs_actor_scheduler =
+        dynamic_cast<Mocker::MockedGcsActorScheduler *>(gcs_actor_scheduler_.get());
+    gcs_actor_scheduler->ResetLeaseClientFactory(std::move(lease_client_factory));
+  }
+
+  void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
+    auto gcs_actor_scheduler =
+        dynamic_cast<Mocker::MockedGcsActorScheduler *>(gcs_actor_scheduler_.get());
+    gcs_actor_scheduler->ResetClientFactory(std::move(client_factory));
+  }
+
+  const absl::flat_hash_map<ActorID, std::shared_ptr<gcs::GcsActor>>
+      &GetAllRegisteredActors() const {
+    return registered_actors_;
+  }
+
+  const std::vector<std::shared_ptr<gcs::GcsActor>> &GetAllPendingActors() const {
+    return pending_actors_;
+  }
+};
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  explicit GcsActorManagerTest(int node_count = 1) : node_count_(node_count) {}
-
   void SetUp() override {
-    std::promise<bool> initialized;
-    io_thread_.reset(new std::thread([this, &initialized] {
-      Init();
-      initialized.set_value(true);
-      boost::asio::io_context::work worker(io_service_);
-      io_service_.run();
-    }));
-    Mocker::WaitForReady(initialized.get_future(), timeout_ms_);
-  }
-
-  void TearDown() override {
-    io_service_.stop();
-    io_thread_->join();
-  }
-
- protected:
-  void Init() {
+    raylet_client_ = std::make_shared<Mocker::MockRayletClient>();
+    worker_client_ = std::make_shared<Mocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_);
-    gcs_actor_manager_ = std::make_shared<gcs::GcsActorManager>(
+    gcs_actor_manager_ = std::make_shared<MockedGcsActorManager>(
         io_service_, actor_info_accessor_, *gcs_node_manager_,
-        [](const rpc::Address &address) {
-          return std::make_shared<Mocker::MockedWorkerLeaseImpl>(address);
-        },
-        [](const rpc::Address &address) {
-          return std::make_shared<Mocker::MockedCoreWorkerClientImpl>(address);
-        });
-    // Init nodes.
-    for (size_t i = 0; i < node_count_; ++i) {
-      gcs_node_manager_->AddNode(Mocker::GenNodeInfo());
-    }
-  }
-
-  void Run() {
-    // Schedule asynchronously.
-    io_service_.post([this] {
-      JobID job_id = JobID::FromInt(1);
-      for (size_t i = 0; i < actor_count_; ++i) {
-        gcs_actor_manager_->RegisterActor(Mocker::GenCreateActorRequest(job_id),
-                                          [](std::shared_ptr<gcs::GcsActor>) {});
-      }
-    });
-  }
-
-  bool WaitForCondition(std::function<bool()> condition) {
-    AsyncCheck(condition, 50);
-    return Mocker::WaitForReady(promise_.get_future(), timeout_ms_);
-  }
-
-  void AsyncCheck(std::function<bool()> condition, uint32_t interval_ms) {
-    if (condition == nullptr) {
-      return;
-    }
-    execute_after(io_service_,
-                  [this, condition, interval_ms] {
-                    if (condition()) {
-                      promise_.set_value(true);
-                    } else {
-                      AsyncCheck(condition, interval_ms);
-                    }
-                  },
-                  interval_ms);
-  }
-
-  bool IsAllRegisteredActorsAlive() {
-    auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-    for (auto &entry : actors) {
-      if (entry.second->GetState() != rpc::ActorTableData::ALIVE) {
-        return false;
-      }
-    }
-    return true;
+        /*lease_client_factory=*/
+        [this](const rpc::Address &address) { return raylet_client_; },
+        /*client_factory=*/
+        [this](const rpc::Address &address) { return worker_client_; });
   }
 
  protected:
-  const size_t actor_count_ = 100;
-  size_t node_count_ = 1;
-
-  // Timeout waiting for gcs server reply, default is 5s
-  const uint64_t timeout_ms_ = 2000;
-  std::promise<bool> promise_;
-
   boost::asio::io_service io_service_;
+  Mocker::MockedActorInfoAccessor actor_info_accessor_;
   Mocker::MockedNodeInfoAccessor node_info_accessor_;
   Mocker::MockedErrorInfoAccessor error_info_accessor_;
-  Mocker::MockedActorInfoAccessor actor_info_accessor_;
+
+  std::shared_ptr<Mocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<Mocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsActorManager> gcs_actor_manager_;
-  std::unique_ptr<std::thread> io_thread_;
+  std::shared_ptr<MockedGcsActorManager> gcs_actor_manager_;
 };
 
-class ZeroNodeTest : public GcsActorManagerTest {
- public:
-  ZeroNodeTest() : GcsActorManagerTest(0) {}
-};
-
-class OneNodeTest : public GcsActorManagerTest {
- public:
-  OneNodeTest() : GcsActorManagerTest(1) {}
-};
-
-class TwoNodeTest : public GcsActorManagerTest {
- public:
-  TwoNodeTest() : GcsActorManagerTest(2) {}
-};
-
-TEST_F(ZeroNodeTest, TestSchedule) {
-  Mocker::Reset();
-
-  Run();
-  WaitForCondition(nullptr);
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_TRUE(entry.second->GetNodeID().IsNil());
-    ASSERT_TRUE(entry.second->GetWorkerID().IsNil());
-  }
-}
-
-TEST_F(ZeroNodeTest, TestDuplicateRegisteration) {
-  std::promise<bool> promise;
-  io_service_.post([this, &promise] {
-    const auto &actor_to_register_callbacks = gcs_actor_manager_->GetRegisterCallbacks();
-    const auto &registerd_actors = gcs_actor_manager_->GetAllRegisteredActors();
-
-    int flushed_count = 0;
-    gcs::StatusCallback on_flush_success;
-    Mocker::async_update_delegate =
-        [&on_flush_success, &flushed_count](
-            const ActorID &actor_id, const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-            const gcs::StatusCallback &callback) {
-          on_flush_success = callback;
-          ++flushed_count;
-          return ray::Status::OK();
-        };
-
-    int callback_invoked_count = 0;
-    JobID job_id = JobID::FromInt(1);
-    auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-    auto actor_id = ActorID::FromBinary(
-        create_actor_request.task_spec().actor_creation_task_spec().actor_id());
-
-    for (int i = 0; i < 10; ++i) {
-      gcs_actor_manager_->RegisterActor(
-          create_actor_request,
-          [&callback_invoked_count](const std::shared_ptr<gcs::GcsActor> &) {
-            ++callback_invoked_count;
-          });
-    }
-    ASSERT_EQ(1, flushed_count);
-    ASSERT_EQ(0, callback_invoked_count);
-    ASSERT_EQ(1, actor_to_register_callbacks.size());
-    ASSERT_EQ(10, actor_to_register_callbacks.at(actor_id).size());
-    ASSERT_EQ(0, registerd_actors.size());
-    ASSERT_NE(nullptr, on_flush_success);
-
-    on_flush_success(ray::Status::OK());
-    ASSERT_EQ(1, flushed_count);
-    ASSERT_EQ(10, callback_invoked_count);
-    ASSERT_EQ(0, actor_to_register_callbacks.size());
-    ASSERT_EQ(1, registerd_actors.size());
-
-    gcs_actor_manager_->RegisterActor(
-        create_actor_request,
-        [&callback_invoked_count](const std::shared_ptr<gcs::GcsActor> &) {
-          ++callback_invoked_count;
-        });
-    ASSERT_EQ(1, flushed_count);
-    ASSERT_EQ(11, callback_invoked_count);
-    ASSERT_EQ(0, actor_to_register_callbacks.size());
-    ASSERT_EQ(1, gcs_actor_manager_->GetAllRegisteredActors().size());
-
-    promise.set_value(true);
+TEST_F(GcsActorManagerTest, TestNormalFlow) {
+  gcs_actor_manager_->ResetLeaseClientFactory([this](const rpc::Address &address) {
+    raylet_client_->auto_grant_node_id = ClientID::FromBinary(address.raylet_id());
+    return raylet_client_;
   });
-  Mocker::WaitForReady(promise.get_future(), 3000);
-}
+  gcs_actor_manager_->ResetClientFactory([this](const rpc::Address &address) {
+    worker_client_->enable_auto_reply = true;
+    return worker_client_;
+  });
 
-TEST_F(OneNodeTest, TestLeaseWorkerSuccess) {
-  Mocker::Reset();
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/2);
+  std::vector<std::shared_ptr<gcs::GcsActor>> registered_actors;
+  gcs_actor_manager_->RegisterActor(
+      create_actor_request, [&registered_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        registered_actors.emplace_back(actor);
+      });
 
-  Run();
-  ASSERT_TRUE(WaitForCondition([this] { return IsAllRegisteredActorsAlive(); }));
+  ASSERT_EQ(1, registered_actors.size());
+  ASSERT_EQ(1, gcs_actor_manager_->GetAllRegisteredActors().size());
+  ASSERT_EQ(1, gcs_actor_manager_->GetAllPendingActors().size());
 
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_FALSE(entry.second->GetNodeID().IsNil());
-    ASSERT_FALSE(entry.second->GetWorkerID().IsNil());
-  }
-}
+  auto actor = registered_actors.front();
+  ASSERT_EQ(rpc::ActorTableData::PENDING, actor->GetState());
 
-TEST_F(TwoNodeTest, TestLeaseWorkerSuccess) {
-  Mocker::Reset();
+  // Add node_1 and then check if the actor is in state `ALIVE`
+  auto node_1 = Mocker::GenNodeInfo();
+  auto node_id_1 = ClientID::FromBinary(node_1->node_id());
+  gcs_node_manager_->AddNode(node_1);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+  ASSERT_EQ(0, gcs_actor_manager_->GetAllPendingActors().size());
+  ASSERT_EQ(rpc::ActorTableData::ALIVE, actor->GetState());
+  ASSERT_EQ(node_id_1, actor->GetNodeID());
 
-  Run();
-  ASSERT_TRUE(WaitForCondition([this] { return IsAllRegisteredActorsAlive(); }));
+  // Remove node_1 and then check if the actor is in state `RECONSTRUCTING`
+  gcs_node_manager_->RemoveNode(node_id_1);
+  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
+  ASSERT_EQ(1, gcs_actor_manager_->GetAllPendingActors().size());
+  ASSERT_EQ(rpc::ActorTableData::RECONSTRUCTING, actor->GetState());
 
-  std::unordered_set<ClientID> nodes;
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_FALSE(entry.second->GetNodeID().IsNil());
-    ASSERT_FALSE(entry.second->GetWorkerID().IsNil());
-    nodes.emplace(entry.second->GetNodeID());
-  }
-  // Check all actors are created on the two nodes.
-  ASSERT_EQ(2, nodes.size());
-}
+  // Add node_2 and then check if the actor is alive again.
+  auto node_2 = Mocker::GenNodeInfo();
+  auto node_id_2 = ClientID::FromBinary(node_2->node_id());
+  gcs_node_manager_->AddNode(node_2);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+  ASSERT_EQ(0, gcs_actor_manager_->GetAllPendingActors().size());
+  ASSERT_EQ(rpc::ActorTableData::ALIVE, actor->GetState());
+  ASSERT_EQ(node_id_2, actor->GetNodeID());
 
-TEST_F(TwoNodeTest, TestLeaseWorkerSpillbackToOneNode) {
-  Mocker::Reset();
+  // Add node_3.
+  auto node_3 = Mocker::GenNodeInfo();
+  auto node_id_3 = ClientID::FromBinary(node_3->node_id());
+  gcs_node_manager_->AddNode(node_3);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
-  auto &nodes = gcs_node_manager_->GetAllAliveNodes();
-  ASSERT_EQ(2, nodes.size());
+  // Remove node_2 and then check if the actor drift to node_3.
+  gcs_node_manager_->RemoveNode(node_id_2);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+  ASSERT_EQ(0, gcs_actor_manager_->GetAllPendingActors().size());
+  ASSERT_EQ(rpc::ActorTableData::ALIVE, actor->GetState());
+  ASSERT_EQ(node_id_3, actor->GetNodeID());
 
-  auto iter = nodes.begin();
-  auto under_resourced_node_id = iter->first.Binary();
-  auto well_resourced_node_id = (++iter)->first.Binary();
-
-  Mocker::worker_lease_delegate = [under_resourced_node_id, well_resourced_node_id](
-                                      const rpc::Address &node_address,
-                                      const TaskSpecification &task_spec,
-                                      rpc::RequestWorkerLeaseReply *reply) {
-    if (node_address.raylet_id() == under_resourced_node_id) {
-      reply->mutable_retry_at_raylet_address()->set_raylet_id(well_resourced_node_id);
-    } else {
-      reply->mutable_worker_address()->set_raylet_id(well_resourced_node_id);
-      reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    }
-    return Status::OK();
-  };
-
-  Run();
-  ASSERT_TRUE(WaitForCondition([this] { return IsAllRegisteredActorsAlive(); }));
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_EQ(well_resourced_node_id, entry.second->GetNodeID().Binary());
-    ASSERT_FALSE(entry.second->GetWorkerID().IsNil());
-  }
-}
-
-TEST_F(TwoNodeTest, TestNetworkErrorOnAllNodes) {
-  Mocker::Reset();
-
-  Mocker::worker_lease_delegate =
-      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
-         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
-
-  Run();
-  ASSERT_FALSE(WaitForCondition([this] { return IsAllRegisteredActorsAlive(); }));
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_NE(rpc::ActorTableData::ALIVE, entry.second->GetState());
-    ASSERT_TRUE(entry.second->GetWorkerID().IsNil());
-  }
-}
-
-TEST_F(TwoNodeTest, TestOneNodeFailed) {
-  Mocker::Reset();
-
-  auto &nodes = gcs_node_manager_->GetAllAliveNodes();
-  ASSERT_EQ(2, nodes.size());
-
-  auto iter = nodes.begin();
-  auto failed_node_id = iter->first;
-
-  Mocker::worker_lease_delegate = [failed_node_id](const rpc::Address &node_address,
-                                                   const TaskSpecification &task_spec,
-                                                   rpc::RequestWorkerLeaseReply *reply) {
-    auto node_id = ClientID::FromBinary(node_address.raylet_id());
-    if (node_id == failed_node_id) {
-      return Status::IOError("IO Error!");
-    }
-    reply->mutable_worker_address()->set_raylet_id(node_address.raylet_id());
-    reply->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    return Status::OK();
-  };
-
-  Run();
-
-  execute_after(io_service_,
-                [this, failed_node_id] { gcs_node_manager_->RemoveNode(failed_node_id); },
-                500);
-
-  ASSERT_TRUE(WaitForCondition([this] {
-    return gcs_node_manager_->GetAllAliveNodes().size() == 1 &&
-           IsAllRegisteredActorsAlive();
-  }));
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_NE(failed_node_id, entry.second->GetNodeID());
-  }
-}
-
-TEST_F(TwoNodeTest, TestTwoNodeFailed) {
-  Mocker::Reset();
-
-  Mocker::worker_lease_delegate =
-      [](const rpc::Address &node_address, const TaskSpecification &task_spec,
-         rpc::RequestWorkerLeaseReply *reply) { return Status::IOError("IO Error!"); };
-
-  Run();
-
-  execute_after(io_service_,
-                [this] {
-                  auto nodes = gcs_node_manager_->GetAllAliveNodes();
-                  for (auto &node : nodes) {
-                    gcs_node_manager_->RemoveNode(node.first);
-                  }
-                },
-                500);
-
-  ASSERT_TRUE(
-      WaitForCondition([this] { return gcs_node_manager_->GetAllAliveNodes().empty(); }));
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_NE(rpc::ActorTableData::ALIVE, entry.second->GetState());
-    ASSERT_TRUE(entry.second->GetNodeID().IsNil());
-    ASSERT_TRUE(entry.second->GetWorkerID().IsNil());
-  }
-}
-
-TEST_F(TwoNodeTest, TestPartialWorkerFailed) {
-  Mocker::Reset();
-  Run();
-
-  std::vector<std::pair<ClientID, WorkerID>> to_be_killed;
-  execute_after(io_service_,
-                [this, &to_be_killed] {
-                  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-                  for (auto &entry : actors) {
-                    ASSERT_EQ(rpc::ActorTableData::ALIVE, entry.second->GetState());
-                    auto node_id = entry.second->GetNodeID();
-                    auto worker_id = entry.second->GetWorkerID();
-                    ASSERT_FALSE(node_id.IsNil());
-                    ASSERT_FALSE(worker_id.IsNil());
-                    if (worker_id.Hash() % 2 == 0) {
-                      to_be_killed.emplace_back(std::make_pair(node_id, worker_id));
-                      gcs_actor_manager_->ReconstructActorOnWorker(node_id, worker_id);
-                      ASSERT_EQ(rpc::ActorTableData::RECONSTRUCTING,
-                                entry.second->GetState());
-                    }
-                  }
-                },
-                1000);
-
-  ASSERT_TRUE(WaitForCondition([this] { return IsAllRegisteredActorsAlive(); }));
-
-  auto &actors = gcs_actor_manager_->GetAllRegisteredActors();
-  for (auto &entry : actors) {
-    ASSERT_FALSE(entry.second->GetNodeID().IsNil());
-    ASSERT_FALSE(entry.second->GetWorkerID().IsNil());
-  }
+  // Remove node_3 and then check if the actor is dead.
+  gcs_node_manager_->RemoveNode(node_id_3);
+  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
+  ASSERT_EQ(0, gcs_actor_manager_->GetAllPendingActors().size());
+  ASSERT_EQ(rpc::ActorTableData::DEAD, actor->GetState());
 }
 
 }  // namespace ray

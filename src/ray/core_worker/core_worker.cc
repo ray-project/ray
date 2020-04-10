@@ -395,6 +395,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     return std::shared_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
+
+  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
+      actor_create_callback = nullptr;
+  if (RayConfig::instance().gcs_service_enabled()) {
+    actor_create_callback = [this](const TaskSpecification &task_spec,
+                                   const gcs::StatusCallback &callback) {
+      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+    };
+  }
+
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
@@ -410,10 +420,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           },
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
-          [this](const TaskSpecification &task_spec,
-                 const gcs::StatusCallback &callback) {
-            return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-          }));
+          std::move(actor_create_callback)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {

@@ -134,35 +134,14 @@ void GcsActorManager::RegisterActor(
   // Mark the callback as pending and invoke it after the related actor is flushed.
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
 
-  // TODO(ZhuSenlin):
-  auto actor_table_data = std::make_shared<rpc::ActorTableData>();
-  actor_table_data->set_actor_id(actor_id.Binary());
-  actor_table_data->set_job_id(request.task_spec().job_id());
-  actor_table_data->set_max_reconstructions(
-      actor_creation_task_spec.max_actor_reconstructions());
-  actor_table_data->set_remaining_reconstructions(
-      actor_creation_task_spec.max_actor_reconstructions());
-
-  auto dummy_object = TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
-  actor_table_data->set_actor_creation_dummy_object_id(dummy_object);
-
-  actor_table_data->set_is_detached(actor_creation_task_spec.is_detached());
-  actor_table_data->mutable_owner_address()->CopyFrom(
-      request.task_spec().caller_address());
-
-  actor_table_data->set_state(rpc::ActorTableData::PENDING);
-  actor_table_data->mutable_task_spec()->CopyFrom(request.task_spec());
-
-  actor_table_data->mutable_address()->set_raylet_id(ClientID::Nil().Binary());
-  actor_table_data->mutable_address()->set_worker_id(WorkerID::Nil().Binary());
-
-  auto actor = std::make_shared<GcsActor>(*actor_table_data);
+  auto actor = std::make_shared<GcsActor>(request);
+  auto actor_table_data =
+      std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
       actor_id, actor_table_data, [this, actor](Status status) {
         RAY_CHECK_OK(status);
         RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
-        gcs_actor_scheduler_->Schedule(actor);
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
@@ -172,6 +151,7 @@ void GcsActorManager::RegisterActor(
           callback(actor);
         }
         actor_to_register_callbacks_.erase(iter);
+        gcs_actor_scheduler_->Schedule(actor);
       }));
 }
 
@@ -183,9 +163,8 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
   auto actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
   if (!actor_id.IsNil()) {
     auto iter = registered_actors_.find(actor_id);
-    if (iter != registered_actors_.end()) {
-      actor = iter->second;
-    }
+    RAY_CHECK(iter != registered_actors_.end());
+    actor = iter->second;
   } else {
     // Find from worker_to_created_actor_.
     auto iter = worker_to_created_actor_.find(worker_id);
@@ -239,15 +218,17 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
   RAY_CHECK(actor != nullptr);
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
-  RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
-                   << worker_id << " at node " << node_id
-                   << ", need_reschedule = " << need_reschedule;
   actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_reconstructions` to 0
   // so that the actor will never be rescheduled.
   auto remaining_reconstructions =
       need_reschedule ? mutable_actor_table_data->remaining_reconstructions() : 0;
+  RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
+                   << worker_id << " at node " << node_id
+                   << ", need_reschedule = " << need_reschedule
+                   << ", remaining_reconstructions = " << remaining_reconstructions;
+
   if (remaining_reconstructions > 0) {
     mutable_actor_table_data->set_remaining_reconstructions(--remaining_reconstructions);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RECONSTRUCTING);
@@ -294,7 +275,6 @@ void GcsActorManager::SchedulePendingActors() {
   RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = " << pending_actors_.size();
   auto actors = std::move(pending_actors_);
   for (auto &actor : actors) {
-    // TODO(ZhuSenlin): This loop maybe inefficient, it will be optimized later.
     gcs_actor_scheduler_->Schedule(std::move(actor));
   }
 }
