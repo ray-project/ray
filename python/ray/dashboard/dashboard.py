@@ -5,6 +5,7 @@ except ImportError:
     import sys
     sys.exit(1)
 
+import argparse
 import copy
 import datetime
 import errno
@@ -26,6 +27,7 @@ from typing import Dict
 import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
+import ray.ray_constants as ray_constants
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -259,6 +261,8 @@ class DashboardController(BaseDashboardController):
     def start_collecting_metrics(self):
         self.node_stats.start()
         self.raylet_stats.start()
+        if Analysis is not None:
+            self.tune_stats.start()
 
 
 class DashboardRouteHandler(BaseDashboardRouteHandler):
@@ -270,7 +274,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
     def forbidden(self) -> aiohttp.web.Response:
         return aiohttp.web.Response(status=403, text="403 Forbidden")
 
-    def get_forbidden(self, _) -> aiohttp.web.Response:
+    async def get_forbidden(self, _) -> aiohttp.web.Response:
         return self.forbidden()
 
     async def get_index(self, req) -> aiohttp.web.Response:
@@ -396,10 +400,9 @@ class MetricsExportHandler:
 def setup_metrics_export_routes(app: aiohttp.web.Application,
                                 handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
-    app.router.add_get("/api/enable_metrics_export",
-                       handler.enable_export_metrics)
-    app.router.add_get("/api/dashboard_url", handler.get_dashboard_address)
-    app.router.add_get("/dashboard", handler.redirect_to_dashboard)
+    app.router.add_get("/api/metrics/enable", handler.enable_export_metrics)
+    app.router.add_get("/api/metrics/url", handler.get_dashboard_address)
+    app.router.add_get("/metrics/redirect", handler.redirect_to_dashboard)
 
 
 def setup_static_dir(app):
@@ -547,7 +550,7 @@ class Dashboard:
         if not result and error:
             url = ray.services.get_webui_url_from_redis(self.redis_client)
             error += (" Please reenable the metrics export by going to "
-                      "the url: {}/api/enable_metrics_export".format(url))
+                      "the url: {}/api/metrics/enable".format(url))
             ray.utils.push_error_to_driver_through_redis(
                 self.redis_client, "metrics export failed", error)
 
@@ -959,13 +962,17 @@ class TuneCollector(threading.Thread):
         self._reload_interval = reload_interval
         self._available = False
         self._tensor_board_started = False
+        self._errors = {}
 
         os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 
     def get_stats(self):
         with self._data_lock:
-            return {"trial_records": copy.deepcopy(self._trial_records)}
+            return {
+                "trial_records": copy.deepcopy(self._trial_records),
+                "errors": copy.deepcopy(self._errors)
+            }
 
     def get_availability(self):
         with self._data_lock:
@@ -977,12 +984,39 @@ class TuneCollector(threading.Thread):
                 self.collect()
             time.sleep(self._reload_interval)
 
+    def collect_errors(self, job_name, df):
+        sub_dirs = os.listdir(os.path.join(self._logdir, job_name))
+        trial_names = filter(
+            lambda d: os.path.isdir(os.path.join(self._logdir, job_name, d)),
+            sub_dirs)
+        for trial in trial_names:
+            error_path = os.path.join(self._logdir, job_name, trial,
+                                      "error.txt")
+            if os.path.isfile(error_path):
+                self._available = True
+                with open(error_path) as f:
+                    text = f.read()
+                    self._errors[str(trial)] = {
+                        "text": text,
+                        "job_id": job_name,
+                        "trial_id": "No Trial ID"
+                    }
+                    other_data = df[df["logdir"].str.contains(trial)]
+                    if len(other_data) > 0:
+                        trial_id = other_data["trial_id"].values[0]
+                        self._errors[str(trial)]["trial_id"] = str(trial_id)
+                        if str(trial_id) in self._trial_records.keys():
+                            self._trial_records[str(trial_id)]["error"] = text
+                            self._trial_records[str(trial_id)][
+                                "status"] = "ERROR"
+
     def collect(self):
         """
         Collects and cleans data on the running Tune experiment from the
         Tune logs so that users can see this information in the front-end
         client
         """
+
         sub_dirs = os.listdir(self._logdir)
         job_names = filter(
             lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
@@ -993,7 +1027,8 @@ class TuneCollector(threading.Thread):
         for job_name in job_names:
             analysis = Analysis(str(os.path.join(self._logdir, job_name)))
             df = analysis.dataframe()
-            if len(df) == 0:
+
+            if len(df) == 0 or "trial_id" not in df.columns:
                 continue
 
             # start TensorBoard server if not started yet
@@ -1006,17 +1041,26 @@ class TuneCollector(threading.Thread):
             self._available = True
 
             # make sure that data will convert to JSON without error
-            df["trial_id"] = df["trial_id"].astype(str)
+            df["trial_id_key"] = df["trial_id"].astype(str)
             df = df.fillna(0)
 
+            trial_ids = df["trial_id"]
+            for i, value in df["trial_id"].iteritems():
+                if type(value) != str and type(value) != int:
+                    trial_ids[i] = int(value)
+
+            df["trial_id"] = trial_ids
+
             # convert df to python dict
-            df = df.set_index("trial_id")
+            df = df.set_index("trial_id_key")
             trial_data = df.to_dict(orient="index")
 
             # clean data and update class attribute
             if len(trial_data) > 0:
                 trial_data = self.clean_trials(trial_data, job_name)
                 self._trial_records.update(trial_data)
+
+            self.collect_errors(job_name, df)
 
     def clean_trials(self, trial_details, job_name):
         first_trial = trial_details[list(trial_details.keys())[0]]
@@ -1031,7 +1075,7 @@ class TuneCollector(threading.Thread):
             "experiment_id", "date", "timestamp", "time_total_s", "pid",
             "hostname", "node_ip", "time_since_restore",
             "timesteps_since_restore", "iterations_since_restore",
-            "experiment_tag"
+            "experiment_tag", "trial_id"
         ]
 
         # filter attributes into floats, metrics, and config variables
@@ -1073,7 +1117,81 @@ class TuneCollector(threading.Thread):
                 details["status"] = "RUNNING"
             details.pop("done")
 
-            details["trial_id"] = trial
             details["job_id"] = job_name
+            details["error"] = "No Error"
 
         return trial_details
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=("Parse Redis server for the "
+                     "dashboard to connect to."))
+    parser.add_argument(
+        "--host",
+        required=True,
+        type=str,
+        help="The host to use for the HTTP server.")
+    parser.add_argument(
+        "--port",
+        required=True,
+        type=int,
+        help="The port to use for the HTTP server.")
+    parser.add_argument(
+        "--redis-address",
+        required=True,
+        type=str,
+        help="The address to use for Redis.")
+    parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="the password to use for Redis")
+    parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--temp-dir",
+        required=False,
+        type=str,
+        default=None,
+        help="Specify the path of the temporary directory use by Ray process.")
+    args = parser.parse_args()
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    # TODO(sang): Add a URL validation.
+    metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
+
+    try:
+        dashboard = Dashboard(
+            args.host,
+            args.port,
+            args.redis_address,
+            args.temp_dir,
+            redis_password=args.redis_password,
+            metrics_export_address=metrics_export_address)
+        dashboard.run()
+    except Exception as e:
+        # Something went wrong, so push an error to all drivers.
+        redis_client = ray.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        message = ("The dashboard on node {} failed with the following "
+                   "error:\n{}".format(os.uname()[1], traceback_str))
+        ray.utils.push_error_to_driver_through_redis(
+            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
+        if isinstance(e, OSError) and e.errno == errno.ENOENT:
+            logger.warning(message)
+        else:
+            raise e

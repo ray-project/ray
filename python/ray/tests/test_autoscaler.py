@@ -328,11 +328,6 @@ class AutoscalingTest(unittest.TestCase):
             validate_config(config)
         del config["blah"]
 
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValidationError):
-            validate_config(config)
-        del config["provider"]["blah"]
-
         del config["provider"]
         with pytest.raises(ValidationError):
             validate_config(config)

@@ -99,4 +99,5 @@ QMixTrainer = GenericOffPolicyTrainer.with_updates(
     name="QMIX",
     default_config=DEFAULT_CONFIG,
     default_policy=QMixTorchPolicy,
+    get_policy_class=None,
     make_policy_optimizer=make_sync_batch_optimizer)

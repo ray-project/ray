@@ -37,13 +37,21 @@ assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
 
-def key_pair(i, region):
-    """Returns the ith default (aws_key_pair_name, key_pair_path)."""
+def key_pair(i, region, key_name):
+    """
+    If key_name is not None, key_pair will be named after key_name.
+    Returns the ith default (aws_key_pair_name, key_pair_path).
+    """
     if i == 0:
-        return ("{}_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        key_pair_name = ("{}_{}".format(RAY, region)
+                         if key_name is None else key_name)
+        return (key_pair_name,
+                os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+
+    key_pair_name = ("{}_{}_{}".format(RAY, i, region)
+                     if key_name is None else key_name + "_key-{}".format(i))
+    return (key_pair_name,
+            os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
 
 
 # Suppress excessive connection dropped logs from boto
@@ -136,7 +144,11 @@ def _configure_key_pair(config):
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
-        key_name, key_path = key_pair(i, config["provider"]["region"])
+
+        key_name = config["provider"].get("key_pair", {}).get("key_name")
+
+        key_name, key_path = key_pair(i, config["provider"]["region"],
+                                      key_name)
         key = _get_key(key_name, config)
 
         # Found a good key.
@@ -236,7 +248,7 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
+        IpPermissions = [{
             "FromPort": -1,
             "ToPort": -1,
             "IpProtocol": "-1",
@@ -250,7 +262,13 @@ def _configure_security_group(config):
             "IpRanges": [{
                 "CidrIp": "0.0.0.0/0"
             }]
-        }])
+        }]
+
+        additional_IpPermissions = config["provider"].get(
+            "security_group", {}).get("IpPermissions", [])
+        IpPermissions.extend(additional_IpPermissions)
+
+        security_group.authorize_ingress(IpPermissions=IpPermissions)
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
@@ -359,10 +377,19 @@ def _get_key(key_name, config):
 
 def _client(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.client(name, config["provider"]["region"], config=boto_config)
+    aws_credentials = config["provider"].get("aws_credentials", {})
+    return boto3.client(
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = config["provider"].get("aws_credentials", {})
     return boto3.resource(
-        name, config["provider"]["region"], config=boto_config)
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)

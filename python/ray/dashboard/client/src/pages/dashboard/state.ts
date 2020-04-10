@@ -3,13 +3,13 @@ import {
   NodeInfoResponse,
   RayConfigResponse,
   RayletInfoResponse,
+  TuneAvailabilityResponse,
   TuneJobResponse,
-  TuneAvailabilityResponse
 } from "../../api";
 
 const name = "dashboard";
 
-interface State {
+type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
@@ -18,7 +18,7 @@ interface State {
   tuneAvailability: boolean;
   lastUpdatedAt: number | null;
   error: string | null;
-}
+};
 
 const initialState: State = {
   tab: 0,
@@ -28,7 +28,7 @@ const initialState: State = {
   tuneInfo: null,
   tuneAvailability: false,
   lastUpdatedAt: null,
-  error: null
+  error: null,
 };
 
 const slice = createSlice({
@@ -46,7 +46,7 @@ const slice = createSlice({
       action: PayloadAction<{
         nodeInfo: NodeInfoResponse;
         rayletInfo: RayletInfoResponse;
-      }>
+      }>,
     ) => {
       state.nodeInfo = action.payload.nodeInfo;
       state.rayletInfo = action.payload.rayletInfo;
@@ -60,7 +60,7 @@ const slice = createSlice({
       state,
       action: PayloadAction<{
         tuneAvailability: TuneAvailabilityResponse;
-      }>
+      }>,
     ) => {
       const tuneAvailability =
         action.payload.tuneAvailability === null
@@ -71,8 +71,8 @@ const slice = createSlice({
     },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
-    }
-  }
+    },
+  },
 });
 
 export const dashboardActions = slice.actions;
