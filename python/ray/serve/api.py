@@ -14,7 +14,7 @@ from ray.serve.utils import block_until_http_ready
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
-from ray.serve.queues import Query
+from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
 
 master_actor = None
