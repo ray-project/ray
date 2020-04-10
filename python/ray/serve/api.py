@@ -244,6 +244,8 @@ def create_backend(func_or_class,
         class CustomActor(RayServeMixin, func_or_class):
             @wraps(func_or_class.__init__)
             def __init__(self, *args, **kwargs):
+                # Initialize serve so it can be used in backends.
+                init()
                 super().__init__(*args, **kwargs)
 
         arg_list = actor_init_args
