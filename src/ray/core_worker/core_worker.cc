@@ -1671,7 +1671,7 @@ void CoreWorker::TryForceKillTask() {
   if (main_thread_task_id_ == task_to_kill_) {
     RAY_LOG(INFO) << "Force killing worker running: " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
-    if (log_dir_ != "") {
+    if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
     }
     exit(1);
@@ -1689,7 +1689,7 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   if (!request.force_kill()) {
     if (main_thread_task_id_ == task_id) {
       RAY_LOG(INFO) << "Soft killing worker running: " << main_thread_task_id_;
-      kill_main_thread_();
+      options_.kill_main();
     }
     return;
   }

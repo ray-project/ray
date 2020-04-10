@@ -79,25 +79,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
-        CCoreWorker(const CWorkerType worker_type, const CLanguage language,
-                    const c_string &store_socket,
-                    const c_string &raylet_socket, const CJobID &job_id,
-                    const CGcsClientOptions &gcs_options,
-                    const c_string &log_dir, const c_string &node_ip_address,
-                    int node_manager_port,
-                    CRayStatus (
-                        CTaskType task_type,
-                        const CRayFunction &ray_function,
-                        const unordered_map[c_string, double] &resources,
-                        const c_vector[shared_ptr[CRayObject]] &args,
-                        const c_vector[CObjectID] &arg_reference_ids,
-                        const c_vector[CObjectID] &return_ids,
-                        c_vector[shared_ptr[CRayObject]] *returns,
-                        const CWorkerID &worker_id) nogil,
-                    CRayStatus() nogil,
-                    void() nogil,
-                    void(c_string *stack_out) nogil,
-                    c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
