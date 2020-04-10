@@ -1,0 +1,39 @@
+# Our implementation of SAC can reach ?? reward in ??k timesteps
+pong-sac-tf:
+    env: PongNoFrameskip-v4
+    run: SAC
+    stop:
+        episode_reward_mean: 10
+        timesteps_total: 20000000
+    config:
+        gamma: 0.99
+        #horizon: 1000
+        #soft_horizon: False
+        Q_model:
+            hidden_activation: relu
+            hidden_layer_sizes: [512]
+        policy_model:
+            hidden_activation: relu
+            hidden_layer_sizes: [512]
+        tau: 1.0
+        target_network_update_freq: 8000
+        # paper uses: 0.98 * -log(1/|A|)
+        target_entropy: 1.755
+        clip_rewards: 1.0
+        no_done_at_end: False
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: False
+        train_batch_size: 64
+        timesteps_per_iteration: 1000
+        learning_starts: 20000
+        optimization:
+            actor_learning_rate: 0.0003
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        #clip_actions: False
+        #normalize_actions: True
+        evaluation_interval: 1
+        metrics_smoothing_episodes: 5
