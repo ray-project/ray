@@ -29,12 +29,6 @@ if [[ "$PYTHON" == "3.6" ]]; then
     pip install -e . --verbose
   popd
 
-elif [[ "$LINT" == "1" ]]; then
-  export PATH="$HOME/miniconda/bin:$PATH"
-
-  pushd "$ROOT_DIR/../../python"
-    pip install -e . --verbose
-  popd
 else
   echo "Unrecognized Python version."
   exit 1
