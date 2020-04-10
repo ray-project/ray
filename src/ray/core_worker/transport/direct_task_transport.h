@@ -86,7 +86,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Retry a failed lease request.
   void RetryLeaseRequest(Status status,
-                         std::shared_ptr<WorkerLeaseInterface> lease_client,
+                         const std::shared_ptr<WorkerLeaseInterface> &lease_client,
                          const SchedulingKey &scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

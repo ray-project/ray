@@ -197,7 +197,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 }
 
 void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
-    Status status, std::shared_ptr<WorkerLeaseInterface> lease_client,
+    Status status, const std::shared_ptr<WorkerLeaseInterface> &lease_client,
     const SchedulingKey &scheduling_key) {
   if (lease_client != local_lease_client_) {
     // A lease request to a remote raylet failed. Retry locally if the lease is
