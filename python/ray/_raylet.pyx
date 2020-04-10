@@ -559,14 +559,13 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
-cdef c_bool kill_main_task() nogil:
+cdef void kill_main_task() nogil:
     with gil:
         # This prevents this interrupt from being called to early. It may still
         # be called later, but will not cancel another task because this is
         # called with a C++ mutex lock.
         if setproctitle.getproctitle() != "ray::IDLE":
             _thread.interrupt_main()
-        return True
 
 
 cdef CRayStatus check_signals() nogil:

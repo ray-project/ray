@@ -202,7 +202,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-void TaskManager::MarkTaskCancelled(const TaskID &task_id, bool store_output) {
+void TaskManager::MarkTaskCancelled(const TaskID &task_id) {
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -212,9 +212,7 @@ void TaskManager::MarkTaskCancelled(const TaskID &task_id, bool store_output) {
     it->second.num_retries_left = 0;
     it->second.cancelled = true;
   }
-  if (store_output) {
-    MarkPendingTaskFailed(task_id, GetTaskSpec(task_id), rpc::ErrorType::TASK_CANCELLED);
-  }
+  MarkPendingTaskFailed(task_id, GetTaskSpec(task_id), rpc::ErrorType::TASK_CANCELLED);
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
@@ -379,8 +377,8 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
-  RAY_LOG(ERROR) << "Treat task as failed. task_id: " << task_id
-                 << ", error_type: " << ErrorType_Name(error_type);
+  RAY_LOG(INFO) << "Treat task as failed. task_id: " << task_id
+                << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(

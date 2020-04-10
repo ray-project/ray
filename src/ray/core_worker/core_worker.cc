@@ -1326,6 +1326,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;
+    // Try to force kill if Cancellation RPC arrived before execution started.
     TryForceKillTask();
   }
 
@@ -1668,7 +1669,7 @@ void CoreWorker::TryForceKillTask() {
     return;
   }
   if (main_thread_task_id_ == task_to_kill_) {
-    RAY_LOG(INFO) << "Force killing worker running: " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
@@ -1687,7 +1688,7 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   absl::MutexLock lock(&mutex_);
   if (!request.force_kill()) {
     if (main_thread_task_id_ == task_id) {
-      RAY_LOG(INFO) << "Soft killing worker running: " << main_thread_task_id_;
+      RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
       options_.kill_main();
     }
     return;

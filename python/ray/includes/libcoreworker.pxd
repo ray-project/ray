@@ -214,8 +214,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
-        (c_bool() nogil) kill_main
-        # ABCDEFG
+        (void() nogil) kill_main
         CCoreWorkerOptions()
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":

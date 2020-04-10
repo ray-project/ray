@@ -242,7 +242,7 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
-  bool full_kill = false;
+  bool is_pending = false;
   {
     absl::MutexLock lock(&mu_);
     auto scheduled_tasks = task_queues_.find(scheduling_key);
@@ -253,8 +253,8 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
            spec != scheduled_tasks->second.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks->second.erase(spec);
-          full_kill = true;
-          // Erase an empty queue
+          is_pending = true;
+
           if (scheduled_tasks->second.empty()) {
             task_queues_.erase(scheduling_key);
           }
@@ -273,16 +273,15 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
       }
     }
   }
+  task_finisher_->MarkTaskCancelled(task_spec.TaskId());
+  if (is_pending) {
+    task_finisher_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+  }
+
   if (client == nullptr) {
-    task_finisher_->MarkTaskCancelled(task_spec.TaskId(), true);
-    if (full_kill) {
-      task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                        rpc::ErrorType::TASK_CANCELLED);
-    }
     return Status::OK();
   }
 
-  task_finisher_->MarkTaskCancelled(task_spec.TaskId(), false);
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);

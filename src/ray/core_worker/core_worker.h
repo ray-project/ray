@@ -104,7 +104,7 @@ struct CoreWorkerOptions {
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main;
+  std::function<void()> kill_main;
   /// Whether to enable object ref counting.
   bool ref_counting_enabled;
   /// Is local mode being used.
@@ -589,6 +589,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Stops the task associated with the given Object ID.
   ///
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
   /// \param[out] Status
   Status KillTask(const ObjectID &object_id, bool force_kill);
   /// Decrease the reference count for this actor. Should be called by the

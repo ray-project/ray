@@ -35,7 +35,7 @@ class TaskFinisherInterface {
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
-  virtual void MarkTaskCancelled(const TaskID &task_id, bool store_output) = 0;
+  virtual void MarkTaskCancelled(const TaskID &task_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -113,7 +113,7 @@ class TaskManager : public TaskFinisherInterface {
   /// Cancels a task by treating it as failed and removes any remaining retries
   ///
   /// \param[in] task_id The TaskId that is being cancelled
-  void MarkTaskCancelled(const TaskID &task_id, bool store_output);
+  void MarkTaskCancelled(const TaskID &task_id);
 
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
