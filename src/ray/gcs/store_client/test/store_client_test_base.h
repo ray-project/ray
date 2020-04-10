@@ -36,10 +36,10 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
   virtual ~StoreClientTestBase() {}
 
   void SetUp() override {
+    GenTestData();
     io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
     io_service_pool_->Run();
     InitStoreClient();
-    GenTestData();
   }
 
   void TearDown() override {
@@ -81,6 +81,20 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
         index_to_keys_.emplace(job_id, std::move(key_set));
       }
     }
+  }
+
+  void WriteDataToStore() {
+    auto put_calllback = [this](Status status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    for (const auto &elem : key_to_value_) {
+      ++pending_count_;
+      Status status =
+          store_client_->AsyncPut(table_name_, elem.first, elem.second, put_calllback);
+      RAY_CHECK_OK(status);
+    }
+    WaitPendingDone();
   }
 
   void WaitPendingDone() { WaitPendingDone(pending_count_); }
