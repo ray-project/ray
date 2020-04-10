@@ -3,9 +3,10 @@ import logging
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import AsyncGradients
+from ray.rllib.execution.train_ops import ApplyGradients
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.experimental_dsl import (AsyncGradients, ApplyGradients,
-                                              StandardMetricsReporting)
 
 logger = logging.getLogger(__name__)
 

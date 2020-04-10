@@ -1,10 +1,11 @@
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchDeterministic
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -112,6 +113,11 @@ class ParameterNoise(Exploration):
                         "outside_value": 0.01
                     }
                 }
+            elif isinstance(self.action_space, Box):
+                sub_exploration = {
+                    "type": "OrnsteinUhlenbeckNoise",
+                    "random_timesteps": random_timesteps,
+                }
             # TODO(sven): Implement for any action space.
             else:
                 raise NotImplementedError
@@ -201,6 +207,8 @@ class ParameterNoise(Exploration):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
+        # TODO(sven): Find out whether this can be scrapped by simply using
+        #  the `sample_batch` to get the noisy/noise-free action dist.
         _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
@@ -211,8 +219,11 @@ class ParameterNoise(Exploration):
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
-        else:  # TODO(sven): Other action-dist cases.
-            raise NotImplementedError
+        # Deterministic (Gaussian actions, e.g. DDPG).
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
+        else:
+            raise NotImplementedError  # TODO(sven): Other action-dist cases.
 
         if self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
@@ -221,7 +232,6 @@ class ParameterNoise(Exploration):
 
         _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
-            # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
             explore=not self.weights_are_currently_noisy)
@@ -229,18 +239,22 @@ class ParameterNoise(Exploration):
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
+            # Deterministic (Gaussian actions, e.g. DDPG).
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
 
         if noisy_action_dist is None:
             noisy_action_dist = action_dist
         else:
             noise_free_action_dist = action_dist
 
+        delta = distance = None
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).
-            kl_divergence = np.nanmean(
+            distance = np.nanmean(
                 np.sum(
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
@@ -250,10 +264,21 @@ class ParameterNoise(Exploration):
                 current_epsilon = tf_sess.run(current_epsilon)
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
-            if kl_divergence <= delta:
-                self.stddev_val *= 1.01
-            else:
-                self.stddev_val /= 1.01
+        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+            # Calculate MSE between noisy and non-noisy output (see [2]).
+            distance = np.sqrt(
+                np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
+            current_scale = self.sub_exploration.get_info()["cur_scale"]
+            if tf_sess is not None:
+                current_scale = tf_sess.run(current_scale)
+            delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
+                current_scale
+
+        # Adjust stddev according to the calculated action-distance.
+        if distance <= delta:
+            self.stddev_val *= 1.01
+        else:
+            self.stddev_val /= 1.01
 
         # Set self.stddev to calculated value.
         if self.framework == "tf":
