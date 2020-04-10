@@ -1,8 +1,10 @@
+import asyncio
 import socket
 
 import uvicorn
 
 import ray
+from ray.serve.constants import SERVE_MASTER_NAME
 from ray.serve.context import TaskContext
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
@@ -21,16 +23,12 @@ class HTTPProxy:
 
     def __init__(self):
         assert ray.is_initialized()
-        # Must be set via set_route_table.
-        self.route_table = dict()
-        # Must be set via set_router_handle.
-        self.router_handle = None
+        master = ray.util.get_actor(SERVE_MASTER_NAME)
+        self.route_table, [self.router_handle] = ray.get(
+            master.get_http_proxy_config.remote())
 
     def set_route_table(self, route_table):
         self.route_table = route_table
-
-    def set_router_handle(self, router_handle):
-        self.router_handle = router_handle
 
     async def handle_lifespan_message(self, scope, receive, send):
         assert scope["type"] == "lifespan"
@@ -139,8 +137,6 @@ class HTTPProxy:
             absolute_slo_ms=absolute_slo_ms,
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
-        assert self.route_table is not None, (
-            "Router handle must be set via set_router_handle.")
         try:
             result = await self.router_handle.enqueue_request.remote(
                 request_metadata, scope, http_body_bytes)
@@ -152,13 +148,18 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    def __init__(self):
+    def __init__(self, host, port):
         self.app = HTTPProxy()
+        self.host = host
+        self.port = port
 
-    async def run(self, host="0.0.0.0", port=8000):
+        # Start running the HTTP server on the event loop.
+        asyncio.get_event_loop().create_task(self.run())
+
+    async def run(self):
         sock = socket.socket()
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((host, port))
+        sock.bind((self.host, self.port))
         sock.set_inheritable(True)
 
         config = uvicorn.Config(self.app, lifespan="on", access_log=False)
@@ -171,6 +172,3 @@ class HTTPProxyActor:
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
-
-    async def set_router_handle(self, router_handle):
-        self.app.set_router_handle(router_handle)

@@ -1,9 +1,6 @@
 #: Actor name used to register master actor
 SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
 
-#: KVStore connector key in bootstrap config
-BOOTSTRAP_KV_STORE_CONN_KEY = "kv_store_connector"
-
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
 

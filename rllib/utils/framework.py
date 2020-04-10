@@ -101,7 +101,10 @@ def try_import_tfp(error=False):
 
 # Fake module for torch.nn.
 class NNStub:
-    pass
+    def __init__(self, *a, **kw):
+        # Fake nn.functional module within torch.nn.
+        self.functional = None
+        self.Module = ModuleStub
 
 
 # Fake class for torch.nn.Module to allow it to be inherited from.
@@ -120,7 +123,7 @@ def try_import_torch(error=False):
     """
     if "RLLIB_TEST_NO_TORCH_IMPORT" in os.environ:
         logger.warning("Not importing Torch for test purposes.")
-        return None, None
+        return _torch_stubs()
 
     try:
         import torch
@@ -129,22 +132,34 @@ def try_import_torch(error=False):
     except ImportError as e:
         if error:
             raise e
-
-        nn = NNStub()
-        nn.Module = ModuleStub
-        return None, nn
+        return _torch_stubs()
 
 
-def get_variable(value, framework="tf", tf_name="unnamed-variable"):
+def _torch_stubs():
+    nn = NNStub()
+    return None, nn
+
+
+def get_variable(value,
+                 framework="tf",
+                 trainable=False,
+                 tf_name="unnamed-variable",
+                 torch_tensor=False):
     """
     Args:
         value (any): The initial value to use. In the non-tf case, this will
             be returned as is.
         framework (str): One of "tf", "torch", or None.
-        tf_name (str): An optional name for the variable. Only for tf.
+        trainable (bool): Whether the generated variable should be
+            trainable (tf)/require_grad (torch) or not (default: False).
+        tf_name (str): For framework="tf": An optional name for the
+            tf.Variable.
+        torch_tensor (bool): For framework="torch": Whether to actually create
+            a torch.tensor, or just a python value (default).
 
     Returns:
-        any: A framework-specific variable (tf.Variable or python primitive).
+        any: A framework-specific variable (tf.Variable, torch.tensor, or
+            python primitive).
     """
     if framework == "tf":
         import tensorflow as tf
@@ -153,7 +168,12 @@ def get_variable(value, framework="tf", tf_name="unnamed-variable"):
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
-            tf_name, initializer=value, dtype=dtype)
+            tf_name, initializer=value, dtype=dtype, trainable=trainable)
+    elif framework == "torch" and torch_tensor is True:
+        torch, _ = try_import_torch()
+        var_ = torch.from_numpy(value)
+        var_.requires_grad = trainable
+        return var_
     # torch or None: Return python primitive.
     return value
 

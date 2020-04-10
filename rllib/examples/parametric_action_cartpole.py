@@ -22,7 +22,8 @@ from gym.spaces import Box, Discrete, Dict
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.agents.dqn.distributional_q_tf_model import \
+    DistributionalQTFModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -109,7 +110,7 @@ class ParametricActionCartpole(gym.Env):
         return obs, rew, done, info
 
 
-class ParametricActionsModel(DistributionalQModel, TFModelV2):
+class ParametricActionsModel(DistributionalQTFModel, TFModelV2):
     """Parametric action model that handles the dot product and masking.
 
     This assumes the outputs are logits for a single Categorical action dist.

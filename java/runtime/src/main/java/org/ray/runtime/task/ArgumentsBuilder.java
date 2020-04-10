@@ -1,14 +1,12 @@
 package org.ray.runtime.task;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
+import org.ray.runtime.RayRuntimeInternal;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
@@ -42,13 +40,18 @@ public class ArgumentsBuilder {
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
-        if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          RayRuntime runtime = Ray.internal();
-          if (runtime instanceof RayMultiWorkerNativeRuntime) {
-            runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
+        if (language != Language.JAVA) {
+          boolean isCrossData =
+              Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
+                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW);
+          if (!isCrossData) {
+            throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
+                Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
           }
-          id = ((AbstractRayRuntime) runtime).getObjectStore()
-            .putRaw(value);
+        }
+        if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
+          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
+              .putRaw(value);
           value = null;
         }
       }
@@ -67,10 +70,10 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject to real function arguments.
    */
-  public static Object[] unwrap(List<NativeRayObject> args, ClassLoader classLoader) {
+  public static Object[] unwrap(List<NativeRayObject> args, Class<?>[] types) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
-      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, classLoader);
+      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, types[i]);
     }
     return realArgs;
   }
