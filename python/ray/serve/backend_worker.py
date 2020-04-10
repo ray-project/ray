@@ -26,8 +26,7 @@ def create_backend_worker(func_or_class):
                      replica_tag,
                      init_args,
                      self_handle=None,
-                     router_handle=None,
-                     start_running=True):
+                     router_handle=None):
             serve.init()
             if is_function:
                 _callable = func_or_class
@@ -49,20 +48,15 @@ def create_backend_worker(func_or_class):
                 start = time.time()
                 while time.time() - start < 5:
                     try:
-                        print("Calling get_backend_replica_config")
                         [self_handle], [router_handle] = ray.get(
                             master_actor.get_backend_replica_config.remote(
                                 replica_tag))
-                        print("Got get_backend_replica_config")
                         break
                     except ray.exceptions.RayTaskError:
                         pass
 
             self.backend = RayServeWorker(backend_tag, _callable, self_handle,
                                           router_handle, is_function)
-
-            if start_running:
-                self.backend.mark_idle_in_router()
 
         def get_metrics(self):
             return self.backend.get_metrics()
@@ -123,10 +117,6 @@ class RayServeWorker:
                 "type": "list",
             },
         }
-
-    def mark_idle_in_router(self):
-        # Tell the router that this worker can accept tasks.
-        self.router_handle.dequeue_request.remote(self.name, self.self_handle)
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -257,6 +247,5 @@ class RayServeWorker:
         # re-assign to default values
         serve_context.web = False
         serve_context.batch_size = None
-        self.mark_idle_in_router()
 
         return result

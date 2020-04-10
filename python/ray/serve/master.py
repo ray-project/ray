@@ -138,6 +138,8 @@ class ServeMaster:
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
+        await self.get_router()[0].add_new_worker.remote(
+            backend_tag, worker_handle)
 
         # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)

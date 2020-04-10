@@ -197,10 +197,13 @@ class CentralizedQueues:
         result = await query.async_future
         return result
 
-    async def dequeue_request(self, backend, replica_handle):
-        logger.debug(
-            "Received a dequeue request for backend {}".format(backend))
-        await self.worker_queues[backend].put(replica_handle)
+    async def add_new_worker(self, backend, worker_handle):
+        logger.debug("New worker added for backend '{}'".format(backend))
+        await self.worker_queues[backend].put(worker_handle)
+        await self.flush()
+
+    async def mark_worker_idle(self, backend, worker_handle):
+        await self.worker_queues[backend].put(worker_handle)
         await self.flush()
 
     async def remove_and_destroy_replica(self, backend, replica_handle):
@@ -290,10 +293,16 @@ class CentralizedQueues:
                     max_batch_size = self.backend_info[backend][
                         "max_batch_size"]
 
-                await self._assign_query_to_worker(buffer_queue, worker_queue,
-                                                   max_batch_size)
+                await self._assign_query_to_worker(
+                    backend, buffer_queue, worker_queue, max_batch_size)
+
+    async def _do_query(self, backend, worker, req):
+        result = await worker.handle_request.remote(req)
+        await self.mark_worker_idle(backend, worker)
+        return result
 
     async def _assign_query_to_worker(self,
+                                      backend,
                                       buffer_queue,
                                       worker_queue,
                                       max_batch_size=None):
@@ -302,7 +311,8 @@ class CentralizedQueues:
             worker = await worker_queue.get()
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
-                future = worker.handle_request.remote(request).as_future()
+                future = asyncio.get_event_loop().create_task(
+                    self._do_query(backend, worker, request))
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
