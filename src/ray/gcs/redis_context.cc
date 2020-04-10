@@ -94,10 +94,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
       // If the message is for the initial subscription call, return the empty
       // string as a response to signify that subscription was successful.
     } else if (strcmp(message_type->str, "punsubscribe") == 0) {
-      // If the message is for the initial unsubscription call, return the
-      // message_type string as a response to signify that unsubscription was
-      // successful.
-      message_type_ = std::string(message_type->str, message_type->len);
+      is_unsubscribe_callback_ = true;
     } else if (strcmp(message_type->str, "message") == 0) {
       // If the message is from a PUBLISH, make sure the data is nonempty.
       redisReply *message = redis_reply->element[redis_reply->elements - 1];

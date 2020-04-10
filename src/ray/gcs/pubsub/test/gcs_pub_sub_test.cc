@@ -39,40 +39,37 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
   }
 
-  template <typename ID, typename Data>
-  void Subscribe(const gcs::TablePubsub &channel, const ID &id,
-                 std::vector<Data> &result) {
+  void Subscribe(const std::string &channel, const std::string &id,
+                 std::vector<std::string> &result) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const ID &id, const Data &data) {
+    auto subscribe = [&result](const std::string &id, const std::string &data) {
       result.push_back(data);
     };
-    RAY_CHECK_OK((pub_sub_->Subscribe<ID, Data>(channel, id, subscribe, done)));
+    RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  template <typename ID, typename Data>
-  void SubscribeAll(const gcs::TablePubsub &channel,
-                    std::vector<std::pair<ID, Data>> &result) {
+  void SubscribeAll(const std::string &channel,
+                    std::vector<std::pair<std::string, std::string>> &result) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const ID &id, const Data &data) {
+    auto subscribe = [&result](const std::string &id, const std::string &data) {
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK((pub_sub_->SubscribeAll<ID, Data>(channel, subscribe, done)));
+    RAY_CHECK_OK((pub_sub_->SubscribeAll(channel, subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  template <typename ID>
-  bool Unsubscribe(const gcs::TablePubsub &channel, const ID &id) {
-    return pub_sub_->Unsubscribe<ID>(channel, id).ok();
+  bool Unsubscribe(const std::string &channel, const std::string &id) {
+    return pub_sub_->Unsubscribe(channel, id).ok();
   }
 
-  template <typename ID, typename Data>
-  bool Publish(const gcs::TablePubsub &channel, const ID &id, const Data &data) {
+  bool Publish(const std::string &channel, const std::string &id,
+               const std::string &data) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    RAY_CHECK_OK((pub_sub_->Publish<ID, Data>(channel, id, data, done)));
+    RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -90,9 +87,7 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
   }
 
   std::shared_ptr<gcs::RedisClient> client_;
-  JobID job_id_ = JobID::FromInt(1);
   const std::chrono::milliseconds timeout_ms_{60000};
-
   std::shared_ptr<gcs::GcsPubSub> pub_sub_;
 
  private:
@@ -100,52 +95,53 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
   std::unique_ptr<std::thread> thread_io_service_;
 };
 
-TEST_F(GcsPubSubTest, TestJobTablePubSubApi) {
-  const auto &channel = gcs::TablePubsub::JOB_PUBSUB;
-  rpc::JobTableData job_table_data;
-  job_table_data.set_job_id(job_id_.Binary());
+TEST_F(GcsPubSubTest, TestPubSubApi) {
+  std::string channel("channel");
+  std::string id("id");
+  std::string data("data");
+  std::vector<std::pair<std::string, std::string>> all_result;
 
-  std::vector<std::pair<JobID, rpc::JobTableData>> all_result;
-
-  SubscribeAll<JobID, rpc::JobTableData>(channel, all_result);
-  std::vector<rpc::JobTableData> result;
-  Subscribe<JobID, rpc::JobTableData>(channel, job_id_, result);
-  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
+  SubscribeAll(channel, all_result);
+  std::vector<std::string> result;
+  Subscribe(channel, id, result);
+  Publish(channel, id, data);
 
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
-  Unsubscribe<JobID>(channel, job_id_);
-  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
+  Unsubscribe(channel, id);
+  Publish(channel, id, data);
   usleep(100 * 1000);
   EXPECT_EQ(result.size(), 1);
 
-  Subscribe<JobID, rpc::JobTableData>(channel, job_id_, result);
-  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
+  Subscribe(channel, id, result);
+  Publish(channel, id, data);
   WaitPendingDone(result, 2);
   WaitPendingDone(all_result, 3);
 }
 
 TEST_F(GcsPubSubTest, TestMultithreading) {
-  const auto &channel = gcs::TablePubsub::ACTOR_PUBSUB;
+  std::string channel("channel");
   auto count = std::make_shared<std::atomic<int>>(0);
   int size = 5;
   for (int index = 0; index < size; ++index) {
-    new std::thread([this, count, index, channel] {
-      auto subscribe = [count](const ActorID &id, const rpc::ActorTableData &data) {
+    std::stringstream ss;
+    ss << index;
+    auto id = ss.str();
+    new std::thread([this, count, id, channel] {
+      auto subscribe = [count](const std::string &id, const std::string &data) {
         ++(*count);
       };
-      auto id = ActorID::Of(JobID::FromInt(index), TaskID::Nil(), 0);
-      RAY_CHECK_OK((pub_sub_->Subscribe<ActorID, rpc::ActorTableData>(
-          channel, id, subscribe, nullptr)));
+      RAY_CHECK_OK(pub_sub_->Subscribe(channel, id, subscribe, nullptr));
     });
   }
 
+  std::string data("data");
   for (int index = 0; index < size; ++index) {
-    new std::thread([this, count, index, channel] {
-      auto id = ActorID::Of(JobID::FromInt(index), TaskID::Nil(), 0);
-      rpc::ActorTableData data;
-      RAY_CHECK_OK(
-          (pub_sub_->Publish<ActorID, rpc::ActorTableData>(channel, id, data, nullptr)));
+    std::stringstream ss;
+    ss << index;
+    auto id = ss.str();
+    new std::thread([this, channel, id, data] {
+      RAY_CHECK_OK(pub_sub_->Publish(channel, id, data, nullptr));
     });
   }
 

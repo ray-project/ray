@@ -17,7 +17,6 @@
 
 #include "absl/synchronization/mutex.h"
 
-#include "ray/common/id.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -26,8 +25,6 @@
 namespace ray {
 namespace gcs {
 
-using rpc::TablePubsub;
-
 /// \class GcsPubSub
 ///
 /// GcsPubSub supports publishing, subscription and unsubscribing of data.
@@ -35,8 +32,7 @@ using rpc::TablePubsub;
 class GcsPubSub {
  public:
   /// The callback is called when a subscription message is received.
-  template <typename ID, typename Data>
-  using Callback = std::function<void(const ID &id, const Data &data)>;
+  using Callback = std::function<void(const std::string &id, const std::string &data)>;
 
   explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(redis_client) {}
@@ -50,25 +46,8 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  template <typename ID, typename Data>
-  Status Publish(const TablePubsub &channel, const ID &id, const Data &data,
-                 const StatusCallback &done) {
-    rpc::PubSubMessage message;
-    message.set_id(id.Binary());
-    std::string data_str;
-    data.SerializeToString(&data_str);
-    message.set_data(data_str);
-
-    auto on_done = [done](std::shared_ptr<CallbackReply> reply) {
-      if (done) {
-        done(Status::OK());
-      }
-    };
-
-    return redis_client_->GetPrimaryContext()->PublishAsync(
-        GenChannelPattern(channel, boost::optional<ID>(id)), message.SerializeAsString(),
-        on_done);
-  }
+  Status Publish(const std::string &channel, const std::string &id,
+                 const std::string &data, const StatusCallback &done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
   ///
@@ -78,11 +57,8 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  template <typename ID, typename Data>
-  Status Subscribe(const TablePubsub &channel, const ID &id,
-                   const Callback<ID, Data> &subscribe, const StatusCallback &done) {
-    return SubscribeInternal(channel, subscribe, done, boost::optional<ID>(id));
-  }
+  Status Subscribe(const std::string &channel, const std::string &id,
+                   const Callback &subscribe, const StatusCallback &done);
 
   /// Subscribe to messages with the specified channel.
   ///
@@ -91,75 +67,23 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  template <typename ID, typename Data>
-  Status SubscribeAll(const TablePubsub &channel, const Callback<ID, Data> &subscribe,
-                      const StatusCallback &done) {
-    return SubscribeInternal(channel, subscribe, done);
-  }
+  Status SubscribeAll(const std::string &channel, const Callback &subscribe,
+                      const StatusCallback &done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
   /// \param channel The channel to unsubscribe from redis.
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Status
-  template <typename ID>
-  Status Unsubscribe(const TablePubsub &channel, const ID &id) {
-    return redis_client_->GetPrimaryContext()->PUnsubscribeAsync(
-        GenChannelPattern(channel, boost::optional<ID>(id)));
-  }
+  Status Unsubscribe(const std::string &channel, const std::string &id);
 
  private:
-  template <typename ID, typename Data>
-  Status SubscribeInternal(const TablePubsub &channel,
-                           const Callback<ID, Data> &subscribe,
+  Status SubscribeInternal(const std::string &channel, const Callback &subscribe,
                            const StatusCallback &done,
-                           const boost::optional<ID> &id = boost::none) {
-    std::string pattern = GenChannelPattern(channel, id);
-    auto callback = [this, pattern, subscribe](std::shared_ptr<CallbackReply> reply) {
-      if (!reply->IsNil()) {
-        if (reply->GetMessageType() == "punsubscribe") {
-          absl::MutexLock lock(&mutex_);
-          ray::gcs::RedisCallbackManager::instance().remove(
-              subscribe_callback_index_[pattern]);
-          subscribe_callback_index_.erase(pattern);
-        } else {
-          const auto reply_data = reply->ReadAsPubsubData();
-          if (!reply_data.empty()) {
-            rpc::PubSubMessage message;
-            message.ParseFromString(reply_data);
-            Data data;
-            data.ParseFromString(message.data());
-            subscribe(ID::FromBinary(message.id()), data);
-          }
-        }
-      }
-    };
+                           const boost::optional<std::string> &id = boost::none);
 
-    int64_t out_callback_index;
-    auto status = redis_client_->GetPrimaryContext()->PSubscribeAsync(
-        pattern, callback, &out_callback_index);
-    if (id) {
-      absl::MutexLock lock(&mutex_);
-      subscribe_callback_index_[pattern] = out_callback_index;
-    }
-    if (done) {
-      done(status);
-    }
-    return status;
-  }
-
-  template <typename ID>
-  std::string GenChannelPattern(const TablePubsub &channel,
-                                const boost::optional<ID> &id) {
-    std::stringstream pattern;
-    pattern << channel << ":";
-    if (id) {
-      pattern << id->Binary();
-    } else {
-      pattern << "*";
-    }
-    return pattern.str();
-  }
+  std::string GenChannelPattern(const std::string &channel,
+                                const boost::optional<std::string> &id);
 
   std::shared_ptr<RedisClient> redis_client_;
 
