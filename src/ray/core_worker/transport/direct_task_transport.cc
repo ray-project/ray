@@ -246,14 +246,13 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
   {
     absl::MutexLock lock(&mu_);
     auto scheduled_tasks = task_queues_.find(scheduling_key);
-    // RAY_LOG(ERROR) << "First place";
+
     // See if task has not been shipped yet
     if (scheduled_tasks != task_queues_.end()) {
       for (auto spec = scheduled_tasks->second.begin();
            spec != scheduled_tasks->second.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks->second.erase(spec);
-          // RAY_LOG(ERROR) << "Canceling task here";
           full_kill = true;
           // Erase an empty queue
           if (scheduled_tasks->second.empty()) {
@@ -283,9 +282,7 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
     return Status::OK();
   }
 
-  // RAY_LOG(ERROR) << "Second place";
   task_finisher_->MarkTaskCancelled(task_spec.TaskId(), false);
-  // RAY_LOG(ERROR) << "third place";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);

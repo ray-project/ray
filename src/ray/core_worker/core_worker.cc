@@ -1130,7 +1130,6 @@ Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
     if (!task_spec.IsActorCreationTask())
       RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec, force_kill));
-    // RAY_LOG(ERROR) << "YEET";
   }
   return Status::OK();
 }

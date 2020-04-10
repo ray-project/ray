@@ -561,9 +561,9 @@ cdef void async_plasma_callback(CObjectID object_id,
 
 cdef c_bool kill_main_task() nogil:
     with gil:
-        # This prevents this interrupt from being called to early. It may still 
+        # This prevents this interrupt from being called to early. It may still
         # be called later, but will not cancel another task because this is
-        # called with a C++ mutex lock. 
+        # called with a C++ mutex lock.
         if setproctitle.getproctitle() != "ray::IDLE":
             _thread.interrupt_main()
         return True
@@ -976,7 +976,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KillTask(c_object_id, force_kill))
+            check_status(CCoreWorkerProcess.GetCoreWorker().KillTask(
+                                                c_object_id, force_kill))
 
     def resource_ids(self):
         cdef:

@@ -1,6 +1,7 @@
-import ray
-import time
 import pytest
+import ray
+import sys
+import time
 from ray.exceptions import RayCancellationError, RayTimeoutError
 from ray.test_utils import SignalActor
 
@@ -161,7 +162,7 @@ def test_comprehensive(ray_start_regular):
     @ray.remote
     def wait_for(t):
         ray.get(t[0])
-        return 'Result'
+        return "Result"
 
     @ray.remote
     def combine(a, b):
@@ -189,5 +190,4 @@ def test_comprehensive(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
