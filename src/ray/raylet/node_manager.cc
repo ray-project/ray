@@ -956,9 +956,9 @@ void NodeManager::DispatchTasks(
   }
 }
 
-void NodeManager::ProcessClientMessage(
-    const std::shared_ptr<ClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
+                                       int64_t message_type,
+                                       const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
@@ -1173,8 +1173,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   }
 }
 
-void NodeManager::HandleWorkerAvailable(
-    const std::shared_ptr<ClientConnection> &client) {
+void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -2278,10 +2277,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
   worker->MarkUnblocked();
 }
 
-void NodeManager::AsyncResolveObjects(
-    const std::shared_ptr<ClientConnection> &client,
-    const std::vector<ObjectID> &required_object_ids, const TaskID &current_task_id,
-    bool ray_get, bool mark_worker_blocked) {
+void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
+                                      const std::vector<ObjectID> &required_object_ids,
+                                      const TaskID &current_task_id, bool ray_get,
+                                      bool mark_worker_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
