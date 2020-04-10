@@ -987,7 +987,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":redis_client"
-    ]
+    ],
 )
 
 cc_library(
