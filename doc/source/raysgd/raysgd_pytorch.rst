@@ -664,6 +664,7 @@ Use ``filelock`` within the creator functions to create locks for critical regio
 .. code-block:: python
 
     import os
+    import tempfile
     from filelock import FileLock
 
     def create_dataset(config):
@@ -673,7 +674,7 @@ Use ``filelock`` within the creator functions to create locks for critical regio
         # This will take a longer amount of time to download the data at first.
         # Other processes will block at the ``with`` statement.
         # After downloading, this code block becomes very fast.
-        with FileLock("/tmp/download_data.lock"):
+        with FileLock(os.path.join(tempfile.gettempdir(), "download_data.lock")):
             if not os.path.exists(dataset_path):
                 download_data(dataset_path)
 

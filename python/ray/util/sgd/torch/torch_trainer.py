@@ -309,8 +309,7 @@ class TorchTrainer:
             self.local_worker = TorchRunner(**params)
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
-            self.local_worker.setup_components()
-            self.local_worker.setup_operator()
+            self.local_worker.setup()
         else:
             params.update(
                 backend=self.backend,

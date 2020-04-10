@@ -142,6 +142,11 @@ class TorchRunner:
             self.models, self.optimizers = amp.initialize(
                 self.models, self.optimizers, **self.apex_args)
 
+    def setup(self):
+        """Merges setup_components and setup_operator in one call."""
+        self.setup_components()
+        self.setup_operator()
+
     def setup_components(self):
         """Runs the creator functions without any distributed coordination."""
         logger.debug("Loading data.")

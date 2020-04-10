@@ -45,6 +45,9 @@ class DistributedTorchRunner(TorchRunner):
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
 
+    def setup(self):
+        raise RuntimeError("Need to call setup commands separately.")
+
     def setup_process_group(self, url, world_rank, world_size):
         """Connects the distributed PyTorch backend.
 
