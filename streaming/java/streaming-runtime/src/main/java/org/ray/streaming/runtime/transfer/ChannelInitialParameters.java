@@ -15,7 +15,7 @@ import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
- * Save initial parameters needed by a streaming channel.
+ * Save channel initial parameters needed by DataWriter/DataReader.
  */
 public class ChannelInitialParameters {
 
@@ -24,21 +24,6 @@ public class ChannelInitialParameters {
     private ActorId actorId;
     private FunctionDescriptor asyncFunctionDescriptor;
     private FunctionDescriptor syncFunctionDescriptor;
-
-    // Called from jni
-    public byte[] getActorIdBytes() {
-      return actorId.getBytes();
-    }
-
-    // Called from jni
-    public FunctionDescriptor getAsyncFunctionDescriptor() {
-      return asyncFunctionDescriptor;
-    }
-
-    // Called from jni
-    public FunctionDescriptor getSyncFunctionDescriptor() {
-      return syncFunctionDescriptor;
-    }
 
     public void setActorId(ActorId actorId) {
       this.actorId = actorId;
@@ -60,11 +45,24 @@ public class ChannelInitialParameters {
       return "Language: " + language + " Desc: " + asyncFunctionDescriptor.toList() + " "
           + syncFunctionDescriptor.toList();
     }
+
+    // Get actor id in bytes, called from jni.
+    public byte[] getActorIdBytes() {
+      return actorId.getBytes();
+    }
+    // Get async function descriptor, called from jni.
+    public FunctionDescriptor getAsyncFunctionDescriptor() {
+      return asyncFunctionDescriptor;
+    }
+    // Get sync function descriptor, called from jni.
+    public FunctionDescriptor getSyncFunctionDescriptor() {
+      return syncFunctionDescriptor;
+    }
   }
 
   private List<Parameter> parameters;
 
-  // async function descriptor for a java DataReader, used by upstream queues.
+  // function descriptors of direct call entry point for Java workers
   private static JavaFunctionDescriptor javaReaderAsyncFuncDesc = new JavaFunctionDescriptor(
       JobWorker.class.getName(),
       "onReaderMessage", "([B)V");
@@ -77,7 +75,7 @@ public class ChannelInitialParameters {
   private static JavaFunctionDescriptor javaWriterSyncFuncDesc = new JavaFunctionDescriptor(
       JobWorker.class.getName(),
       "onWriterMessageSync", "([B)[B");
-
+  // function descriptors of direct call entry point for Python workers
   private static PyFunctionDescriptor pyReaderAsyncFunctionDesc = new PyFunctionDescriptor(
       "streaming.runtime.worker",
       "JobWorker", "on_reader_message");
