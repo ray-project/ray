@@ -74,7 +74,7 @@ def test_tempdir_commandline():
 
 def test_tempdir_long_path():
     temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * 108)
-    with pytest.raises(OSError) as exc_info:
+    with pytest.raises(OSError):
         ray.init(temp_dir=temp_dir)  # path should be too long
 
 

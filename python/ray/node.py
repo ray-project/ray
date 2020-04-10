@@ -415,7 +415,7 @@ class Node:
 
             # Check socket path length to make sure it's short enough
             maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
-            if len(result.split("://", 1)[-1].encode('utf-8')) > maxlen:
+            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
                 raise OSError("AF_UNIX path length cannot exceed "
                               "{} bytes: {!r}".format(maxlen, result))
         return result
