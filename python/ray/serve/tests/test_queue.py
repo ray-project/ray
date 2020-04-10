@@ -40,7 +40,7 @@ def task_runner_mock_actor():
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueueActor.remote()
     q.link.remote("svc", "backend")
-    q.dequeue_request.remote("backend", task_runner_mock_actor)
+    q.add_new_worker.remote("backend", task_runner_mock_actor)
 
     # Make sure we get the request result back
     result = await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
@@ -63,8 +63,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
             q.enqueue_request.remote(
                 RequestMetadata("svc", None, relative_slo_ms=slo_ms), i))
 
-    for i in range(10):
-        await q.dequeue_request.remote("backend", task_runner_mock_actor)
+    await q.add_new_worker.remote("backend", task_runner_mock_actor)
 
     await asyncio.gather(*all_request_sent)
 
@@ -80,13 +79,13 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueueActor.remote()
 
     await q.set_traffic.remote("svc", {"backend-1": 1})
-    await q.dequeue_request.remote("backend-1", task_runner_mock_actor)
+    await q.add_new_worker.remote("backend-1", task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args[0] == 1
 
     await q.set_traffic.remote("svc", {"backend-2": 1})
-    await q.dequeue_request.remote("backend-2", task_runner_mock_actor)
+    await q.add_new_worker.remote("backend-2", task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 2)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args[0] == 2
@@ -97,9 +96,8 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
 
     await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
     runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
-    for _ in range(20):
-        await q.dequeue_request.remote("backend-1", runner_1)
-        await q.dequeue_request.remote("backend-2", runner_2)
+    await q.add_new_worker.remote("backend-1", runner_1)
+    await q.add_new_worker.remote("backend-2", runner_2)
 
     # assume 50% split, the probability of all 20 requests goes to a
     # single queue is 0.5^20 ~ 1-6
@@ -121,9 +119,8 @@ async def test_round_robin(serve_instance, task_runner_mock_actor):
 
     # NOTE: this is the only difference between the
     # test_split_traffic_random and test_round_robin
-    for _ in range(10):
-        await q.dequeue_request.remote("backend-1", runner_1)
-        await q.dequeue_request.remote("backend-2", runner_2)
+    await q.add_new_worker.remote("backend-1", runner_1)
+    await q.add_new_worker.remote("backend-2", runner_2)
 
     for _ in range(20):
         await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
@@ -143,9 +140,8 @@ async def test_fixed_packing(serve_instance):
     runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
     # both the backends will get equal number of queries
     # as it is packed round robin
-    for _ in range(packing_num):
-        await q.dequeue_request.remote("backend-1", runner_1)
-        await q.dequeue_request.remote("backend-2", runner_2)
+    await q.add_new_worker.remote("backend-1", runner_1)
+    await q.add_new_worker.remote("backend-2", runner_2)
 
     for backend, runner in zip(["1", "2"], [runner_1, runner_2]):
         for _ in range(packing_num):
@@ -174,9 +170,8 @@ async def test_power_of_two_choices(serve_instance):
         enqueue_futures.append(future)
 
     runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
-    for _ in range(3):
-        await q.dequeue_request.remote("backend-1", runner_1)
-        await q.dequeue_request.remote("backend-2", runner_2)
+    await q.add_new_worker.remote("backend-1", runner_1)
+    await q.add_new_worker.remote("backend-2", runner_2)
 
     await asyncio.gather(*enqueue_futures)
 
@@ -187,6 +182,6 @@ async def test_power_of_two_choices(serve_instance):
 async def test_queue_remove_replicas(serve_instance):
     temp_actor = make_task_runner_mock()
     q = RandomPolicyQueue()
-    await q.dequeue_request("backend", temp_actor)
+    await q.add_new_worker("backend", temp_actor)
     await q.remove_and_destroy_replica("backend", temp_actor)
     assert q.worker_queues["backend"].qsize() == 0
