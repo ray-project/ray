@@ -932,10 +932,14 @@ cc_library(
 cc_library(
     name = "redis_store_client",
     srcs = [
+        "src/ray/gcs/store_client/redis_multi_reader.cc",
+        "src/ray/gcs/store_client/redis_scanner.cc",
         "src/ray/gcs/store_client/redis_store_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/redis_multi_reader.h",
+        "src/ray/gcs/store_client/redis_scanner.h",
         "src/ray/gcs/store_client/redis_store_client.h",
         "src/ray/gcs/store_client/store_client.h",
     ],

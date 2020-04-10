@@ -18,29 +18,25 @@ Status RedisMultiReader::Read(
   RAY_CHECK(multi_read_callback_ == nullptr);
   multi_read_callback_ = callback;
 
-  for (const auto &key : keys) {
+  for (const auto &key : keys_) {
     ++pending_read_count_;
-    Status status = SingleRead(key);
+
+    std::vector<std::string> args = {"GET", key};
+    auto read_callback = [this, key](std::shared_ptr<CallbackReply> reply) {
+      OnReadCallback(key, reply);
+    };
+
+    auto shard_context = redis_client_->GetShardContext(key);
+    Status status = shard_context->RunArgvAsync(args, read_callback);
     if (!status.ok()) {
+      RAY_LOG(INFO) << "Read key " << key << " failed, status " << status.ToString();
       is_failed_ = true;
       if (--pending_read_count_ == 0) {
-        OnDone();
-      }
-      RAY_LOG(INFO) << "Read key " << key << " failed, status " << status.ToString();
-      return;
+        return status;
+      } // Else, waiting pending read done, then callback.
     }
   }
-}
-
-Status RedisMultiReader::SingleRead(const std::string &key,
-                                    const OptionalItemCallback<std::string> &callback) {
-  std::vector<std::string> args = {"GET", key};
-  auto read_callback = [this, key](std::shared_ptr<CallbackReply> reply) {
-    OnReadCallback(key, reply);
-  };
-
-  auto shard_context = redis_client_->GetShardContext(key);
-  return shard_context->RunArgvAsync(args, callback);
+  return Status::OK();
 }
 
 void RedisMultiReader::OnReadCallback(const std::string &key,
@@ -50,7 +46,7 @@ void RedisMultiReader::OnReadCallback(const std::string &key,
     value = reply->ReadAsString();
 
     {
-      std::lock_guard<std::mutex> lock(&mutex_);
+      absl::MutexLock lock(&mutex_);
       read_result_.emplace_back(key, value);
     }
   }
@@ -62,14 +58,9 @@ void RedisMultiReader::OnReadCallback(const std::string &key,
 
 void RedisMultiReader::OnDone() {
   if (!is_failed_) {
-    std::vector<std::pair<std::string, std::string>> result;
-    {
-      std::lock_guard<std::mutex> lock(&mutex_);
-      result.swap(read_result_);
-    }
-    multi_read_callback_(Status::OK(), result);
+    multi_read_callback_(Status::OK(), read_result_);
   } else {
-    multi_read_callback_(Status::RedisError(), {});
+    multi_read_callback_(Status::RedisError("Redis return failed."), {});
   }
 }
 

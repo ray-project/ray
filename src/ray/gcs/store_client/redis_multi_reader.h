@@ -6,7 +6,8 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
-#include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -34,15 +35,12 @@ class RedisMultiReader {
   Status Read(const MultiItemCallback<std::pair<std::string, std::string>> &callback);
 
  private:
-  /// Read single key from redis asynchronously.
-  Status SingleRead();
-
   /// Run callback when multi read finishes.
-  void OnDone();
+  void OnDone() NO_THREAD_SAFETY_ANALYSIS;
 
   /// Process single read result.
   void OnReadCallback(const std::string &key,
-                      const std::shared_ptr<CallbackReply> &reply);
+                      const std::shared_ptr<CallbackReply> &reply) LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Redis client.
@@ -50,7 +48,7 @@ class RedisMultiReader {
   /// Keys need to be read from redis.
   std::vector<std::string> keys_;
   /// Multi read callback.
-  MultiItemCallback < std::pair<std::string, std::string> multi_read_callback_{nullptr};
+  MultiItemCallback<std::pair<std::string, std::string>> multi_read_callback_{nullptr};
 
   /// Total pending read request count.
   std::atomic<size_t> pending_read_count_{0};
@@ -58,7 +56,7 @@ class RedisMultiReader {
   /// Whether multi read failed.
   std::atomic<bool> is_failed_{false};
 
-  mutable std::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   /// The result that redis returns.
   std::vector<std::pair<std::string, std::string>> read_result_ GUARDED_BY(mutex_);
