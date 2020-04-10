@@ -858,10 +858,7 @@ class LocalIterator(Generic[T]):
                     "other must be of type LocalIterator, got {}".format(
                         type(it)))
 
-        if deterministic:
-            timeout = None
-        else:
-            timeout = 0
+        timeout = None if deterministic else 0
 
         active = []
         parent_iters = [self] + list(others)

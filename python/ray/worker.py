@@ -1344,8 +1344,10 @@ def disconnect(exiting_interpreter=False):
 @contextmanager
 def _changeproctitle(title, next_title):
     setproctitle.setproctitle(title)
-    yield
-    setproctitle.setproctitle(next_title)
+    try:
+        yield
+    finally:
+        setproctitle.setproctitle(next_title)
 
 
 def register_custom_serializer(cls,
