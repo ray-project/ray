@@ -614,6 +614,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
 
+    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
+    def testLotsOfStops(self):
+        class TestTrainable(Trainable):
+            def _train(self):
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                return result
+
+            def _stop(self):
+                time.sleep(1)
+                return 1
+
+        analysis = tune.run(
+            TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
     def testNestedResults(self):
         def create_result(i):
             return {"test": {"1": {"2": {"3": i, "4": False}}}}
