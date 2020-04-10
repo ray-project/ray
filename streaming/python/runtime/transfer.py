@@ -9,12 +9,10 @@ import ray.streaming.generated.streaming_pb2 as streaming_pb
 from ray import ActorID
 from ray.actor import ActorHandle
 from ray.streaming.config import Config
-from ray.includes.function_descriptor import FunctionDescriptor
-from ray.includes.function_descriptor import JavaFunctionDescriptor
-from ray.includes.function_descriptor import PythonFunctionDescriptor
-from ray.streaming.includes.libstreaming cimport (
-    CChannelInitialParameter,
-)
+from ray._raylet import FunctionDescriptor
+from ray._raylet import JavaFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import Language
 
 CHANNEL_ID_LEN = 20
 
@@ -197,18 +195,18 @@ class ChannelInitialParameters:
                               self._python_reader_sync_function_descriptor)
         return self
 
-    def build_parameters(self, actors, java_async_function,
-                         java_sync_function, py_async_func, py_sync_func):
+    def build_parameters(self, actors, java_async_func,
+                         java_sync_func, py_async_func, py_sync_func):
         """
         actors:
         """
-        for handle in actors.values():
+        for handle in actors:
             parameter = None
             logger.info("handle._ray_actor_language: %s", handle._ray_actor_language)
-            if handle._ray_actor_language == "java":
-                parameter = ChannelInitialParameter(handle._ray_actor_id, java_async_function, java_sync_function)
+            if handle._ray_actor_language == Language.PYTHON:
+                parameter = _streaming.ChannelInitialParameter(handle._ray_actor_id, py_async_func, py_sync_func)
             else:
-                parameter = ChannelInitialParameter(handle._ray_actor_id, python_async_function, python_sync_function)
+                parameter = _streaming.ChannelInitialParameter(handle._ray_actor_id, java_async_func, java_sync_func)
             self._parameters.append(parameter)
         return self
 
@@ -243,7 +241,7 @@ class DataWriter:
         py_output_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in output_channels
         ]
-        ChannelInitialParameters initial_parameters = ChannelInitialParameters()
+        initial_parameters = ChannelInitialParameters()
         initial_parameters.build_output_queue_parameters(to_actors)
         channel_size = conf.get(Config.CHANNEL_SIZE,
                                 Config.CHANNEL_SIZE_DEFAULT)
@@ -296,8 +294,8 @@ class DataReader:
         py_input_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in input_channels
         ]
-        ChannelInitialParameters initial_parameters = ChannelInitialParameters()
-        initial_parameters.build_output_queue_parameters(from_actors)
+        initial_parameters = ChannelInitialParameters()
+        initial_parameters.build_input_queue_parameters(from_actors)
         py_seq_ids = [0 for _ in range(len(input_channels))]
         py_msg_ids = [0 for _ in range(len(input_channels))]
         timer_interval = int(conf.get(Config.TIMER_INTERVAL_MS, -1))
