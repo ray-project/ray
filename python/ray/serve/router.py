@@ -82,7 +82,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
     return unwrap_future
 
 
-class CentralizedQueues:
+class Router:
     """A router that routes request to available workers.
 
     Router accepts each request from the `enqueue_request` method and enqueues
