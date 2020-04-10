@@ -76,7 +76,35 @@ def kill_multiple_dependents(use_force):
             ray.get(d)
 
     signaler.send.remote()
-    ray.get(head2, timeout=.1)
+    ray.get(head2, timeout=1)
+
+
+def single_cpu_kill(use_force):
+    ray.init(num_cpus=1)
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def wait_for(t):
+        return ray.get(t[0])
+
+    obj1 = wait_for.remote([signaler.wait.remote()])
+    obj2 = wait_for.remote([obj1])
+    obj3 = wait_for.remote([obj2])
+    indep = wait_for.remote([signaler.wait.remote()])
+
+    assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+    ray.kill(obj3, use_force)
+    with pytest.raises(RayCancellationError):
+        ray.get(obj3, 0.1)
+
+    ray.kill(obj1, use_force)
+
+    for d in [obj1, obj2]:
+        with pytest.raises(RayCancellationError):
+            ray.get(d)
+
+    signaler.send.remote()
+    ray.get(indep)
 
 
 def test_kill_chain_force(ray_start_regular):
@@ -95,35 +123,15 @@ def test_kill_mutiple_dependents_no_force(ray_start_regular):
     kill_multiple_dependents(False)
 
 
-def test_single_cpu_kill(shutdown_only):
-    ray.init(num_cpus=1)
-    signaler = SignalActor.remote()
+def test_single_cpu_force(shutdown_only):
+    single_cpu_kill(True)
 
-    @ray.remote
-    def wait_for(t):
-        return ray.get(t[0])
 
-    obj1 = wait_for.remote([signaler.wait.remote()])
-    ray.kill(obj1, True)
-    with pytest.raises(RayCancellationError):
-        ray.get(obj1, 0.1)
-    obj2 = wait_for.remote([signaler.wait.remote()])
-    obj3 = wait_for.remote([signaler.wait.remote()])
-    ray.kill(obj3, True)
-    with pytest.raises(RayCancellationError):
-        ray.get(obj3, 0.1)
-    ray.kill(obj2, True)
-    with pytest.raises(RayCancellationError):
-        ray.get(obj2, 0.1)
-
-    assert ray.get(wait_for.remote(
-        [signaler.wait.remote(should_wait=False)])) == None
+def test_single_cpu_no_force(shutdown_only):
+    single_cpu_kill(False)
 
 
 def test_kill_dependency_waiting(ray_start_regular):
-    #import ray, time
-    #ray.init()
-
     @ray.remote
     def slp(t):
         time.sleep(t)

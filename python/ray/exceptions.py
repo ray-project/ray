@@ -20,7 +20,7 @@ class RayCancellationError(RayError):
     """Raised when this task or a dependency is cancelled"""
 
     def __str__(self):
-        return "This task was canceled"
+        return "This task was cancelled"
 
 
 class RayTaskError(RayError):

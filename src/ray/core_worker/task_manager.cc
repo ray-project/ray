@@ -202,7 +202,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-void TaskManager::MarkTaskCanceled(const TaskID &task_id, bool store_output) {
+void TaskManager::MarkTaskCancelled(const TaskID &task_id, bool store_output) {
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -210,7 +210,7 @@ void TaskManager::MarkTaskCanceled(const TaskID &task_id, bool store_output) {
       return;
     }
     it->second.num_retries_left = 0;
-    it->second.canceled = true;
+    it->second.cancelled = true;
   }
   if (store_output) {
     MarkPendingTaskFailed(task_id, GetTaskSpec(task_id), rpc::ErrorType::TASK_CANCELLED);
@@ -238,7 +238,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
-      error_type = it->second.canceled ? rpc::ErrorType::TASK_CANCELLED : error_type;
+      error_type = it->second.cancelled ? rpc::ErrorType::TASK_CANCELLED : error_type;
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;

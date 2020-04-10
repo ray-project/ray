@@ -322,6 +322,6 @@ enum ErrorType {
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
 
-  // Indicates that an object has been canceled.
+  // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
 }

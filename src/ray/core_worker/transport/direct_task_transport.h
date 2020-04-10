@@ -174,8 +174,8 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
       GUARDED_BY(mu_);
 
-  // Tasks that were canceled while being resolved.
-  absl::flat_hash_set<TaskID> canceled_resolving_tasks_ GUARDED_BY(mu_);
+  // Tasks that were cancelled while being resolved.
+  absl::flat_hash_set<TaskID> cancelled_resolving_tasks_ GUARDED_BY(mu_);
 
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> sent_tasks_ GUARDED_BY(mu_);

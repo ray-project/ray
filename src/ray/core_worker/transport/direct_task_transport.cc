@@ -24,9 +24,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     absl::MutexLock lock(&mu_);
-    if (canceled_resolving_tasks_.find(task_spec.TaskId()) !=
-        canceled_resolving_tasks_.end()) {
-      canceled_resolving_tasks_.erase(task_spec.TaskId());
+    if (cancelled_resolving_tasks_.find(task_spec.TaskId()) !=
+        cancelled_resolving_tasks_.end()) {
+      cancelled_resolving_tasks_.erase(task_spec.TaskId());
 
       return;
     }
@@ -246,14 +246,14 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
   {
     absl::MutexLock lock(&mu_);
     auto scheduled_tasks = task_queues_.find(scheduling_key);
-    RAY_LOG(ERROR) << "First place";
+    // RAY_LOG(ERROR) << "First place";
     // See if task has not been shipped yet
     if (scheduled_tasks != task_queues_.end()) {
       for (auto spec = scheduled_tasks->second.begin();
            spec != scheduled_tasks->second.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks->second.erase(spec);
-          RAY_LOG(ERROR) << "Canceling task here";
+          // RAY_LOG(ERROR) << "Canceling task here";
           full_kill = true;
           // Erase an empty queue
           if (scheduled_tasks->second.empty()) {
@@ -268,14 +268,14 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
       if (rpc_client == sent_tasks_.end() ||
           client_cache_.find(rpc_client->second) == client_cache_.end()) {
         // Task has dependencies being resolved
-        canceled_resolving_tasks_.emplace(task_spec.TaskId());
+        cancelled_resolving_tasks_.emplace(task_spec.TaskId());
       } else {
         client = client_cache_.find(rpc_client->second)->second;
       }
     }
   }
   if (client == nullptr) {
-    task_finisher_->MarkTaskCanceled(task_spec.TaskId(), true);
+    task_finisher_->MarkTaskCancelled(task_spec.TaskId(), true);
     if (full_kill) {
       task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                         rpc::ErrorType::TASK_CANCELLED);
@@ -283,9 +283,9 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
     return Status::OK();
   }
 
-  RAY_LOG(ERROR) << "Second place";
-  task_finisher_->MarkTaskCanceled(task_spec.TaskId(), false);
-  RAY_LOG(ERROR) << "third place";
+  // RAY_LOG(ERROR) << "Second place";
+  task_finisher_->MarkTaskCancelled(task_spec.TaskId(), false);
+  // RAY_LOG(ERROR) << "third place";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);

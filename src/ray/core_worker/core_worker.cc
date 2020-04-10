@@ -903,7 +903,7 @@ Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
     auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
     if (!task_spec.IsActorCreationTask())
       RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec, force_kill));
-    RAY_LOG(ERROR) << "YEET";
+    // RAY_LOG(ERROR) << "YEET";
   }
   return Status::OK();
 }
@@ -1424,6 +1424,7 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
   // Try to kill the task immediately, if it fails, it will try again twice. This it to
   // avoid the situation where a cancellation RPC is processed before the execute RPC.
 
+  absl::MutexLock lock(&mutex_);
   if (!request.force_kill()) {
     if (main_thread_task_id_ == task_id) {
       RAY_LOG(INFO) << "Soft killing worker running: " << main_thread_task_id_;
@@ -1431,24 +1432,8 @@ void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
     }
     return;
   }
-  absl::MutexLock lock(&mutex_);
   task_to_kill_ = task_id;
   TryForceKillTask();
-  // Exit(true);
-  // RAY_LOG(ERROR) << "Trying to kill";
-  // task_manager_->CancelTask(task_id);
-  // RAY_LOG(ERROR) << "Trying to disc";
-  // Disconnect();
-  // RAY_LOG(ERROR) << "Trying to shutdown";
-  // Shutdown();
-  // return;
-  // absl::MutexLock lock(&mutex_);
-  // if (main_thread_task_id_ == task_id) {
-  //   RAY_LOG(INFO) << "Interrupting main: " << main_thread_task_id_;
-  //   if (kill_main_thread_()) {
-  //     return;
-  //   }
-  // }
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

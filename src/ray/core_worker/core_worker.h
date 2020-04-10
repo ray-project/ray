@@ -705,7 +705,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::function<Status()> check_signals_;
 
   // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main_thread_;
+  std::function<bool()> kill_main_thread_ EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
