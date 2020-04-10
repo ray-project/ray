@@ -76,7 +76,7 @@ class CallbackReply {
   /// \return size_t The next cursor for scan.
   size_t ReadAsScanArray(std::vector<std::string> *array) const;
 
-  std::string GetMessageType() const { return message_type_; }
+  bool IsUnsubscribeCallback() const { return is_unsubscribe_callback_; }
 
  private:
   /// Parse redis reply as string array or scan array.
@@ -101,7 +101,7 @@ class CallbackReply {
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::string> string_array_reply_;
 
-  std::string message_type_;
+  bool is_unsubscribe_callback_ = false;
 
   /// Represent the reply of SCanArray, means the next scan cursor for scan request.
   size_t next_scan_cursor_reply_{0};

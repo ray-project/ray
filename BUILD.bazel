@@ -306,6 +306,11 @@ cc_binary(
 
 cc_library(
     name = "gcs_pub_sub_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+        ],
+    ),
     hdrs = glob(
         [
             "src/ray/gcs/pubsub/gcs_pub_sub.h",
