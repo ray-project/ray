@@ -6,9 +6,9 @@ import os
 import logging
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 import ray
@@ -185,7 +185,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -718,25 +718,21 @@ class Node:
                 time.sleep(0.1)
 
             if allow_graceful:
-                # Allow the process one second to exit gracefully.
                 process.terminate()
-                timer = threading.Timer(1, lambda process: process.kill(),
-                                        [process])
+                # Allow the process one second to exit gracefully.
+                timeout_seconds = 1
                 try:
-                    timer.start()
+                    process.wait(timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
+
+            # If the process did not exit, force kill it.
+            if process.poll() is None:
+                process.kill()
+                # The reason we usually don't call process.wait() here is that
+                # there's some chance we'd end up waiting a really long time.
+                if wait:
                     process.wait()
-                finally:
-                    timer.cancel()
-
-                if process.poll() is not None:
-                    continue
-
-            # If the process did not exit within one second, force kill it.
-            process.kill()
-            # The reason we usually don't call process.wait() here is that
-            # there's some chance we'd end up waiting a really long time.
-            if wait:
-                process.wait()
 
         del self.all_processes[process_type]
 
@@ -925,16 +921,3 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
-
-
-class LocalNode:
-    """Imitate the node that manages the processes in local mode."""
-
-    def kill_all_processes(self, *args, **kwargs):
-        """Kill all of the processes."""
-        pass  # Keep this function empty because it will be used in worker.py
-
-    @property
-    def address_info(self):
-        """Get a dictionary of addresses."""
-        return {}  # Return a null dict.

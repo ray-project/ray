@@ -14,25 +14,19 @@ static std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
-    jobject sync_func) {
+    JNIEnv *env, jobject this_obj, jobject async_func, jobject sync_func) {
   auto ray_async_func = FunctionDescriptorToRayFunction(env, async_func);
   auto ray_sync_func = FunctionDescriptorToRayFunction(env, sync_func);
-  auto *writer_client =
-      new WriterClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr),
-                       ray_async_func, ray_sync_func);
+  auto *writer_client = new WriterClient(ray_async_func, ray_sync_func);
   return reinterpret_cast<jlong>(writer_client);
 }
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
-    jobject sync_func) {
+    JNIEnv *env, jobject this_obj, jobject async_func, jobject sync_func) {
   ray::RayFunction ray_async_func = FunctionDescriptorToRayFunction(env, async_func);
   ray::RayFunction ray_sync_func = FunctionDescriptorToRayFunction(env, sync_func);
-  auto *reader_client =
-      new ReaderClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr),
-                       ray_async_func, ray_sync_func);
+  auto *reader_client = new ReaderClient(ray_async_func, ray_sync_func);
   return reinterpret_cast<jlong>(reader_client);
 }
 

@@ -46,15 +46,18 @@ class TorchCategorical(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model=None, temperature=1.0):
-        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-        inputs /= temperature
+        if temperature != 1.0:
+            assert temperature > 0.0, \
+                "Categorical `temperature` must be > 0.0!"
+            inputs /= temperature
         super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(
             logits=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return self.dist.probs.argmax(dim=1)
+        self.last_sample = self.dist.probs.argmax(dim=1)
+        return self.last_sample
 
     @staticmethod
     @override(ActionDistribution)
@@ -68,7 +71,8 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     @override(TorchDistributionWrapper)
     def __init__(self, inputs, model, input_lens):
         super().__init__(inputs, model)
-        inputs_split = self.inputs.split(input_lens, dim=1)
+        # If input_lens is np.ndarray or list, force-make it a tuple.
+        inputs_split = self.inputs.split(tuple(input_lens), dim=1)
         self.cats = [
             torch.distributions.categorical.Categorical(logits=input_)
             for input_ in inputs_split
@@ -77,14 +81,14 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     @override(TorchDistributionWrapper)
     def sample(self):
         arr = [cat.sample() for cat in self.cats]
-        ret = torch.stack(arr, dim=1)
-        return ret
+        self.last_sample = torch.stack(arr, dim=1)
+        return self.last_sample
 
     @override(ActionDistribution)
     def deterministic_sample(self):
         arr = [torch.argmax(cat.probs, -1) for cat in self.cats]
-        ret = torch.stack(arr, dim=1)
-        return ret
+        self.last_sample = torch.stack(arr, dim=1)
+        return self.last_sample
 
     @override(TorchDistributionWrapper)
     def logp(self, actions):
@@ -134,7 +138,8 @@ class TorchDiagGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return self.dist.mean
+        self.last_sample = self.dist.mean
+        return self.last_sample
 
     @override(TorchDistributionWrapper)
     def logp(self, actions):
@@ -152,3 +157,28 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return np.prod(action_space.shape) * 2
+
+
+class TorchDeterministic(TorchDistributionWrapper):
+    """Action distribution that returns the input values directly.
+
+    This is similar to DiagGaussian with standard deviation zero (thus only
+    requiring the "mean" values as NN output).
+    """
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.inputs
+
+    @override(TorchDistributionWrapper)
+    def sampled_action_logp(self):
+        return 0.0
+
+    @override(TorchDistributionWrapper)
+    def sample(self):
+        return self.deterministic_sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)

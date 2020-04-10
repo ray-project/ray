@@ -1,12 +1,15 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
-import Typography from "@material-ui/core/Typography";
+import {
+  createStyles,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Theme,
+  Typography,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../../store";
@@ -18,33 +21,33 @@ import TotalRow from "./TotalRow";
 const styles = (theme: Theme) =>
   createStyles({
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
   nodeInfo: state.dashboard.nodeInfo,
-  rayletInfo: state.dashboard.rayletInfo
+  rayletInfo: state.dashboard.rayletInfo,
 });
 
-interface State {
+type State = {
   logDialog: { hostname: string; pid: number | null } | null;
   errorDialog: { hostname: string; pid: number | null } | null;
-}
+};
 
 class NodeInfo extends React.Component<
   WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
   state: State = {
     logDialog: null,
-    errorDialog: null
+    errorDialog: null,
   };
 
   setLogDialog = (hostname: string, pid: number | null) => {
@@ -135,7 +138,7 @@ class NodeInfo extends React.Component<
             </TableRow>
           </TableHead>
           <TableBody>
-            {nodeInfo.clients.map(client => (
+            {nodeInfo.clients.map((client) => (
               <NodeRowGroup
                 key={client.ip}
                 node={client}
