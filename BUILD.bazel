@@ -986,7 +986,7 @@ cc_library(
     deps = [
         ":ray_common",
         ":ray_util",
-        ":redis_client"
+        ":redis_client",
     ],
 )
 
