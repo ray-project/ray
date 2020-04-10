@@ -140,8 +140,8 @@ class EpsilonGreedy(Exploration):
                 torch.multinomial(random_valid_action_logits, 1), axis=1)
             # Pick either random or greedy.
             action = torch.where(
-                torch.empty((batch_size,)).uniform_().to(self.device) <
-                epsilon,
+                torch.empty(
+                    (batch_size, )).uniform_().to(self.device) < epsilon,
                 random_actions, exploit_action)
 
             return action, action_logp
