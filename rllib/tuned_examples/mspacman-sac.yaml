@@ -1,20 +1,24 @@
-# Our implementation of SAC can reach ?? reward in ??k timesteps
-pong-sac-tf:
+# Our implementation of SAC discrete can reach up
+# to ~750 reward in 40k timesteps. Run e.g. on a g3.4xlarge with `num_gpus=1`.
+# Uses the hyperparameters published in [2] (see rllib/agents/sac/README.md).
+mspacman-sac-tf:
     env: MsPacmanNoFrameskip-v4
     run: SAC
     stop:
-        episode_reward_mean: 700
+        episode_reward_mean: 800
         timesteps_total: 100000
     config:
         gamma: 0.99
-        #horizon: 1000
-        #soft_horizon: False
+        # state-preprocessor=Our default Atari Conv2D-net.
+        use_state_preprocessor: true
         Q_model:
             hidden_activation: relu
             hidden_layer_sizes: [512]
         policy_model:
             hidden_activation: relu
             hidden_layer_sizes: [512]
+        # Do hard syncs.
+        # Soft-syncs seem to work less reliably for discrete action spaces.
         tau: 1.0
         target_network_update_freq: 8000
         # paper uses: 0.98 * -log(1/|A|)
@@ -26,14 +30,13 @@ pong-sac-tf:
         prioritized_replay: true
         train_batch_size: 64
         timesteps_per_iteration: 4
+        # Paper uses 20k random timesteps, which is not exactly the same, but
+        # seems to work nevertheless.
         learning_starts: 20000
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003
             entropy_learning_rate: 0.0003
         num_workers: 0
-        num_gpus: 1
-        #clip_actions: False
-        #normalize_actions: True
-        evaluation_interval: 1
+        num_gpus: 0
         metrics_smoothing_episodes: 5
