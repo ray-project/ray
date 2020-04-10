@@ -48,9 +48,8 @@ class JobWorker(object):
                 self.task_id, self.stream_processor))
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
-            core_worker = ray.worker.global_worker.core_worker
-            self.reader_client = _streaming.ReaderClient(core_worker)
-            self.writer_client = _streaming.WriterClient(core_worker)
+            self.reader_client = _streaming.ReaderClient()
+            self.writer_client = _streaming.WriterClient()
 
         self.task = self.create_stream_task()
         self.task.start()

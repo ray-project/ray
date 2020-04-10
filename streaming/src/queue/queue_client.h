@@ -14,13 +14,12 @@ namespace streaming {
 class ReaderClient {
  public:
   /// Construct a ReaderClient object.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor
   /// \param[in] async_func DataReader's raycall function descriptor to be called by
   /// DataWriter, asynchronous semantics \param[in] sync_func DataReader's raycall
   /// function descriptor to be called by DataWriter, synchronous semantics
-  ReaderClient(CoreWorker *core_worker) : core_worker_(core_worker) {
+  ReaderClient() {
     downstream_handler_ = ray::streaming::DownstreamQueueMessageHandler::CreateService(
-        core_worker_, core_worker_->GetWorkerContext().GetCurrentActorID());
+        CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
   }
 
   /// Post buffer to downstream queue service, asynchronously.
@@ -31,16 +30,15 @@ class ReaderClient {
       std::shared_ptr<LocalMemoryBuffer> buffer);
 
  private:
-  CoreWorker *core_worker_;
   std::shared_ptr<DownstreamQueueMessageHandler> downstream_handler_;
 };
 
 /// Interface of streaming queue for DataWriter. Similar to ReaderClient.
 class WriterClient {
  public:
-  WriterClient(CoreWorker *core_worker) : core_worker_(core_worker) {
+  WriterClient() {
     upstream_handler_ = ray::streaming::UpstreamQueueMessageHandler::CreateService(
-        core_worker, core_worker_->GetWorkerContext().GetCurrentActorID());
+        CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
   }
 
   void OnWriterMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
@@ -48,7 +46,6 @@ class WriterClient {
       std::shared_ptr<LocalMemoryBuffer> buffer);
 
  private:
-  CoreWorker *core_worker_;
   std::shared_ptr<UpstreamQueueMessageHandler> upstream_handler_;
 };
 }  // namespace streaming

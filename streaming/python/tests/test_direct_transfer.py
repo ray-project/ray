@@ -11,9 +11,8 @@ from ray.streaming.config import Config
 @ray.remote
 class Worker:
     def __init__(self):
-        core_worker = ray.worker.global_worker.core_worker
-        self.writer_client = _streaming.WriterClient(core_worker)
-        self.reader_client = _streaming.ReaderClient(core_worker)
+        self.writer_client = _streaming.WriterClient()
+        self.reader_client = _streaming.ReaderClient()
         self.writer = None
         self.output_channel_id = None
         self.reader = None

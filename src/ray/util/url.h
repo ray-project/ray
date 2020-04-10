@@ -15,10 +15,25 @@
 #ifndef RAY_UTIL_URL_H
 #define RAY_UTIL_URL_H
 
-#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/generic/stream_protocol.hpp>
+#include <string>
 
-// Parses the endpoint (host + port number) of a URL.
-boost::asio::ip::tcp::endpoint parse_ip_tcp_endpoint(const std::string &endpoint,
-                                                     int default_port = 0);
+namespace ray {
+
+/// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
+/// \param include_scheme Whether to include the scheme prefix (such as tcp://).
+///                       This is recommended to avoid later ambiguity when parsing.
+std::string endpoint_to_url(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme = true);
+
+/// Parses the endpoint socket address of a URL.
+/// If a scheme:// prefix is absent, the address family is guessed automatically.
+/// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
+/// For UNIX domain sockets, the endpoint comprises the socket path.
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+parse_url_endpoint(const std::string &endpoint, int default_port = 0);
+
+}  // namespace ray
 
 #endif

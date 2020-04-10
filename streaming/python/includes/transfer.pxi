@@ -20,13 +20,10 @@ from ray.includes.unique_ids cimport (
 )
 from ray._raylet cimport (
     Buffer,
-    CoreWorker,
     ActorID,
     ObjectID,
     FunctionDescriptor,
 )
-
-from ray.includes.libcoreworker cimport CCoreWorker
 
 cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
@@ -75,11 +72,8 @@ cdef class ReaderClient:
     cdef:
         CReaderClient *client
 
-    def __cinit__(self,
-                  CoreWorker worker):
-        cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
-        self.client = new CReaderClient(core_worker)
+    def __cinit__(self):
+        self.client = new CReaderClient()
 
     def __dealloc__(self):
         del self.client
@@ -108,11 +102,8 @@ cdef class WriterClient:
     cdef:
         CWriterClient * client
 
-    def __cinit__(self,
-                  CoreWorker worker):
-        cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
-        self.client = new CWriterClient(core_worker)
+    def __cinit__(self):
+        self.client = new CWriterClient()
 
     def __dealloc__(self):
         del self.client

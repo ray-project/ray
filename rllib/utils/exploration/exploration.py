@@ -20,16 +20,16 @@ class Exploration:
     """
 
     def __init__(self, action_space: Space, *, framework: str,
-                 num_workers: int, worker_index: int, policy_config: dict,
-                 model: ModelV2):
+                 policy_config: dict, model: ModelV2, num_workers: int,
+                 worker_index: int):
         """
         Args:
             action_space (Space): The action space in which to explore.
             framework (str): One of "tf" or "torch".
-            num_workers (int): The overall number of workers used.
-            worker_index (int): The index of the worker using this class.
             policy_config (dict): The Policy's config dict.
             model (ModelV2): The Policy's model.
+            num_workers (int): The overall number of workers used.
+            worker_index (int): The index of the worker using this class.
         """
         self.action_space = action_space
         self.policy_config = policy_config

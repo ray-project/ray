@@ -10,7 +10,6 @@ import java.util.Random;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.transfer.ChannelID;
@@ -31,8 +30,7 @@ public class Worker {
   protected TransferHandler transferHandler = null;
 
   public Worker() {
-    transferHandler = new TransferHandler(((RayMultiWorkerNativeRuntime) Ray.internal())
-        .getCurrentRuntime().getNativeCoreWorkerPointer());
+    transferHandler = new TransferHandler();
   }
 
   public void onReaderMessage(byte[] buffer) {

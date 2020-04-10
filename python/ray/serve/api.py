@@ -7,7 +7,8 @@ from multiprocessing import cpu_count
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME)
-from ray.serve.global_state import GlobalState, ServeMaster
+from ray.serve.master import ServeMaster
+from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.serve.utils import block_until_http_ready
@@ -17,20 +18,20 @@ from ray.serve.policy import RoutePolicy
 from ray.serve.queues import Query
 from ray.serve.request_params import RequestMetadata
 
-global_state = None
+master_actor = None
 
 
-def _get_global_state():
-    """Used for internal purpose. Because just import serve.global_state
-    will always reference the original None object
+def _get_master_actor():
+    """Used for internal purpose because using just import serve.global_state
+    will always reference the original None object.
     """
-    return global_state
+    return master_actor
 
 
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
-        if _get_global_state() is None:
+        if _get_master_actor() is None:
             raise RayServeException("Please run serve.init to initialize or "
                                     "connect to existing ray serve cluster.")
         return f(*args, **kwargs)
@@ -103,9 +104,8 @@ def init(
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
     """
-    global global_state
-    # Noop if global_state is no longer None
-    if global_state is not None:
+    global master_actor
+    if master_actor is not None:
         return
 
     # Initialize ray if needed.
@@ -118,8 +118,7 @@ def init(
 
     # Try to get serve master actor if it exists
     try:
-        ray.util.get_actor(SERVE_MASTER_NAME)
-        global_state = GlobalState()
+        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
         return
     except ValueError:
         pass
@@ -135,20 +134,20 @@ def init(
         _, kv_store_path = mkstemp()
 
     # Serve has not been initialized, perform init sequence
-    # TODO move the db to session_dir
+    # TODO move the db to session_dir.
     #    ray.worker._global_node.address_info["session_dir"]
     def kv_store_connector(namespace):
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
-    master = ServeMaster.options(
+    master_actor = ServeMaster.options(
         detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
 
-    ray.get(master.start_router.remote(queueing_policy.value, policy_kwargs))
+    ray.get(
+        master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
 
-    global_state = GlobalState(master)
-    ray.get(master.start_metric_monitor.remote(gc_window_seconds))
+    ray.get(master_actor.start_metric_monitor.remote(gc_window_seconds))
     if start_server:
-        ray.get(master.start_http_proxy.remote(http_host, http_port))
+        ray.get(master_actor.start_http_proxy.remote(http_host, http_port))
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -167,10 +166,9 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    methods = [m.upper() for m in methods]
     ray.get(
-        global_state.master_actor.create_endpoint.remote(
-            route, endpoint_name, methods))
+        master_actor.create_endpoint.remote(route, endpoint_name,
+                                            [m.upper() for m in methods]))
 
 
 @_ensure_connected
@@ -181,52 +179,18 @@ def set_backend_config(backend_tag, backend_config):
         backend_tag(str): A registered backend.
         backend_config(BackendConfig) : Desired backend configuration.
     """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert isinstance(backend_config,
-                      BackendConfig), ("backend_config must be"
-                                       " of instance BackendConfig")
-    backend_config_dict = dict(backend_config)
-    old_backend_config_dict = global_state.backend_table.get_info(backend_tag)
-
-    if (not old_backend_config_dict["has_accept_batch_annotation"]
-            and backend_config.max_batch_size is not None):
-        raise batch_annotation_not_found
-
-    global_state.backend_table.register_info(backend_tag, backend_config_dict)
-
-    # inform the router about change in configuration
-    # particularly for setting max_batch_size
-    router = global_state.get_router()
-    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
-
-    # checking if replicas need to be restarted
-    # Replicas are restarted if there is any change in the backend config
-    # related to restart_configs
-    # TODO(alind) : have replica restarting policies selected by the user
-
-    need_to_restart_replicas = any(
-        old_backend_config_dict[k] != backend_config_dict[k]
-        for k in BackendConfig.restart_on_change_fields)
-    if need_to_restart_replicas:
-        # kill all the replicas for restarting with new configurations
-        _scale(backend_tag, 0)
-
-    # scale the replicas with new configuration
-    _scale(backend_tag, backend_config_dict["num_replicas"])
+    ray.get(
+        master_actor.set_backend_config.remote(backend_tag, backend_config))
 
 
 @_ensure_connected
 def get_backend_config(backend_tag):
-    """get the backend configuration for a backend tag
+    """Get the backend configuration for a backend tag.
 
     Args:
         backend_tag(str): A registered backend.
     """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    backend_config_dict = global_state.backend_table.get_info(backend_tag)
-    return BackendConfig(**backend_config_dict)
+    return ray.get(master_actor.get_backend_config.remote(backend_tag))
 
 
 def _backend_accept_batch(func_or_class):
@@ -280,6 +244,8 @@ def create_backend(func_or_class,
         class CustomActor(RayServeMixin, func_or_class):
             @wraps(func_or_class.__init__)
             def __init__(self, *args, **kwargs):
+                # Initialize serve so it can be used in backends.
+                init()
                 super().__init__(*args, **kwargs)
 
         arg_list = actor_init_args
@@ -290,51 +256,9 @@ def create_backend(func_or_class,
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
-    backend_config_dict = dict(backend_config)
-
-    # save creator which starts replicas
-    global_state.backend_table.register_backend(backend_tag, creator)
-
-    # save information about configurations needed to start the replicas
-    global_state.backend_table.register_info(backend_tag, backend_config_dict)
-
-    # save the initial arguments needed by replicas
-    global_state.backend_table.save_init_args(backend_tag, arg_list)
-
-    # set the backend config inside the router
-    # particularly for max-batch-size
-    router = global_state.get_router()
-    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
-    _scale(backend_tag, backend_config_dict["num_replicas"])
-
-
-@_ensure_connected
-def _scale(backend_tag, num_replicas):
-    """Set the number of replicas for backend_tag.
-
-    Args:
-        backend_tag (str): A registered backend.
-        num_replicas (int): Desired number of replicas
-    """
-    assert (backend_tag in global_state.backend_table.list_backends()
-            ), "Backend {} is not registered.".format(backend_tag)
-    assert num_replicas >= 0, ("Number of replicas must be"
-                               " greater than or equal to 0.")
-
-    replicas = global_state.backend_table.list_replicas(backend_tag)
-    current_num_replicas = len(replicas)
-    delta_num_replicas = num_replicas - current_num_replicas
-
-    if delta_num_replicas > 0:
-        for _ in range(delta_num_replicas):
-            ray.get(
-                global_state.master_actor.start_backend_replica.remote(
-                    backend_tag))
-    elif delta_num_replicas < 0:
-        for _ in range(-delta_num_replicas):
-            ray.get(
-                global_state.master_actor.remove_backend_replica.remote(
-                    backend_tag))
+    ray.get(
+        master_actor.create_backend.remote(backend_tag, creator,
+                                           backend_config, arg_list))
 
 
 @_ensure_connected
@@ -370,8 +294,8 @@ def split(endpoint_name, traffic_policy_dictionary):
             to their traffic weights. The weights must sum to 1.
     """
     ray.get(
-        global_state.master_actor.split_traffic.remote(
-            endpoint_name, traffic_policy_dictionary))
+        master_actor.split_traffic.remote(endpoint_name,
+                                          traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -394,13 +318,11 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in global_state.get_all_endpoints()
-
-    # Delay import due to it's dependency on global_state
-    from ray.serve.handle import RayServeHandle
+        assert endpoint_name in ray.get(
+            master_actor.get_all_endpoints.remote())
 
     return RayServeHandle(
-        global_state.get_router(),
+        ray.get(master_actor.get_router.remote())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
@@ -419,7 +341,7 @@ def stat(percentiles=[50, 90, 95],
             The longest aggregation window must be shorter or equal to the
             gc_window_seconds.
     """
-    monitor = global_state.get_metric_monitor()
+    [monitor] = ray.get(master_actor.get_metric_monitor.remote())
     return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
 
 

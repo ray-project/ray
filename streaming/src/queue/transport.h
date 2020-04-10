@@ -13,13 +13,10 @@ namespace streaming {
 class Transport {
  public:
   /// Construct a Transport object.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor, which we call direct
-  ///            actor call interface with.
   /// \param[in] peer_actor_id actor id of peer actor.
-  Transport(CoreWorker *core_worker, const ActorID &peer_actor_id,
+  Transport(const ActorID &peer_actor_id,
             RayFunction &async_func, RayFunction &sync_func)
-      : core_worker_(core_worker),
-        peer_actor_id_(peer_actor_id),
+      : peer_actor_id_(peer_actor_id),
         async_func_(async_func),
         sync_func_(sync_func) {
     STREAMING_LOG(INFO) << "Transport constructor:";
@@ -65,7 +62,7 @@ class Transport {
                             std::vector<ObjectID> &return_ids);
 
  private:
-  CoreWorker *core_worker_;
+  WorkerID worker_id_;
   ActorID peer_actor_id_;
   RayFunction async_func_;
   RayFunction sync_func_;

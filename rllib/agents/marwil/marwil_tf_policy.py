@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.explained_variance import explained_variance
@@ -14,7 +10,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class ValueNetworkMixin(object):
+class ValueNetworkMixin:
     def __init__(self):
         @make_tf_callable(self.get_session())
         def value(ob, prev_action, prev_reward, *state):
@@ -30,31 +26,27 @@ class ValueNetworkMixin(object):
         self._value = value
 
 
-class ValueLoss(object):
+class ValueLoss:
     def __init__(self, state_values, cumulative_rewards):
         self.loss = 0.5 * tf.reduce_mean(
             tf.square(state_values - cumulative_rewards))
 
 
-class ReweightedImitationLoss(object):
-    def __init__(self, state_values, cumulative_rewards, actions, action_dist,
-                 beta):
-        ma_adv_norm = tf.get_variable(
-            name="moving_average_of_advantage_norm",
-            dtype=tf.float32,
-            initializer=100.0,
-            trainable=False)
+class ReweightedImitationLoss:
+    def __init__(self, policy, state_values, cumulative_rewards, actions,
+                 action_dist, beta):
         # advantage estimation
         adv = cumulative_rewards - state_values
         # update averaged advantage norm
         update_adv_norm = tf.assign_add(
-            ref=ma_adv_norm,
-            value=1e-6 * (tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
+            ref=policy._ma_adv_norm,
+            value=1e-6 *
+            (tf.reduce_mean(tf.square(adv)) - policy._ma_adv_norm))
 
         # exponentially weighted advantages
         with tf.control_dependencies([update_adv_norm]):
             exp_advs = tf.exp(
-                beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
+                beta * tf.divide(adv, 1e-8 + tf.sqrt(policy._ma_adv_norm)))
 
         # log\pi_\theta(a|s)
         logprobs = action_dist.logp(actions)
@@ -87,24 +79,24 @@ def postprocess_advantages(policy,
         use_critic=False)
 
 
-class MARWILLoss(object):
-    def __init__(self, state_values, action_dist, actions, advantages,
+class MARWILLoss:
+    def __init__(self, policy, state_values, action_dist, actions, advantages,
                  vf_loss_coeff, beta):
 
         self.v_loss = self._build_value_loss(state_values, advantages)
-        self.p_loss = self._build_policy_loss(state_values, advantages,
+        self.p_loss = self._build_policy_loss(policy, state_values, advantages,
                                               actions, action_dist, beta)
 
         self.total_loss = self.p_loss.loss + vf_loss_coeff * self.v_loss.loss
-        self.explained_variance = tf.reduce_mean(
-            explained_variance(advantages, state_values))
+        explained_var = explained_variance(advantages, state_values)
+        self.explained_variance = tf.reduce_mean(explained_var)
 
     def _build_value_loss(self, state_values, cum_rwds):
         return ValueLoss(state_values, cum_rwds)
 
-    def _build_policy_loss(self, state_values, cum_rwds, actions, action_dist,
-                           beta):
-        return ReweightedImitationLoss(state_values, cum_rwds, actions,
+    def _build_policy_loss(self, policy, state_values, cum_rwds, actions,
+                           action_dist, beta):
+        return ReweightedImitationLoss(policy, state_values, cum_rwds, actions,
                                        action_dist, beta)
 
 
@@ -113,7 +105,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     action_dist = dist_class(model_out, model)
     state_values = model.value_function()
 
-    policy.loss = MARWILLoss(state_values, action_dist,
+    policy.loss = MARWILLoss(policy, state_values, action_dist,
                              train_batch[SampleBatch.ACTIONS],
                              train_batch[Postprocessing.ADVANTAGES],
                              policy.config["vf_coeff"], policy.config["beta"])
@@ -132,6 +124,13 @@ def stats(policy, train_batch):
 
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy)
+    # Set up a tf-var for the moving avg (do this here to make it work with
+    # eager mode).
+    policy._ma_adv_norm = tf.get_variable(
+        name="moving_average_of_advantage_norm",
+        dtype=tf.float32,
+        initializer=100.0,
+        trainable=False)
 
 
 MARWILTFPolicy = build_tf_policy(

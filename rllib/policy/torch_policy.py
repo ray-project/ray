@@ -7,7 +7,8 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
+    convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
@@ -106,20 +107,23 @@ class TorchPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
         with torch.no_grad():
+            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
+                "is_training": False,
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            state_batches = [self._convert_to_tensor(s) for s in state_batches]
+            state_batches = [
+                self._convert_to_tensor(s) for s in (state_batches or [])
+            ]
 
             if self.action_sampler_fn:
-                dist_class = dist_inputs = None
+                action_dist = dist_inputs = None
                 state_out = []
                 actions, logp = self.action_sampler_fn(
                     self,
@@ -129,12 +133,17 @@ class TorchPolicy(Policy):
                     timestep=timestep)
             else:
                 # Call the exploration before_compute_actions hook.
-                self.exploration.before_compute_actions(timestep=timestep)
+                self.exploration.before_compute_actions(
+                    explore=explore, timestep=timestep)
                 if self.action_distribution_fn:
                     dist_inputs, dist_class, state_out = \
                         self.action_distribution_fn(
-                            self, self.model, input_dict[SampleBatch.CUR_OBS],
-                            explore=explore, timestep=timestep)
+                            self,
+                            self.model,
+                            input_dict[SampleBatch.CUR_OBS],
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
                 else:
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
@@ -182,9 +191,9 @@ class TorchPolicy(Policy):
                 SampleBatch.CUR_OBS: obs_batch,
                 SampleBatch.ACTIONS: actions
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
@@ -194,7 +203,10 @@ class TorchPolicy(Policy):
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+                    self,
+                    self.model,
+                    input_dict[SampleBatch.CUR_OBS],
+                    explore=False)
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -242,9 +254,11 @@ class TorchPolicy(Policy):
             info["allreduce_latency"] = time.time() - start
 
         self._optimizer.step()
-        info.update(self.extra_grad_info(train_batch))
 
-        return {LEARNER_STATS_KEY: info}
+        info.update(self.extra_grad_info(train_batch))
+        return {
+            LEARNER_STATS_KEY: info
+        }
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
@@ -278,10 +292,14 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def get_weights(self):
-        return {k: v.cpu() for k, v in self.model.state_dict().items()}
+        return {
+            k: v.cpu().detach().numpy()
+            for k, v in self.model.state_dict().items()
+        }
 
     @override(Policy)
     def set_weights(self, weights):
+        weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
 
     @override(Policy)
@@ -301,19 +319,15 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self,
-                         input_dict,
-                         state_batches,
-                         model,
-                         action_dist=None):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
         """Returns dict of extra info to include in experience batch.
 
-        Arguments:
+        Args:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
             model (TorchModelV2): Reference to the model.
-            action_dist (Distribution): Torch Distribution object to get
-                log-probs (e.g. for already sampled actions).
+            action_dist (TorchActionDistribution): Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
         """
         return {}
 

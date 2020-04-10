@@ -14,25 +14,17 @@ static std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr) {
-  auto *writer_client =
-      new WriterClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr));
+    JNIEnv *env, jobject this_obj) {
+  auto *writer_client = new WriterClient();
   return reinterpret_cast<jlong>(writer_client);
 }
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr) {
-  auto *reader_client =
-      new ReaderClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr));
+    JNIEnv *env, jobject this_obj) {
+  auto *reader_client = new ReaderClient();
   return reinterpret_cast<jlong>(reader_client);
 }
-
-JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
-    JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  auto *writer_client = reinterpret_cast<WriterClient *>(ptr);
-  writer_client->OnWriterMessage(JByteArrayToBuffer(env, bytes));
 }
 
 JNIEXPORT jbyteArray JNICALL

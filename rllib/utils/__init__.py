@@ -13,7 +13,9 @@ from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
+    convert_to_torch_tensor
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -60,10 +62,13 @@ __all__ = [
     "add_mixins",
     "check",
     "check_framework",
+    "convert_to_non_torch_type",
+    "convert_to_torch_tensor",
     "deprecation_warning",
     "fc",
     "force_list",
     "force_tuple",
+    "framework_iterator",
     "lstm",
     "one_hot",
     "relu",
