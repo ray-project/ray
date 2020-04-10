@@ -234,7 +234,8 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
                 weights=0.5))
 
     # Auto-calculate the target entropy.
-    if policy.config["target_entropy"] == "auto":
+    if policy.config["target_entropy"] == "auto" or \
+            policy.config["target_entropy"] is None:
         # See hyperparams in [2] (README.md).
         if model.discrete:
             target_entropy = 0.98 * np.array(
