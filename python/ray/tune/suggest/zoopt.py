@@ -3,7 +3,7 @@ import logging
 import pickle
 
 try:  # Python 3 only -- needed for lint test.
-    from zoopt import ValueType, Dimension2, Parameter, Objective
+    from zoopt import Dimension2, Parameter
     from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
 except ImportError:
     zoopt = None
@@ -31,7 +31,8 @@ class ZOOptSearch(SuggestionAlgorithm):
         assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         _algo = algo.lower()
-        assert _algo in ["asracos", "sracos"], "`algo` must be in ['asracos', 'sracos'] currently"
+        assert _algo in ["asracos", "sracos"
+                         ], "`algo` must be in ['asracos', 'sracos'] currently"
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -67,7 +68,6 @@ class ZOOptSearch(SuggestionAlgorithm):
             self.solution_dict[str(trial_id)] = _solution
             _x = _solution.get_x()
             new_trial = dict(zip(self._dim_keys, _x))
-            # print("new_trial ----------------->", new_trial)
             self._live_trial_mapping[trial_id] = new_trial
             return copy.deepcopy(new_trial)
 
@@ -81,11 +81,11 @@ class ZOOptSearch(SuggestionAlgorithm):
                           early_terminated=False):
         """Notification for the completion of trial."""
         if result:
-            # print("result:", result)
             _solution = self.solution_dict[str(trial_id)]
-            _best_solution_so_far = self.optimizer.complete(_solution, self._metric_op * result[self._metric])
+            _best_solution_so_far = self.optimizer.complete(
+                _solution, self._metric_op * result[self._metric])
             if _best_solution_so_far:
-              self.best_solution_list.append(_best_solution_so_far)
+                self.best_solution_list.append(_best_solution_so_far)
             self._process_result(trial_id, result, early_terminated)
 
         del self._live_trial_mapping[trial_id]

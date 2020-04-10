@@ -35,6 +35,7 @@ def SigOptSearch(*args, **kwargs):
     raise DeprecationWarning("""This class has been moved. Please import via
         `from ray.tune.suggest.sigopt import SigOptSearch`""")
 
+
 def ZOOptSearch(*args, **kwargs):
     raise DeprecationWarning("""This class has been moved. Please import via
         `from ray.tune.suggest.zoopt import ZOOptSearch`""")
