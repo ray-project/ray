@@ -622,14 +622,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return result
 
             def _stop(self):
-                time.sleep(1)
+                time.sleep(2)
+                open(os.path.join(self.logdir, "marker"), "a").close()
                 return 1
 
         analysis = tune.run(
             TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
-        trial = analysis.trials[0]
-        self.assertEqual(trial.last_result.get("name"), str(trial))
-        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+        ray.shutdown()
+        for trial in analysis.trials:
+            path = os.path.join(trial.logdir, "marker")
+            assert os.path.exists(path)
+
 
     def testNestedResults(self):
         def create_result(i):
