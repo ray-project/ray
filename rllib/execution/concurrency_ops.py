@@ -5,7 +5,7 @@ from ray.util.iter import LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 
 
-def Concurrently(ops: List[LocalIterator], mode="round_robin"):
+def Concurrently(ops: List[LocalIterator], *, mode="round_robin"):
     """Operator that runs the given parent iterators concurrently.
 
     Arguments:
@@ -17,7 +17,7 @@ def Concurrently(ops: List[LocalIterator], mode="round_robin"):
 
         >>> sim_op = ParallelRollouts(...).for_each(...)
         >>> replay_op = LocalReplay(...).for_each(...)
-        >>> combined_op = Concurrently([sim_op, replay_op])
+        >>> combined_op = Concurrently([sim_op, replay_op], mode="async")
     """
 
     if len(ops) < 2:

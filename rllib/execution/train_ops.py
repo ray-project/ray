@@ -23,7 +23,7 @@ class TrainOneStep:
         >>> rollouts = ParallelRollouts(...)
         >>> train_op = rollouts.for_each(TrainOneStep(workers))
         >>> print(next(train_op))  # This trains the policy on one batch.
-        None
+        {"learner_stats": ...}
 
     Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
     local iterator context.
