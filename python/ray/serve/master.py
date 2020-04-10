@@ -114,6 +114,13 @@ class ServeMaster:
 
         replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
 
+        # Register the worker in the DB.
+        # TODO(edoakes): we should guarantee that if calls to the master
+        # succeed, the cluster state has changed and if they fail, it hasn't.
+        # Once we have master actor fault tolerance, this breaks that guarantee
+        # because this method could fail after writing the replica to the DB.
+        self.backend_table.add_replica(backend_tag, replica_tag)
+
         # Fetch the info to start the replica from the backend table.
         backend_actor = ray.remote(
             self.backend_table.get_backend_creator(backend_tag))
@@ -129,8 +136,10 @@ class ServeMaster:
         worker_handle = backend_actor._remote(**kwargs)
         self.tag_to_actor_handles[replica_tag] = worker_handle
 
-        # Register the worker in config tables and metric monitor.
-        self.backend_table.add_replica(backend_tag, replica_tag)
+        # Wait for the worker to start up.
+        await worker_handle.ready.remote()
+
+        # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
     def _remove_backend_replica(self, backend_tag):

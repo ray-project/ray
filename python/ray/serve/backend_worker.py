@@ -37,16 +37,29 @@ def create_backend_worker(func_or_class):
             if self_handle is None:
                 assert router_handle is None
                 master_actor = serve.api._get_master_actor()
-                [self_handle], [router_handle] = ray.get(
-                    master_actor.get_backend_replica_config.remote(
-                        replica_tag))
+                # TODO(edoakes): this is a hacky workaround because there is
+                # a race condition when the master starts up a worker: the
+                # master starts the worker then adds its handle to a local map
+                # and the worker queries the master for its own handle from
+                # that map. If there's a large enough delay in the master, the
+                # handle may not have been added to the map yet (seen in CI).
+                # This will be fixed soon when the router just pushes tasks to
+                # the workers instead of the workers indicating that they're
+                # available.
+                start = time.time()
+                while time.time() - start < 5:
+                    try:
+                        print("Calling get_backend_replica_config")
+                        [self_handle], [router_handle] = ray.get(
+                            master_actor.get_backend_replica_config.remote(
+                                replica_tag))
+                        print("Got get_backend_replica_config")
+                        break
+                    except ray.exceptions.RayTaskError:
+                        pass
 
-            self.backend = RayServeWorker(
-                backend_tag,
-                _callable,
-                self_handle,
-                router_handle,
-                is_function=is_function)
+            self.backend = RayServeWorker(backend_tag, _callable, self_handle,
+                                          router_handle, is_function)
 
             if start_running:
                 self.backend.mark_idle_in_router()
@@ -56,6 +69,9 @@ def create_backend_worker(func_or_class):
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
+
+        def ready(self):
+            pass
 
     RayServeWrappedWorker.__name__ = "RayServeWorker_" + func_or_class.__name__
     return RayServeWrappedWorker
@@ -81,12 +97,8 @@ def ensure_async(func):
 class RayServeWorker:
     """Fetches requests and handles them with the provided callable."""
 
-    def __init__(self,
-                 name,
-                 _callable,
-                 self_handle,
-                 router_handle,
-                 is_function=False):
+    def __init__(self, name, _callable, self_handle, router_handle,
+                 is_function):
         self.name = name
         self.callable = _callable
         self.self_handle = self_handle
