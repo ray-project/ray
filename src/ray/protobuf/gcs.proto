@@ -311,7 +311,7 @@ message ResourceChange {
   ResourceMap data = 2;
 }
 
-message GcsMessage {
+message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
 }

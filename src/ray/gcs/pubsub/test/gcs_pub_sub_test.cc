@@ -31,6 +31,7 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
                                                  true);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
+    pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
   }
 
   virtual void TearDown() override {
@@ -38,44 +39,40 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
   }
 
-  template <typename PUB_SUB, typename ID, typename Data>
-  void Subscribe(PUB_SUB &pub_sub, const std::string &channel, const ID &id,
+  template <typename ID, typename Data>
+  void Subscribe(const gcs::TablePubsub &channel, const ID &id,
                  std::vector<Data> &result) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(data);
     };
-    RAY_CHECK_OK(pub_sub.Subscribe(channel, id, subscribe, done));
+    RAY_CHECK_OK((pub_sub_->Subscribe<ID, Data>(channel, id, subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  template <typename PUB_SUB, typename ID, typename Data>
-  void SubscribeAll(PUB_SUB &pub_sub, const std::string &channel,
+  template <typename ID, typename Data>
+  void SubscribeAll(const gcs::TablePubsub &channel,
                     std::vector<std::pair<ID, Data>> &result) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const ID &id, const Data &data) {
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK(pub_sub.SubscribeAll(channel, subscribe, done));
+    RAY_CHECK_OK((pub_sub_->SubscribeAll<ID, Data>(channel, subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  template <typename PUB_SUB, typename ID>
-  bool Unsubscribe(PUB_SUB &pub_sub, const std::string &channel, const ID &id) {
-    std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    RAY_CHECK_OK(pub_sub.Unsubscribe(channel, id, done));
-    return WaitReady(promise.get_future(), timeout_ms_);
+  template <typename ID>
+  bool Unsubscribe(const gcs::TablePubsub &channel, const ID &id) {
+    return pub_sub_->Unsubscribe<ID>(channel, id).ok();
   }
 
-  template <typename PUB_SUB, typename ID, typename Data>
-  bool Publish(PUB_SUB &pub_sub, const std::string &channel, const ID &id,
-               const Data &data) {
+  template <typename ID, typename Data>
+  bool Publish(const gcs::TablePubsub &channel, const ID &id, const Data &data) {
     std::promise<bool> promise;
     auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    RAY_CHECK_OK(pub_sub.Publish(channel, id, data, done));
+    RAY_CHECK_OK((pub_sub_->Publish<ID, Data>(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -94,9 +91,9 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
 
   std::shared_ptr<gcs::RedisClient> client_;
   JobID job_id_ = JobID::FromInt(1);
-  TaskID task_id_ = TaskID::ForDriverTask(job_id_);
-  ClientID node_id_ = ClientID::FromRandom();
-  const std::chrono::milliseconds timeout_ms_{10000};
+  const std::chrono::milliseconds timeout_ms_{60000};
+
+  std::shared_ptr<gcs::GcsPubSub> pub_sub_;
 
  private:
   boost::asio::io_service io_service_;
@@ -104,211 +101,56 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
 };
 
 TEST_F(GcsPubSubTest, TestJobTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::JOB_PUBSUB);
-  gcs::GcsPubSub<JobID, gcs::JobTableData> pub_sub(client_);
+  const auto &channel = gcs::TablePubsub::JOB_PUBSUB;
   rpc::JobTableData job_table_data;
   job_table_data.set_job_id(job_id_.Binary());
 
   std::vector<std::pair<JobID, rpc::JobTableData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
+
+  SubscribeAll<JobID, rpc::JobTableData>(channel, all_result);
   std::vector<rpc::JobTableData> result;
-  Subscribe(pub_sub, channel, job_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, job_id_, job_table_data));
+  Subscribe<JobID, rpc::JobTableData>(channel, job_id_, result);
+  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
+
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, job_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, job_id_, job_table_data));
+  Unsubscribe<JobID>(channel, job_id_);
+  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
   usleep(100 * 1000);
   EXPECT_EQ(result.size(), 1);
+
+  Subscribe<JobID, rpc::JobTableData>(channel, job_id_, result);
+  Publish<JobID, rpc::JobTableData>(channel, job_id_, job_table_data);
+  WaitPendingDone(result, 2);
+  WaitPendingDone(all_result, 3);
 }
 
-TEST_F(GcsPubSubTest, TestActorTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::ACTOR_PUBSUB);
-  gcs::GcsPubSub<ActorID, gcs::ActorTableData> pub_sub(client_);
-  ActorID actor_id = ActorID::Of(job_id_, RandomTaskId(), 0);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_job_id(job_id_.Binary());
-  actor_table_data.set_actor_id(actor_id.Binary());
+TEST_F(GcsPubSubTest, TestMultithreading) {
+  const auto &channel = gcs::TablePubsub::ACTOR_PUBSUB;
+  auto count = std::make_shared<std::atomic<int>>(0);
+  int size = 5;
+  for (int index = 0; index < size; ++index) {
+    new std::thread([this, count, index, channel] {
+      auto subscribe = [count](const ActorID &id, const rpc::ActorTableData &data) {
+        ++(*count);
+      };
+      auto id = ActorID::Of(JobID::FromInt(index), TaskID::Nil(), 0);
+      RAY_CHECK_OK((pub_sub_->Subscribe<ActorID, rpc::ActorTableData>(
+          channel, id, subscribe, nullptr)));
+    });
+  }
 
-  std::vector<std::pair<ActorID, rpc::ActorTableData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::ActorTableData> result;
-  Subscribe(pub_sub, channel, actor_id, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, actor_id, actor_table_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, actor_id));
-  ASSERT_TRUE(Publish(pub_sub, channel, actor_id, actor_table_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
+  for (int index = 0; index < size; ++index) {
+    new std::thread([this, count, index, channel] {
+      auto id = ActorID::Of(JobID::FromInt(index), TaskID::Nil(), 0);
+      rpc::ActorTableData data;
+      RAY_CHECK_OK(
+          (pub_sub_->Publish<ActorID, rpc::ActorTableData>(channel, id, data, nullptr)));
+    });
+  }
 
-TEST_F(GcsPubSubTest, TestTaskTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::TASK_PUBSUB);
-  gcs::GcsPubSub<TaskID, gcs::TaskTableData> pub_sub(client_);
-  rpc::TaskTableData task_table_data;
-  rpc::Task task;
-  rpc::TaskSpec task_spec;
-  task_spec.set_job_id(job_id_.Binary());
-  task_spec.set_task_id(task_id_.Binary());
-  task.mutable_task_spec()->CopyFrom(task_spec);
-  task_table_data.mutable_task()->CopyFrom(task);
-
-  std::vector<std::pair<TaskID, rpc::TaskTableData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::TaskTableData> result;
-  Subscribe(pub_sub, channel, task_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, task_id_, task_table_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, task_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, task_id_, task_table_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestTaskLeaseTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::TASK_LEASE_PUBSUB);
-  gcs::GcsPubSub<TaskID, gcs::TaskLeaseData> pub_sub(client_);
-  rpc::TaskLeaseData task_lease_data;
-  task_lease_data.set_task_id(task_id_.Binary());
-
-  std::vector<std::pair<TaskID, rpc::TaskLeaseData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::TaskLeaseData> result;
-  Subscribe(pub_sub, channel, task_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, task_id_, task_lease_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, task_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, task_id_, task_lease_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestObjectTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::OBJECT_PUBSUB);
-  gcs::GcsPubSub<ObjectID, gcs::ObjectChange> pub_sub(client_);
-  ObjectID object_id = ObjectID::FromRandom();
-  rpc::ObjectTableData object_table_data;
-  object_table_data.set_manager(node_id_.Binary());
-  object_table_data.set_object_size(1);
-  rpc::ObjectChange object_change;
-  object_change.set_change_mode(rpc::GcsChangeMode::APPEND_OR_ADD);
-  object_change.mutable_data()->CopyFrom(object_table_data);
-
-  std::vector<std::pair<ObjectID, rpc::ObjectChange>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::ObjectChange> result;
-  Subscribe(pub_sub, channel, object_id, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, object_id, object_change));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, object_id));
-  ASSERT_TRUE(Publish(pub_sub, channel, object_id, object_change));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestNodeTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::CLIENT_PUBSUB);
-  gcs::GcsPubSub<ClientID, gcs::GcsNodeInfo> pub_sub(client_);
-  rpc::GcsNodeInfo gcs_node_info;
-  gcs_node_info.set_node_id(node_id_.Binary());
-
-  std::vector<std::pair<ClientID, rpc::GcsNodeInfo>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::GcsNodeInfo> result;
-  Subscribe(pub_sub, channel, node_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, gcs_node_info));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, node_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, gcs_node_info));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestNodeResourceTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::NODE_RESOURCE_PUBSUB);
-  gcs::GcsPubSub<ClientID, gcs::ResourceChange> pub_sub(client_);
-  rpc::ResourceTableData resource_table_data;
-  resource_table_data.set_resource_capacity(1.0);
-  rpc::ResourceMap resource_map;
-  (*resource_map.mutable_items())["node1"] = resource_table_data;
-  rpc::ResourceChange resource_change;
-  resource_change.set_change_mode(rpc::GcsChangeMode::APPEND_OR_ADD);
-  resource_change.mutable_data()->CopyFrom(resource_map);
-
-  std::vector<std::pair<ClientID, rpc::ResourceChange>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::ResourceChange> result;
-  Subscribe(pub_sub, channel, node_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, resource_change));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, node_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, resource_change));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestHeartbeatTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::HEARTBEAT_PUBSUB);
-  gcs::GcsPubSub<ClientID, gcs::HeartbeatTableData> pub_sub(client_);
-  rpc::HeartbeatTableData heartbeat_table_data;
-  heartbeat_table_data.set_client_id(node_id_.Binary());
-
-  std::vector<std::pair<ClientID, rpc::HeartbeatTableData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::HeartbeatTableData> result;
-  Subscribe(pub_sub, channel, node_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, heartbeat_table_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, node_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, heartbeat_table_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestHeartbeatBatchTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::HEARTBEAT_BATCH_PUBSUB);
-  gcs::GcsPubSub<ClientID, gcs::HeartbeatBatchTableData> pub_sub(client_);
-  rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-  heartbeat_batch_table_data.add_batch()->set_client_id(node_id_.Binary());
-
-  std::vector<std::pair<ClientID, rpc::HeartbeatBatchTableData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::HeartbeatBatchTableData> result;
-  Subscribe(pub_sub, channel, node_id_, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, heartbeat_batch_table_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, node_id_));
-  ASSERT_TRUE(Publish(pub_sub, channel, node_id_, heartbeat_batch_table_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
-}
-
-TEST_F(GcsPubSubTest, TestWorkerFailureTablePubSubApi) {
-  const std::string &channel = TablePubsub_Name(gcs::TablePubsub::WORKER_FAILURE_PUBSUB);
-  gcs::GcsPubSub<WorkerID, gcs::WorkerFailureData> pub_sub(client_);
-  WorkerID worker_id = WorkerID::FromRandom();
-  rpc::WorkerFailureData worker_failure_data;
-  worker_failure_data.set_timestamp(std::time(nullptr));
-
-  std::vector<std::pair<WorkerID, rpc::WorkerFailureData>> all_result;
-  SubscribeAll(pub_sub, channel, all_result);
-  std::vector<rpc::WorkerFailureData> result;
-  Subscribe(pub_sub, channel, worker_id, result);
-  ASSERT_TRUE(Publish(pub_sub, channel, worker_id, worker_failure_data));
-  WaitPendingDone(result, 1);
-  WaitPendingDone(all_result, 1);
-  ASSERT_TRUE(Unsubscribe(pub_sub, channel, worker_id));
-  ASSERT_TRUE(Publish(pub_sub, channel, worker_id, worker_failure_data));
-  usleep(100 * 1000);
-  EXPECT_EQ(result.size(), 1);
+  auto condition = [count, size]() { return count->load() == size; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 }  // namespace ray
