@@ -12,7 +12,9 @@ from ray.rllib.execution.common import GradientType, SampleBatchType, \
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
-def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
+def ParallelRollouts(workers: WorkerSet,
+                     *,
+                     mode="bulk_sync",
                      async_queue_depth=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
