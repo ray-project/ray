@@ -13,6 +13,7 @@ from ray.serve.utils import logger
 from urllib.parse import parse_qs
 
 # The maximum number of times to retry a request due to actor failure.
+# TODO(edoakes): this should probably be configurable.
 MAX_ACTOR_DEAD_RETRIES = 10
 
 
@@ -141,10 +142,10 @@ class HTTPProxy:
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
         retries = 0
-        while retries < MAX_ACTOR_DEAD_RETRIES:
+        while retries <= MAX_ACTOR_DEAD_RETRIES:
             try:
                 result = await self.router_handle.enqueue_request.remote(
-                    request_metadata, scope, http_body_bytes)
+                    request_metadata, scope, http_body_bytes).as_future()
                 if not isinstance(result, ray.exceptions.RayActorError):
                     await Response(result).send(scope, receive, send)
                     break
