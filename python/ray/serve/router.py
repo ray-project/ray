@@ -82,28 +82,20 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
     return unwrap_future
 
 
-class CentralizedQueues:
+class Router:
     """A router that routes request to available workers.
 
-    Router accepts each request from the `enqueue_request` method and enqueues
-    it. It also accepts worker request to work (called work_intention in code)
-    from workers via the `dequeue_request` method. The traffic policy is used
-    to match requests with their corresponding workers.
+    The traffic policy is used to assign requests to workers.
 
     Behavior:
         >>> # psuedo-code
-        >>> queue = CentralizedQueues()
-        >>> queue.enqueue_request(
+        >>> router = Router()
+        >>> router.enqueue_request(
             "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
-        # returns result ObjectID, which will contains the final result
-        >>> queue.dequeue_request('backend-1', replica_handle)
-        # nothing happens, work intention is queued.
-        # return work ObjectID, which will contains the future request payload
-        >>> queue.link('service-name', 'backend-1')
-        # here the enqueue_requester is matched with replica, request
-        # data is put into work ObjectID, and the replica processes the request
-        # and store the result into result ObjectID
+        >>> router.add_new_worker("backend-1", worker_handle)
+        >>> router.link("service-name", "backend-1")
+        # the request is assigned to the worker
 
     Traffic policy splits the traffic among different replicas
     probabilistically:
@@ -197,10 +189,12 @@ class CentralizedQueues:
         result = await query.async_future
         return result
 
-    async def dequeue_request(self, backend, replica_handle):
-        logger.debug(
-            "Received a dequeue request for backend {}".format(backend))
-        await self.worker_queues[backend].put(replica_handle)
+    async def add_new_worker(self, backend, worker_handle):
+        logger.debug("New worker added for backend '{}'".format(backend))
+        await self.mark_worker_idle(backend, worker_handle)
+
+    async def mark_worker_idle(self, backend, worker_handle):
+        await self.worker_queues[backend].put(worker_handle)
         await self.flush()
 
     async def remove_and_destroy_replica(self, backend, replica_handle):
@@ -290,10 +284,16 @@ class CentralizedQueues:
                     max_batch_size = self.backend_info[backend][
                         "max_batch_size"]
 
-                await self._assign_query_to_worker(buffer_queue, worker_queue,
-                                                   max_batch_size)
+                await self._assign_query_to_worker(
+                    backend, buffer_queue, worker_queue, max_batch_size)
+
+    async def _do_query(self, backend, worker, req):
+        result = await worker.handle_request.remote(req)
+        await self.mark_worker_idle(backend, worker)
+        return result
 
     async def _assign_query_to_worker(self,
+                                      backend,
                                       buffer_queue,
                                       worker_queue,
                                       max_batch_size=None):
@@ -302,7 +302,8 @@ class CentralizedQueues:
             worker = await worker_queue.get()
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
-                future = worker.handle_request.remote(request).as_future()
+                future = asyncio.get_event_loop().create_task(
+                    self._do_query(backend, worker, request))
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
@@ -317,7 +318,8 @@ class CentralizedQueues:
                     requests_group[request.call_method].append(request)
 
                 for group in requests_group.values():
-                    future = worker.handle_request.remote(group).as_future()
+                    future = asyncio.get_event_loop().create_task(
+                        self._do_query(backend, worker, group))
                     future.add_done_callback(
                         _make_future_unwrapper(
                             client_futures=[req.async_future for req in group],
