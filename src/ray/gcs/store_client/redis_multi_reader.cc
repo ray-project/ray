@@ -33,7 +33,7 @@ Status RedisMultiReader::Read(
       is_failed_ = true;
       if (--pending_read_count_ == 0) {
         return status;
-      } // Else, waiting pending read done, then callback.
+      }  // Else, waiting pending read done, then callback.
     }
   }
   return Status::OK();

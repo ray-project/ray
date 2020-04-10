@@ -39,8 +39,8 @@ class RedisMultiReader {
   void OnDone() NO_THREAD_SAFETY_ANALYSIS;
 
   /// Process single read result.
-  void OnReadCallback(const std::string &key,
-                      const std::shared_ptr<CallbackReply> &reply) LOCKS_EXCLUDED(mutex_);
+  void OnReadCallback(const std::string &key, const std::shared_ptr<CallbackReply> &reply)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Redis client.

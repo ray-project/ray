@@ -58,7 +58,8 @@ class RedisScanner {
   ///
   /// \param callback The callback will be called when receiving some data.
   /// \return Status
-  Status ScanPartialKeys(const SegmentedCallback<std::string> &callback) LOCKS_EXCLUDED(mutex_);
+  Status ScanPartialKeys(const SegmentedCallback<std::string> &callback)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Start scan rows. Will callback after the scan finishes(receiving all data from
   /// redis).
@@ -68,8 +69,8 @@ class RedisScanner {
   /// \param callback The callback will be called after scan finishes.
   /// All result will be returned.
   /// \return Status
-  Status ScanRows(const MultiItemCallback < std::pair<std::string, std::string>> &
-                  callback) LOCKS_EXCLUDED(mutex_);
+  Status ScanRows(const MultiItemCallback<std::pair<std::string, std::string>> &callback)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Start or continue scan rows. Will callback immediately after receiving some data
   /// from redis. Should call this method again if you want scan the rest data. Should not
@@ -82,7 +83,9 @@ class RedisScanner {
   ///
   /// \param callback The callback will be called when receiving some data.
   /// \return Status
-  Status ScanPartialRows(const SegmentedCallback<std::pair<std::string, std::string>> &callback) LOCKS_EXCLUDED(mutex_);
+  Status ScanPartialRows(
+      const SegmentedCallback<std::pair<std::string, std::string>> &callback)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Scan from Redis.
@@ -101,7 +104,8 @@ class RedisScanner {
   /// \param scan_result The keys returned by scan command.
   /// \param pending_done Whether all pending scan is finishes.
   void ProcessScanResult(size_t shard_index, size_t cousor,
-                         const std::vector<std::string> &scan_result, bool pending_done) NO_THREAD_SAFETY_ANALYSIS;
+                         const std::vector<std::string> &scan_result,
+                         bool pending_done) NO_THREAD_SAFETY_ANALYSIS;
 
   /// Run callback for partial scan.
   void DoPartialCallback() NO_THREAD_SAFETY_ANALYSIS;
@@ -118,8 +122,9 @@ class RedisScanner {
   ///
   /// \param status Read command execution status.
   /// \param read_result The result of read command.
-  void OnReadCallback(
-      Status status, const std::vector<std::pair<std::string, std::string>> &read_result) NO_THREAD_SAFETY_ANALYSIS;
+  void OnReadCallback(Status status,
+                      const std::vector<std::pair<std::string, std::string>> &read_result)
+      NO_THREAD_SAFETY_ANALYSIS;
 
   /// Update result keys.
   ///
@@ -129,51 +134,52 @@ class RedisScanner {
   /// Update result rows.
   ///
   /// \return The size of result.
-  size_t UpdateResult(const std::vector<std::pair<std::string, std::string>> &rows) LOCKS_EXCLUDED(mutex_);
+  size_t UpdateResult(const std::vector<std::pair<std::string, std::string>> &rows)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
- class ScanRequest {
-  public:
-   ScanRequest() {}
+  class ScanRequest {
+   public:
+    ScanRequest() {}
 
-   enum class ScanType : int8_t {
-     kScanAllRows = 0,
-     kScanPartialRows = 1,
-     kScanAllKeys = 2,
-     kScanPartialKeys = 3,
-     kUnknown = 4,
-   };
+    enum class ScanType : int8_t {
+      kScanAllRows = 0,
+      kScanPartialRows = 1,
+      kScanAllKeys = 2,
+      kScanPartialKeys = 3,
+      kUnknown = 4,
+    };
 
-  ScanType scan_type_{ScanType::kUnknown};
+    ScanType scan_type_{ScanType::kUnknown};
 
-  /// The scan match pattern.
-  std::string match_pattern_;
+    /// The scan match pattern.
+    std::string match_pattern_;
 
-  /// The callback that will be called after the ScanRows finishes.
-  MultiItemCallback <
-      std::pair<std::string, std::string> >scan_all_rows_callback_{nullptr};
-  /// The callback that will be called when ScanPartialRows receving some data from redis.
-  /// And the scan may not done.
-  SegmentedCallback<
-      std::pair<std::string, std::string> > scan_partial_rows_callback_{nullptr};
-  /// The callback that will be called after the ScanKeys finishes.
-  MultiItemCallback <std::string> scan_all_keys_callback_{nullptr};
-  /// The callback that will be called when ScanPartialKeys receving some data from redis.
-  /// And the scan may not done.
-  SegmentedCallback<std::string> scan_partial_keys_callback_{nullptr};
+    /// The callback that will be called after the ScanRows finishes.
+    MultiItemCallback<std::pair<std::string, std::string>> scan_all_rows_callback_{
+        nullptr};
+    /// The callback that will be called when ScanPartialRows receving some data from
+    /// redis. And the scan may not done.
+    SegmentedCallback<std::pair<std::string, std::string>> scan_partial_rows_callback_{
+        nullptr};
+    /// The callback that will be called after the ScanKeys finishes.
+    MultiItemCallback<std::string> scan_all_keys_callback_{nullptr};
+    /// The callback that will be called when ScanPartialKeys receving some data from
+    /// redis. And the scan may not done.
+    SegmentedCallback<std::string> scan_partial_keys_callback_{nullptr};
 
-  /// The scan result in rows.
-  /// If the scan type is kScanPartialRows, partial scan result will be saved in this
-  /// variable. If the scan type is kScanAllRows, all scan result will be saved in this
-  /// variable.
-  std::vector<std::pair<std::string, std::string>> rows_;
+    /// The scan result in rows.
+    /// If the scan type is kScanPartialRows, partial scan result will be saved in this
+    /// variable. If the scan type is kScanAllRows, all scan result will be saved in this
+    /// variable.
+    std::vector<std::pair<std::string, std::string>> rows_;
 
-  /// The scan result in keys.
-  /// If the scan type is kScanPartialKeys, partial scan result will be saved in this
-  /// variable. If the scan type is kScanAllKeys, all scan result will be saved in this
-  /// variable.
-  std::vector<std::string> keys_;
-};
+    /// The scan result in keys.
+    /// If the scan type is kScanPartialKeys, partial scan result will be saved in this
+    /// variable. If the scan type is kScanAllKeys, all scan result will be saved in this
+    /// variable.
+    std::vector<std::string> keys_;
+  };
 
  private:
   /// Redis client.

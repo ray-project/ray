@@ -20,9 +20,8 @@ RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
 
 RedisScanner::~RedisScanner() {}
 
-Status RedisScanner::ScanRows(const MultiItemCallback <
-                                  std::pair<std::string, std::string>> &
-                              callback) {
+Status RedisScanner::ScanRows(
+    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   RAY_DCHECK(callback);
 
   {
@@ -264,13 +263,15 @@ void RedisScanner::OnDone() {
     scan_request_.scan_all_rows_callback_(status, scan_request_.rows_);
     break;
   case ScanRequest::ScanType::kScanPartialRows:
-    scan_request_.scan_partial_rows_callback_(status, /* has_more */false, scan_request_.rows_);
+    scan_request_.scan_partial_rows_callback_(status, /* has_more */ false,
+                                              scan_request_.rows_);
     break;
   case ScanRequest::ScanType::kScanAllKeys:
     scan_request_.scan_all_keys_callback_(status, scan_request_.keys_);
     break;
   case ScanRequest::ScanType::kScanPartialKeys:
-    scan_request_.scan_partial_keys_callback_(status, /* has_more */false, scan_request_.keys_);
+    scan_request_.scan_partial_keys_callback_(status, /* has_more */ false,
+                                              scan_request_.keys_);
     break;
   default:
     RAY_CHECK(0);
@@ -279,22 +280,18 @@ void RedisScanner::OnDone() {
 
 void RedisScanner::DoPartialCallback() {
   switch (scan_request_.scan_type_) {
-  case ScanRequest::ScanType::kScanPartialRows:
-    {
-      std::vector<std::pair<std::string, std::string>> rows;
-      rows.swap(scan_request_.rows_);
-      RAY_CHECK(!rows.empty());
-      scan_request_.scan_partial_rows_callback_(Status::OK(), /* has_more */true, rows);
-    }
-    break;
-  case ScanRequest::ScanType::kScanPartialKeys:
-    {
-      std::vector<std::string> keys;
-      keys.swap(scan_request_.keys_);
-      RAY_CHECK(!keys.empty());
-      scan_request_.scan_partial_keys_callback_(Status::OK(), /* has_more */true, keys);
-    }
-    break;
+  case ScanRequest::ScanType::kScanPartialRows: {
+    std::vector<std::pair<std::string, std::string>> rows;
+    rows.swap(scan_request_.rows_);
+    RAY_CHECK(!rows.empty());
+    scan_request_.scan_partial_rows_callback_(Status::OK(), /* has_more */ true, rows);
+  } break;
+  case ScanRequest::ScanType::kScanPartialKeys: {
+    std::vector<std::string> keys;
+    keys.swap(scan_request_.keys_);
+    RAY_CHECK(!keys.empty());
+    scan_request_.scan_partial_keys_callback_(Status::OK(), /* has_more */ true, keys);
+  } break;
   default:
     RAY_CHECK(0);
   }
