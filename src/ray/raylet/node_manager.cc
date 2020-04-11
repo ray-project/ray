@@ -162,6 +162,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       node_manager_service_(io_service, *this),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
+  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   cluster_resource_map_.emplace(self_node_id_,
@@ -3371,10 +3372,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     }
 
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    pinned_objects_.emplace(
-        object_id, std::unique_ptr<RayObject>(new RayObject(
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+    RAY_CHECK(
+        pinned_objects_
+            .emplace(object_id,
+                     std::unique_ptr<RayObject>(new RayObject(
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
+            .second);
     i++;
 
     // Send a long-running RPC request to the owner for each object. When we get a
@@ -3394,7 +3398,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           pinned_objects_.erase(object_id);
 
           // Try to evict all copies of the object from the cluster.
-          objects_to_free_.push_back(object_id);
+          if (free_objects_period_ >= 0) {
+            objects_to_free_.push_back(object_id);
+          }
           if (objects_to_free_.size() ==
                   RayConfig::instance().free_objects_batch_size() ||
               free_objects_period_ == 0) {
@@ -3411,10 +3417,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 }
 
 void NodeManager::FlushObjectsToFree() {
-  if (free_objects_period_ < 0) {
-    return;
-  }
-
   if (!objects_to_free_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
     object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);

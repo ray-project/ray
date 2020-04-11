@@ -274,6 +274,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
+  // Register a callback to monitor removed nodes.
+  auto on_node_change = [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+    if (data.state() == rpc::GcsNodeInfo::DEAD) {
+      OnNodeRemoved(data);
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
@@ -342,8 +350,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
-  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
-
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -359,14 +365,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
-      [this](const TaskSpecification &spec) {
-        // Retry after a delay to emulate the existing Raylet reconstruction
-        // behaviour. TODO(ekl) backoff exponentially.
-        uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-        RAY_LOG(ERROR) << "Will resubmit task after a " << delay
-                       << "ms delay: " << spec.DebugString();
-        absl::MutexLock lock(&mutex_);
-        to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
+      [this](const TaskSpecification &spec, bool delay) {
+        if (delay) {
+          // Retry after a delay to emulate the existing Raylet reconstruction
+          // behaviour. TODO(ekl) backoff exponentially.
+          uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+          RAY_LOG(ERROR) << "Will resubmit task after a " << delay
+                         << "ms delay: " << spec.DebugString();
+          absl::MutexLock lock(&mutex_);
+          to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
+        } else {
+          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+        }
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -394,19 +404,19 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     return std::shared_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
+  auto raylet_client_factory = [this](const std::string ip_address, int port) {
+    auto grpc_client =
+        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          rpc_address_, local_raylet_client_, client_factory,
-          [this](const std::string ip_address, int port) {
-            auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
-                                                                  *client_call_manager_);
-            return std::shared_ptr<raylet::RayletClient>(
-                new raylet::RayletClient(std::move(grpc_client)));
-          },
+          rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
@@ -414,6 +424,44 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
+
+  auto object_lookup_fn = [this](const ObjectID &object_id,
+                                 const ObjectLookupCallback &callback) {
+    return gcs_client_->Objects().AsyncGetLocations(
+        object_id,
+        [this, object_id, callback](const Status &status,
+                                    const std::vector<rpc::ObjectTableData> &results) {
+          RAY_CHECK_OK(status);
+          std::vector<rpc::Address> locations;
+          for (const auto &result : results) {
+            const auto &node_id = ClientID::FromBinary(result.manager());
+            auto node = gcs_client_->Nodes().Get(node_id);
+            RAY_CHECK(node.has_value());
+            if (node->state() == rpc::GcsNodeInfo::ALIVE) {
+              rpc::Address address;
+              address.set_raylet_id(node->node_id());
+              address.set_ip_address(node->node_manager_address());
+              address.set_port(node->node_manager_port());
+              locations.push_back(address);
+            }
+          }
+          callback(object_id, locations);
+        });
+  };
+  object_recovery_manager_ =
+      std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(
+          rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
+          task_manager_, reference_counter_, memory_store_,
+          [this](const ObjectID &object_id, bool pin_object) {
+            RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                             /*contained_object_ids=*/{}, object_id,
+                             /*pin_object=*/pin_object));
+          },
+          RayConfig::instance().lineage_pinning_enabled()));
+
+  // Start the IO thread after all other members have been initialized, in case
+  // the thread calls back into any of our members.
+  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 }
 
 void CoreWorker::Shutdown() {
@@ -500,6 +548,22 @@ void CoreWorker::RunIOService() {
 #endif
 
   io_service_.run();
+}
+
+void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
+  const auto node_id = ClientID::FromBinary(node_info.node_id());
+  RAY_LOG(INFO) << "Node failure " << node_id;
+  const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
+  // Delete the objects from the in-memory store to indicate that they are not
+  // available. The object recovery manager will guarantee that a new value
+  // will eventually be stored for the objects (either an
+  // UnreconstructableError or a value reconstructed from lineage).
+  memory_store_->Delete(lost_objects);
+  for (const auto &object_id : lost_objects) {
+    RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
+    // The lost object must have been owned by us.
+    RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
+  }
 }
 
 void CoreWorker::WaitForShutdown() {
@@ -1611,6 +1675,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 void CoreWorker::HandleWaitForObjectEviction(
     const rpc::WaitForObjectEvictionRequest &request,
     rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(swang): Drop requests from raylets that executed an older version of
+  // the task.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -1695,7 +1761,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
-  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  // TODO(swang): Differentiate between tasks that are currently pending
+  // execution and tasks that have finished but may be retried.
+  stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
