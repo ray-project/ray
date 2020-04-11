@@ -72,6 +72,8 @@ class TaskRequest {
   /// the task will run on a different node in the cluster, if none of the
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 };
@@ -241,13 +243,15 @@ class ClusterResourceScheduler {
   ///  Finally, if no such node exists, return -1.
   ///
   ///  \param task_request: Task to be scheduled.
+  ///  \param actor_creation: True if this is an actor creation task.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
+  int64_t GetBestSchedulableNode(
+        const TaskRequest &task_request, bool actor_creation, int64_t *violations);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -257,7 +261,8 @@ class ClusterResourceScheduler {
   ///          return the ID in string format of a node that can schedule the
   //           task request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, int64_t *violations);
+      const std::unordered_map<std::string, double> &task_request, 
+      bool actor_creation, int64_t *violations);
 
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.

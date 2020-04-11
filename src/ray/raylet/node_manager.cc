@@ -1600,8 +1600,11 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t violations = 0;
-    std::string node_id_string =
-        new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
+    std::string node_id_string = 
+        new_resource_scheduler_->GetBestSchedulableNode(
+            request_resources, 
+            task.GetTaskSpecification().IsActorCreationTask(), 
+            &violations);        
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
       tasks_to_schedule_.pop_front();
