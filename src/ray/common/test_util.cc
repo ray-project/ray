@@ -111,5 +111,12 @@ std::string REDIS_CLIENT_EXEC_PATH;
 std::string REDIS_MODULE_LIBRARY_PATH;
 /// Port of redis server.
 int REDIS_SERVER_PORT;
+/// Path to raylet executable binary.
+std::string RAYLET_EXEC_PATH;
+/// Path to store executable binary.
+std::string STORE_EXEC_PATH;
+/// Path to gcs server executable binary.
+std::string GCS_SERVER_EXEC_PATH;
+
 
 }  // namespace ray
