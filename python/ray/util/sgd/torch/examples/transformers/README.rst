@@ -82,4 +82,8 @@ To run an example tuning MNLI on AWS with 16 GPUs and apex, just run:
         --num_train_epochs 3.0 \
         --output_dir /home/ubuntu/output/ \
         --num_workers 16 \
-        --fp16
+        --fp16 \
+        --address auto
+
+Note that with Apex, you can increase ``per_gpu_train_batch_size`` to 32, which
+should make each epoch take 10 minutes or less.
