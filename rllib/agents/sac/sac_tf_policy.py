@@ -131,6 +131,9 @@ def get_distribution_inputs_and_class(policy,
 
 
 def sac_actor_critic_loss(policy, model, _, train_batch):
+    # Should be True only for debugging purposes (e.g. test cases)!
+    deterministic = policy.config["_deterministic_loss"]
+
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
@@ -182,12 +185,14 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.sample()
-        log_pis_t = tf.expand_dims(action_dist_t.sampled_action_logp(), -1)
+        policy_t = action_dist_t.sample() if not deterministic else \
+            action_dist_t.deterministic_sample()
+        log_pis_t = tf.expand_dims(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.sample()
-        log_pis_tp1 = tf.expand_dims(action_dist_tp1.sampled_action_logp(), -1)
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else \
+            action_dist_tp1.deterministic_sample()
+        log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
         q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
@@ -209,11 +214,12 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
+            # Take min over both twin-NNs.
+            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if policy.config["twin_q"]:
             twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
         q_tp1 -= model.alpha * log_pis_tp1
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
@@ -246,15 +252,6 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
                 predictions=twin_q_t_selected,
                 weights=0.5))
 
-    # Auto-calculate the target entropy.
-    if policy.config["target_entropy"] == "auto":
-        if model.discrete:
-            target_entropy = np.array(-policy.action_space.n, dtype=np.float32)
-        else:
-            target_entropy = -np.prod(policy.action_space.shape)
-    else:
-        target_entropy = policy.config["target_entropy"]
-
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
@@ -264,7 +261,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
             tf.reduce_sum(
                 tf.multiply(
                     tf.stop_gradient(policy_t), -model.log_alpha *
-                    tf.stop_gradient(log_pis_t + target_entropy)),
+                    tf.stop_gradient(log_pis_t + model.target_entropy)),
                 axis=-1))
         actor_loss = tf.reduce_mean(
             tf.reduce_sum(
@@ -276,7 +273,8 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
                 axis=-1))
     else:
         alpha_loss = -tf.reduce_mean(
-            model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy))
+            model.log_alpha *
+            tf.stop_gradient(log_pis_t + model.target_entropy))
         actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
 
     # save for stats function
@@ -286,7 +284,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
     policy.alpha_value = model.alpha
-    policy.target_entropy = target_entropy
+    policy.target_entropy = model.target_entropy
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now
