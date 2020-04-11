@@ -215,6 +215,7 @@ def check_for_failure(remote_values):
             finished = ray.get(finished)
         return True
     except RayActorError as exc:
+        print("CAUGHT EXCEPTION")
         logger.exception(str(exc))
     return False
 
