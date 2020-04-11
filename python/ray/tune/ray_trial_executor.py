@@ -52,6 +52,15 @@ class _TrialCleanup:
         self._cleanup_map = {}
 
     def add(self, trial, actor):
+        """Adds a trial actor to be stopped.
+
+        If the number of futures exceeds the threshold, the cleanup mechanism
+        will kick in.
+
+        Args:
+            trial (Trial): The trial corresponding to the future.
+            actor (ActorHandle): Handle to the trainable to be stopped.
+        """
         future = actor.stop.remote()
         actor.__ray_terminate__.remote()
 
@@ -60,6 +69,11 @@ class _TrialCleanup:
             self.cleanup(partial=True)
 
     def cleanup(self, partial=True):
+        """Waits for cleanup to finish.
+
+        If partial=False, all futures are expected to return. If a future
+        does not return within the timeout period, the cleanup terminates.
+        """
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
         while len(self._cleanup_map) > num_to_keep:

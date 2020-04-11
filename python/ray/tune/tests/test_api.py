@@ -633,7 +633,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             path = os.path.join(trial.logdir, "marker")
             assert os.path.exists(path)
 
-
     def testNestedResults(self):
         def create_result(i):
             return {"test": {"1": {"2": {"3": i, "4": False}}}}
