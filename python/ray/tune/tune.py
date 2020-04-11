@@ -4,6 +4,7 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.suggest.suggestion import Searcher, SearchGenerator
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -273,6 +274,9 @@ def run(run_or_experiment,
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
+
+    if issubclass(type(search_alg), Searcher):
+        search_alg = SearchGenerator(search_alg)
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),

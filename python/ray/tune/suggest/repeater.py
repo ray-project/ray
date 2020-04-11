@@ -3,7 +3,7 @@ import itertools
 import logging
 import numpy as np
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest.suggestion import Searcher
 from ray.tune.experiment import convert_to_experiment_list
 
 logger = logging.getLogger(__name__)
@@ -57,17 +57,17 @@ class _TrialGroup:
         return len(self._trials)
 
 
-class Repeater(SuggestionAlgorithm):
+class Repeater(Searcher):
     """A wrapper algorithm for repeating trials of same parameters.
 
     It is recommended that you do not run an early-stopping TrialScheduler
     simultaneously.
 
     Args:
-        search_alg (SearchAlgorithm): SearchAlgorithm object that the
-            Repeater will optimize. Note that the SearchAlgorithm
+        search_alg (Searcher): Searcher object that the
+            Repeater will optimize. Note that the Searcher
             will only see 1 trial among multiple repeated trials.
-            The result/metric passed to the SearchAlgorithm upon
+            The result/metric passed to the Searcher upon
             trial completion will be averaged among all repeats.
         repeat (int): Number of times to generate a trial with a repeated
             configuration. Defaults to 1.

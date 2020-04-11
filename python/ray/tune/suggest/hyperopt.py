@@ -11,12 +11,12 @@ except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import SearcherInterface
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class HyperOptSearch(SearcherInterface):
+class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed from source.
@@ -70,20 +70,26 @@ class HyperOptSearch(SearcherInterface):
 
     """
 
-    def __init__(self,
-                 space,
-                 max_concurrent=10,
-                 metric="episode_reward_mean",
-                 mode="max",
-                 points_to_evaluate=None,
-                 n_initial_points=20,
-                 random_state_seed=None,
-                 gamma=0.25,
-                 **kwargs):
+    def __init__(
+            self,
+            space,
+            points_to_evaluate=None,
+            n_initial_points=20,
+            random_state_seed=None,
+            gamma=0.25,
+            metric="episode_reward_mean",
+            mode="max",
+            max_concurrent=10,
+            use_clipped_trials=True,
+    ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
         from hyperopt.fmin import generate_trials_to_calculate
-        super(HyperOptSearch, self).__init__(**kwargs)
+        super(HyperOptSearch, self).__init__(
+            metric=metric,
+            mode=mode,
+            use_clipped_trials=use_clipped_trials,
+            max_concurrent=max_concurrent)
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.
@@ -174,6 +180,8 @@ class HyperOptSearch(SearcherInterface):
 
     def _process_result(self, trial_id, result, early_terminated=False):
         ho_trial = self._get_hyperopt_trial(trial_id)
+        if not ho_trial:
+            return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
 
         if early_terminated and self._use_early_stopped is False:
