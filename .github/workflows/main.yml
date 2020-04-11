@@ -21,10 +21,14 @@ jobs:
             os: macos-10.15
             compiler: clang
     steps:
-    - name: Configure Git
+    - name: Pre-checkout system configuration
+      # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
       # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
       shell: bash -e -o pipefail -l {0}
       run: |
+        if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
+          echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
+        fi
         git config --global core.symlinks true && git config --global core.autocrlf false
         if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
