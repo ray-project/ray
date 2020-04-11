@@ -1,7 +1,7 @@
 HuggingFace Transformers Glue Fine-tuning Example
 =================================================
 
-We've ported the `huggingface/transformers/examples/run_glue.py` example to
+We've ported the ``huggingface/transformers/examples/run_glue.py`` example to
 RaySGD. This example enables fine-tuning the library models for sequence classification on the GLUE benchmark: General Language Understanding Evaluation.
 
 This script can fine-tune the following models: BERT, XLM, XLNet and RoBERTa.
@@ -11,73 +11,76 @@ The below information can be found at the `HuggingFace Repository <https://githu
 Before running any one of these GLUE tasks you should download the
 `GLUE data <https://gluebenchmark.com/tasks>`_ by running
 `this script <https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e>`_
-and unpack it to some directory `$GLUE_DIR`.
+and unpack it to some directory ``$GLUE_DIR``.
 
-```bash
-export GLUE_DIR=/path/to/glue
-export TASK_NAME=MRPC
+.. code-block:: bash
 
-python run_glue.py \
-  --model_type bert \
-  --model_name_or_path bert-base-cased \
-  --task_name $TASK_NAME \
-  --do_train \
-  --do_eval \
-  --data_dir $GLUE_DIR/$TASK_NAME \
-  --max_seq_length 128 \
-  --per_gpu_train_batch_size 32 \
-  --learning_rate 2e-5 \
-  --num_train_epochs 3.0 \
-  --output_dir /tmp/$TASK_NAME/
-```
+    export GLUE_DIR=/path/to/glue
+    export TASK_NAME=MRPC
+
+    python run_glue.py \
+      --model_type bert \
+      --model_name_or_path bert-base-cased \
+      --task_name $TASK_NAME \
+      --do_train \
+      --do_eval \
+      --data_dir $GLUE_DIR/$TASK_NAME \
+      --max_seq_length 128 \
+      --per_gpu_train_batch_size 32 \
+      --learning_rate 2e-5 \
+      --num_train_epochs 3.0 \
+      --output_dir /tmp/$TASK_NAME/
 
 where task name can be one of CoLA, SST-2, MRPC, STS-B, QQP, MNLI, QNLI, RTE, WNLI.
 
-The dev set results will be present within the text file `eval_results.txt` in the specified output_dir.
+The dev set results will be present within the text file ``eval_results.txt`` in the specified output_dir.
 In case of MNLI, since there are two separate dev sets (matched and mismatched), there will be a separate
-output folder called `/tmp/MNLI-MM/` in addition to `/tmp/MNLI/`.
+output folder called ``/tmp/MNLI-MM/`` in addition to ``/tmp/MNLI/``.
 
 Multi-GPU training with Apex
 ----------------------------
 
 To run an example tuning MNLI on your local machine with 8 GPUs and apex, first install `apex <https://github.com/NVIDIA/apex>`_, and then run:
 
-```bash
-python run_glue.py \
-    --model_type bert \
-    --model_name_or_path bert-base-cased \
-    --task_name mnli \
-    --do_train \
-    --do_eval \
-    --data_dir $GLUE_DIR/MNLI/ \
-    --max_seq_length 128 \
-    --per_gpu_train_batch_size 8 \
-    --learning_rate 2e-5 \
-    --num_train_epochs 3.0 \
-    --output_dir output_dir \
-    --num_workers 8
-    --fp16
-```
+.. code-block:: bash
+
+    python run_glue.py \
+        --model_type bert \
+        --model_name_or_path bert-base-cased \
+        --task_name mnli \
+        --do_train \
+        --do_eval \
+        --data_dir $GLUE_DIR/MNLI/ \
+        --max_seq_length 128 \
+        --per_gpu_train_batch_size 8 \
+        --learning_rate 2e-5 \
+        --num_train_epochs 3.0 \
+        --output_dir output_dir \
+        --num_workers 8
+        --fp16
 
 
 Multi-node training
 -------------------
 
-To run an example tuning MNLI on AWS with 32 GPUs and apex, just run:
+To run an example tuning MNLI on AWS with 16 GPUs and apex, just run:
 
-```bash
-ray submit cluster.yaml run_glue.py --args="
-    --model_type bert \
-    --model_name_or_path bert-base-cased \
-    --task_name mnli \
-    --do_train \
-    --do_eval \
-    --data_dir /home/ubuntu/GLUE_DIR/MNLI/ \
-    --max_seq_length 128 \
-    --per_gpu_train_batch_size 8 \
-    --learning_rate 2e-5 \
-    --num_train_epochs 3.0 \
-    --output_dir /home/ubuntu/output/ \
-    --num_workers 32
-    --fp16"
-```
+.. code-block:: bash
+
+    ray up cluster.yaml
+    # Optionally,
+    # ray monitor cluster.yaml
+    ray submit cluster.yaml run_glue.py --args="
+        --model_type bert \
+        --model_name_or_path bert-base-cased \
+        --task_name mnli \
+        --do_train \
+        --do_eval \
+        --data_dir /home/ubuntu/GLUE_DIR/MNLI/ \
+        --max_seq_length 128 \
+        --per_gpu_train_batch_size 8 \
+        --learning_rate 2e-5 \
+        --num_train_epochs 3.0 \
+        --output_dir /home/ubuntu/output/ \
+        --num_workers 16
+        --fp16"

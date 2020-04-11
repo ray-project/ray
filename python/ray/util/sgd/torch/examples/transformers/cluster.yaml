@@ -1,11 +1,11 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: sgd-pytorch-richard
+cluster_name: transformer-cluster
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 0
-initial_workers: 0
-max_workers: 0
+min_workers: 3
+initial_workers: 3
+max_workers: 3
 
 target_utilization_fraction: 0.9
 # Cloud-provider specific configuration.
@@ -56,8 +56,16 @@ setup_commands:
     # Installing this without -U to make sure we don't replace the existing Ray installation
     - pip install ray[tune]
     - pip install -U ipdb torch
+    # Install HuggingFace
+    - git clone https://github.com/huggingface/transformers || true
+    - cd transformers &&
+      pip install . &&
+      pip install -r ./examples/requirements.txt
     # Install Apex
-    - git clone https://github.com/NVIDIA/apex; cd apex && pip install -v --no-cache-dir  ./ || true
+    - git clone https://github.com/NVIDIA/apex;
+      cd apex &&
+      pip install -v --no-cache-dir  ./ ||
+      true
 
 
 file_mounts: {
