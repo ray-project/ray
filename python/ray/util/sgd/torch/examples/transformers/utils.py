@@ -1,3 +1,37 @@
+import glob
+import logging
+import os
+
+import tqdm
+from filelock import FileLock
+
+import numpy as np
+import torch
+from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset)
+
+from transformers import glue_processors as processors
+from transformers import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING
+from transformers import (
+    WEIGHTS_NAME,
+    AdamW,
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    get_linear_schedule_with_warmup,
+)
+from transformers import glue_convert_examples_to_features as convert_examples_to_features
+
+MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING.keys())
+MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+ALL_MODELS = sum(
+    (tuple(conf.pretrained_config_archive_map.keys())
+     for conf in MODEL_CONFIG_CLASSES),
+    (),
+)
+logger = logging.getLogger(__name__)
+
+
 def add_transformers_parameters(parser):
     # Required parameters
     parser.add_argument(
@@ -173,7 +207,10 @@ def add_transformers_parameters(parser):
     parser.add_argument(
         "--seed", type=int, default=42, help="random seed for initialization")
     parser.add_argument(
-        "--num_workers", type=int, default=1, help="number of training workers")
+        "--num_workers",
+        type=int,
+        default=1,
+        help="number of training workers")
 
     parser.add_argument(
         "--fp16",
@@ -210,15 +247,15 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
                         cached_features_file)
             features = torch.load(cached_features_file)
         else:
-            logger.info(
-                "Creating features from dataset file at %s", args.data_dir)
+            logger.info("Creating features from dataset file at %s",
+                        args.data_dir)
             label_list = processor.get_labels()
             if task in ["mnli", "mnli-mm"
                         ] and args.model_type in ["roberta", "xlmroberta"]:
                 # HACK(label indices are swapped in RoBERTa pretrained model)
                 label_list[1], label_list[2] = label_list[2], label_list[1]
-            examples = (processor.get_dev_examples(args.data_dir) if evaluate else
-                        processor.get_train_examples(args.data_dir))
+            examples = (processor.get_dev_examples(args.data_dir) if evaluate
+                        else processor.get_train_examples(args.data_dir))
             features = convert_examples_to_features(
                 examples,
                 tokenizer,
@@ -253,7 +290,6 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     dataset = TensorDataset(all_input_ids, all_attention_mask,
                             all_token_type_ids, all_labels)
     return dataset
-
 
 
 def save_and_evaluate_checkpoints(args, model, tokenizer):
@@ -309,4 +345,76 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
                 (k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 
+    return results
+
+
+def evaluate(args, model, tokenizer, prefix=None):
+    # Loop to handle MNLI double evaluation (matched, mis-matched)
+    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (
+        args.task_name, )
+    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM"
+                         ) if args.task_name == "mnli" else (args.output_dir, )
+
+    results = {}
+    for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
+        eval_dataset = load_and_cache_examples(
+            args, eval_task, tokenizer, evaluate=True)
+
+        if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
+            os.makedirs(eval_output_dir)
+
+        args.eval_batch_size = args.per_gpu_eval_batch_size
+        # Note that DistributedSampler samples randomly
+        eval_sampler = SequentialSampler(eval_dataset)
+        eval_dataloader = DataLoader(
+            eval_dataset,
+            sampler=eval_sampler,
+            batch_size=args.eval_batch_size)
+
+        # Eval!
+        logger.info("***** Running evaluation {} *****".format(prefix))
+        logger.info("  Num examples = %d", len(eval_dataset))
+        logger.info("  Batch size = %d", args.eval_batch_size)
+        eval_loss = 0.0
+        nb_eval_steps = 0
+        preds = None
+        out_label_ids = None
+        for batch in tqdm(eval_dataloader, desc="Evaluating"):
+            model.eval()
+            batch = tuple(t.to(args.device) for t in batch)
+
+            with torch.no_grad():
+                inputs = {
+                    "input_ids": batch[0],
+                    "attention_mask": batch[1],
+                    "labels": batch[3]
+                }
+                if args.model_type != "distilbert":
+                    inputs["token_type_ids"] = (
+                        batch[2]
+                        if args.model_type in ["bert", "xlnet",
+                                               "albert"] else None
+                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+                outputs = model(**inputs)
+                tmp_eval_loss, logits = outputs[:2]
+
+                eval_loss += tmp_eval_loss.mean().item()
+            nb_eval_steps += 1
+            if preds is None:
+                preds = logits.detach().cpu().numpy()
+                out_label_ids = inputs["labels"].detach().cpu().numpy()
+            else:
+                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+                out_label_ids = np.append(
+                    out_label_ids,
+                    inputs["labels"].detach().cpu().numpy(),
+                    axis=0)
+
+        eval_loss = eval_loss / nb_eval_steps
+        if args.output_mode == "classification":
+            preds = np.argmax(preds, axis=1)
+        elif args.output_mode == "regression":
+            preds = np.squeeze(preds)
+        result = compute_metrics(eval_task, preds, out_label_ids)
+        results.update(result)
     return results

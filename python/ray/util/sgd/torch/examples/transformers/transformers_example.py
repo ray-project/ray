@@ -16,7 +16,6 @@
 """ Finetuning the library models for sequence classification on GLUE (Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa)."""
 
 import argparse
-import glob
 import logging
 import os
 import random
@@ -28,7 +27,6 @@ from tqdm import tqdm, trange
 import torch.distributed as dist
 
 from transformers import (
-    MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
     WEIGHTS_NAME,
     AdamW,
     AutoConfig,
@@ -36,14 +34,14 @@ from transformers import (
     AutoTokenizer,
     get_linear_schedule_with_warmup,
 )
-from transformers import glue_compute_metrics as compute_metrics
-from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 
 from filelock import FileLock
+import ray
 from ray.util.sgd.torch import TrainingOperator
-
+from ray.util.sgd import TorchTrainer
+from ray.util.sgd.torch.examples.transformers import utils
 try:
     from apex import amp
 except ImportError:
@@ -51,14 +49,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING.keys())
-MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
-
-ALL_MODELS = sum(
-    (tuple(conf.pretrained_config_archive_map.keys())
-     for conf in MODEL_CONFIG_CLASSES),
-    (),
-)
 
 def set_seed(args):
     random.seed(args.seed)
@@ -76,11 +66,13 @@ def announce_training(args, dataset_len, t_total):
                 args.per_gpu_train_batch_size)
     logger.info(
         "  Total train batch size (w. parallel, distributed & accumulation) = %d",
-        args.per_gpu_train_batch_size * args.gradient_accumulation_steps * args.num_workers,
+        args.per_gpu_train_batch_size * args.gradient_accumulation_steps *
+        args.num_workers,
     )
     logger.info("  Gradient Accumulation steps = %d",
                 args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
+
 
 def model_creator(config):
     with FileLock(os.path.expanduser("~/.download.lock")):
@@ -152,8 +144,6 @@ def data_creator(config):
 class TransformerOperator(TrainingOperator):
     def setup(self, config):
         self.args = args = config["args"]
-        args.device = torch.device("cuda" if torch.cuda.is_available()
-                                   and not args.no_cuda else "cpu")
         self.tokenizer = config["tokenizer"]
 
         self.train_data_len = len(self.train_loader)
@@ -172,7 +162,7 @@ class TransformerOperator(TrainingOperator):
         step = batch_info["batch_idx"]
 
         model.train()
-        batch = tuple(t.to(args.device) for t in batch)
+        batch = tuple(t.to(self.device) for t in batch)
         inputs = {
             "input_ids": batch[0],
             "attention_mask": batch[1],
@@ -231,82 +221,7 @@ class TransformerOperator(TrainingOperator):
         return t_total
 
     def validate(self, _):
-        args = self.args
-        model = self.model
-        tokenizer = self.tokenizer
-        return evaluate(args, model, tokenizer)
-
-
-def evaluate(args, model, tokenizer, prefix=None):
-    # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (
-        args.task_name, )
-    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM"
-                         ) if args.task_name == "mnli" else (args.output_dir, )
-
-    results = {}
-    for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset = load_and_cache_examples(
-            args, eval_task, tokenizer, evaluate=True)
-
-        if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
-            os.makedirs(eval_output_dir)
-
-        args.eval_batch_size = args.per_gpu_eval_batch_size
-        # Note that DistributedSampler samples randomly
-        eval_sampler = SequentialSampler(eval_dataset)
-        eval_dataloader = DataLoader(
-            eval_dataset,
-            sampler=eval_sampler,
-            batch_size=args.eval_batch_size)
-
-        # Eval!
-        logger.info("***** Running evaluation {} *****".format(prefix))
-        logger.info("  Num examples = %d", len(eval_dataset))
-        logger.info("  Batch size = %d", args.eval_batch_size)
-        eval_loss = 0.0
-        nb_eval_steps = 0
-        preds = None
-        out_label_ids = None
-        for batch in tqdm(eval_dataloader, desc="Evaluating"):
-            model.eval()
-            batch = tuple(t.to(args.device) for t in batch)
-
-            with torch.no_grad():
-                inputs = {
-                    "input_ids": batch[0],
-                    "attention_mask": batch[1],
-                    "labels": batch[3]
-                }
-                if args.model_type != "distilbert":
-                    inputs["token_type_ids"] = (
-                        batch[2]
-                        if args.model_type in ["bert", "xlnet",
-                                               "albert"] else None
-                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                outputs = model(**inputs)
-                tmp_eval_loss, logits = outputs[:2]
-
-                eval_loss += tmp_eval_loss.mean().item()
-            nb_eval_steps += 1
-            if preds is None:
-                preds = logits.detach().cpu().numpy()
-                out_label_ids = inputs["labels"].detach().cpu().numpy()
-            else:
-                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                out_label_ids = np.append(
-                    out_label_ids,
-                    inputs["labels"].detach().cpu().numpy(),
-                    axis=0)
-
-        eval_loss = eval_loss / nb_eval_steps
-        if args.output_mode == "classification":
-            preds = np.argmax(preds, axis=1)
-        elif args.output_mode == "regression":
-            preds = np.squeeze(preds)
-        result = compute_metrics(eval_task, preds, out_label_ids)
-        results.update(result)
-    return results
+        return evaluate(self.args, self.model, self.tokenizer)
 
 
 def main():
@@ -328,6 +243,7 @@ def main():
             datefmt="%m/%d/%Y %H:%M:%S",
             level=logging.INFO,
         )
+
     # Set seed
 
     # Prepare GLUE task
@@ -337,8 +253,6 @@ def main():
     args.output_mode = output_modes[args.task_name]
 
     logger.info("Training/evaluation parameters %s", args)
-    from ray.util.sgd import TorchTrainer
-    import ray
     ray.init(address="auto")
     # Training
 
