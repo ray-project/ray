@@ -106,11 +106,13 @@ class ModelV2:
         You can find an runnable example in examples/custom_loss.py.
 
         Arguments:
-            policy_loss (Tensor): scalar policy loss from the policy.
+            policy_loss (Union[List[Tensor],Tensor]): List of or single policy
+                loss(es) from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
 
         Returns:
-            Scalar tensor for the customized loss for this model.
+            Union[List[Tensor],Tensor]: List of or scalar tensor for the
+                customized loss(es) for this model.
         """
         return policy_loss
 

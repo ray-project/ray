@@ -3,6 +3,7 @@ import traceback
 import inspect
 
 import ray
+from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
@@ -11,25 +12,52 @@ from ray.serve.exceptions import RayServeException
 from ray.async_compat import sync_to_async
 
 
-class TaskRunner:
-    """A simple class that runs a function.
+def create_backend_worker(func_or_class):
+    """Creates a worker class wrapping the provided function or class."""
 
-    The purpose of this class is to model what the most basic actor could be.
-    That is, a ray serve actor should implement the TaskRunner interface.
-    """
+    if inspect.isfunction(func_or_class):
+        is_function = True
+    elif inspect.isclass(func_or_class):
+        is_function = False
+    else:
+        assert False, "func_or_class must be function or class."
 
-    def __init__(self, func_to_run):
-        self.func = func_to_run
+    class RayServeWrappedWorker(object):
+        def __init__(self,
+                     backend_tag,
+                     replica_tag,
+                     init_args,
+                     router_handle=None):
+            serve.init()
+            if is_function:
+                _callable = func_or_class
+            else:
+                _callable = func_or_class(*init_args)
 
-        # This parameter let argument inspection work with inner function.
-        self.__wrapped__ = func_to_run
+            if router_handle is None:
+                master_actor = serve.api._get_master_actor()
+                [router_handle] = ray.get(
+                    master_actor.get_backend_worker_config.remote())
 
-    def __call__(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
+            self.backend = RayServeWorker(backend_tag, _callable,
+                                          router_handle, is_function)
+
+        def get_metrics(self):
+            return self.backend.get_metrics()
+
+        async def handle_request(self, request):
+            return await self.backend.handle_request(request)
+
+        def ready(self):
+            pass
+
+    RayServeWrappedWorker.__name__ = "RayServeWorker_" + func_or_class.__name__
+    return RayServeWrappedWorker
 
 
 def wrap_to_ray_error(exception):
-    """Utility method that catch and seal exceptions in execution"""
+    """Utility method to wrap exceptions in user code."""
+
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
@@ -45,108 +73,72 @@ def ensure_async(func):
         return sync_to_async(func)
 
 
-class RayServeMixin:
-    """This mixin class adds the functionality to fetch from router queues.
+class RayServeWorker:
+    """Handles requests with the provided callable."""
 
-    Warning:
-        It assumes the main execution method is `__call__` of the user defined
-        class. This means that serve will call `your_instance.__call__` when
-        each request comes in. This behavior will be fixed in the future to
-        allow assigning artibrary methods.
+    def __init__(self, name, _callable, router_handle, is_function):
+        self.name = name
+        self.callable = _callable
+        self.router_handle = router_handle
+        self.is_function = is_function
 
-    Example:
-        >>> # Use ray.remote decorator and RayServeMixin
-        >>> # to make MyClass servable.
-        >>> @ray.remote
-            class RayServeActor(RayServeMixin, MyClass):
-                pass
-    """
-    _ray_serve_self_handle = None
-    _ray_serve_router_handle = None
-    _ray_serve_setup_completed = False
-    _ray_serve_dequeue_requester_name = None
+        self.error_counter = 0
+        self.latency_list = []
 
-    # Work token can be unfullfilled from last iteration.
-    # This cache will be used to determine whether or not we should
-    # work on the same task as previous iteration or we are ready to
-    # move on.
-    _ray_serve_cached_work_token = None
-
-    _serve_metric_error_counter = 0
-    _serve_metric_latency_list = []
-
-    def _serve_metric(self):
+    def get_metrics(self):
         # Make a copy of the latency list and clear current list
-        latency_lst = self._serve_metric_latency_list[:]
-        self._serve_metric_latency_list = []
-
-        my_name = self._ray_serve_dequeue_requester_name
+        latency_list = self.latency_list[:]
+        self.latency_list = []
 
         return {
-            "{}_error_counter".format(my_name): {
-                "value": self._serve_metric_error_counter,
+            "{}_error_counter".format(self.name): {
+                "value": self.error_counter,
                 "type": "counter",
             },
-            "{}_latency_s".format(my_name): {
-                "value": latency_lst,
+            "{}_latency_s".format(self.name): {
+                "value": latency_list,
                 "type": "list",
             },
         }
 
-    def _ray_serve_setup(self, my_name, router_handle, my_handle):
-        self._ray_serve_dequeue_requester_name = my_name
-        self._ray_serve_router_handle = router_handle
-        self._ray_serve_self_handle = my_handle
-        self._ray_serve_setup_completed = True
-
-    def _ray_serve_fetch(self):
-        assert self._ray_serve_setup_completed
-
-        self._ray_serve_router_handle.dequeue_request.remote(
-            self._ray_serve_dequeue_requester_name,
-            self._ray_serve_self_handle)
-
-    def _ray_serve_get_runner_method(self, request_item):
+    def get_runner_method(self, request_item):
         method_name = request_item.call_method
-        if not hasattr(self, method_name):
+        if not hasattr(self.callable, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
                                     "The avaiable methods are {}".format(
                                         method_name, dir(self)))
-        return getattr(self, method_name)
+        return getattr(self.callable, method_name)
 
-    def _ray_serve_count_num_positional(self, f):
+    def has_positional_args(self, f):
         # NOTE:
         # In the case of simple functions, not actors, the f will be
-        # a TaskRunner.__call__. What we really want here is the wrapped
-        # functionso inspect.signature will figure out the underlying f.
-        if hasattr(self, "__wrapped__"):
-            f = self.__wrapped__
+        # function.__call__, but we need to inspect the function itself.
+        if self.is_function:
+            f = self.callable
 
         signature = inspect.signature(f)
-        counter = 0
         for param in signature.parameters.values():
             if (param.kind == param.POSITIONAL_OR_KEYWORD
                     and param.default is param.empty):
-                counter += 1
-        return counter
+                return True
+        return False
 
     async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
         start_timestamp = time.time()
 
-        method_to_call = self._ray_serve_get_runner_method(request_item)
-        args = args if self._ray_serve_count_num_positional(
-            method_to_call) else []
+        method_to_call = self.get_runner_method(request_item)
+        args = args if self.has_positional_args(method_to_call) else []
         method_to_call = ensure_async(method_to_call)
         try:
             result = await method_to_call(*args, **kwargs)
         except Exception as e:
             result = wrap_to_ray_error(e)
-            self._serve_metric_error_counter += 1
+            self.error_counter += 1
 
-        self._serve_metric_latency_list.append(time.time() - start_timestamp)
+        self.latency_list.append(time.time() - start_timestamp)
         return result
 
     async def invoke_batch(self, request_item_list):
@@ -174,7 +166,7 @@ class RayServeMixin:
             args, kwargs, is_web_context = parse_request_item(item)
             context_flags.add(is_web_context)
 
-            call_method = self._ray_serve_get_runner_method(item)
+            call_method = self.get_runner_method(item)
             call_methods.add(call_method)
 
             if is_web_context:
@@ -188,13 +180,12 @@ class RayServeMixin:
 
                 # Set the flask request as a list to conform
                 # with batching semantics: when in batching
-                # mode, each argument it turned into list.
-                if self._ray_serve_count_num_positional(call_method):
+                # mode, each argument is turned into list.
+                if self.has_positional_args(call_method):
                     arg_list.append(FakeFlaskRequest())
 
         try:
-            # check mixing of query context
-            # unified context needed
+            # Check mixing of query context (unified context needed).
             if len(context_flags) != 1:
                 raise RayServeException(
                     "Batched queries contain mixed context. Please only send "
@@ -214,8 +205,7 @@ class RayServeMixin:
             start_timestamp = time.time()
             result_list = await call_method(*arg_list, **kwargs_list)
 
-            self._serve_metric_latency_list.append(time.time() -
-                                                   start_timestamp)
+            self.latency_list.append(time.time() - start_timestamp)
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
                 raise RayServeException("__call__ function "
@@ -226,10 +216,10 @@ class RayServeMixin:
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
-            self._serve_metric_error_counter += batch_size
+            self.error_counter += batch_size
             return [wrapped_exception for _ in range(batch_size)]
 
-    async def _ray_serve_call(self, request):
+    async def handle_request(self, request):
         # check if work_item is a list or not
         # if it is list: then batching supported
         if not isinstance(request, list):
@@ -241,27 +231,4 @@ class RayServeMixin:
         serve_context.web = False
         serve_context.batch_size = None
 
-        # Tell router that current actor is idle
-        self._ray_serve_fetch()
-
         return result
-
-
-class TaskRunnerBackend(TaskRunner, RayServeMixin):
-    """A simple function serving backend
-
-    Note that this is not yet an actor. To make it an actor:
-
-    >>> @ray.remote
-        class TaskRunnerActor(TaskRunnerBackend):
-            pass
-
-    Note:
-    This class is not used in the actual ray serve system. It exists
-    for documentation purpose.
-    """
-
-
-@ray.remote
-class TaskRunnerActor(TaskRunnerBackend):
-    pass
