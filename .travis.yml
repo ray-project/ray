@@ -355,8 +355,8 @@ script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
   # raylet integration tests
-  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+#  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+#  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)
   - ./ci/suppress_output bazel test --config=ci --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...

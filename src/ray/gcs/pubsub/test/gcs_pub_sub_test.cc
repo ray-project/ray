@@ -35,6 +35,7 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
   }
 
   virtual void TearDown() override {
+    client_->Disconnect();
     io_service_.stop();
     thread_io_service_->join();
   }
@@ -96,27 +97,36 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
 };
 
 TEST_F(GcsPubSubTest, TestPubSubApi) {
+  RAY_LOG(INFO) << "11111111111111";
   std::string channel("channel");
   std::string id("id");
   std::string data("data");
   std::vector<std::pair<std::string, std::string>> all_result;
-
+  RAY_LOG(INFO) << "2222222222222";
   SubscribeAll(channel, all_result);
+  RAY_LOG(INFO) << "3333333333333";
   std::vector<std::string> result;
   Subscribe(channel, id, result);
+  RAY_LOG(INFO) << "444444444444";
   Publish(channel, id, data);
 
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
+  RAY_LOG(INFO) << "5555555555555";
   Unsubscribe(channel, id);
+  RAY_LOG(INFO) << "666666666666";
   Publish(channel, id, data);
   usleep(100 * 1000);
   EXPECT_EQ(result.size(), 1);
 
+  RAY_LOG(INFO) << "777777777777777";
   Subscribe(channel, id, result);
+  RAY_LOG(INFO) << "8888888888888888";
   Publish(channel, id, data);
+  RAY_LOG(INFO) << "999999999999999";
   WaitPendingDone(result, 2);
   WaitPendingDone(all_result, 3);
+  RAY_LOG(INFO) << "aaaaaaaaaaaaaaaaaaa";
 }
 
 TEST_F(GcsPubSubTest, TestMultithreading) {
