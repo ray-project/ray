@@ -128,7 +128,6 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-'''
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -190,8 +189,6 @@ def test_many_fractional_resources(shutdown_only):
             break
     if not correct_available_resources:
         assert False, "Did not get correct available resources."
-'''
-
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
