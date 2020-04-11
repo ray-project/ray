@@ -8,12 +8,12 @@ from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
-#from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
+from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.agents.ddpg.noop_model import NoopModel
+from ray.rllib.models.tf.noop_model import TFNoopModel
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
-#from ray.rllib.models.torch.noop_model import TorchNoopModel
+from ray.rllib.models.torch.noop_model import TorchNoopModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -47,7 +47,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = NoopModel
+        default_model = TorchNoopModel if config["use_pytorch"] else TFNoopModel
         num_outputs = int(np.product(obs_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
@@ -57,7 +57,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
         default_model=default_model,
-        model_interface=SACTFModel,
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -81,7 +81,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
         default_model=default_model,
-        model_interface=SACTFModel,
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],

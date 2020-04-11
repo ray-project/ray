@@ -2,6 +2,7 @@ import numpy as np
 import logging
 
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 
 torch, _ = try_import_torch()
 
@@ -104,3 +105,9 @@ def convert_to_torch_tensor(stats, device=None):
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, stats)
+
+
+def atanh(x):
+    #x = torch.clamp(x, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+    #return 0.5 * torch.log((1 + x + SMALL_NUMBER) / (1 - x + SMALL_NUMBER))
+    return 0.5 * torch.log((1 + x) / (1 - x))

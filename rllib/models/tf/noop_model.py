@@ -5,7 +5,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class NoopModel(TFModelV2):
+class TFNoopModel(TFModelV2):
     """Trivial model that just returns the obs flattened.
 
     This is the model used if use_state_preprocessor=False."""

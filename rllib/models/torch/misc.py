@@ -48,17 +48,6 @@ def valid_padding(in_size, filter_size, stride_size):
     return padding, output
 
 
-def _get_activation_fn(name):
-    if name == "tanh":
-        return nn.Tanh
-    elif name == "relu":
-        return nn.ReLU
-    elif name == "linear":
-        return None
-    else:
-        raise ValueError("Unknown activation: {}".format(name))
-
-
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 

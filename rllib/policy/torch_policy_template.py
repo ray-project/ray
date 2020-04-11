@@ -101,9 +101,9 @@ def build_torch_policy(name,
 
             TorchPolicy.__init__(
                 self,
-                obs_space,
-                action_space,
-                config,
+                observation_space=obs_space,
+                action_space=action_space,
+                config=config,
                 model=self.model,
                 loss=loss_fn,
                 action_distribution_class=dist_class,

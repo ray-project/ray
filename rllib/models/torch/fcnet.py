@@ -5,6 +5,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, SlimFC, \
     _get_activation_fn
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import get_activation_fn
 from ray.rllib.utils import try_import_torch
 
 _, nn = try_import_torch()
@@ -21,8 +22,14 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
+        activation = get_activation_fn(
+            model_config.get("fcnet_activation"), framework="torch")
         hiddens = model_config.get("fcnet_hiddens")
-        activation = _get_activation_fn(model_config.get("fcnet_activation"))
+        no_final_linear = model_config.get("no_final_linear")
+
+        # TODO(sven): implement case: vf_shared_layers = False.
+        # vf_share_layers = model_config.get("vf_share_layers")
+
         logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
         layers = []
         last_layer_size = np.product(obs_space.shape)
