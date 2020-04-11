@@ -293,7 +293,7 @@ class SSHCommandRunner:
         self.process_runner.check_call([
             "rsync", "--rsh",
             " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
-            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target), source
         ])
 
     def remote_shell_command_str(self):
