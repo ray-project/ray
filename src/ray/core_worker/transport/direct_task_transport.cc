@@ -28,20 +28,20 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // For more details please see the protocol of actor management based on gcs.
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
+      auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
-      auto status = actor_create_callback_(task_spec, [actor_id](Status status) {
-        if (status.ok()) {
-          RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
-        } else {
-          // If GCS is failed, GcsRpcClient may receive IOError status but it will not
-          // trigger this callback, because GcsRpcClient has retry logic at the
-          // bottom. So it must be something wrong with the protocol of gcs-based
-          // actor management if status is not OK.
-          // Just log something and exit.
-          RAY_LOG(FATAL) << "Failed to create actor " << actor_id << " with status "
-                         << status;
-        }
-      });
+      auto status =
+          actor_create_callback_(task_spec, [this, actor_id, task_id](Status status) {
+            // If GCS is failed, GcsRpcClient may receive IOError status but it will not
+            // trigger this callback, because GcsRpcClient has retry logic at the
+            // bottom. So if this callback is invoked with an error there must be
+            // something wrong with the protocol of gcs-based actor management.
+            // So just check `status.ok()` here.
+            RAY_CHECK_OK(status);
+            RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
+            task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                                rpc::Address());
+          });
       RAY_CHECK_OK(status);
       return;
     }
