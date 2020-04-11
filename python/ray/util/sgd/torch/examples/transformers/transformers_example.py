@@ -335,11 +335,16 @@ def main():
         use_gpu=use_gpu,
         use_tqdm=True,
         config={"args": args})
-    if args.model_name_or_path:
-        try:
-            trainer.load(args.model_name_or_path)
-        except Exception:
-            logging.error(f"looks like {args.model_name_or_path} is not valid")
+
+    # Not implemented yet.
+    # if args.model_name_or_path:
+    #     try:
+    #         trainer.load(args.model_name_or_path)
+    #     except Exception:
+    #         logging.error(f"looks like {args.model_name_or_path} is invalid")
+
+    tokenizer = trainer.get_local_operator().tokenizer
+    local_model = trainer.get_model()
 
     epochs_trained = 0
     train_iterator = trange(
@@ -352,10 +357,11 @@ def main():
 
     for _ in train_iterator:
         stats = trainer.train()
+        evaluate(args, local_model, tokenizer)
         print(stats)
 
     # Post-training validation
-    save_and_evaluate_checkpoints(args, trainer.get_model(), None)
+    save_and_evaluate_checkpoints(args, local_model, tokenizer)
 
 
 if __name__ == "__main__":

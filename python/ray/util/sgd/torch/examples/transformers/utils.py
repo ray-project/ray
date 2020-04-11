@@ -89,10 +89,9 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
 def save_and_evaluate_checkpoints(args, model, tokenizer):
     # Saving best-practices: if you use defaults names for the model,
     # you can reload it using from_pretrained()
-    if args.do_train and (args.local_rank == -1
-                          or torch.distributed.get_rank() == 0):
+    if args.do_train:
         # Create output directory if needed
-        if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
+        if not os.path.exists(args.output_dir):
             os.makedirs(args.output_dir)
 
         logger.info("Saving model checkpoint to %s", args.output_dir)
@@ -115,7 +114,7 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
         model.to(args.device)
 
     results = {}
-    if args.do_eval and args.local_rank in [-1, 0]:
+    if args.do_eval:
         tokenizer = AutoTokenizer.from_pretrained(
             args.output_dir, do_lower_case=args.do_lower_case)
         checkpoints = [args.output_dir]
@@ -157,7 +156,7 @@ def evaluate(args, model, tokenizer, prefix=None):
         eval_dataset = load_and_cache_examples(
             args, eval_task, tokenizer, evaluate=True)
 
-        if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
+        if not os.path.exists(eval_output_dir):
             os.makedirs(eval_output_dir)
 
         args.eval_batch_size = args.per_gpu_eval_batch_size
