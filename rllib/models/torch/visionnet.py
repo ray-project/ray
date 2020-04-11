@@ -23,6 +23,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
         filters = model_config.get("conv_filters")
         if not filters:
             filters = _get_filter_config(obs_space.shape)
+        no_final_linear = model_config.get("no_final_linear")
+        # TODO(sven): Implement vf_share_layers!
+        vf_share_layers = model_config.get("vf_share_layers")
         layers = []
 
         (w, h, in_channels) = obs_space.shape
@@ -30,14 +33,15 @@ class VisionNetwork(TorchModelV2, nn.Module):
         for out_channels, kernel, stride in filters[:-1]:
             padding, out_size = valid_padding(in_size, kernel,
                                               [stride, stride])
-            layers.append(
-                SlimConv2d(in_channels, out_channels, kernel, stride, padding))
+            layers.append(SlimConv2d(in_channels, out_channels, kernel, stride,
+                                     padding, activation_fn=activation))
             in_channels = out_channels
             in_size = out_size
 
         out_channels, kernel, stride = filters[-1]
         layers.append(
-            SlimConv2d(in_channels, out_channels, kernel, stride, None))
+            SlimConv2d(in_channels, out_channels, kernel, stride, None,
+                       activation_fn=activation))
         self._convs = nn.Sequential(*layers)
 
         self._logits = SlimFC(

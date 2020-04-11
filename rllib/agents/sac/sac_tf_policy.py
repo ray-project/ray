@@ -48,6 +48,9 @@ def build_sac_model(policy, obs_space, action_space, config):
     #num_outputs = 0  # None -> no additional output layer
     if not config["use_state_preprocessor"]:
         config["model"]["fcnet_hiddens"] = []
+        num_outputs = 0
+    else:
+        num_outputs = 256  # Flatten last Conv2D to this many nodes.
 
     #    default_model = None
     #else:
@@ -60,7 +63,7 @@ def build_sac_model(policy, obs_space, action_space, config):
     #    num_outputs = action_space.n
     #else:
     #    num_outputs = int(np.product(action_space.shape))
-    num_outputs = 0
+    #num_outputs = 0
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.

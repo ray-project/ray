@@ -92,7 +92,7 @@ class TestSAC(unittest.TestCase):
         # eager (discrete and cont. actions).
         for _ in framework_iterator(config, ("torch", "tf")):
             for env in [
-                    "CartPole-v0", "MsPacmanNoFrameskip-v4", "Pendulum-v0"]:
+                    "MsPacmanNoFrameskip-v4", "CartPole-v0", "Pendulum-v0"]:
                 print("Env={}".format(env))
                 config["use_state_preprocessor"] = \
                     env == "MsPacmanNoFrameskip-v4"
