@@ -1617,6 +1617,7 @@ def start_worker(node_ip_address,
                  redis_address,
                  worker_path,
                  temp_dir,
+                 raylet_ip_address=None,
                  stdout_file=None,
                  stderr_file=None,
                  fate_share=None):
@@ -1631,6 +1632,8 @@ def start_worker(node_ip_address,
         worker_path (str): The path of the source code which the worker process
             will run.
         temp_dir (str): The path of the temp dir.
+        raylet_ip_address (str): The IP address of the worker's raylet. If not
+            provided, it defaults to the node_ip_address.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1646,6 +1649,8 @@ def start_worker(node_ip_address,
         "--raylet-name=" + raylet_name,
         "--redis-address=" + str(redis_address), "--temp-dir=" + temp_dir
     ]
+    if raylet_ip_address is not None:
+        command.append("--raylet-ip-address=" + raylet_ip_address)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_WORKER,

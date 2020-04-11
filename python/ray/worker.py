@@ -521,6 +521,7 @@ def init(address=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=ray_constants.NODE_DEFAULT_IP,
+         raylet_ip_address=None,
          object_id_seed=None,
          local_mode=False,
          redirect_worker_output=None,
@@ -592,6 +593,9 @@ def init(address=None,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
+        raylet_ip_address (str): The IP address of the raylet that this driver
+        is connecting to. This only needs to be specifed if the driver and the
+        raylet have different IP addresses.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same driver in order to generate the object IDs in a consistent
@@ -689,6 +693,12 @@ def init(address=None,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
+    if raylet_ip_address is None:
+        raylet_ip_address = node_ip_address
+
+    if raylet_ip_address is not None:
+        raylet_ip_address = services.address_to_ip(raylet_ip_address)
+
     _internal_config = (json.loads(_internal_config)
                         if _internal_config else {})
     # Set the internal config options for LRU eviction.
@@ -703,11 +713,19 @@ def init(address=None,
 
     global _global_node
     if redis_address is None:
+        if (
+            raylet_ip_address is not None and
+            raylet_ip_address != node_ip_address
+        ):
+            raise ValueError(
+                "When creating a new cluster, raylet_ip_address must be the "
+                "same as node_ip_address.")
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
             redis_port=redis_port,
             node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_id_seed=object_id_seed,
             driver_mode=driver_mode,
             redirect_worker_output=redirect_worker_output,
@@ -774,10 +792,16 @@ def init(address=None,
         if temp_dir is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "temp_dir must not be provided.")
-        if plasma_store_socket_name is not None:
+        if (
+            plasma_store_socket_name is not None and
+            raylet_ip_address == node_ip_address
+        ):
             raise ValueError("When connecting to an existing cluster, "
                              "plasma_store_socket_name must not be provided.")
-        if raylet_socket_name is not None:
+        if (
+            raylet_socket_name is not None and
+            raylet_ip_address == node_ip_address
+        ):
             raise ValueError("When connecting to an existing cluster, "
                              "raylet_socket_name must not be provided.")
         if _internal_config is not None:
@@ -788,6 +812,7 @@ def init(address=None,
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
             node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
@@ -1226,6 +1251,7 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
+
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
         node.plasma_store_socket_name,
@@ -1235,6 +1261,7 @@ def connect(node,
         node.get_logs_dir_path(),
         node.node_ip_address,
         node.node_manager_port,
+        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         log_stdout_file_name,

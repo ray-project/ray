@@ -457,7 +457,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(std::time(nullptr));
-    job_table_data->set_node_manager_address("127.0.0.1");
+    job_table_data->set_driver_ip_address("127.0.0.1");
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }

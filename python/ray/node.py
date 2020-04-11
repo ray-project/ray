@@ -80,6 +80,19 @@ class Node:
             node_ip_address = ray.services.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
+        if ray_params.raylet_ip_address:
+            raylet_ip_address = ray_params.raylet_ip_address
+        else:
+            raylet_ip_address = node_ip_address
+
+        if raylet_ip_address != node_ip_address and (not connect_only or head):
+            raise ValueError(
+                "The raylet IP address should only be different than the node "
+                "IP address when connecting to an existing raylet; i.e., when "
+                "head=False and connect_only=True.")
+
+        self._raylet_ip_address = raylet_ip_address
+
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
@@ -122,7 +135,7 @@ class Node:
                 # from Redis.
                 address_info = ray.services.get_address_info_from_redis(
                     self.redis_address,
-                    self._node_ip_address,
+                    self._raylet_ip_address,
                     redis_password=self.redis_password)
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
@@ -229,8 +242,13 @@ class Node:
 
     @property
     def node_ip_address(self):
-        """Get the cluster Redis address."""
+        """Get the IP address of this node."""
         return self._node_ip_address
+
+    @property
+    def raylet_ip_address(self):
+        """Get the IP address of the raylet that this node connects to."""
+        return self._raylet_ip_address
 
     @property
     def address(self):
@@ -287,6 +305,7 @@ class Node:
         """Get a dictionary of addresses."""
         return {
             "node_ip_address": self._node_ip_address,
+            "raylet_ip_address": self._raylet_ip_address,
             "redis_address": self._redis_address,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,

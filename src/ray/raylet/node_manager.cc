@@ -1089,7 +1089,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  auto worker = std::make_shared<Worker>(worker_id, language, message->port(), client,
+  std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
+  auto worker = std::make_shared<Worker>(worker_id, language, worker_ip_address,
+                                         message->port(), client,
                                          client_call_manager_);
   if (message->is_worker()) {
     // Register the new worker.
@@ -1110,7 +1112,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
           gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  initial_config_.node_manager_address, pid);
+                                  worker_ip_address, pid);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
@@ -1243,7 +1245,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-        self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
+        self_node_id_, worker->WorkerId(), worker->IpAddress(),
         worker->Port());
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
@@ -1675,8 +1677,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                                       ClientID spillback_to,
                                                       std::string address, int port) {
           if (worker != nullptr) {
-            reply->mutable_worker_address()->set_ip_address(
-                initial_config_.node_manager_address);
+            reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
             reply->mutable_worker_address()->set_port(worker->Port());
             reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
