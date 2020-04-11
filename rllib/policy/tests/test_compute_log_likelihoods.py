@@ -148,8 +148,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
-        config["policy_model"]["hidden_layer_sizes"] = [10]
-        config["policy_model"]["hidden_activation"] = "linear"
+        config["policy_model"]["fcnet_hiddens"] = [10]
+        config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -176,8 +176,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
-        config["policy_model"]["hidden_layer_sizes"] = [10]
-        config["policy_model"]["hidden_activation"] = "linear"
+        config["policy_model"]["fcnet_hiddens"] = [10]
+        config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
 
         do_test_log_likelihood(
