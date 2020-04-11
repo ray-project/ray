@@ -27,7 +27,7 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
  public:
   explicit DefaultTaskInfoHandler(gcs::RedisGcsClient &gcs_client,
                                   const std::shared_ptr<gcs::RedisClient> &redis_client)
-      : gcs_client_(gcs_client), task_pub_(redis_client), task_lease_pub_(redis_client) {}
+      : gcs_client_(gcs_client), gcs_pub_(redis_client) {}
 
   void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
                      SendReplyCallback send_reply_callback) override;
@@ -47,8 +47,10 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
-  gcs::GcsTaskTablePubSub task_pub_;
-  gcs::GcsTaskLeaseTablePubSub task_lease_pub_;
+  gcs::GcsPubSub gcs_pub_;
+  const std::string task_channel_ = TablePubsub_Name(TablePubsub::TASK_PUBSUB);
+  const std::string task_lease_channel_ =
+      TablePubsub_Name(TablePubsub::TASK_LEASE_PUBSUB);
 };
 
 }  // namespace rpc

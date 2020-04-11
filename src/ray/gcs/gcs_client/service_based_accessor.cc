@@ -917,7 +917,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };
-  auto status = gcs_sub_.Subscribe(object_channel_, object_id, on_subscribe, done);
+  auto status =
+      gcs_sub_.Subscribe(object_channel_, object_id.Binary(), on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
@@ -995,7 +996,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::WorkerFailureData worker_failure_data;
     worker_failure_data.ParseFromString(data);
-    subscribe(WorkerID::FromBinary(id), job_data);
+    subscribe(WorkerID::FromBinary(id), worker_failure_data);
   };
   auto status = gcs_sub_.SubscribeAll(worker_failure_channel_, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing worker failures.";

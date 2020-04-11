@@ -32,7 +32,8 @@ void DefaultNodeInfoHandler::HandleRegisterNode(
       node_mutex_.Lock();
       nodes_cache_[node_id] = request.node_info();
       node_mutex_.Unlock();
-      RAY_CHECK_OK(node_pub_.Publish(node_id, request.node_info(), nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(node_channel_, node_id.Binary(),
+                                    request.node_info().SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering node info, node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -184,7 +185,8 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
       ResourceChange resource_change;
       resource_change.set_change_mode(GcsChangeMode::APPEND_OR_ADD);
       resource_change.mutable_data()->CopyFrom(resource_data);
-      RAY_CHECK_OK(node_resource_pub_.Publish(node_id, resource_change, nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(node_resource_channel_, node_id.Binary(),
+                                    resource_change.SerializeAsString(), nullptr));
 
       node_resource_mutex_.Lock();
       nodes_resource_cache_[node_id].insert(resources.begin(), resources.end());
@@ -249,7 +251,8 @@ void DefaultNodeInfoHandler::UnregisterNode(
                      << ", node id = " << node_id;
     } else {
       RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
-      RAY_CHECK_OK(node_pub_.Publish(node_id, node_info, nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(node_channel_, node_id.Binary(),
+                                    node_info.SerializeAsString(), nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -278,7 +281,8 @@ void DefaultNodeInfoHandler::DeleteResources(
       RAY_LOG(ERROR) << "Failed to delete node resources: " << status.ToString()
                      << ", node id = " << node_id;
     } else {
-      RAY_CHECK_OK(node_resource_pub_.Publish(node_id, resource_change, nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(node_resource_channel_, node_id.Binary(),
+                                    resource_change.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);

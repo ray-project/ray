@@ -54,7 +54,8 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(job_pub_.Publish(job_id, *job_table_data, nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(job_channel_, job_id.Binary(),
+                                    job_table_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished marking job state, job id = " << job_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);

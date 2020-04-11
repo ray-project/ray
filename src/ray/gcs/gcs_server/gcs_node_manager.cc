@@ -26,7 +26,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
       error_info_accessor_(error_info_accessor),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service),
-      heartbeat_batch_pub_(gcs_client_->GetRedisClient()) {
+      gcs_pub_(gcs_client_->GetRedisClient()) {
   Start();
 }
 
@@ -120,7 +120,8 @@ void GcsNodeManager::SendBatchedHeartbeat() {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
     RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, nullptr));
-    RAY_CHECK_OK(heartbeat_batch_pub_.Publish(ClientID::Nil(), *batch, nullptr));
+    RAY_CHECK_OK(gcs_pub_.Publish(heartbeat_batch_channel_, ClientID::Nil().Binary(),
+                                  batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
   }
 }

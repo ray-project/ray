@@ -34,7 +34,8 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
     } else {
-      RAY_CHECK_OK(worker_failure_pub_.Publish(worker_id, *worker_failure_data, nullptr));
+      RAY_CHECK_OK(gcs_pub_.Publish(worker_failure_channel_, worker_id.Binary(),
+                                    worker_failure_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished reporting worker failure, "
                      << worker_address.DebugString();
     }

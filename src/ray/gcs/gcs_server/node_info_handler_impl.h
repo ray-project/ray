@@ -32,8 +32,7 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
                                   const std::shared_ptr<gcs::RedisClient> &redis_client)
       : gcs_client_(gcs_client),
         gcs_node_manager_(gcs_node_manager),
-        node_pub_(redis_client),
-        node_resource_pub_(redis_client) {}
+        gcs_pub_(redis_client) {}
 
   void HandleRegisterNode(const RegisterNodeRequest &request, RegisterNodeReply *reply,
                           SendReplyCallback send_reply_callback) override;
@@ -74,8 +73,10 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
 
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsNodeManager &gcs_node_manager_;
-  gcs::GcsNodeTablePubSub node_pub_;
-  gcs::GcsNodeResourceTablePubSub node_resource_pub_;
+  gcs::GcsPubSub gcs_pub_;
+  const std::string node_channel_ = TablePubsub_Name(TablePubsub::CLIENT_PUBSUB);
+  const std::string node_resource_channel_ =
+      TablePubsub_Name(TablePubsub::NODE_RESOURCE_PUBSUB);
 
   /// Mutex to protect the nodes_cache_ field.
   absl::Mutex node_mutex_;

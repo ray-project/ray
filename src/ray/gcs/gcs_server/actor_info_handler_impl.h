@@ -29,7 +29,7 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
   explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client,
                                    gcs::GcsActorManager &gcs_actor_manager,
                                    const std::shared_ptr<gcs::RedisClient> &redis_client)
-      : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager), actor_pub_(redis_client) {}
+      : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager), gcs_pub_(redis_client) {}
 
   void HandleCreateActor(const CreateActorRequest &request, CreateActorReply *reply,
                          SendReplyCallback send_reply_callback) override;
@@ -60,7 +60,8 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
  private:
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsActorManager &gcs_actor_manager_;
-  gcs::GcsActorTablePubSub actor_pub_;
+  gcs::GcsPubSub gcs_pub_;
+  const std::string actor_channel_ = TablePubsub_Name(TablePubsub::ACTOR_PUBSUB);
 };
 
 }  // namespace rpc

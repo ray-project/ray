@@ -27,7 +27,7 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
  public:
   explicit DefaultObjectInfoHandler(gcs::RedisGcsClient &gcs_client,
                                     const std::shared_ptr<gcs::RedisClient> &redis_client)
-      : gcs_client_(gcs_client), object_pub_(redis_client) {}
+      : gcs_client_(gcs_client), gcs_pub_(redis_client) {}
 
   void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
                                 GetObjectLocationsReply *reply,
@@ -46,7 +46,8 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
                                const rpc::GcsChangeMode &change_mode);
 
   gcs::RedisGcsClient &gcs_client_;
-  gcs::GcsObjectTablePubSub object_pub_;
+  gcs::GcsPubSub gcs_pub_;
+  const std::string object_channel_ = TablePubsub_Name(TablePubsub::OBJECT_PUBSUB);
 };
 
 }  // namespace rpc
