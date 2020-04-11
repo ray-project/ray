@@ -42,11 +42,6 @@ jobs:
       env:
         CC: ${{ matrix.compiler }}
       run: ./ci/travis/install-toolchains.sh "${CC%%-*}"
-    - name: Install MSYS2 (only needed if some shell commands are missing)
-      if: false && runner.os == 'Windows'
-      uses: numworks/setup-msys2@v1
-      with:
-        update: false
     - name: Perform build
       shell: bash -e -o pipefail -l {0}
       run: |
