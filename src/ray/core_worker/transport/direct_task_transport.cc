@@ -56,6 +56,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto lease_entry = worker_to_lease_client_[addr];
+  RAY_CHECK(lease_entry.first);
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
@@ -156,10 +157,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
   RAY_LOG(DEBUG) << "Lease requested " << task_id;
-  auto status = lease_client->RequestWorkerLease(
-      resource_spec,
-      [this, scheduling_key](const Status &status,
-                             const rpc::RequestWorkerLeaseReply &reply) mutable {
+  RAY_UNUSED(lease_client->RequestWorkerLease(
+      resource_spec, [this, scheduling_key](const Status &status,
+                                            const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto it = pending_lease_requests_.find(scheduling_key);
@@ -185,32 +185,23 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // The raylet redirected us to a different raylet to retry at.
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
+        } else if (lease_client != local_lease_client_) {
+          // A lease request to a remote raylet failed. Retry locally if the lease is
+          // still needed.
+          // TODO(swang): Fail after some number of retries?
+          RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
+                         << status.ToString();
+          RequestNewWorkerIfNeeded(scheduling_key);
         } else {
-          RetryLeaseRequest(status, lease_client, scheduling_key);
+          // A local request failed. This shouldn't happen if the raylet is still alive
+          // and we don't currently handle raylet failures, so treat it as a fatal
+          // error.
+          RAY_LOG(FATAL) << status.ToString();
         }
-      });
-  if (!status.ok()) {
-    RetryLeaseRequest(status, lease_client, scheduling_key);
-  }
-  pending_lease_requests_.emplace(scheduling_key, std::make_pair(lease_client, task_id));
-}
-
-void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
-    Status status, const std::shared_ptr<WorkerLeaseInterface> &lease_client,
-    const SchedulingKey &scheduling_key) {
-  if (lease_client != local_lease_client_) {
-    // A lease request to a remote raylet failed. Retry locally if the lease is
-    // still needed.
-    // TODO(swang): Fail after some number of retries?
-    RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                   << status.ToString();
-    RequestNewWorkerIfNeeded(scheduling_key);
-  } else {
-    // A local request failed. This shouldn't happen if the raylet is still alive
-    // and we don't currently handle raylet failures, so treat it as a fatal
-    // error.
-    RAY_LOG(FATAL) << status.ToString();
-  }
+      }));
+  RAY_CHECK(pending_lease_requests_
+                .emplace(scheduling_key, std::make_pair(lease_client, task_id))
+                .second);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -230,7 +221,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  auto status = client.PushNormalTask(
+  RAY_UNUSED(client.PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
@@ -257,16 +248,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
-      });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Error pushing task to worker: " << status.ToString();
-    {
-      absl::MutexLock lock(&mu_);
-      OnWorkerIdle(addr, scheduling_key, /*error=*/true, assigned_resources);
-    }
-    task_finisher_->PendingTaskFailed(
-        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-        &status);
-  }
+      }));
 }
 };  // namespace ray

@@ -84,12 +84,6 @@ class CoreWorkerDirectTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Retry a failed lease request.
-  void RetryLeaseRequest(Status status,
-                         const std::shared_ptr<WorkerLeaseInterface> &lease_client,
-                         const SchedulingKey &scheduling_key)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
   /// local raylet.
