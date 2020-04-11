@@ -23,13 +23,14 @@ public class ClientExceptionTest extends BaseTest {
   public void testWaitAndCrash() {
     TestUtils.skipTestUnderSingleProcess();
     ObjectId randomId = ObjectId.fromRandom();
-    RayObject<String> notExisting = new RayObjectImpl(randomId);
+    RayObject<String> notExisting = new RayObjectImpl(randomId, String.class);
 
     Thread thread = new Thread(() -> {
       try {
         TimeUnit.SECONDS.sleep(1);
         // kill raylet
-        RunManager runManager = ((RayNativeRuntime) TestUtils.getRuntime()).getRunManager();
+        RunManager runManager =
+            ((RayNativeRuntime) TestUtils.getUnderlyingRuntime()).getRunManager();
         for (Process process : runManager.getProcesses("raylet")) {
           runManager.terminateProcess("raylet", process);
         }
