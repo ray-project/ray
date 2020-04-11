@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include <sys/wait.h>
-
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
@@ -32,7 +30,7 @@ namespace {
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+    const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -319,7 +317,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
@@ -330,7 +328,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {

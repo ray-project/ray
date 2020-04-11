@@ -21,6 +21,9 @@ build --per_file_copt="-\\.(asm|S)$,\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
 # Ignore this warning since it's impractical to fix in the relevant headers
 build --per_file_copt="-\\.(asm|S)$,.*/ray/raylet/reconstruction_policy_test\\.cc@-Wno-inconsistent-missing-override"
+# Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
+build --per_file_copt="-\\.(asm|S)$,.*/_raylet\\.cpp@-Wno-deprecated-declarations"
+build --per_file_copt="-\\.(asm|S)$,.*/_streaming\\.cpp@-Wno-deprecated-declarations"
 # Ignore minor warnings for host tools, which we generally can't control
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"
@@ -29,9 +32,6 @@ build --host_copt="-Wno-microsoft-unqualified-friend"
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
 build:iwyu --experimental_action_listener=//:iwyu_cpp
-# This workaround is due to an incompatibility of
-# bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
-build --incompatible_depset_is_not_iterable=false
 
 # Print relative paths when possible
 build:windows --attempt_to_print_relative_paths
@@ -54,6 +54,15 @@ build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
+
+test:ci --flaky_test_attempts=3
+test:ci --nocache_test_results
+test:ci --progress_report_interval=100
+test:ci --show_progress_rate_limit=100
+test:ci --show_timestamps
+test:ci --spawn_strategy=local
+test:ci --test_output=errors
+test:ci --test_verbose_timeout_warnings
 
 # [Linux] Uncomment this line to print a stack trace on exit.
 #test:linux --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"

@@ -128,9 +128,6 @@ def optimizer_creator(models, config):
 
 class GANOperator(TrainingOperator):
     def setup(self, config):
-        self.device = torch.device("cuda"
-                                   if torch.cuda.is_available() else "cpu")
-
         self.classifier = LeNet()
         self.classifier.load_state_dict(
             torch.load(config["classification_model_path"]))
@@ -183,6 +180,7 @@ class GANOperator(TrainingOperator):
 
         # Compute a discriminator update for real images
         discriminator.zero_grad()
+        # self.device is set automatically
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
         label = torch.full((batch_size, ), real_label, device=self.device)

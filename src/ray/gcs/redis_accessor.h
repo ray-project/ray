@@ -397,6 +397,11 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
 
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 
