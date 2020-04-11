@@ -10,16 +10,18 @@ import torch
 from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset)
 
 from transformers import glue_processors as processors
+from transformers import glue_compute_metrics as compute_metrics
+
+from transformers import glue_output_modes as output_modes
+
 from transformers import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING
 from transformers import (
     WEIGHTS_NAME,
-    AdamW,
-    AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    get_linear_schedule_with_warmup,
 )
-from transformers import glue_convert_examples_to_features as convert_examples_to_features
+from transformers import (glue_convert_examples_to_features as
+                          convert_examples_to_features)
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -54,8 +56,8 @@ def add_transformers_parameters(parser):
         default=None,
         type=str,
         required=True,
-        help="Path to pre-trained model or shortcut name selected in the list: "
-        + ", ".join(ALL_MODELS),
+        help="Path to pre-trained model or shortcut name selected in list: " +
+        ", ".join(ALL_MODELS),
     )
     parser.add_argument(
         "--task_name",
@@ -293,7 +295,8 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
 
 
 def save_and_evaluate_checkpoints(args, model, tokenizer):
-    # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
+    # Saving best-practices: if you use defaults names for the model,
+    # you can reload it using from_pretrained()
     if args.do_train and (args.local_rank == -1
                           or torch.distributed.get_rank() == 0):
         # Create output directory if needed
@@ -301,14 +304,16 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
             os.makedirs(args.output_dir)
 
         logger.info("Saving model checkpoint to %s", args.output_dir)
-        # Save a trained model, configuration and tokenizer using `save_pretrained()`.
-        # They can then be reloaded using `from_pretrained()`
+        # Save a trained model, configuration and tokenizer using
+        # `save_pretrained()`. They can then be
+        # reloaded using `from_pretrained()`
         model_to_save = (model.module if hasattr(model, "module") else
                          model)  # Take care of distributed/parallel training
         model_to_save.save_pretrained(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
 
-        # Good practice: save your training arguments together with the trained model
+        # Good practice: save your training arguments
+        # together with the trained model
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
@@ -390,11 +395,12 @@ def evaluate(args, model, tokenizer, prefix=None):
                     "labels": batch[3]
                 }
                 if args.model_type != "distilbert":
-                    inputs["token_type_ids"] = (
-                        batch[2]
-                        if args.model_type in ["bert", "xlnet",
-                                               "albert"] else None
-                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+                    # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't
+                    #  use segment_ids
+                    inputs["token_type_ids"] = (batch[2]
+                                                if args.model_type in [
+                                                    "bert", "xlnet", "albert"
+                                                ] else None)
                 outputs = model(**inputs)
                 tmp_eval_loss, logits = outputs[:2]
 

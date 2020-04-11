@@ -13,7 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Finetuning the library models for sequence classification on GLUE (Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa)."""
+""" Finetuning the library models for sequence classification on GLUE (
+Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa)."""
 
 import argparse
 import logging
@@ -22,12 +23,11 @@ import random
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from tqdm import tqdm, trange
+from torch.utils.data import DataLoader, RandomSampler
+from tqdm import trange
 import torch.distributed as dist
 
 from transformers import (
-    WEIGHTS_NAME,
     AdamW,
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -41,7 +41,9 @@ from filelock import FileLock
 import ray
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch.examples.transformers import utils
+from ray.util.sgd.torch.examples.transformers.utils import (
+    add_transformers_parameters, evaluate, load_and_cache_examples,
+    save_and_evaluate_checkpoints)
 try:
     from apex import amp
 except ImportError:
@@ -65,7 +67,7 @@ def announce_training(args, dataset_len, t_total):
     logger.info("  Instantaneous batch size per GPU = %d",
                 args.per_gpu_train_batch_size)
     logger.info(
-        "  Total train batch size (w. parallel, distributed & accumulation) = %d",
+        "  Total train batch size (w. parallel, distributed & accum) = %d",
         args.per_gpu_train_batch_size * args.gradient_accumulation_steps *
         args.num_workers,
     )
@@ -169,10 +171,10 @@ class TransformerOperator(TrainingOperator):
             "labels": batch[3]
         }
         if args.model_type != "distilbert":
-            inputs["token_type_ids"] = (
-                batch[2]
-                if args.model_type in ["bert", "xlnet", "albert"] else None
-            )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+            # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+            inputs["token_type_ids"] = (batch[2] if args.model_type in [
+                "bert", "xlnet", "albert"
+            ] else None)
         outputs = model(**inputs)
 
         # model outputs are always tuple in transformers (see doc)
@@ -211,13 +213,15 @@ class TransformerOperator(TrainingOperator):
 
     def calculate_t_total(self):
         args = self.args
+        grad_accum_steps = args.gradient_accumulation_steps
         train_data_len = len(self.train_loader)
         if args.max_steps > 0:
             t_total = args.max_steps
             args.num_train_epochs = args.max_steps // (
-                train_data_len // args.gradient_accumulation_steps) + 1
+                train_data_len // grad_accum_steps) + 1
         else:
-            t_total = train_data_len // args.gradient_accumulation_steps * args.num_train_epochs
+            t_total = (
+                train_data_len // grad_accum_steps * args.num_train_epochs)
         return t_total
 
     def validate(self, _):
@@ -275,7 +279,6 @@ def main():
 
     global_step = 0
     epochs_trained = 0
-    tr_loss = 0.0
     train_iterator = trange(
         epochs_trained,
         int(args.num_train_epochs),
