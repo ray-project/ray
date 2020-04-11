@@ -546,13 +546,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::ResourceChange resource_change;
     resource_change.ParseFromString(data);
-    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> data;
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resource_map;
     auto it = resource_change.data().items().begin();
     while (it != resource_change.data().items().end()) {
-      data[it->first] = std::make_shared<rpc::ResourceTableData>(it->second);
+      resource_map[it->first] = std::make_shared<rpc::ResourceTableData>(it->second);
       ++it;
     }
-    gcs::ResourceChangeNotification notification(resource_change.change_mode(), data);
+    gcs::ResourceChangeNotification notification(resource_change.change_mode(),
+                                                 resource_map);
     subscribe(ClientID::FromBinary(id), notification);
   };
   auto status = gcs_sub_.SubscribeAll(node_resource_channel_, on_subscribe, done);
@@ -602,11 +603,12 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing batch heartbeat.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const ClientID &node_id,
-                                  const HeartbeatBatchTableData &data) {
-    subscribe(data);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    HeartbeatBatchTableData heartbeat_batch;
+    heartbeat_batch.ParseFromString(data);
+    subscribe(heartbeat_batch);
   };
-  auto status = gcs_sub_.SubscribeAll(on_subscribe, done);
+  auto status = gcs_sub_.SubscribeAll(heartbeat_batch_channel_, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
   return status;
 }
@@ -727,7 +729,12 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto status = gcs_sub_.Subscribe(task_id, subscribe, done);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    TaskTableData task_data;
+    task_data.ParseFromString(data);
+    subscribe(TaskID::FromBinary(id), task_data);
+  };
+  auto status = gcs_sub_.Subscribe(task_channel_, task_id.Binary(), on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
 }
@@ -735,7 +742,10 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                       const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
-  auto status = gcs_sub_.Unsubscribe(task_id, done);
+  auto status = gcs_sub_.Unsubscribe(task_channel_, task_id.Binary());
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -767,7 +777,13 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto status = task_lease_sub_.Subscribe(task_id, subscribe, done);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    TaskLeaseData task_lease_data;
+    task_lease_data.ParseFromString(data);
+    subscribe(TaskID::FromBinary(id), task_lease_data);
+  };
+  auto status =
+      gcs_sub_.Subscribe(task_lease_channel_, task_id.Binary(), on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
@@ -775,7 +791,10 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
     const TaskID &task_id, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
-  auto status = task_lease_sub_.Unsubscribe(task_id, done);
+  auto status = gcs_sub_.Unsubscribe(task_lease_channel_, task_id.Binary());
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
@@ -889,15 +908,16 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto on_subscribe = [subscribe](const ObjectID &object_id,
-                                  const rpc::ObjectChange &object_change) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::ObjectChange object_change;
+    object_change.ParseFromString(data);
     auto object_data_vector = std::vector<rpc::ObjectTableData>();
     object_data_vector.emplace_back(object_change.data());
     gcs::ObjectChangeNotification notification(object_change.change_mode(),
                                                object_data_vector);
-    subscribe(object_id, notification);
+    subscribe(ObjectID::FromBinary(id), notification);
   };
-  auto status = gcs_sub_.Subscribe(object_id, on_subscribe, done);
+  auto status = gcs_sub_.Subscribe(object_channel_, object_id, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
@@ -905,7 +925,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
-  auto status = gcs_sub_.Unsubscribe(object_id, done);
+  auto status = gcs_sub_.Unsubscribe(object_channel_, object_id.Binary());
+  if (done) {
+    done(status);
+  }
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }
@@ -969,7 +992,12 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto status = gcs_sub_.SubscribeAll(subscribe, done);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::WorkerFailureData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    subscribe(WorkerID::FromBinary(id), job_data);
+  };
+  auto status = gcs_sub_.SubscribeAll(worker_failure_channel_, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
   return status;
 }

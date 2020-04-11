@@ -189,6 +189,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   const std::string node_channel_ = TablePubsub_Name(TablePubsub::CLIENT_PUBSUB);
   const std::string node_resource_channel_ =
       TablePubsub_Name(TablePubsub::NODE_RESOURCE_PUBSUB);
+  const std::string heartbeat_batch_channel_ =
+      TablePubsub_Name(TablePubsub::HEARTBEAT_BATCH_PUBSUB);
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
@@ -249,6 +251,9 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   ClientID subscribe_id_;
 
   GcsPubSub gcs_sub_;
+  const std::string task_channel_ = TablePubsub_Name(TablePubsub::TASK_PUBSUB);
+  const std::string task_lease_channel_ =
+      TablePubsub_Name(TablePubsub::TASK_LEASE_PUBSUB);
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -284,7 +289,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   ClientID subscribe_id_;
 
   GcsPubSub gcs_sub_;
-
+  const std::string object_channel_ = TablePubsub_Name(TablePubsub::OBJECT_PUBSUB);
   Sequencer<ObjectID> sequencer_;
 };
 
@@ -345,6 +350,8 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   GcsPubSub gcs_sub_;
+  const std::string worker_failure_channel_ =
+      TablePubsub_Name(TablePubsub::WORKER_FAILURE_PUBSUB);
 };
 
 }  // namespace gcs

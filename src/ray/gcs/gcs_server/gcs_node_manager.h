@@ -21,7 +21,7 @@
 #include <ray/rpc/client_call.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 namespace gcs {

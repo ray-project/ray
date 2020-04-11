@@ -15,7 +15,7 @@
 #ifndef RAY_GCS_TASK_INFO_HANDLER_IMPL_H
 #define RAY_GCS_TASK_INFO_HANDLER_IMPL_H
 
-#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 

@@ -16,7 +16,7 @@
 #define RAY_GCS_ACTOR_INFO_HANDLER_IMPL_H
 
 #include "gcs_actor_manager.h"
-#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -59,11 +59,8 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
-<<<<<<< HEAD
   gcs::GcsActorManager &gcs_actor_manager_;
-=======
   gcs::GcsActorTablePubSub actor_pub_;
->>>>>>> add part code
 };
 
 }  // namespace rpc
