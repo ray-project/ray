@@ -73,7 +73,7 @@ setup_commands:
 
 file_mounts: {
     # This should point to ray/python/ray/util/sgd.
-    /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/examples/: ../,
+    /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/util/sgd/: ../../../,
 }
 
 # Custom commands that will be run on the head node after common setup.
