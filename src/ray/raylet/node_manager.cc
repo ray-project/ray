@@ -1785,6 +1785,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
+  task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
+    RAY_LOG(DEBUG) << "Task lease request canceled " << task_id;
+    reply->set_canceled(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
   SubmitTask(task, Lineage());
 }
 
@@ -1819,6 +1824,38 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                                          rpc::CancelWorkerLeaseReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  Task removed_task;
+  TaskState removed_task_state;
+  const auto canceled =
+      local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+  if (!canceled) {
+    // We do not have the task. This could be because we haven't received the
+    // lease request yet, or because we already granted the lease request and
+    // it has already been returned.
+  } else {
+    if (removed_task.OnDispatch()) {
+      // We have not yet granted the worker lease. Cancel it now.
+      removed_task.OnCancellation()();
+      task_dependency_manager_.TaskCanceled(task_id);
+      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+    } else {
+      // We already granted the worker lease and sent the reply. Re-queue the
+      // task and wait for the requester to return the leased worker.
+      local_queues_.QueueTasks({removed_task}, removed_task_state);
+    }
+  }
+  // The task cancellation failed if we did not have the task queued, since
+  // this means that we may not have received the task request yet. It is
+  // successful if we did have the task queued, since we have now replied to
+  // the client that requested the lease.
+  reply->set_success(canceled);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -3142,6 +3179,8 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
+    assigned_task.OnDispatchInstead(nullptr);
+    assigned_task.OnSpillbackInstead(nullptr);
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.

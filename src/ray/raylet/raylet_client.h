@@ -66,6 +66,10 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
 
+  virtual ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+
   virtual ~WorkerLeaseInterface(){};
 };
 
@@ -276,6 +280,10 @@ class RayletClient : public WorkerLeaseInterface, public DependencyWaiterInterfa
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
