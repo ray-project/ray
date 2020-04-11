@@ -178,6 +178,38 @@ def get_variable(value,
     return value
 
 
+def get_activation_fn(name, framework="tf"):
+    """
+    Returns a framework specific activation function, given a name string.
+
+    Args:
+        name (str): One of "relu" (default), "tanh", or "linear".
+        framework (str): One of "tf" or "torch".
+
+    Returns:
+        A framework-specific activtion function. e.g. tf.nn.tanh or
+            torch.nn.ReLU. Returns None for name="linear".
+    """
+    if framework == "torch":
+        _, nn = try_import_torch()
+        if name == "linear":
+            return None
+        elif name == "relu":
+            return nn.ReLU
+        elif name == "tanh":
+            return nn.Tanh
+    else:
+        if name == "linear":
+            return None
+        tf = try_import_tf()
+        fn = getattr(tf.nn, name, None)
+        if fn is not None:
+            return fn
+
+    raise ValueError(
+        "Unknown activation ({}) for framework={}!".format(name, framework))
+
+
 # This call should never happen inside a module's functions/classes
 # as it would re-disable tf-eager.
 tf = try_import_tf()
