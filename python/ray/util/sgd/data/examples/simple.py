@@ -22,15 +22,18 @@ class Net(nn.Module):
         x = self.fc2(x)
         return x
 
+
 def model_creator(config):
     return Net()
 
+
 def data_creator(config):
-    return torch.utils.data.DataLoader([(1,1), (2,2)])
+    return torch.utils.data.DataLoader([(1, 1), (2, 2)])
+
 
 def optimizer_creator(model, config):
-    return torch.optim.SGD(
-        model.parameters(), lr=config.get("lr", 1e-4))
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
+
 
 def loss_creator(config):
     return -nn.MSELoss(config)
@@ -39,14 +42,17 @@ def loss_creator(config):
 def to_mat(x):
     return torch.tensor([[x]]).float()
 
+
 @ray.remote
 def print_stuff(x):
     print(list(x.__iter__()))
 
+
 ray.init()
 
-p_iter = iter.from_items([i*0.001 for i in range(10)], num_shards=1)
-dataset = Dataset(p_iter, download_func=(lambda x: (to_mat(x), to_mat(x))), max_concur=1)
+p_iter = iter.from_items([i * 0.001 for i in range(10)], num_shards=1)
+dataset = Dataset(
+    p_iter, download_func=(lambda x: (to_mat(x), to_mat(x))), max_concur=1)
 
 local_iter = p_iter.get_shard(0)
 res = print_stuff.remote(local_iter)
