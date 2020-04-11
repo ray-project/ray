@@ -33,7 +33,7 @@ class Searcher:
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        use_clipped_trials (bool): Whether to use early terminated
+        use_early_stopped_trials (bool): Whether to use early terminated
             trial results in the optimization process.
 
     .. code-block:: python
@@ -62,14 +62,14 @@ class Searcher:
     def __init__(self,
                  metric="episode_reward_mean",
                  mode="max",
-                 use_clipped_trials=False,
+                 use_early_stopped_trials=False,
                  max_concurrent=10):
         assert type(max_concurrent) is int and max_concurrent > 0
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._metric = metric
         self._mode = mode
-        self.use_clipped_trials = use_clipped_trials
+        self.use_early_stopped_trials = use_early_stopped_trials
         self.max_concurrent = max_concurrent
 
     def on_trial_result(self, trial_id, result):
@@ -94,7 +94,7 @@ class Searcher:
                           trial_id,
                           result=None,
                           error=False,
-                          clipped=False):
+                          early_terminated=False):
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -109,7 +109,7 @@ class Searcher:
                 avoid breaking the optimization process. Upon errors, this
                 may also be None.
             error (bool): True if the training process raised an error.
-            clipped (bool): True if the trial was terminated by the scheduler.
+            early_terminated (bool): True if the trial was terminated by the scheduler.
 
         """
         raise NotImplementedError
@@ -173,8 +173,10 @@ class SearchGenerator(SearchAlgorithm):
             type(searcher),
             Searcher), ("Searcher should be subclassing Searcher.")
         self.searcher = searcher
+        self.max_concurrent = searcher.max_concurrent
         self._parser = make_parser()
         self._experiment = None
+        self._live_trials = set()
         self._counter = 0  # Keeps track of number of trials created.
         self._total_samples = 0  # int: total samples to evaluate.
         self._finished = False
@@ -191,7 +193,7 @@ class SearchGenerator(SearchAlgorithm):
             "SearchAlgorithms can only support 1 experiment at a time.")
         self._experiment = experiment_list[0]
         experiment_spec = self._experiment.spec
-        self.total_samples = experiment_spec.get("num_samples", 1)
+        self._total_samples = experiment_spec.get("num_samples", 1)
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
@@ -202,16 +204,17 @@ class SearchGenerator(SearchAlgorithm):
             List[Trial]: A list of trials for the Runner to consume.
         """
         trials = []
-        while not self.is_finished():
+        while not self.is_finished() and self.allow_new_trial():
             trial = self.create_trial_if_possible(self._experiment.spec,
                                                   self._experiment.name)
+            self._live_trials.add(trial.trial_id)
             if trial is None:
                 break
             trials.append(trial)
-
         return trials
 
     def create_trial_if_possible(self, experiment_spec, output_path):
+        logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
         if suggested_config is None:
@@ -234,6 +237,9 @@ class SearchGenerator(SearchAlgorithm):
             trial_id=trial_id)
         return trial
 
+    def allow_new_trial(self):
+        return self.max_concurrent > len(self._live_trials)
+
     def on_trial_result(self, trial_id, result):
         """Notifies the underlying searcher."""
         self.searcher.on_trial_result(trial_id, result)
@@ -242,9 +248,13 @@ class SearchGenerator(SearchAlgorithm):
                           trial_id,
                           result=None,
                           error=False,
-                          clipped=False):
+                          early_terminated=False):
         self.searcher.on_trial_complete(
-            trial_id=trial_id, result=result, error=error, clipped=clipped)
+            trial_id=trial_id, result=result, error=error, early_terminated=early_terminated)
+        self._live_trials.remove(trial_id)
+
+    def is_finished(self):
+        return self._counter >= self._total_samples
 
 
 class _MockSuggestionAlgorithm(Searcher):
@@ -271,12 +281,12 @@ class _MockSuggestionAlgorithm(Searcher):
                           trial_id,
                           result=None,
                           error=False,
-                          clipped=False):
+                          early_terminated=False):
         self.counter["complete"] += 1
         if result:
-            self._process_result(result, clipped)
+            self._process_result(result, early_terminated)
         del self.live_trials[trial_id]
 
-    def _process_result(self, result, clipped):
-        if clipped and self._use_clipped:
+    def _process_result(self, result, early_terminated):
+        if early_terminated and self._use_early_stopped:
             self.final_results += [result]

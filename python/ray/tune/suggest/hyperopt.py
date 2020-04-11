@@ -80,7 +80,7 @@ class HyperOptSearch(Searcher):
             metric="episode_reward_mean",
             mode="max",
             max_concurrent=10,
-            use_clipped_trials=True,
+            use_early_stopped_trials=True,
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
@@ -88,8 +88,8 @@ class HyperOptSearch(Searcher):
         super(HyperOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            use_clipped_trials=use_clipped_trials,
             max_concurrent=max_concurrent)
+        self._use_early_stopped = use_early_stopped_trials
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.
