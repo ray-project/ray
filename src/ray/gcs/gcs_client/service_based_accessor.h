@@ -17,7 +17,7 @@
 
 #include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/pubsub/gcs_table_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 
@@ -46,7 +46,8 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-  GcsJobTablePubSub job_sub_;
+  GcsPubSub gcs_sub_;
+  const std::string job_channel_ = TablePubsub_Name(TablePubsub::JOB_PUBSUB);
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -100,7 +101,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  GcsActorTablePubSub actor_sub_;
+  GcsPubSub gcs_sub_;
+  const std::string actor_channel_ = TablePubsub_Name(TablePubsub::ACTOR_PUBSUB);
 
   Sequencer<ActorID> sequencer_;
 };
@@ -183,12 +185,10 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   ServiceBasedGcsClient *client_impl_;
 
-  GcsNodeTablePubSub node_sub_;
-  GcsNodeResourceTablePubSub node_resource_sub_;
-
-  GcsHeartbeatTablePubSub heartbeat_sub_;
-
-  GcsHeartbeatBatchTablePubSub heartbeat_batch_sub_;
+  GcsPubSub gcs_sub_;
+  const std::string node_channel_ = TablePubsub_Name(TablePubsub::CLIENT_PUBSUB);
+  const std::string node_resource_channel_ =
+      TablePubsub_Name(TablePubsub::NODE_RESOURCE_PUBSUB);
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
@@ -248,9 +248,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   ClientID subscribe_id_;
 
-  GcsTaskTablePubSub task_sub_;
-
-  GcsTaskLeaseTablePubSub task_lease_sub_;
+  GcsPubSub gcs_sub_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -285,7 +283,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   ClientID subscribe_id_;
 
-  GcsObjectTablePubSub object_sub_;
+  GcsPubSub gcs_sub_;
 
   Sequencer<ObjectID> sequencer_;
 };
@@ -346,7 +344,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  GcsWorkerFailureTablePubSub worker_failure_sub_;
+  GcsPubSub gcs_sub_;
 };
 
 }  // namespace gcs
