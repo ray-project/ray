@@ -10,12 +10,12 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     dragonfly = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest.suggestion import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class DragonflySearch(SuggestionAlgorithm):
+class DragonflySearch(Searcher):
     """A wrapper around Dragonfly to provide trial suggestions.
 
     Requires Dragonfly to be installed via ``pip install dragonfly-opt``.
@@ -78,7 +78,6 @@ class DragonflySearch(SuggestionAlgorithm):
     def __init__(self,
                  optimizer,
                  max_concurrent=10,
-                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
@@ -87,16 +86,7 @@ class DragonflySearch(SuggestionAlgorithm):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
             `pip install dragonfly`."""
-        assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
         self._opt = optimizer
@@ -117,8 +107,6 @@ class DragonflySearch(SuggestionAlgorithm):
             metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
         if self._initial_points:
             suggested_config = self._initial_points[0]
             del self._initial_points[0]
@@ -126,9 +114,6 @@ class DragonflySearch(SuggestionAlgorithm):
             suggested_config = self._opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
         return {"point": suggested_config}
-
-    def on_trial_result(self, trial_id, result):
-        pass
 
     def on_trial_complete(self,
                           trial_id,
@@ -140,9 +125,6 @@ class DragonflySearch(SuggestionAlgorithm):
         if result:
             self._opt.tell([(trial_info,
                              self._metric_op * result[self._metric])])
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self._initial_points, self._opt)

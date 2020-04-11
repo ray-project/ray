@@ -9,7 +9,6 @@ from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils import merge_dicts, flatten_dict
 
-INDEX = "__index__"
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class Searcher:
                 subclass implementation to preprocess the result to
                 avoid breaking the optimization process.
         """
-        raise NotImplementedError
+        pass
 
     def on_trial_complete(self,
                           trial_id,
