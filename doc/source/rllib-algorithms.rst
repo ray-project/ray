@@ -8,27 +8,34 @@ RLlib Algorithms
 Feature Compatibility Matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=============  =======================  ==================  ===========  ===========================
-Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
-=============  =======================  ==================  ===========  ===========================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
-DDPG, TD3       No                      **Yes**             **Yes**
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
-APEX-DDPG       No                      **Yes**             **Yes**
-SAC             **Yes**                 **Yes**             **Yes**
-ES              **Yes**                 **Yes**             No
-ARS             **Yes**                 **Yes**             No
-QMIX            **Yes**                 No                  **Yes**      `+RNN`_
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
-=============  =======================  ==================  ===========  ===========================
+=================== =======================  ==============  ===========  =====================
+Algorithm           Discrete Actions         Continuous      Multi-Agent  Model Support
+=================== =======================  ==============  ===========  =====================
+`A2C, A3C`_         **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`PPO`_, `APPO`_     **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`PG`_               **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`IMPALA`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`DQN`_, `Rainbow`_  **Yes** `+parametric`_   No              **Yes**
+`DDPG`_, `TD3`_     No                       **Yes**         **Yes**
+`APEX-DQN`_         **Yes** `+parametric`_   No              **Yes**
+`APEX-DDPG`_        No                       **Yes**         **Yes**
+`SAC`_              **Yes**                  **Yes**         **Yes**
+`ES`_               **Yes**                  **Yes**         No
+`ARS`_              **Yes**                  **Yes**         No
+`QMIX`_             **Yes**                  No              **Yes**      `+RNN`_
+`MARWIL`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_
+`LinUCB`_, `LinTS`_ **Yes** `+parametric`_   No              **Yes**
+`AlphaZero`_        **Yes** `+parametric`_   No              No
+=================== =======================  ==============  ===========  =====================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+.. _`A2C, A3C`: rllib-algorithms.html#a3c
+.. _`Rainbow`: rllib-algorithms.html#dqn
+.. _`TD3`: rllib-algorithms.html#ddpg
+.. _`APEX-DQN`: rllib-algorithms.html#apex
+.. _`APEX-DDPG`: rllib-algorithms.html#apex
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -37,7 +44,7 @@ High-throughput architectures
 
 Distributed Prioritized Experience Replay (Ape-X)
 -------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.00933>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
 Ape-X variations of DQN, DDPG, and QMIX (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/apex.py>`__, `APEX_QMIX <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
@@ -247,7 +254,7 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__
 RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be scaled by increasing the number of workers, using the AsyncGradientsOptimizer for async DQN, or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 

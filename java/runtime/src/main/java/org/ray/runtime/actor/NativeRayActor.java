@@ -7,11 +7,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
 import org.ray.api.BaseActor;
-import org.ray.api.Ray;
 import org.ray.api.id.ActorId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
-import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
 
 /**
@@ -21,19 +17,16 @@ import org.ray.runtime.generated.Common.Language;
 public abstract class NativeRayActor implements BaseActor, Externalizable {
 
   /**
-   * Address of core worker.
-   */
-  long nativeCoreWorkerPointer;
-  /**
    * ID of the actor.
    */
   byte[] actorId;
 
-  NativeRayActor(long nativeCoreWorkerPointer, byte[] actorId) {
-    Preconditions.checkState(nativeCoreWorkerPointer != 0);
+  private Language language;
+
+  NativeRayActor(byte[] actorId, Language language) {
     Preconditions.checkState(!ActorId.fromBytes(actorId).isNil());
-    this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
     this.actorId = actorId;
+    this.language = language;
   }
 
   /**
@@ -42,14 +35,12 @@ public abstract class NativeRayActor implements BaseActor, Externalizable {
   NativeRayActor() {
   }
 
-  public static NativeRayActor create(long nativeCoreWorkerPointer, byte[] actorId,
-                                      Language language) {
-    Preconditions.checkState(nativeCoreWorkerPointer != 0);
+  public static NativeRayActor create(byte[] actorId, Language language) {
     switch (language) {
       case JAVA:
-        return new NativeRayJavaActor(nativeCoreWorkerPointer, actorId);
+        return new NativeRayJavaActor(actorId);
       case PYTHON:
-        return new NativeRayPyActor(nativeCoreWorkerPointer, actorId);
+        return new NativeRayPyActor(actorId);
       default:
         throw new IllegalStateException("Unknown actor handle language: " + language);
     }
@@ -61,18 +52,19 @@ public abstract class NativeRayActor implements BaseActor, Externalizable {
   }
 
   public Language getLanguage() {
-    return Language.forNumber(nativeGetLanguage(nativeCoreWorkerPointer, actorId));
+    return language;
   }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
-    out.writeObject(toBytes());
+    out.writeObject(nativeSerialize(actorId));
+    out.writeObject(language);
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    nativeCoreWorkerPointer = getNativeCoreWorkerPointer();
-    actorId = nativeDeserialize(nativeCoreWorkerPointer, (byte[]) in.readObject());
+    actorId = nativeDeserialize((byte[]) in.readObject());
+    language = (Language) in.readObject();
   }
 
   /**
@@ -81,7 +73,7 @@ public abstract class NativeRayActor implements BaseActor, Externalizable {
    * @return  the bytes of the actor handle
    */
   public byte[] toBytes() {
-    return nativeSerialize(nativeCoreWorkerPointer, actorId);
+    return nativeSerialize(actorId);
   }
 
   /**
@@ -90,21 +82,10 @@ public abstract class NativeRayActor implements BaseActor, Externalizable {
    * @return  the bytes of an actor handle
    */
   public static NativeRayActor fromBytes(byte[] bytes) {
-    long nativeCoreWorkerPointer = getNativeCoreWorkerPointer();
-    byte[] actorId = nativeDeserialize(nativeCoreWorkerPointer, bytes);
-    Language language = Language.forNumber(nativeGetLanguage(nativeCoreWorkerPointer, actorId));
+    byte[] actorId = nativeDeserialize(bytes);
+    Language language = Language.forNumber(nativeGetLanguage(actorId));
     Preconditions.checkNotNull(language);
-    return create(nativeCoreWorkerPointer, actorId, language);
-  }
-
-  private static long getNativeCoreWorkerPointer() {
-    RayRuntime runtime = Ray.internal();
-    if (runtime instanceof RayMultiWorkerNativeRuntime) {
-      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-    }
-    Preconditions.checkState(runtime instanceof RayNativeRuntime);
-
-    return ((RayNativeRuntime) runtime).getNativeCoreWorkerPointer();
+    return create(actorId, language);
   }
 
   @Override
@@ -112,13 +93,11 @@ public abstract class NativeRayActor implements BaseActor, Externalizable {
     // TODO(zhijunfu): do we need to free the ActorHandle in core worker?
   }
 
-  private static native int nativeGetLanguage(
-      long nativeCoreWorkerPointer, byte[] actorId);
+  private static native int nativeGetLanguage(byte[] actorId);
 
-  static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
-      long nativeCoreWorkerPointer, byte[] actorId);
+  static native List<String> nativeGetActorCreationTaskFunctionDescriptor(byte[] actorId);
 
-  private static native byte[] nativeSerialize(long nativeCoreWorkerPointer, byte[] actorId);
+  private static native byte[] nativeSerialize(byte[] actorId);
 
-  private static native byte[] nativeDeserialize(long nativeCoreWorkerPointer, byte[] data);
+  private static native byte[] nativeDeserialize(byte[] data);
 }

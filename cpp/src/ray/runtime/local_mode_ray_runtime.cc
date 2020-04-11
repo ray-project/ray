@@ -12,8 +12,8 @@ namespace api {
 
 LocalModeRayRuntime::LocalModeRayRuntime(std::shared_ptr<RayConfig> config) {
   config_ = config;
-  worker_ =
-      std::unique_ptr<WorkerContext>(new WorkerContext(WorkerType::DRIVER, JobID::Nil()));
+  worker_ = std::unique_ptr<WorkerContext>(new WorkerContext(
+      WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()), JobID::Nil()));
   object_store_ = std::unique_ptr<ObjectStore>(new LocalModeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter(*this));
 }

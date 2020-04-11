@@ -3,6 +3,7 @@ package org.ray.runtime.functionmanager;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.util.Optional;
 
 /**
  * Represents a Ray function (either a Method or a Constructor in Java) and its metadata.
@@ -64,6 +65,17 @@ public class RayFunction {
       return true;
     } else {
       return !getMethod().getReturnType().equals(void.class);
+    }
+  }
+
+  /**
+   * @return Return type.
+   */
+  public Optional<Class<?>> getReturnType() {
+    if (hasReturn()) {
+      return Optional.of(((Method) executable).getReturnType());
+    } else {
+      return Optional.empty();
     }
   }
 

@@ -1,23 +1,22 @@
-from gym.spaces import Box, Discrete
 import logging
-import numpy as np
 
+import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_model import SACModel
+from gym.spaces import Box, Discrete
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
-    PRIO_WEIGHTS
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
+    TargetNetworkMixin
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
+from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf, try_import_tfp
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_ops import minimize_and_clip, make_tf_callable
+from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -100,34 +99,24 @@ def get_dist_class(config, action_space):
     return action_dist_class
 
 
-def get_log_likelihood(policy, model, actions, input_dict, obs_space,
-                       action_space, config):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
+def get_distribution_inputs_and_class(policy,
+                                      model,
+                                      obs_batch,
+                                      *,
+                                      explore=True,
+                                      **kwargs):
+    # Get base-model output.
+    model_out, state_out = model({
+        "obs": obs_batch,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
+    # Get action model output from base-model output.
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-    return action_dist_class(distribution_inputs, model).logp(actions)
+    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    return distribution_inputs, action_dist_class, state_out
 
 
-def build_action_output(policy, model, input_dict, obs_space, action_space,
-                        explore, config, timestep):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
-    distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            distribution_inputs, action_dist_class, model, timestep, explore)
-
-    return policy.output_actions, policy.sampled_action_logp
-
-
-def actor_critic_loss(policy, model, _, train_batch):
+def sac_actor_critic_loss(policy, model, _, train_batch):
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
@@ -293,7 +282,7 @@ def actor_critic_loss(policy, model, _, train_batch):
 def gradients(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"]:
         actor_grads_and_vars = minimize_and_clip(
-            optimizer,
+            optimizer,  # isn't optimizer not well defined here (which one)?
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
             clip_val=policy.config["grad_norm_clipping"])
@@ -409,63 +398,12 @@ class ActorCriticOptimizerMixin:
             learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
-class ComputeTDErrorMixin:
-    def __init__(self):
-        @make_tf_callable(self.get_session(), dynamic_shape=True)
-        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
-                             importance_weights):
-            # Do forward pass on loss to update td errors attribute
-            # (one TD-error value per item in batch to update PR weights).
-            actor_critic_loss(
-                self, self.model, None, {
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
-                    SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
-                    SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
-                    SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
-                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
-                })
-
-            return self.td_error
-
-        self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    def __init__(self, config):
-        @make_tf_callable(self.get_session())
-        def update_target_fn(tau):
-            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            update_target_expr = []
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
-            assert len(model_vars) == len(target_model_vars), \
-                (model_vars, target_model_vars)
-            for var, var_target in zip(model_vars, target_model_vars):
-                update_target_expr.append(
-                    var_target.assign(tau * var + (1.0 - tau) * var_target))
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        # Hard initial update
-        self._do_update = update_target_fn
-        self.update_target(tau=1.0)
-
-    # support both hard and soft sync
-    def update_target(self, tau=None):
-        self._do_update(np.float32(tau or self.config.get("tau")))
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.model.variables() + self.target_model.variables()
-
-
 def setup_early_mixins(policy, obs_space, action_space, config):
     ActorCriticOptimizerMixin.__init__(policy, config)
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):
-    ComputeTDErrorMixin.__init__(policy)
+    ComputeTDErrorMixin.__init__(policy, sac_actor_critic_loss)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -477,9 +415,8 @@ SACTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
-    action_sampler_fn=build_action_output,
-    log_likelihood_fn=get_log_likelihood,
-    loss_fn=actor_critic_loss,
+    action_distribution_fn=get_distribution_inputs_and_class,
+    loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,
     apply_gradients_fn=apply_gradients,

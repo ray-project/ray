@@ -19,10 +19,6 @@
 
 namespace ray {
 
-static std::string redis_server_executable;
-static std::string redis_client_executable;
-static std::string libray_redis_module_path;
-
 class GcsServerTest : public RedisServiceManagerForTest {
  public:
   void SetUp() override {

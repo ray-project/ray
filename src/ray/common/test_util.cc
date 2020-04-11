@@ -29,9 +29,15 @@ void RedisServiceManagerForTest::SetUpTestCase() {
   // Use random port to avoid port conflicts between UTs.
   REDIS_SERVER_PORT = random_gen(gen);
 
-  std::string start_redis_command =
-      REDIS_SERVER_EXEC_PATH + " --loglevel warning --loadmodule " +
-      REDIS_MODULE_LIBRARY_PATH + " --port " + std::to_string(REDIS_SERVER_PORT) + " &";
+  std::string load_module_command;
+  if (!REDIS_MODULE_LIBRARY_PATH.empty()) {
+    // Fill load module command.
+    load_module_command = "--loadmodule " + REDIS_MODULE_LIBRARY_PATH;
+  }
+
+  std::string start_redis_command = REDIS_SERVER_EXEC_PATH + " --loglevel warning " +
+                                    load_module_command + " --port " +
+                                    std::to_string(REDIS_SERVER_PORT) + " &";
   RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
   RAY_CHECK(system(start_redis_command.c_str()) == 0);
   usleep(200 * 1000);

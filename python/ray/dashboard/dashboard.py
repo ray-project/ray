@@ -962,13 +962,17 @@ class TuneCollector(threading.Thread):
         self._reload_interval = reload_interval
         self._available = False
         self._tensor_board_started = False
+        self._errors = {}
 
         os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 
     def get_stats(self):
         with self._data_lock:
-            return {"trial_records": copy.deepcopy(self._trial_records)}
+            return {
+                "trial_records": copy.deepcopy(self._trial_records),
+                "errors": copy.deepcopy(self._errors)
+            }
 
     def get_availability(self):
         with self._data_lock:
@@ -980,12 +984,39 @@ class TuneCollector(threading.Thread):
                 self.collect()
             time.sleep(self._reload_interval)
 
+    def collect_errors(self, job_name, df):
+        sub_dirs = os.listdir(os.path.join(self._logdir, job_name))
+        trial_names = filter(
+            lambda d: os.path.isdir(os.path.join(self._logdir, job_name, d)),
+            sub_dirs)
+        for trial in trial_names:
+            error_path = os.path.join(self._logdir, job_name, trial,
+                                      "error.txt")
+            if os.path.isfile(error_path):
+                self._available = True
+                with open(error_path) as f:
+                    text = f.read()
+                    self._errors[str(trial)] = {
+                        "text": text,
+                        "job_id": job_name,
+                        "trial_id": "No Trial ID"
+                    }
+                    other_data = df[df["logdir"].str.contains(trial)]
+                    if len(other_data) > 0:
+                        trial_id = other_data["trial_id"].values[0]
+                        self._errors[str(trial)]["trial_id"] = str(trial_id)
+                        if str(trial_id) in self._trial_records.keys():
+                            self._trial_records[str(trial_id)]["error"] = text
+                            self._trial_records[str(trial_id)][
+                                "status"] = "ERROR"
+
     def collect(self):
         """
         Collects and cleans data on the running Tune experiment from the
         Tune logs so that users can see this information in the front-end
         client
         """
+
         sub_dirs = os.listdir(self._logdir)
         job_names = filter(
             lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
@@ -996,7 +1027,8 @@ class TuneCollector(threading.Thread):
         for job_name in job_names:
             analysis = Analysis(str(os.path.join(self._logdir, job_name)))
             df = analysis.dataframe()
-            if len(df) == 0:
+
+            if len(df) == 0 or "trial_id" not in df.columns:
                 continue
 
             # start TensorBoard server if not started yet
@@ -1009,17 +1041,26 @@ class TuneCollector(threading.Thread):
             self._available = True
 
             # make sure that data will convert to JSON without error
-            df["trial_id"] = df["trial_id"].astype(str)
+            df["trial_id_key"] = df["trial_id"].astype(str)
             df = df.fillna(0)
 
+            trial_ids = df["trial_id"]
+            for i, value in df["trial_id"].iteritems():
+                if type(value) != str and type(value) != int:
+                    trial_ids[i] = int(value)
+
+            df["trial_id"] = trial_ids
+
             # convert df to python dict
-            df = df.set_index("trial_id")
+            df = df.set_index("trial_id_key")
             trial_data = df.to_dict(orient="index")
 
             # clean data and update class attribute
             if len(trial_data) > 0:
                 trial_data = self.clean_trials(trial_data, job_name)
                 self._trial_records.update(trial_data)
+
+            self.collect_errors(job_name, df)
 
     def clean_trials(self, trial_details, job_name):
         first_trial = trial_details[list(trial_details.keys())[0]]
@@ -1034,7 +1075,7 @@ class TuneCollector(threading.Thread):
             "experiment_id", "date", "timestamp", "time_total_s", "pid",
             "hostname", "node_ip", "time_since_restore",
             "timesteps_since_restore", "iterations_since_restore",
-            "experiment_tag"
+            "experiment_tag", "trial_id"
         ]
 
         # filter attributes into floats, metrics, and config variables
@@ -1076,8 +1117,8 @@ class TuneCollector(threading.Thread):
                 details["status"] = "RUNNING"
             details.pop("done")
 
-            details["trial_id"] = trial
             details["job_id"] = job_name
+            details["error"] = "No Error"
 
         return trial_details
 
@@ -1129,6 +1170,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
+    # TODO(sang): Add a URL validation.
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
 
     try:

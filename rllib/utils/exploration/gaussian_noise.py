@@ -1,12 +1,13 @@
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -24,18 +25,18 @@ class GaussianNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
+                 framework: str,
+                 model: ModelV2,
                  random_timesteps=1000,
                  stddev=0.1,
                  initial_scale=1.0,
                  final_scale=0.02,
                  scale_timesteps=10000,
                  scale_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Initializes a GaussianNoise Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
             random_timesteps (int): The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
@@ -50,14 +51,14 @@ class GaussianNoise(Exploration):
                 `random_timesteps` steps.
             scale_schedule (Optional[Schedule]): An optional Schedule object
                 to use (instead of constructing one from the given parameters).
-            framework (Optional[str]): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
 
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
-            action_space, framework=self.framework, **kwargs)
+            action_space, model=self.model, framework=self.framework, **kwargs)
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
@@ -72,20 +73,17 @@ class GaussianNoise(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
-                               model: ModelV2,
+                               *,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Adds IID Gaussian noise for exploration, TD3-style.
-        action_dist = action_dist_class(distribution_inputs, model)
-
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_dist, explore,
-                                                      timestep)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore, timestep)
         else:
-            return self._get_tf_exploration_action_op(action_dist, explore,
-                                                      timestep)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore, timestep)
 
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         ts = timestep if timestep is not None else self.last_timestep
@@ -165,4 +163,5 @@ class GaussianNoise(Exploration):
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
-        return self.scale_schedule(self.last_timestep)
+        scale = self.scale_schedule(self.last_timestep)
+        return {"cur_scale": scale}

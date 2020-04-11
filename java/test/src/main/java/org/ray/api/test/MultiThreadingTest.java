@@ -14,6 +14,7 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.ActorId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,7 +104,7 @@ public class MultiThreadingTest extends BaseTest {
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.put(arg);
-      Assert.assertEquals(arg, (int) Ray.get(obj.getId()));
+      Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
     TestUtils.warmUpCluster();
@@ -133,6 +134,105 @@ public class MultiThreadingTest extends BaseTest {
     RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
     ActorId actorId = actorIdTester.call(ActorIdTester::getCurrentActorId).get();
     Assert.assertEquals(actorId, actorIdTester.getId());
+  }
+
+  static boolean testMissingWrapRunnable() throws InterruptedException {
+    final RayObject<Integer> fooObject = Ray.put(1);
+    final RayActor<Echo> fooActor = Ray.createActor(Echo::new);
+    final Runnable[] runnables = new Runnable[]{
+        () -> Ray.put(1),
+        () -> Ray.get(fooObject.getId(), fooObject.getType()),
+        fooObject::get,
+        () -> Ray.wait(ImmutableList.of(fooObject)),
+        Ray::getRuntimeContext,
+        () -> Ray.call(MultiThreadingTest::echo, 1),
+        () -> Ray.createActor(Echo::new),
+        () -> fooActor.call(Echo::echo, 1),
+    };
+
+    // It's OK to run them in main thread.
+    for (Runnable runnable : runnables) {
+      runnable.run();
+    }
+
+    Exception[] exception = new Exception[1];
+
+    Thread thread = new Thread(Ray.wrapRunnable(() -> {
+      try {
+        // It would be OK to run them in another thread if wrapped the runnable.
+        for (Runnable runnable : runnables) {
+          runnable.run();
+        }
+      } catch (Exception ex) {
+        exception[0] = ex;
+      }
+    }));
+    thread.start();
+    thread.join();
+    if (exception[0] != null) {
+      throw new RuntimeException("Exception occurred in thread.", exception[0]);
+    }
+
+    thread = new Thread(() -> {
+      try {
+        // It wouldn't be OK to run them in another thread if not wrapped the runnable.
+        for (Runnable runnable : runnables) {
+          Assert.expectThrows(RayException.class, runnable::run);
+        }
+      } catch (Exception ex) {
+        exception[0] = ex;
+      }
+    });
+    thread.start();
+    thread.join();
+    if (exception[0] != null) {
+      throw new RuntimeException("Exception occurred in thread.", exception[0]);
+    }
+
+    Runnable[] wrappedRunnables = new Runnable[runnables.length];
+    for (int i = 0; i < runnables.length; i++) {
+      wrappedRunnables[i] = Ray.wrapRunnable(runnables[i]);
+    }
+    // It would be OK to run the wrapped runnables in the current thread.
+    for (Runnable runnable : wrappedRunnables) {
+      runnable.run();
+    }
+
+    // It would be OK to invoke Ray APIs after executing a wrapped runnable in the current thread.
+    wrappedRunnables[0].run();
+    runnables[0].run();
+
+    // Return true here to make the Ray.call returns an RayObject.
+    return true;
+  }
+
+  @Test
+  public void testMissingWrapRunnableInDriver() throws InterruptedException {
+    testMissingWrapRunnable();
+  }
+
+  @Test
+  public void testMissingWrapRunnableInWorker() {
+    Ray.call(MultiThreadingTest::testMissingWrapRunnable).get();
+  }
+
+  @Test
+  public void testGetAndSetAsyncContext() throws InterruptedException {
+    Object asyncContext = Ray.getAsyncContext();
+    Exception[] exception = new Exception[1];
+    Thread thread = new Thread(() -> {
+      try {
+        Ray.setAsyncContext(asyncContext);
+        Ray.put(1);
+      } catch (Exception ex) {
+        exception[0] = ex;
+      }
+    });
+    thread.start();
+    thread.join();
+    if (exception[0] != null) {
+      throw new RuntimeException("Exception occurred in thread.", exception[0]);
+    }
   }
 
   private static void runTestCaseInMultipleThreads(Runnable testCase, int numRepeats) {

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +39,11 @@ public class ExecutionGraph implements Serializable {
    * Build time.
    */
   private long buildTime;
+
+  /**
+   * A monotonic increasing number, used for vertex's id(immutable).
+   */
+  private AtomicInteger executionVertexIdGenerator = new AtomicInteger(0);
 
   public ExecutionGraph(String jobName) {
     this.jobName = jobName;
@@ -80,6 +86,14 @@ public class ExecutionGraph implements Serializable {
     return buildTime;
   }
 
+  public int generateExecutionVertexId() {
+    return executionVertexIdGenerator.getAndIncrement();
+  }
+
+  public AtomicInteger getExecutionVertexIdGenerator() {
+    return executionVertexIdGenerator;
+  }
+
   /**
    * Get all execution vertices from current execution graph.
    *
@@ -114,7 +128,7 @@ public class ExecutionGraph implements Serializable {
   public ExecutionVertex getExecutionJobVertexByJobVertexId(int vertexId) {
     for (ExecutionJobVertex executionJobVertex : executionJobVertexMap.values()) {
       for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertices()) {
-        if (executionVertex.getVertexId() == vertexId) {
+        if (executionVertex.getId() == vertexId) {
           return executionVertex;
         }
       }

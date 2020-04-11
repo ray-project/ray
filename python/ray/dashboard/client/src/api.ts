@@ -192,7 +192,8 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number,
 ) =>
-  get<string>("/api/kill_actor", {
+  get<object>("/api/kill_actor", {
+    // make sure object is okay
     actor_id: actorId,
     ip_address: actorIpAddress,
     port: actorPort,
@@ -217,14 +218,22 @@ export type TuneTrial = {
   training_iteration: number;
   start_time: string;
   status: string;
-  trial_id: string;
+  trial_id: string | number;
   job_id: string;
   params: { [key: string]: string | number };
   metrics: { [key: string]: string | number };
+  error: string;
+};
+
+export type TuneError = {
+  text: string;
+  job_id: string;
+  trial_id: string;
 };
 
 export type TuneJobResponse = {
   trial_records: { [key: string]: TuneTrial };
+  errors: { [key: string]: TuneError };
 };
 
 export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
