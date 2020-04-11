@@ -145,7 +145,7 @@ class HTTPProxy:
         while retries <= MAX_ACTOR_DEAD_RETRIES:
             try:
                 result = await self.router_handle.enqueue_request.remote(
-                    request_metadata, scope, http_body_bytes).as_future()
+                    request_metadata, scope, http_body_bytes)
                 if not isinstance(result, ray.exceptions.RayActorError):
                     await Response(result).send(scope, receive, send)
                     break
