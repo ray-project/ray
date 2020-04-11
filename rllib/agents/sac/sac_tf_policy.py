@@ -1,21 +1,23 @@
+from gym.spaces import Box, Discrete
 import logging
-
 import numpy as np
+
 import ray
 import ray.experimental.tf_utils
-from gym.spaces import Box, Discrete
-from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
-from ray.rllib.agents.sac.sac_model import SACModel
+from ray.rllib.agents.sac.sac_tf_model import SACTFModel
+#from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
+from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
+#from ray.rllib.models.torch.noop_model import TorchNoopModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf = try_import_tf()
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"]["custom_model"]:
+    if config["model"].get("custom_model"):
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
             "was specified.")
@@ -49,36 +51,45 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs = int(np.product(obs_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        model_interface=SACModel,
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
         default_model=default_model,
+        model_interface=SACTFModel,
         name="sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
+
+    if not config["use_pytorch"]:
+        policy.model.action_model.summary()
+        policy.model.q_net.summary()
+    else:
+        print(policy.model.action_model)
+        print(policy.model.q_net)
 
     policy.target_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        model_interface=SACModel,
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
         default_model=default_model,
+        model_interface=SACTFModel,
         name="target_sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
 
     return policy.model
 
@@ -91,6 +102,9 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
+    assert config["_use_beta_distribution"] is False, \
+        "Beta-distr. not supported for tf!"
+
     if isinstance(action_space, Discrete):
         action_dist_class = Categorical
     else:
@@ -280,12 +294,12 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 
 
 def gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"]:
+    if policy.config["grad_clip"]:
         actor_grads_and_vars = minimize_and_clip(
             optimizer,  # isn't optimizer not well defined here (which one)?
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
         if policy.config["twin_q"]:
             q_variables = policy.model.q_variables()
             half_cutoff = len(q_variables) // 2
@@ -294,23 +308,23 @@ def gradients(policy, optimizer, loss):
                 optimizer,
                 policy.critic_loss[0],
                 var_list=q_variables[:half_cutoff],
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
             critic_grads_and_vars += minimize_and_clip(
                 optimizer,
                 policy.critic_loss[1],
                 var_list=q_variables[half_cutoff:],
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
         else:
             critic_grads_and_vars = minimize_and_clip(
                 optimizer,
                 policy.critic_loss[0],
                 var_list=policy.model.q_variables(),
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
         alpha_grads_and_vars = minimize_and_clip(
             optimizer,
             policy.alpha_loss,
             var_list=[policy.model.log_alpha],
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
