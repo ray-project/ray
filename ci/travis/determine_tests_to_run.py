@@ -149,25 +149,30 @@ if __name__ == "__main__":
         RAY_CI_ONLY_RLLIB_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
-    for output_stream in [sys.stdout, sys.stderr]:
-        _print = partial(print, file=output_stream)
-        _print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
-        _print("export RAY_CI_ONLY_RLLIB_AFFECTED={}"
+    for output_stream in [sys.stdout]:
+        output_stream.write("{ ")
+        output_stream.write("export")
+        _print = partial(lambda f, arg: f.write(" " + arg), output_stream)
+        _print("RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
+        _print("RAY_CI_ONLY_RLLIB_AFFECTED={}"
                .format(RAY_CI_ONLY_RLLIB_AFFECTED))
-        _print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
-        _print("export RAY_CI_RLLIB_FULL_AFFECTED={}".format(
+        _print("RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+        _print("RAY_CI_RLLIB_FULL_AFFECTED={}".format(
             RAY_CI_RLLIB_FULL_AFFECTED))
-        _print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
-        _print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
-        _print(
-            "export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
-        _print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"
+        _print("RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
+        _print("RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
+        _print("RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
+        _print("RAY_CI_LINUX_WHEELS_AFFECTED={}"
                .format(RAY_CI_LINUX_WHEELS_AFFECTED))
-        _print("export RAY_CI_MACOS_WHEELS_AFFECTED={}"
+        _print("RAY_CI_MACOS_WHEELS_AFFECTED={}"
                .format(RAY_CI_MACOS_WHEELS_AFFECTED))
-        _print("export RAY_CI_STREAMING_CPP_AFFECTED={}"
+        _print("RAY_CI_STREAMING_CPP_AFFECTED={}"
                .format(RAY_CI_STREAMING_CPP_AFFECTED))
-        _print("export RAY_CI_STREAMING_PYTHON_AFFECTED={}"
+        _print("RAY_CI_STREAMING_PYTHON_AFFECTED={}"
                .format(RAY_CI_STREAMING_PYTHON_AFFECTED))
-        _print("export RAY_CI_STREAMING_JAVA_AFFECTED={}"
+        _print("RAY_CI_STREAMING_JAVA_AFFECTED={}"
                .format(RAY_CI_STREAMING_JAVA_AFFECTED))
+        output_stream.write(";")
+        output_stream.write(" }")
+        output_stream.write(" 2> /dev/null")  # avoid redundant set -x trace
+        output_stream.write("\n")
