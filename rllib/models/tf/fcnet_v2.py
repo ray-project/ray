@@ -1,8 +1,8 @@
 import numpy as np
 
+from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
 tf = try_import_tf()
 
