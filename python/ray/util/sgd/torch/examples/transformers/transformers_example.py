@@ -141,7 +141,6 @@ def data_creator(config):
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_name
         if args.tokenizer_name else args.model_name_or_path,
-        do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
     logger.info("tokenizer instantiation: {}".format(time.time() - start))
@@ -290,15 +289,17 @@ class DataProcessingArguments:
 # flake8: enable
 @dataclass
 class RayArguments:
-    num_workers: str = field(
-        metadata={"help": "Number of GPU workers to use."})
+    num_workers: int = field(
+        default=1,
+        metadata={"help": "Number of data-parallel workers to use."})
     address: str = field(
+        default=None,
         metadata={"help": "Address of the Ray cluster to connect to."})
 
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataProcessingArguments,
-                               TrainingArguments.RayArguments))
+                               TrainingArguments, RayArguments))
     all_args = parser.parse_args_into_dataclasses()
     model_args, dataprocessing_args, training_args, ray_args = all_args
 
@@ -322,8 +323,12 @@ def main():
         raise ValueError("Task not found: %s" % (args.task_name))
     args.output_mode = output_modes[args.task_name]
 
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO)
     logger.info("Training/evaluation parameters %s", args)
-    ray.init(address="auto")
+    ray.init(address=args.address)
     # Training
 
     trainer = TorchTrainer(

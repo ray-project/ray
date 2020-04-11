@@ -48,9 +48,6 @@ worker_nodes:
 setup_commands:
     # This replaces the standard anaconda Ray installation
     - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    # Uncomment this and the filemount to update the Ray installation with your local Ray code
-    - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/util/sgd/
-    - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/util/
     - pip install -q tqdm
 
     # Installing this without -U to make sure we don't replace the existing Ray installation
@@ -61,6 +58,12 @@ setup_commands:
     - cd transformers &&
       pip install . &&
       pip install -r ./examples/requirements.txt
+    # Download glue
+    - if [[ -e glue_data ]];
+      then echo "not downloading glue";
+      else wget https://gist.githubusercontent.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e/raw/17b8dd0d724281ed7c3b2aeeda662b92809aadd5/download_glue_data.py && python download_glue_data.py;
+      fi
+
     # Install Apex
     - git clone https://github.com/NVIDIA/apex;
       cd apex &&
@@ -70,7 +73,7 @@ setup_commands:
 
 file_mounts: {
     # This should point to ray/python/ray/util/sgd.
-    ~/sgd: ../../../../sgd,
+    /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/examples/: ../,
 }
 
 # Custom commands that will be run on the head node after common setup.

@@ -18,13 +18,13 @@ and unpack it to some directory ``$GLUE_DIR``.
     export GLUE_DIR=/path/to/glue
     export TASK_NAME=MRPC
 
-    python run_glue.py \
+    python transformers_example.py \
       --model_type bert \
       --model_name_or_path bert-base-cased \
       --task_name $TASK_NAME \
       --do_train \
       --do_eval \
-      --data_dir $GLUE_DIR/$TASK_NAME \
+      --data_dir glue_data/$TASK_NAME \
       --max_seq_length 128 \
       --per_gpu_train_batch_size 32 \
       --learning_rate 2e-5 \
@@ -44,13 +44,13 @@ To run an example tuning MNLI on your local machine with 8 GPUs and apex, first 
 
 .. code-block:: bash
 
-    python run_glue.py \
+    python transformers_example.py \
         --model_type bert \
         --model_name_or_path bert-base-cased \
         --task_name mnli \
         --do_train \
         --do_eval \
-        --data_dir $GLUE_DIR/MNLI/ \
+        --data_dir glue_data/MNLI/ \
         --max_seq_length 128 \
         --per_gpu_train_batch_size 8 \
         --learning_rate 2e-5 \
@@ -70,17 +70,16 @@ To run an example tuning MNLI on AWS with 16 GPUs and apex, just run:
     ray up cluster.yaml
     # Optionally,
     # ray monitor cluster.yaml
-    ray submit cluster.yaml run_glue.py --args="
-        --model_type bert \
+    ray submit cluster.yaml transformers_example.py -- --model_type bert \
         --model_name_or_path bert-base-cased \
         --task_name mnli \
         --do_train \
         --do_eval \
-        --data_dir /home/ubuntu/GLUE_DIR/MNLI/ \
+        --data_dir /home/ubuntu/glue_data/MNLI/ \
         --max_seq_length 128 \
         --per_gpu_train_batch_size 8 \
         --learning_rate 2e-5 \
         --num_train_epochs 3.0 \
         --output_dir /home/ubuntu/output/ \
-        --num_workers 16
-        --fp16"
+        --num_workers 16 \
+        --fp16
