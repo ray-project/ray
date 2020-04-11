@@ -44,7 +44,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
         object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
           absl::MutexLock lock(&mu_);
           RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
-          RAY_LOG(DEBUG) << "Recovery complete for object " << object_id;
+          RAY_LOG(INFO) << "Recovery complete for object " << object_id;
         });
     // Lookup the object in the GCS to find another copy.
     RAY_RETURN_NOT_OK(object_lookup_(
@@ -53,7 +53,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
           PinOrReconstructObject(object_id, locations);
         }));
   } else {
-    RAY_LOG(INFO) << "Recovery already started for object " << object_id;
+    RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
   }
   return Status::OK();
 }
@@ -75,7 +75,7 @@ void ObjectRecoveryManager::PinOrReconstructObject(
   }
 }
 
-Status ObjectRecoveryManager::PinExistingObjectCopy(
+void ObjectRecoveryManager::PinExistingObjectCopy(
     const ObjectID &object_id, const rpc::Address &raylet_address,
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
@@ -100,7 +100,7 @@ Status ObjectRecoveryManager::PinExistingObjectCopy(
     client = client_it->second;
   }
 
-  return client->PinObjectIDs(
+  RAY_UNUSED(client->PinObjectIDs(
       rpc_address_, {object_id},
       [this, object_id, other_locations, node_id](const Status &status,
                                                   const rpc::PinObjectIDsReply &reply) {
@@ -115,7 +115,7 @@ Status ObjectRecoveryManager::PinExistingObjectCopy(
                         << ", trying again";
           PinOrReconstructObject(object_id, other_locations);
         }
-      });
+      }));
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
