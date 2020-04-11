@@ -60,7 +60,7 @@ class SACTFModel(TFModelV2):
             q_outs = 1
 
         self.model_out = tf.keras.layers.Input(
-            shape=(num_outputs, ), name="model_out")
+            shape=(self.num_outputs, ), name="model_out")
         self.action_model = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,

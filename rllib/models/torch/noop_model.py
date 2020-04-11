@@ -5,7 +5,7 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class TorchNoopModel(TorchModelV2, nn.Module):
+class OBSOLETE_TorchNoopModel(TorchModelV2, nn.Module):
     """Trivial model that just returns the obs flattened.
 
     This is the model used if use_state_preprocessor=False."""

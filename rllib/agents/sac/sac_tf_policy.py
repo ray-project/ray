@@ -10,10 +10,10 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.noop_model import TFNoopModel
+#from ray.rllib.models.tf.noop_model import TFNoopModel
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
-from ray.rllib.models.torch.noop_model import TorchNoopModel
+#from ray.rllib.models.torch.noop_model import TorchNoopModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -42,21 +42,35 @@ def build_sac_model(policy, obs_space, action_space, config):
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 
-    if config["use_state_preprocessor"]:
-        default_model = None  # catalog decides
-        num_outputs = 256  # arbitrary
-        config["model"]["no_final_linear"] = True
-    else:
-        default_model = TorchNoopModel if config["use_pytorch"] else TFNoopModel
-        num_outputs = int(np.product(obs_space.shape))
+    # 2 cases:
+    # 1) with separate state-preprocessor (before obs+action concat).
+    # 2) no separate state-preprocessor: concat obs+actions right away.
+    #num_outputs = 0  # None -> no additional output layer
+    if not config["use_state_preprocessor"]:
+        config["model"]["fcnet_hiddens"] = []
 
+    #    default_model = None
+    #else:
+    #    default_model = TorchNoopModel if config["use_pytorch"] else \
+    #        TFNoopModel
+
+    #config["model"]["no_final_linear"] = True
+    #else:
+    #if isinstance(action_space, Discrete):
+    #    num_outputs = action_space.n
+    #else:
+    #    num_outputs = int(np.product(action_space.shape))
+    num_outputs = 0
+    # Force-ignore any additionally provided hidden layer sizes.
+    # Everything should be configured using SAC's "Q_model" and "policy_model"
+    # settings.
     policy.model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        default_model=default_model,
+        #default_model=default_model,
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
@@ -80,7 +94,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        default_model=default_model,
+        #default_model=default_model,
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
