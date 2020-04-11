@@ -662,6 +662,17 @@ def init(address=None,
         raise DeprecationWarning("The redis_address argument is deprecated. "
                                  "Please use address instead.")
 
+    if "RAY_ADDRESS" in os.environ:
+        if redis_address is None and (address is None or address == "auto"):
+            address = os.environ["RAY_ADDRESS"]
+        else:
+            raise RuntimeError(
+                "Cannot use both the RAY_ADDRESS environment variable and "
+                "the address argument of ray.init simultaneously. If you "
+                "use RAY_ADDRESS to connect to a specific Ray cluster, "
+                "please call ray.init() or ray.init(address=\"auto\") on the "
+                "driver.")
+
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
             address, redis_address)
