@@ -1341,7 +1341,11 @@ genrule(
             tmpdir="redis.tmp" &&
             path=$(location @com_github_antirez_redis//:file) &&
             cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
-            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            sed -i.bak -e 's/^\t@echo "\\(Hint:.*\\)*"$$//' "$${tmpdir}/src/Makefile" &&
+            sed -i.bak -e 's/echo "cp $$< $$<";//' "$${tmpdir}/deps/jemalloc/Makefile.in" &&
+            sed -i.bak -e "s/^ARFLAGS='crus'\\$$/ARFLAGS='crs'/" "$${tmpdir}/deps/jemalloc/configure" &&
+            sed -i.bak -e 's/^ARFLAGS=rcu$$/ARFLAGS=rc/' -e 's/^\\(LUA_CFLAGS[+]=\\)/\\1 -DLUA_USE_MKSTEMP/'  -e 's/ -Wall / -w /g' -e 's/--enable-cc-silence/--silent/' -e 's/^\t@printf .*\\$$(MAKECOLOR).*//' "$${tmpdir}/deps/Makefile" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" CFLAGS="$${CFLAGS-} -w" V=0 &&
             mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
             mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
