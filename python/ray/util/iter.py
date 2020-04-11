@@ -199,7 +199,8 @@ class ParallelIterator(Generic[T]):
         return self._with_transform(lambda local_it: local_it.for_each(fn),
                                     ".for_each()")
 
-    def for_each_concur(self, fn: Callable[[T], U], max_concur=2) -> "ParallelIterator[U]":
+    def for_each_concur(self, fn: Callable[[T], U],
+                        max_concur=2) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator.
         At most max_concur at a time
 
@@ -213,8 +214,6 @@ class ParallelIterator(Generic[T]):
         """
         return self._with_transform(lambda local_it: local_it.for_each_concur(fn, max_concur=max_concur),
                                     ".for_each()")
-
-
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.
@@ -734,7 +733,8 @@ class LocalIterator(Generic[T]):
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
-    def for_each_concur(self, fn: Callable[[T], U], max_concur=2) -> "LocalIterator[U]":
+    def for_each_concur(self, fn: Callable[[T], U],
+                        max_concur=2) -> "LocalIterator[U]":
         def apply_foreach_concur(it):
             cur = []
             remote_fn = ray.remote(fn).remote
@@ -751,6 +751,7 @@ class LocalIterator(Generic[T]):
                     cur.append(remote_fn(item))
                     yield from ray.get(finished)
             yield from ray.get(cur)
+
         # TODO: What does add_wait_hooks do in the regular for_each?
         return LocalIterator(
             self.base_iterator,

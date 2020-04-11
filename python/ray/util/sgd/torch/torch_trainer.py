@@ -384,7 +384,10 @@ class TorchTrainer:
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, profile=profile, info=info, dataset=dataset)
+                num_steps=num_steps,
+                profile=profile,
+                info=info,
+                dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -407,7 +410,11 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None, dataset=None):
+    def _train_epoch(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
+                     dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
         dataset.set_num_shards(len(self.remote_workers) + 1)
@@ -420,7 +427,8 @@ class TorchTrainer:
 
         try:
             if dataset:
-                params["iterator"] = dataset.get_shard(len(self.remote_workers))
+                params["iterator"] = dataset.get_shard(
+                    len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:

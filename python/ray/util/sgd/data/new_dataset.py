@@ -3,8 +3,11 @@ from ray.util.iter import ParallelIterator
 
 
 class Dataset():
-
-    def __init__(self, iterable, download_func=None, max_concur=0, transform=None):
+    def __init__(self,
+                 iterable,
+                 download_func=None,
+                 max_concur=0,
+                 transform=None):
         par_iter = None
         if isinstance(iterable, ParallelIterator):
             par_iter = iterable
@@ -23,7 +26,9 @@ class Dataset():
             self.iter = self.iter.repartition(num_shards)
 
     def get_shard(self, i):
-        assert i < self.iter.num_shards(), "Trying to get shard {} but there are only {} shards. Are you sure you called set_num_shards already".format(i, self.iter.num_shards())
+        assert i < self.iter.num_shards(
+        ), "Trying to get shard {} but there are only {} shards. Are you sure you called set_num_shards already".format(
+            i, self.iter.num_shards())
         print("getting shard: ", i)
         # iter = self.iter.get_shard(i, max_async_requests=self.max_concur)
         iter = self.iter.get_shard(i)

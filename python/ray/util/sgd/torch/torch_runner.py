@@ -189,7 +189,11 @@ class TorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, num_steps=None, profile=False, info=None, iterator=None):
+    def train_epoch(self,
+                    num_steps=None,
+                    profile=False,
+                    info=None,
+                    iterator=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
@@ -205,7 +209,8 @@ class TorchRunner:
                 iterator = self.train_loader
             if num_steps:
                 iterator = itertools.islice(iter(iterator), num_steps)
-            train_stats = self.training_operator.train_epoch(iter(iterator), info)
+            train_stats = self.training_operator.train_epoch(
+                iter(iterator), info)
 
         self.epochs += 1
         # This is so that `epochs` is first in ordering.
