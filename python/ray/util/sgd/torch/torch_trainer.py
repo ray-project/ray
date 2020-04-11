@@ -333,7 +333,8 @@ class TorchTrainer:
               profile=False,
               reduce_results=True,
               max_retries=3,
-              info=None):
+              info=None,
+              dataset=None):
         """Runs a training epoch.
 
         Calls `operator.train_epoch()` on N parallel workers simultaneously
@@ -372,7 +373,7 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info)
+            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -383,7 +384,7 @@ class TorchTrainer:
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, profile=profile, info=info)
+                num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -406,14 +407,20 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None):
+    def _train_epoch(self, num_steps=None, profile=False, info=None, dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
-
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
+        remote_worker_stats = []
+        dataset.set_num_shards(len(self.remote_workers) + 1)
+        for i, w in enumerate(self.remote_workers):
+            params = dict(num_steps=num_steps, profile=profile, info=info)
+            if dataset:
+                params["iterator"] = dataset.get_shard(i)
+            stats = w.train_epoch.remote(**params)
+            remote_worker_stats.append(stats)
 
         try:
+            if dataset:
+                params["iterator"] = dataset.get_shard(len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:
@@ -425,9 +432,14 @@ class TorchTrainer:
 
             raise err
 
+        print("Checking")
         success = check_for_failure(remote_worker_stats)
+        print("Success:", success)
         if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
+            print("A")
+            a, b = success, [local_worker_stats] + ray.get(remote_worker_stats)
+            print("B")
+            return a, b
 
         return success, None
 

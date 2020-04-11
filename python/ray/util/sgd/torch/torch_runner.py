@@ -151,7 +151,8 @@ class TorchRunner:
     def setup(self):
         """Initializes the model."""
         _remind_gpu_usage(self.use_gpu, is_chief=True)
-        self._initialize_dataloaders()
+        if self.data_creator:
+            self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
@@ -188,7 +189,7 @@ class TorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, num_steps=None, profile=False, info=None):
+    def train_epoch(self, num_steps=None, profile=False, info=None, iterator=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
@@ -200,10 +201,11 @@ class TorchRunner:
             SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self.timers.record("train_epoch"):
-            iterator = self.train_loader
+            if iterator is None:
+                iterator = self.train_loader
             if num_steps:
-                iterator = itertools.islice(iter(self.train_loader), num_steps)
-            train_stats = self.training_operator.train_epoch(iterator, info)
+                iterator = itertools.islice(iter(iterator), num_steps)
+            train_stats = self.training_operator.train_epoch(iter(iterator), info)
 
         self.epochs += 1
         # This is so that `epochs` is first in ordering.
