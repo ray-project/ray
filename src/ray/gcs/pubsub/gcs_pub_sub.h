@@ -96,4 +96,4 @@ class GcsPubSub {
 }  // namespace gcs
 }  // namespace ray
 
-#endif  // RAY_GCS_GCS_TABLE_PUB_SUB_H_
+#endif  // RAY_GCS_GCS_PUB_SUB_H_
