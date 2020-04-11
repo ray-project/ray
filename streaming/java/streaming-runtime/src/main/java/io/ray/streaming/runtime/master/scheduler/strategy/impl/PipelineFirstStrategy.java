@@ -181,7 +181,7 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
 
     Slot useSlot = resources.getAllocatingMap().get(container.getContainerId())
         .stream().filter(s -> s.getId() == slot.getId()).findFirst().get();
-    useSlot.getExecutionVertexIds().add(vertex.getVertexId());
+    useSlot.getExecutionVertexIds().add(vertex.getId());
 
     // current container reaches capacity limitation, go to the next one.
     resources.setCurrentContainerAllocatedActorNum(

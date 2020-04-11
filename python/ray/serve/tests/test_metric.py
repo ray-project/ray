@@ -12,7 +12,7 @@ def start_target_actor(ray_instance):
         def __init__(self):
             self.counter_value = 0
 
-        def _serve_metric(self):
+        def get_metrics(self):
             self.counter_value += 1
             return {
                 "latency_list": {

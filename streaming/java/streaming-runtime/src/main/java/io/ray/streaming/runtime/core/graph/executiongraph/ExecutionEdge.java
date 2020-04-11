@@ -2,6 +2,7 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
+import org.ray.streaming.api.partition.Partition;
 
 /**
  * An edge that connects two execution vertices.
@@ -19,6 +20,11 @@ public class ExecutionEdge implements Serializable {
   private final ExecutionVertex targetVertex;
 
   /**
+   * The partition of current execution edge's execution job edge.
+   */
+  private final Partition partition;
+
+  /**
    * An unique id for execution edge.
    */
   private final String executionEdgeIndex;
@@ -27,11 +33,12 @@ public class ExecutionEdge implements Serializable {
       ExecutionJobEdge executionJobEdge) {
     this.sourceVertex = sourceVertex;
     this.targetVertex = targetVertex;
+    this.partition = executionJobEdge.getPartition();
     this.executionEdgeIndex = generateExecutionEdgeIndex();
   }
 
   private String generateExecutionEdgeIndex() {
-    return sourceVertex.getVertexId() + "—" + targetVertex.getVertexId();
+    return sourceVertex.getId() + "—" + targetVertex.getId();
   }
 
   public ExecutionVertex getSourceVertex() {
@@ -43,11 +50,15 @@ public class ExecutionEdge implements Serializable {
   }
 
   public int getSourceVertexId() {
-    return sourceVertex.getVertexId();
+    return sourceVertex.getId();
   }
 
   public int getTargetVertexId() {
-    return targetVertex.getVertexId();
+    return targetVertex.getId();
+  }
+
+  public Partition getPartition() {
+    return partition;
   }
 
   public String getExecutionEdgeIndex() {
@@ -57,9 +68,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("srcVertex", sourceVertex)
-        .add("executionEdgeIndex", executionEdgeIndex)
-        .toString();
+      .add("sourceVertex", sourceVertex)
+      .add("targetVertex", targetVertex)
+      .add("partition", partition)
+      .add("executionEdgeIndex", executionEdgeIndex)
+      .toString();
   }
-
 }

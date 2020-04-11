@@ -44,6 +44,7 @@ public class GraphManagerImpl implements GraphManager {
 
   private ExecutionGraph setupStructure(JobGraph jobGraph) {
     ExecutionGraph executionGraph = new ExecutionGraph(jobGraph.getJobName());
+    Map<String, String> jobConfig = jobGraph.getJobConfig();
 
     // create vertex
     Map<Integer, ExecutionJobVertex> exeJobVertexMap = new LinkedHashMap<>();
@@ -51,7 +52,8 @@ public class GraphManagerImpl implements GraphManager {
     for (JobVertex jobVertex : jobGraph.getJobVertexList()) {
       int jobVertexId = jobVertex.getVertexId();
       exeJobVertexMap.put(jobVertexId,
-          new ExecutionJobVertex(jobVertex, runtimeContext));
+          new ExecutionJobVertex(
+              jobVertex, jobConfig, executionGraph.getExecutionVertexIdGenerator()));
     }
 
     // connect vertex

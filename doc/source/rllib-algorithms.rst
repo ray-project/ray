@@ -8,27 +8,34 @@ RLlib Algorithms
 Feature Compatibility Matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=============  =======================  ==================  ===========  ===========================
-Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
-=============  =======================  ==================  ===========  ===========================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
-DDPG, TD3       No                      **Yes**             **Yes**
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
-APEX-DDPG       No                      **Yes**             **Yes**
-SAC             **Yes**                 **Yes**             **Yes**
-ES              **Yes**                 **Yes**             No
-ARS             **Yes**                 **Yes**             No
-QMIX            **Yes**                 No                  **Yes**      `+RNN`_
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
-=============  =======================  ==================  ===========  ===========================
+=================== =======================  ==============  ===========  =====================
+Algorithm           Discrete Actions         Continuous      Multi-Agent  Model Support
+=================== =======================  ==============  ===========  =====================
+`A2C, A3C`_         **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`PPO`_, `APPO`_     **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`PG`_               **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`IMPALA`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
+`DQN`_, `Rainbow`_  **Yes** `+parametric`_   No              **Yes**
+`DDPG`_, `TD3`_     No                       **Yes**         **Yes**
+`APEX-DQN`_         **Yes** `+parametric`_   No              **Yes**
+`APEX-DDPG`_        No                       **Yes**         **Yes**
+`SAC`_              **Yes**                  **Yes**         **Yes**
+`ES`_               **Yes**                  **Yes**         No
+`ARS`_              **Yes**                  **Yes**         No
+`QMIX`_             **Yes**                  No              **Yes**      `+RNN`_
+`MARWIL`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_
+`LinUCB`_, `LinTS`_ **Yes** `+parametric`_   No              **Yes**
+`AlphaZero`_        **Yes** `+parametric`_   No              No
+=================== =======================  ==============  ===========  =====================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+.. _`A2C, A3C`: rllib-algorithms.html#a3c
+.. _`Rainbow`: rllib-algorithms.html#dqn
+.. _`TD3`: rllib-algorithms.html#ddpg
+.. _`APEX-DQN`: rllib-algorithms.html#apex
+.. _`APEX-DDPG`: rllib-algorithms.html#apex
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
