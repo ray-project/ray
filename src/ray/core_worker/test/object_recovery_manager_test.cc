@@ -105,7 +105,8 @@ class MockObjectDirectory {
 class ObjectRecoveryManagerTest : public ::testing::Test {
  public:
   ObjectRecoveryManagerTest()
-      : object_directory_(std::make_shared<MockObjectDirectory>()),
+      : local_raylet_id_(ClientID::FromRandom()),
+        object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
@@ -132,9 +133,12 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
                        std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
                    auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
                    RAY_CHECK(memory_store_->Put(data, object_id));
+
+                   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
                  },
                  /*lineage_reconstruction_enabled=*/true) {}
 
+  ClientID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;
 
   std::shared_ptr<MockObjectDirectory> object_directory_;
@@ -183,6 +187,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ObjectID object_id = ObjectID::FromRandom();
   ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  ref_counter_->AddLocalReference(object_id, "");
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
   // A second attempt to recover the object will not trigger any more
@@ -194,10 +199,13 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   // The object has been marked as failed. Another attempt to recover the
   // object will not trigger any callbacks.
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
-  ASSERT_TRUE(object_directory_->Flush() == 0);
+  ASSERT_EQ(object_directory_->Flush(), 0);
 
   // The object is removed and can be recovered again.
-  memory_store_->Delete({object_id});
+  auto objects = ref_counter_->ResetObjectsOnRemovedNode(local_raylet_id_);
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], object_id);
+  memory_store_->Delete(objects);
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
   ASSERT_TRUE(object_directory_->Flush() == 1);
 }

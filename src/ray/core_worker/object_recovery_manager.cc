@@ -39,7 +39,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!already_pending_recovery) {
-    RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
+    RAY_LOG(INFO) << "Starting recovery for object " << object_id;
     in_memory_store_->GetAsync(
         object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
           absl::MutexLock lock(&mu_);
@@ -53,7 +53,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
           PinOrReconstructObject(object_id, locations);
         }));
   } else {
-    RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
+    RAY_LOG(INFO) << "Recovery already started for object " << object_id;
   }
   return Status::OK();
 }
@@ -62,25 +62,16 @@ void ObjectRecoveryManager::PinOrReconstructObject(
     const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
   RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size()
                 << " locations";
-  bool pinned = false;
-  auto locations_copy = locations;
-  while (!locations_copy.empty()) {
+  if (!locations.empty()) {
+    auto locations_copy = locations;
     const auto location = locations_copy.back();
     locations_copy.pop_back();
-    if (PinExistingObjectCopy(object_id, location, locations_copy).ok()) {
-      pinned = true;
-      break;
-    }
-  }
-
-  if (!pinned) {
-    if (lineage_reconstruction_enabled_) {
-      // If we could not find another copy to pin, try to reconstruct the
-      // object.
-      ReconstructObject(object_id);
-    } else {
-      reconstruction_failure_callback_(object_id, /*pin_object=*/true);
-    }
+    PinExistingObjectCopy(object_id, location, locations_copy);
+  } else if (lineage_reconstruction_enabled_) {
+    // There are no more copies to pin, try to reconstruct the object.
+    ReconstructObject(object_id);
+  } else {
+    reconstruction_failure_callback_(object_id, /*pin_object=*/true);
   }
 }
 
