@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import ray
 from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import ASYNC_CONCURRENCY
@@ -27,7 +29,8 @@ class ServeMaster:
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
         self.policy_table = TrafficPolicyTable(kv_store_connector)
-        self.replica_tag_to_workers = dict()
+        # Dictionary of backend tag to dictionaries of replica tag to worker.
+        self.workers = defaultdict(dict)
 
         self.router = None
         self.http_proxy = None
@@ -136,7 +139,7 @@ class ServeMaster:
 
         # Start the worker.
         worker_handle = backend_actor._remote(**kwargs)
-        self.replica_tag_to_workers[replica_tag] = worker_handle
+        self.workers[backend_tag][replica_tag] = worker_handle
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
@@ -154,8 +157,11 @@ class ServeMaster:
                     backend_tag)
 
         replica_tag = self.backend_table.remove_replica(backend_tag)
-        assert replica_tag in self.replica_tag_to_workers
-        replica_handle = self.replica_tag_to_workers.pop(replica_tag)
+        assert backend_tag in self.workers
+        assert replica_tag in self.workers[backend_tag]
+        replica_handle = self.workers[backend_tag].pop(replica_tag)
+        if len(self.workers[backend_tag]) == 0:
+            del self.workers[backend_tag]
 
         # Remove the replica from metric monitor.
         [monitor] = self.get_metric_monitor()
@@ -169,7 +175,7 @@ class ServeMaster:
                                                      replica_handle))
 
     def get_all_worker_handles(self):
-        return self.replica_tag_to_workers
+        return self.workers
 
     def get_all_endpoints(self):
         return expand(

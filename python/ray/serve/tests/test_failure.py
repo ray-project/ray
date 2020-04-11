@@ -55,13 +55,10 @@ def test_http_proxy_failure(serve_instance):
 
 
 def _get_worker_handles(backend):
-    handles = {}
-    for tag, handle in ray.get(serve.api._get_master_actor()
-                               .get_all_worker_handles.remote()).items():
-        if tag.startswith(backend):
-            handles[tag] = handle
+    master_actor = serve.api._get_master_actor()
+    backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
 
-    return handles
+    return list(backend_dict[backend].values())
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue
@@ -83,7 +80,7 @@ def test_worker_restart(serve_instance):
     # Kill the worker.
     handles = _get_worker_handles("worker_failure:v1")
     assert len(handles) == 1
-    ray.kill(list(handles.values())[0])
+    ray.kill(handles[0])
 
     # Wait until the worker is killed and a one is started.
     start = time.time()
@@ -145,7 +142,7 @@ def test_worker_replica_failure(serve_instance):
     # Kill one of the replicas.
     handles = _get_worker_handles("replica_failure")
     assert len(handles) == 2
-    ray.kill(list(handles.values())[0])
+    ray.kill(handles[0])
 
     # Check that the other replica still serves requests.
     for _ in range(10):

@@ -2,7 +2,6 @@ import asyncio
 import copy
 from collections import defaultdict
 from typing import DefaultDict, List
-import ray.cloudpickle as pickle
 
 # Note on choosing blist instead of stdlib heapq
 # 1. pop operation should be O(1) (amortized)
@@ -13,6 +12,7 @@ import ray.cloudpickle as pickle
 import blist
 
 import ray
+import ray.cloudpickle as pickle
 from ray.serve.utils import logger
 
 
@@ -149,6 +149,9 @@ class Router:
         # operation at a time simplifies design overhead for custom queuing and
         # batching polcies.
         self.flush_lock = asyncio.Lock()
+
+        ray.serve.init()
+        master_actor = ray.serve.api._get_master_actor()
 
     def is_ready(self):
         return True
