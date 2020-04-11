@@ -1,5 +1,6 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2018 The Google AI Language Team Authors and
+# The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +20,10 @@ Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa)."""
 import argparse
 import logging
 import os
+import time
+from filelock import FileLock
+from dataclasses import dataclass, field
+from typing import Optional
 import random
 
 import numpy as np
@@ -27,27 +32,32 @@ from torch.utils.data import DataLoader, RandomSampler
 from tqdm import trange
 import torch.distributed as dist
 
-from transformers import (
-    AdamW,
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    get_linear_schedule_with_warmup,
-)
+from transformers import (MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING, AdamW,
+                          AutoConfig, AutoModelForSequenceClassification,
+                          AutoTokenizer, get_linear_schedule_with_warmup,
+                          HfArgumentParser, TrainingArguments)
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 
-from filelock import FileLock
 import ray
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch.examples.transformers.utils import (
-    add_transformers_parameters, evaluate, load_and_cache_examples,
-    save_and_evaluate_checkpoints)
+    evaluate, load_and_cache_examples, save_and_evaluate_checkpoints)
+
 try:
     from apex import amp
 except ImportError:
     amp = None
+
+MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING.keys())
+MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+ALL_MODELS = sum(
+    (tuple(conf.pretrained_config_archive_map.keys())
+     for conf in MODEL_CONFIG_CLASSES),
+    (),
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +135,14 @@ def optimizer_creator(model, cfg):
 
 def data_creator(config):
     args = config["args"]
+    start = time.time()
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_name
         if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
+    logger.info("tokenizer instantiation: {}".format(time.time() - start))
     config["tokenizer"] = tokenizer
 
     train_dataset = load_and_cache_examples(
@@ -228,10 +240,71 @@ class TransformerOperator(TrainingOperator):
         return evaluate(self.args, self.model, self.tokenizer)
 
 
+# flake8: disable
+@dataclass
+class ModelArguments:
+    """Arguments pertaining to model/config/tokenizer."""
+
+    model_name_or_path: str = field(
+        metadata=dict(help="Path to pre-trained model or shortcut name "
+                      "selected in the list: " + ", ".join(ALL_MODELS)))
+    model_type: str = field(
+        metadata=dict(help="Model type selected "
+                      "in the list: " + ", ".join(MODEL_TYPES)))
+    config_name: Optional[str] = field(
+        default=None,
+        metadata=dict(
+            help="Pretrained config name or path if not the same as model_name"
+        ))
+    tokenizer_name: Optional[str] = field(
+        default=None,
+        metadata=dict(help="Pretrained tokenizer name or path "
+                      "if not the same as model_name"))
+    cache_dir: Optional[str] = field(
+        default=None,
+        metadata=dict(help="Where do you want to store the pre-trained "
+                      "models downloaded from s3"))
+
+
+@dataclass
+class DataProcessingArguments:
+    task_name: str = field(
+        metadata=dict(help="The name of the task to train selected "
+                      "in the list: " + ", ".join(processors.keys())))
+    data_dir: str = field(
+        metadata=dict(help="The input data dir. Should contain "
+                      "the .tsv files (or other data files) for the task."))
+    max_seq_length: int = field(
+        default=128,
+        metadata=dict(help="The maximum total input sequence length "
+                      "after tokenization. Sequences longer "
+                      "than this will be truncated, sequences "
+                      "shorter will be padded."))
+    overwrite_cache: bool = field(
+        default=False,
+        metadata={"help": "Overwrite the cached training and evaluation sets"})
+
+
+# flake8: enable
+@dataclass
+class RayArguments:
+    num_workers: str = field(
+        metadata={"help": "Number of GPU workers to use."})
+    address: str = field(
+        metadata={"help": "Address of the Ray cluster to connect to."})
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    add_transformers_parameters(parser)
-    args = parser.parse_args()
+    parser = HfArgumentParser((ModelArguments, DataProcessingArguments,
+                               TrainingArguments.RayArguments))
+    all_args = parser.parse_args_into_dataclasses()
+    model_args, dataprocessing_args, training_args, ray_args = all_args
+
+    # For now, let's merge all the sets of args into one,
+    # but soon, we'll keep distinct sets of args, with a
+    # cleaner separation of concerns.
+    args = argparse.Namespace(**vars(model_args), **vars(dataprocessing_args),
+                              **vars(training_args), **vars(ray_args))
 
     if (os.path.exists(args.output_dir) and os.listdir(args.output_dir)
             and args.do_train and not args.overwrite_output_dir):
@@ -239,16 +312,7 @@ def main():
             "Output directory ({}) already exists and is not empty. "
             "Use --overwrite_output_dir to overcome.".format(args.output_dir))
 
-    # Setup logging
-
-    def init_hook():
-        logging.basicConfig(
-            format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
-            datefmt="%m/%d/%Y %H:%M:%S",
-            level=logging.INFO,
-        )
-
-    # Set seed
+    use_gpu = torch.cuda.is_available() and not args.no_cuda
 
     # Prepare GLUE task
     args.task_name = args.task_name.lower()
@@ -265,10 +329,10 @@ def main():
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         training_operator_cls=TransformerOperator,
-        initialization_hook=init_hook,
         use_fp16=args.fp16,
+        apex_args={"opt_level": args.fp16_opt_level},
         num_workers=args.num_workers,
-        use_gpu=True,
+        use_gpu=use_gpu,
         use_tqdm=True,
         config={"args": args})
     if args.model_name_or_path:
@@ -277,7 +341,6 @@ def main():
         except Exception:
             logging.error(f"looks like {args.model_name_or_path} is not valid")
 
-    global_step = 0
     epochs_trained = 0
     train_iterator = trange(
         epochs_trained,
