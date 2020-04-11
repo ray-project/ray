@@ -328,9 +328,10 @@ cc_library(
 cc_test(
     name = "gcs_pub_sub_test",
     srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
-    args = ["$(location redis-server) $(location redis-cli)"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
+        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
