@@ -8,11 +8,11 @@ halfcheetah_sac:
         horizon: 1000
         soft_horizon: False
         Q_model:
-          hidden_activation: relu
-          hidden_layer_sizes: [256, 256]
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256]
         policy_model:
-          hidden_activation: relu
-          hidden_layer_sizes: [256, 256]
+          fcnet_activation: relu
+          hidden_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
         no_done_at_end: True
