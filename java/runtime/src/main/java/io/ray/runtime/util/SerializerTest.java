@@ -1,10 +1,10 @@
 package io.ray.runtime.util;
 
 import io.ray.runtime.serializer.Serializer;
+import java.util.ArrayList;
 import org.apache.commons.lang3.tuple.Pair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import java.util.ArrayList;
 
 public class SerializerTest {
 

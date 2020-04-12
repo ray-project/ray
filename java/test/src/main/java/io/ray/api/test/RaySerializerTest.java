@@ -2,9 +2,7 @@ package io.ray.api.test;
 
 import io.ray.api.Ray;
 import io.ray.api.RayPyActor;
-import io.ray.api.TestUtils;
 import io.ray.api.function.PyActorClass;
-import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
 import org.testng.Assert;

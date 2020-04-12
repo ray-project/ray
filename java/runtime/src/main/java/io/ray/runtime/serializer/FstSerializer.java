@@ -1,8 +1,8 @@
 package io.ray.runtime.serializer;
 
-import org.nustaq.serialization.FSTConfiguration;
 import io.ray.runtime.actor.NativeRayActor;
 import io.ray.runtime.actor.NativeRayActorSerializer;
+import org.nustaq.serialization.FSTConfiguration;
 
 /**
  * Java object serialization TODO: use others (e.g. Arrow) for higher performance
