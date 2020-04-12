@@ -21,6 +21,7 @@ Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa)."""
 
 import argparse
 import logging
+import json
 import os
 import time
 from filelock import FileLock
@@ -343,12 +344,7 @@ def main():
         use_tqdm=True,
         config={"args": args})
 
-    # Not implemented yet.
-    # if args.model_name_or_path:
-    #     try:
-    #         trainer.load(args.model_name_or_path)
-    #     except Exception:
-    #         logging.error(f"looks like {args.model_name_or_path} is invalid")
+    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = trainer.get_local_operator().tokenizer
     local_model = trainer.get_model()
@@ -361,11 +357,12 @@ def main():
     )
 
     trainer.apply_all_workers(lambda: set_seed(args))
-
-    for _ in train_iterator:
-        stats = trainer.train()
-        evaluate(args, local_model, tokenizer)
-        print(stats)
+    if args.do_train:
+        for _ in train_iterator:
+            stats = trainer.train()
+            print("Training stats:", stats)
+            logs = evaluate(args, local_model, tokenizer)
+            print(json.dumps(logs))
 
     # Post-training validation
     save_and_evaluate_checkpoints(args, local_model, tokenizer)

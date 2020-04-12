@@ -1,7 +1,7 @@
 import glob
 import logging
 import os
-import tqdm
+from tqdm import tqdm
 from filelock import FileLock
 import numpy as np
 
@@ -110,8 +110,7 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
 
     results = {}
     if args.do_eval:
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.output_dir, do_lower_case=args.do_lower_case)
+        tokenizer = AutoTokenizer.from_pretrained(args.output_dir)
         checkpoints = [args.output_dir]
         if args.eval_all_checkpoints:
             checkpoints = list(
@@ -139,7 +138,7 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
     return results
 
 
-def evaluate(args, model, tokenizer, prefix=None):
+def evaluate(args, model, tokenizer, prefix=""):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (
         args.task_name, )
