@@ -50,7 +50,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --args="--ray-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
 
 .. tip::
 
@@ -77,7 +77,7 @@ If you already have a list of nodes, you can follow the local private cluster se
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --args="--ray-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
 
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -133,7 +133,7 @@ Ray currently supports AWS and GCP. Follow the instructions below to launch node
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --start --args="--ray-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py --start -- --ray-address=localhost:6379
 
 .. image:: /images/tune-upload.png
     :scale: 50%
@@ -221,9 +221,8 @@ Here is an example for running Tune on spot instances. This assumes your AWS cre
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml mnist_pytorch_trainable.py \
-        --args="--ray-address=localhost:6379" \
-        --start
+    ray submit tune-default.yaml mnist_pytorch_trainable.py --start -- --ray-address=localhost:6379
+
 
 4. Optionally for testing on AWS or GCP, you can use the following to kill a random worker node after all the worker nodes are up
 
@@ -237,7 +236,7 @@ To summarize, here are the commands to run:
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch_trainable.py
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
-    ray submit tune-default.yaml mnist_pytorch_trainable.py --args="--ray-address=localhost:6379" --start
+    ray submit tune-default.yaml mnist_pytorch_trainable.py --start -- --ray-address=localhost:6379
 
     # wait a while until after all nodes have started
     ray kill-random-node tune-default.yaml --hard
@@ -257,12 +256,12 @@ Below are some commonly used commands for submitting experiments. Please see the
 
     # Upload `tune_experiment.py` from your local machine onto the cluster. Then,
     # run `python tune_experiment.py --address=localhost:6379` on the remote machine.
-    $ ray submit CLUSTER.YAML tune_experiment.py --args="--address=localhost:6379"
+    $ ray submit CLUSTER.YAML tune_experiment.py -- --address=localhost:6379
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
     # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
-    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py  --args="--address=localhost:6379"
+    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py  -- --address=localhost:6379
 
     # To start or update your cluster:
     $ ray up CLUSTER.YAML [-y]
