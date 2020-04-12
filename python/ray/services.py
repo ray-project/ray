@@ -1422,7 +1422,7 @@ def build_java_worker_command(
     command += options
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
-    command += ["org.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command
 
