@@ -387,22 +387,34 @@ class TargetNetworkMixin:
 
     def update_target(self, tau=None):
         tau = tau or self.config.get("tau")
+        model_state_dict = self.model.state_dict()
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
         # Full sync from Q-model to target Q-model.
-        if tau == 1.0:
-            self.target_model.load_state_dict(self.model.state_dict())
+        if tau != 1.0:
+            target_state_dict = self.target_model.state_dict()
+            #update_state_dict = model_state_dict
         # Partial (soft) sync using tau-synching.
-        else:
-            model_vars = self.model.variables()
-            target_model_vars = self.target_model.variables()
-            #print("model-var={} target-var={}".format(model_vars[0][0][0], target_model_vars[0][0][0]))
-            assert len(model_vars) == len(target_model_vars), \
-                (model_vars, target_model_vars)
-            for var, var_target in zip(model_vars, target_model_vars):
-                var_target.data = tau * var.data + \
-                    (1.0 - tau) * var_target.data
-
+        #else:
+            #model_vars = self.model.variables(as_dict=True)
+            #target_model_vars = self.target_model.variables(as_dict=True)
+            #assert sorted(model_vars.keys()) == sorted(target_model_vars.keys())
+            #model_vars = [model_vars[k] for k in sorted(model_vars.keys())]
+            #target_model_vars = [target_model_vars[k] for k in sorted(target_model_vars.keys())]
+            ##print("model-var={} target-var={}".format(model_vars[0][0][0], target_model_vars[0][0][0]))
+            #assert len(model_vars) == len(target_model_vars), \
+            #    (model_vars, target_model_vars)
+            #for var, var_target in zip(model_vars, target_model_vars):
+            #    assert var.shape == var_target.shape
+            #    #print("before update: {}".format(var_target))
+            #    #print("var={}".format(var))
+            #    var_target.mul_(1.0 - tau)
+            #    var_target.add_(tau * var.data)  #var_target.data + \
+            #        #tau * var.data
+            #    #print("after update: {}".format(var_target))
+            model_state_dict = {k: tau * model_state_dict[k] + (1 - tau) * v
+                         for k, v in target_state_dict.items()}
+        self.target_model.load_state_dict(model_state_dict)
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     ComputeTDErrorMixin.__init__(policy)

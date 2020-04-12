@@ -86,7 +86,7 @@ class SlimFC(nn.Module):
                  out_size,
                  initializer=None,
                  activation_fn=None,
-                 bias_init=0):
+                 bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size)

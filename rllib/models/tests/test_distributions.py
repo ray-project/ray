@@ -100,16 +100,17 @@ class TestDistributions(unittest.TestCase):
 
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussian ActionDistribution for all frameworks."""
-        for fw, sess in framework_iterator(session=True):
-            input_space = Box(-2.0, 2.0, shape=(200, 10))
-            low, high = -2.0, 1.0
+        input_space = Box(-2.0, 2.0, shape=(200, 10))
+        low, high = -2.0, 1.0
+        inputs_1 = input_space.sample()
+
+        for fw, sess in framework_iterator(frameworks=("torch", "tf"), session=True):
 
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Batch of size=n and deterministic.
-            inputs = input_space.sample()
-            means, _ = np.split(inputs, 2, axis=-1)
-            squashed_distribution = cls(inputs, {}, low=low, high=high)
+            means, _ = np.split(inputs_1, 2, axis=-1)
+            squashed_distribution = cls(inputs_1, {}, low=low, high=high)
             expected = ((np.tanh(means) + 1.0) / 2.0) * (high - low) + low
             # Sample n times, expect always mean value (deterministic draw).
             out = squashed_distribution.deterministic_sample()

@@ -1,8 +1,9 @@
 from gym.spaces import Discrete
 import numpy as np
 
+from ray.rllib.models.torch.misc import SlimFC, normc_initializer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -70,32 +71,40 @@ class SACTorchModel(TorchModelV2):
         self.action_model = nn.Sequential()
         ins = self.num_outputs
         self.obs_ins = ins
+        activation = get_activation_fn(
+            actor_hidden_activation, framework="torch")
         for i, n in enumerate(actor_hiddens):
-            self.action_model.add_module("action_{}".format(i), nn.Linear(ins, n))
-            # Add activations if necessary.
-            if actor_hidden_activation == "relu":
-                self.action_model.add_module("action_activation_{}".format(i), nn.ReLU())
-            elif actor_hidden_activation == "tanh":
-                self.action_model.add_module("action_activation_{}".format(i), nn.Tanh())
+            self.action_model.add_module(
+                "action_{}".format(i),
+                SlimFC(ins, n, initializer=torch.nn.init.xavier_uniform_,
+                       activation_fn=activation))
             ins = n
-        self.action_model.add_module("action_out", nn.Linear(ins, self.action_outs))
+        self.action_model.add_module(
+            "action_out",
+            SlimFC(ins, self.action_outs,
+                   initializer=torch.nn.init.xavier_uniform_,
+                   activation_fn=None))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
+            activation = get_activation_fn(
+                critic_hidden_activation, framework="torch")
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
             ins = self.obs_ins + (0 if self.discrete else self.action_ins)
             for i, n in enumerate(critic_hiddens):
-                q_net.add_module("{}_hidden_{}".format(name_, i), nn.Linear(ins, n))
-                # Add activations if necessary.
-                if critic_hidden_activation == "relu":
-                    q_net.add_module("{}_activation_{}".format(name_, i), nn.ReLU())
-                elif critic_hidden_activation == "tanh":
-                    q_net.add_module("{}_activation_{}".format(name_, i), nn.Tanh())
+                q_net.add_module(
+                    "{}_hidden_{}".format(name_, i),
+                    SlimFC(ins, n, initializer=torch.nn.init.xavier_uniform_,
+                           activation_fn=activation))
                 ins = n
 
-            q_net.add_module("{}_out".format(name_), nn.Linear(ins, q_outs))
+            q_net.add_module(
+                "{}_out".format(name_),
+                SlimFC(ins, q_outs,
+                       initializer=torch.nn.init.xavier_uniform_,
+                       activation_fn=None))
             return q_net
 
         self.q_net = build_q_net("q")

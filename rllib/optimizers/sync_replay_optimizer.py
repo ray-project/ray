@@ -102,7 +102,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 buffer_size, self.replay_starts))
 
     @override(PolicyOptimizer)
-    def step(self):
+    def step(self, fake_batch=None):
         with self.update_weights_timer:
             if self.workers.remote_workers():
                 weights = ray.put(self.workers.local_worker().get_weights())
@@ -110,7 +110,9 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if self.workers.remote_workers():
+            if fake_batch:
+                batch = SampleBatch(fake_batch)
+            elif self.workers.remote_workers():
                 batch = SampleBatch.concat_samples(
                     ray_get_and_free([
                         e.sample.remote()
@@ -136,7 +138,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                         weight=None)
 
         if self.num_steps_sampled >= self.replay_starts:
-            self._optimize()
+            self._optimize(batch if fake_batch else None)
 
         self.num_steps_sampled += batch.count
 
@@ -155,8 +157,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 "learner": self.learner_stats,
             })
 
-    def _optimize(self):
-        samples = self._replay()
+    def _optimize(self, fake_batch=None):
+        if fake_batch:
+            samples = fake_batch
+        else:
+            samples = self._replay()
 
         with self.grad_timer:
             if self.before_learn_on_batch:

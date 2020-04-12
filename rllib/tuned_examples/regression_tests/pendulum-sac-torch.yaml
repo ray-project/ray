@@ -3,26 +3,11 @@ pendulum-sac-torch:
     run: SAC
     stop:
         episode_reward_mean: -300  # note that evaluation perf is higher
-        timesteps_total: 100000
+        timesteps_total: 10000
     config:
         use_pytorch: true
-        #_use_beta_distribution: true
-        #grad_clip: 10.0
-        #    grid_search: [40.0, 1.0]
-        normalize_actions: true
-        twin_q: true
         soft_horizon: true
         clip_actions: false
+        normalize_actions: true
         metrics_smoothing_episodes: 5
         no_done_at_end: true
-        #Q_model:
-        #    fcnet_activation: tanh
-        #policy_model:
-        #    fcnet_activation: tanh
-        #initial_alpha:
-        #    grid_search: [1.0, 0.1]
-        #optimization:
-        #    actor_learning_rate: 0.001
-        #    critic_learning_rate:
-        #        grid_search: [0.001, 0.0003, 0.0001]
-        #    entropy_learning_rate: 0.001
