@@ -53,6 +53,40 @@ def test_http_proxy_failure(serve_instance):
         response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello2"
 
+def _kill_router():
+    [router] = ray.get(
+        serve.api._get_master_actor().get_router.remote())
+    ray.kill(router)
+
+
+def test_router_failure(serve_instance):
+    serve.init()
+    serve.create_endpoint("router_failure", "/router_failure", methods=["GET"])
+
+    def function():
+        return "hello1"
+
+    serve.create_backend(function, "router_failure:v1")
+    serve.link("router_failure", "router_failure:v1")
+
+    assert request_with_retries("/router_failure", timeout=0.1).text == "hello1"
+
+    for _ in range(10):
+        response = request_with_retries("/router_failure", timeout=30)
+        assert response.text == "hello1"
+
+    _kill_router()
+
+    def function():
+        return "hello2"
+
+    serve.create_backend(function, "router_failure:v2")
+    serve.link("router_failure", "router_failure:v2")
+
+    for _ in range(10):
+        response = request_with_retries("/router_failure", timeout=30)
+        assert response.text == "hello2"
+
 
 def _get_worker_handles(backend):
     master_actor = serve.api._get_master_actor()

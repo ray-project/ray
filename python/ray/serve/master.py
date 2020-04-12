@@ -143,6 +143,7 @@ class ServeMaster:
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
+        # XXX
         await self.get_router()[0].add_new_worker.remote(
             backend_tag, worker_handle)
 
@@ -170,9 +171,7 @@ class ServeMaster:
         # Remove the replica from router.
         # This will also destroy the actor handle.
         [router] = self.get_router()
-        ray.get(
-            router.remove_and_destroy_replica.remote(backend_tag,
-                                                     replica_handle))
+        ray.get(router.remove_worker.remote(backend_tag, replica_handle))
 
     def get_all_worker_handles(self):
         return self.workers
