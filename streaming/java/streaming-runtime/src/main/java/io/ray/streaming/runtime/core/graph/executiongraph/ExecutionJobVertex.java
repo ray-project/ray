@@ -3,10 +3,11 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import io.ray.api.RayActor;
+import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.config.master.ResourceConfig;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,13 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.aeonbits.owner.ConfigFactory;
-import io.ray.api.RayActor;
-import io.ray.streaming.api.Language;
-import io.ray.streaming.jobgraph.JobVertex;
-import io.ray.streaming.jobgraph.VertexType;
-import io.ray.streaming.operator.StreamOperator;
-import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical job vertex.

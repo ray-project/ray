@@ -1,8 +1,8 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
-import java.io.Serializable;
 import io.ray.streaming.api.partition.Partition;
+import java.io.Serializable;
 
 /**
  * An edge that connects two execution vertices.

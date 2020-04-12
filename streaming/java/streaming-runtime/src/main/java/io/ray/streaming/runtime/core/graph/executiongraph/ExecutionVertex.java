@@ -3,18 +3,6 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 import com.google.common.base.MoreObjects;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
-import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.core.resource.Slot;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
-import io.ray.streaming.runtime.worker.JobWorker;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import io.ray.api.RayActor;
-import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
@@ -22,6 +10,11 @@ import io.ray.streaming.runtime.config.master.ResourceConfig;
 import io.ray.streaming.runtime.core.resource.ResourceType;
 import io.ray.streaming.runtime.core.resource.Slot;
 import io.ray.streaming.runtime.worker.JobWorker;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Physical vertex, correspond to {@link ExecutionJobVertex}.
