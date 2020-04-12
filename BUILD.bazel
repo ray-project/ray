@@ -639,6 +639,17 @@ cc_test(
 )
 
 cc_test(
+    name = "util_test",
+    srcs = ["src/ray/util/util_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
@@ -674,17 +685,6 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "url_test",
-    srcs = ["src/ray/util/url_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )
