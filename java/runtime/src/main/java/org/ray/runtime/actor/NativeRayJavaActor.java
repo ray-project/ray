@@ -3,15 +3,16 @@ package org.ray.runtime.actor;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.io.ObjectInput;
+import org.ray.api.RayActor;
 import org.ray.runtime.generated.Common.Language;
 
 /**
- * RayActor Java implementation for cluster mode.
+ * Java implementation of actor handle for cluster mode.
  */
-public class NativeRayJavaActor extends NativeRayActor {
+public class NativeRayJavaActor extends NativeRayActor implements RayActor {
 
-  NativeRayJavaActor(long nativeCoreWorkerPointer, byte[] actorId) {
-    super(nativeCoreWorkerPointer, actorId, Language.JAVA);
+  NativeRayJavaActor(byte[] actorId) {
+    super(actorId, Language.JAVA);
   }
 
   /**

@@ -1,9 +1,13 @@
+import logging
+import os
 import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -22,7 +26,8 @@ def build_trainer(name,
                   after_train_result=None,
                   collect_metrics_fn=None,
                   before_evaluate_fn=None,
-                  mixins=None):
+                  mixins=None,
+                  execution_plan=None):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -33,8 +38,8 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_policy (cls): the default Policy class to use
-        default_config (dict): the default config dict of the algorithm,
-            otherwises uses the Trainer default config
+        default_config (dict): The default config dict of the algorithm,
+            otherwise uses the Trainer default config.
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_initial_state (func): optional function that returns the initial
@@ -66,6 +71,8 @@ def build_trainer(name,
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class
+        execution_plan (func): Experimental distributed execution
+            API. This overrides `make_policy_optimizer`.
 
     Returns:
         a Trainer instance that uses the specified args.
@@ -85,22 +92,40 @@ def build_trainer(name,
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
+
             if get_initial_state:
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
             if get_policy_class is None:
-                policy = default_policy
+                self._policy = default_policy
             else:
-                policy = get_policy_class(config)
+                self._policy = get_policy_class(config)
             if before_init:
                 before_init(self)
-            if make_workers:
-                self.workers = make_workers(self, env_creator, policy, config)
+            use_exec_api = (execution_plan
+                            and (self.config["use_exec_api"]
+                                 or "RLLIB_EXEC_API" in os.environ))
+
+            # Creating all workers (excluding evaluation workers).
+            if make_workers and not use_exec_api:
+                self.workers = make_workers(self, env_creator, self._policy,
+                                            config)
             else:
-                self.workers = self._make_workers(env_creator, policy, config,
+                self.workers = self._make_workers(env_creator, self._policy,
+                                                  config,
                                                   self.config["num_workers"])
-            if make_policy_optimizer:
+            self.train_exec_impl = None
+            self.optimizer = None
+            self.execution_plan = execution_plan
+
+            if use_exec_api:
+                logger.warning(
+                    "The experimental distributed execution API is enabled "
+                    "for this algorithm. Disable this by setting "
+                    "'use_exec_api': False.")
+                self.train_exec_impl = execution_plan(self.workers, config)
+            elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
                 optimizer_config = dict(
@@ -113,6 +138,9 @@ def build_trainer(name,
 
         @override(Trainer)
         def _train(self):
+            if self.train_exec_impl:
+                return self._train_exec_impl()
+
             if before_train_step:
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
@@ -140,6 +168,14 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
+        def _train_exec_impl(self):
+            if before_train_step:
+                logger.warning("Ignoring before_train_step callback")
+            res = next(self.train_exec_impl)
+            if after_train_result:
+                logger.warning("Ignoring after_train_result callback")
+            return res
+
         @override(Trainer)
         def _before_evaluate(self):
             if before_evaluate_fn:
@@ -148,11 +184,17 @@ def build_trainer(name,
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
+            if self.train_exec_impl:
+                state["train_exec_impl"] = (
+                    self.train_exec_impl.shared_metrics.get().save())
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
+            if self.train_exec_impl:
+                self.train_exec_impl.shared_metrics.get().restore(
+                    state["train_exec_impl"])
 
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.

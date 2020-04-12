@@ -1,22 +1,33 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "ray/raylet/lineage_cache.h"
+
 #include <list>
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-
+#include "ray/common/test_util.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
-
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/lineage_cache.h"
-
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -183,9 +194,10 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
   rpc::Address address;
-  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            RandomTaskId(), 0, RandomTaskId(), address, num_returns,
-                            false, {}, {});
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON,
+                            ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                            JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
+                            num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }

@@ -5,20 +5,17 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 
 /**
  * Use Ray.wait to ignore stragglers
  */
 public class Exercise04 {
 
-  @RayRemote
   public static String f1() {
     System.out.println("Executing f1");
     return "f1";
   }
 
-  @RayRemote
   public static String f2() {
     System.out.println("Executing f2");
     return "f2";
@@ -27,7 +24,6 @@ public class Exercise04 {
   /**
    * A slow remote function.
    */
-  @RayRemote
   public static String f3() {
     System.out.println("Executing f3");
     try {

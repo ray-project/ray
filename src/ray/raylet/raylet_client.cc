@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "raylet_client.h"
 
 #include <inttypes.h>
@@ -20,19 +34,19 @@
 
 using MessageType = ray::protocol::MessageType;
 
-static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+namespace ray {
+
+static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
 
-static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+static int write_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
-
-namespace ray {
 
 raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
                                            const std::string &raylet_socket,
@@ -48,12 +62,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    local_stream_protocol::endpoint endpoint(raylet_socket);
-#else
-    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
-#endif
-    if (!conn_.connect(endpoint, ec)) {
+    if (!conn_.connect(parse_url_endpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {
@@ -178,14 +187,6 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
-    }
-  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
@@ -344,15 +345,6 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-Status raylet::RayletClient::ReportActiveObjectIDs(
-    const std::unordered_set<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-
-  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
-}
-
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
@@ -375,14 +367,28 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
-Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
-                                          const std::vector<ObjectID> &object_ids) {
+Status raylet::RayletClient::PinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, nullptr);
+  return grpc_client_->PinObjectIDs(request, callback);
+}
+
+Status raylet::RayletClient::GlobalGC(
+    const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
+  rpc::GlobalGCRequest request;
+  return grpc_client_->GlobalGC(request, callback);
+}
+
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
 }  // namespace ray

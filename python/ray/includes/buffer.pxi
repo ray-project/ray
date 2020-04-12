@@ -10,8 +10,8 @@ cdef class Buffer:
     """Cython wrapper class of C++ `ray::Buffer`.
 
     This class implements the Python 'buffer protocol', which allows
-    us to use it for calls into pyarrow (and other Python libraries
-    down the line) without having to copy the data.
+    us to use it for calls into Python libraries without having to
+    copy the data.
 
     See https://docs.python.org/3/c-api/buffer.html for details.
     """
@@ -44,7 +44,7 @@ cdef class Buffer:
     def __getbuffer__(self, Py_buffer* buffer, int flags):
         buffer.readonly = 0
         buffer.buf = <char *>self.buffer.get().Data()
-        buffer.format = 'b'
+        buffer.format = 'B'
         buffer.internal = NULL
         buffer.itemsize = 1
         buffer.len = self.size

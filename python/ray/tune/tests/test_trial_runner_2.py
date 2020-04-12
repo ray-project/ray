@@ -84,11 +84,12 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process save
+        runner.step()  # Error
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 1)
         self.assertEqual(len(searchalg.errored_trials), 1)
@@ -111,14 +112,15 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process save
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 1)
-        runner.step()
+        runner.step()  # Process restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(len(searchalg.errored_trials), 0)
         self.assertEqual(len(scheduler.errored_trials), 0)
@@ -142,15 +144,16 @@ class TrialRunnerTest2(unittest.TestCase):
 
         with patch("ray.cluster_resources") as resource_mock:
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
-            runner.step()
+            runner.step()  # Start trial
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
-            runner.step()
+            runner.step()  # Process result, dispatch save
+            runner.step()  # Process save
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
             # Mimic a node failure
             resource_mock.return_value = {"CPU": 0, "GPU": 0}
-            runner.step()
+            runner.step()  # Detect node failure
             self.assertEqual(trials[0].status, Trial.PENDING)
             self.assertEqual(trials[0].num_failures, 1)
             self.assertEqual(len(searchalg.errored_trials), 0)
@@ -171,21 +174,47 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
+        runner.step()  # Process save
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 1)
-        runner.step()  # Restore step
-        runner.step()
+        runner.step()  # Process restore
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 2)
-        runner.step()  # Restore step
-        runner.step()
+        runner.step()  # Process restore
+        runner.step()  # Error (terminal)
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
+
+    def testFailFast(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(fail_fast=True)
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process result, dispatch save
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
+        runner.step()  # Error
+        self.assertEqual(trials[0].status, Trial.ERROR)
+        self.assertRaises(TuneError, lambda: runner.step())
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -195,61 +224,68 @@ class TrialRunnerTest2(unittest.TestCase):
                 "training_iteration": 1
             },
             "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        checkpoint = runner.trial_executor.save(trials[0])
-        kwargs["restore_path"] = checkpoint.value
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save, stop trial
+        kwargs["restore_path"] = trials[0].checkpoint.value
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
-        runner.step()
+        runner.step()  # Start trial, dispatch restore
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+
+        runner.step()  # Process restore
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.value)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        checkpoint = runner.trial_executor.save(trials[0])
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         runner.trial_executor.stop_trial(trials[0])
-        kwargs["restore_path"] = checkpoint.value
+        kwargs["restore_path"] = trials[0].checkpoint.value
 
+        kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial, dispatch restore
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
-        runner.step()  # Restore step
-        runner.step()
+        runner.step()  # Process restore
+        runner.step()  # Process result
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        runner.step()
+        runner.step()  # Process restore
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.value)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -264,11 +300,12 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
-        runner.step()
+        runner.step()  # Process result
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].last_result[DONE], True)
+        runner.step()  # Process save
         self.assertEqual(trials[0].has_checkpoint(), True)
 
     def testResultDone(self):
@@ -303,7 +340,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), None)
 
@@ -314,12 +352,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.trial_executor.resume_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), 1)
 
-        runner.step()
+        runner.step()  # Process result
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
 

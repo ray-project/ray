@@ -1,7 +1,11 @@
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Represents a generic tensor type.
+TensorType = Any
 
 
 def check_framework(framework="tf"):
@@ -16,9 +20,11 @@ def check_framework(framework="tf"):
         str: The input framework string.
     """
     if framework == "tf":
-        try_import_tf(error=True)
+        if tf is None:
+            raise ImportError("Could not import tensorflow.")
     elif framework == "torch":
-        try_import_torch(error=True)
+        if torch is None:
+            raise ImportError("Could not import torch.")
     else:
         assert framework is None
     return framework
@@ -32,6 +38,8 @@ def try_import_tf(error=False):
     Returns:
         The tf module (either from tf2.0.compat.v1 OR as tf1.x.
     """
+    # TODO(sven): Make sure, these are reset after each test case
+    # that uses them.
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
         return None
@@ -51,6 +59,22 @@ def try_import_tf(error=False):
             if error:
                 raise e
             return None
+
+
+def tf_function(tf_module):
+    """Conditional decorator for @tf.function.
+
+    Use @tf_function(tf) instead to avoid errors if tf is not installed."""
+
+    # The actual decorator to use (pass in `tf` (which could be None)).
+    def decorator(func):
+        # If tf not installed -> return function as is (won't be used anyways).
+        if tf_module is None or tf_module.executing_eagerly():
+            return func
+        # If tf installed, return @tf.function-decorated function.
+        return tf_module.function(func)
+
+    return decorator
 
 
 def try_import_tfp(error=False):
@@ -75,6 +99,20 @@ def try_import_tfp(error=False):
         return None
 
 
+# Fake module for torch.nn.
+class NNStub:
+    def __init__(self, *a, **kw):
+        # Fake nn.functional module within torch.nn.
+        self.functional = None
+        self.Module = ModuleStub
+
+
+# Fake class for torch.nn.Module to allow it to be inherited from.
+class ModuleStub:
+    def __init__(self, *a, **kw):
+        raise ImportError("Could not import `torch`.")
+
+
 def try_import_torch(error=False):
     """
     Args:
@@ -85,7 +123,7 @@ def try_import_torch(error=False):
     """
     if "RLLIB_TEST_NO_TORCH_IMPORT" in os.environ:
         logger.warning("Not importing Torch for test purposes.")
-        return None, None
+        return _torch_stubs()
 
     try:
         import torch
@@ -94,4 +132,53 @@ def try_import_torch(error=False):
     except ImportError as e:
         if error:
             raise e
-        return None, None
+        return _torch_stubs()
+
+
+def _torch_stubs():
+    nn = NNStub()
+    return None, nn
+
+
+def get_variable(value,
+                 framework="tf",
+                 trainable=False,
+                 tf_name="unnamed-variable",
+                 torch_tensor=False):
+    """
+    Args:
+        value (any): The initial value to use. In the non-tf case, this will
+            be returned as is.
+        framework (str): One of "tf", "torch", or None.
+        trainable (bool): Whether the generated variable should be
+            trainable (tf)/require_grad (torch) or not (default: False).
+        tf_name (str): For framework="tf": An optional name for the
+            tf.Variable.
+        torch_tensor (bool): For framework="torch": Whether to actually create
+            a torch.tensor, or just a python value (default).
+
+    Returns:
+        any: A framework-specific variable (tf.Variable, torch.tensor, or
+            python primitive).
+    """
+    if framework == "tf":
+        import tensorflow as tf
+        dtype = getattr(
+            value, "dtype", tf.float32
+            if isinstance(value, float) else tf.int32
+            if isinstance(value, int) else None)
+        return tf.compat.v1.get_variable(
+            tf_name, initializer=value, dtype=dtype, trainable=trainable)
+    elif framework == "torch" and torch_tensor is True:
+        torch, _ = try_import_torch()
+        var_ = torch.from_numpy(value)
+        var_.requires_grad = trainable
+        return var_
+    # torch or None: Return python primitive.
+    return value
+
+
+# This call should never happen inside a module's functions/classes
+# as it would re-disable tf-eager.
+tf = try_import_tf()
+torch, _ = try_import_torch()

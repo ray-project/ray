@@ -76,6 +76,7 @@ define_java_module(
         "@maven//:de_ruedigermoeller_fst",
         "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_msgpack_msgpack_core",
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
@@ -97,6 +98,7 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
@@ -155,6 +157,7 @@ filegroup(
     srcs = [
         ":cp_plasma_store_server",
         "//:core_worker_library_java",
+        "//:gcs_server",
         "//:libray_redis_module.so",
         "//:raylet",
         "//:redis-server",
@@ -172,21 +175,21 @@ genrule(
     outs = ["gen_maven_deps.out"],
     cmd = """
         set -x
-        WORK_DIR=$$(pwd)
+        WORK_DIR="$$(pwd)"
         # Copy protobuf-generated files.
-        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        rm -rf "$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated"
         for f in $(locations //java:all_java_proto); do
-            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
+            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
         done
         # Copy native dependecies.
-        NATIVE_DEPS_DIR=$$WORK_DIR/java/runtime/native_dependencies/
-        rm -rf $$NATIVE_DEPS_DIR
-        mkdir -p $$NATIVE_DEPS_DIR
+        NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/"
+        rm -rf "$$NATIVE_DEPS_DIR"
+        mkdir -p "$$NATIVE_DEPS_DIR"
         for f in $(locations //java:java_native_deps); do
-            chmod +w $$f
-            cp $$f $$NATIVE_DEPS_DIR
+            chmod +w "$$f"
+            cp "$$f" "$$NATIVE_DEPS_DIR"
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -201,12 +204,12 @@ genrule(
     outs = ["copy_pom_file.out"],
     cmd = """
         set -x
-        WORK_DIR=$$(pwd)
-        cp -f $(location //java:org_ray_ray_api_pom) $$WORK_DIR/java/api/pom.xml
-        cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
-        cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
-        cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
-        echo $$(date) > $@
+        WORK_DIR="$$(pwd)"
+        cp -f $(location //java:org_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
+        cp -f $(location //java:org_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
+        cp -f $(location //java:org_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
+        cp -f $(location //java:org_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -230,13 +233,14 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
+        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """
-        WORK_DIR=$$(pwd)
-        rm -rf $$WORK_DIR/python/ray/jars && mkdir -p $$WORK_DIR/python/ray/jars
-        cp -f $(location //java:ray_dist_deploy.jar) $$WORK_DIR/python/ray/jars/ray_dist.jar
-        echo $$(date) > $@
+        WORK_DIR="$$(pwd)"
+        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
+        cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],

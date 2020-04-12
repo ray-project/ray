@@ -13,11 +13,10 @@ namespace streaming {
 class Transport {
  public:
   /// Construct a Transport object.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor, which we call direct
-  ///            actor call interface with.
   /// \param[in] peer_actor_id actor id of peer actor.
-  Transport(CoreWorker *core_worker, const ActorID &peer_actor_id)
-      : core_worker_(core_worker), peer_actor_id_(peer_actor_id) {}
+  Transport(const ActorID &peer_actor_id)
+      : worker_id_(CoreWorkerProcess::GetCoreWorker().GetWorkerID()),
+        peer_actor_id_(peer_actor_id) {}
   virtual ~Transport() = default;
 
   /// Send buffer asynchronously, peer's `function` will be called.
@@ -55,7 +54,7 @@ class Transport {
                             std::vector<ObjectID> &return_ids);
 
  private:
-  CoreWorker *core_worker_;
+  WorkerID worker_id_;
   ActorID peer_actor_id_;
 };
 }  // namespace streaming

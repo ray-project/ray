@@ -15,20 +15,19 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
     "vtrace_clip_pg_rho_threshold": 1.0,
-
     # System params.
     #
     # == Overview of data flow in IMPALA ==
     # 1. Policy evaluation in parallel across `num_workers` actors produces
-    #    batches of size `sample_batch_size * num_envs_per_worker`.
+    #    batches of size `rollout_fragment_length * num_envs_per_worker`.
     # 2. If enabled, the replay buffer stores and produces batches of size
-    #    `sample_batch_size * num_envs_per_worker`.
+    #    `rollout_fragment_length * num_envs_per_worker`.
     # 3. If enabled, the minibatch ring buffer stores and replays batches of
     #    size `train_batch_size` up to `num_sgd_iter` times per batch.
     # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
     #    on batches of size `train_batch_size`.
     #
-    "sample_batch_size": 50,
+    "rollout_fragment_length": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
@@ -46,7 +45,7 @@ DEFAULT_CONFIG = with_common_config({
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
     # number of sample batches to store for replay. The number of transitions
-    # saved total will be (replay_buffer_num_slots * sample_batch_size).
+    # saved total will be (replay_buffer_num_slots * rollout_fragment_length).
     "replay_buffer_num_slots": 0,
     # max queue size for train batches feeding into the learner
     "learner_queue_size": 16,
@@ -95,8 +94,7 @@ def validate_config(config):
     # PyTorch check.
     if config["use_pytorch"]:
         raise ValueError(
-            "IMPALA does not support PyTorch yet! Use tf instead."
-        )
+            "IMPALA does not support PyTorch yet! Use tf instead.")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
 
@@ -119,7 +117,7 @@ def make_aggregators_and_optimizer(workers, config):
         workers,
         lr=config["lr"],
         num_gpus=config["num_gpus"],
-        sample_batch_size=config["sample_batch_size"],
+        rollout_fragment_length=config["rollout_fragment_length"],
         train_batch_size=config["train_batch_size"],
         replay_buffer_num_slots=config["replay_buffer_num_slots"],
         replay_proportion=config["replay_proportion"],

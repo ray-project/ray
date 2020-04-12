@@ -1,9 +1,9 @@
 diff --git bazel/cython_library.bzl bazel/cython_library.bzl
 --- bazel/cython_library.bzl
 +++ bazel/cython_library.bzl
-@@ -10,14 +10,16 @@
+@@ -10,15 +10,16 @@
 -def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
-+def pyx_library(name, deps=[], copts=[], cc_kwargs={}, py_deps=[], srcs=[], **kwargs):
++def pyx_library(name, deps=[], cc_kwargs={}, py_deps=[], srcs=[], **kwargs):
      """Compiles a group of .pyx / .pxd / .py files.
 
      First runs Cython to create .cpp files for each input .pyx or .py + .pxd
@@ -19,18 +19,19 @@ diff --git bazel/cython_library.bzl bazel/cython_library.bzl
      Args:
          name: Name for the rule.
          deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
-+        copts: C/C++ compiler options for Cython
-+        cc_kwargs: cc_binary extra arguments such as linkstatic, linkopts, features
-         py_deps: Pure Python dependencies of the final library.
-         srcs: .py, .pyx, or .pxd files to either compile or pass through.
-@@ -58,6 +60,8 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
++        cc_kwargs: cc_binary extra arguments such as copts, linkstatic, linkopts, features
+@@ -57,7 +59,8 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
+-        shared_object_name = stem + ".so"
++        shared_object_name = stem + ".so"
          native.cc_binary(
-             name=shared_object_name,
+-            name=shared_object_name,
++            name=cc_kwargs.pop("name", shared_object_name),
 -            srcs=[stem + ".cpp"],
 +            srcs=[stem + ".cpp"] + cc_kwargs.pop("srcs", []),
-+            copts=copts,
-             deps=deps + ["@local_config_python//:python_headers"],
-             linkshared=1,
+-            deps=deps + ["@local_config_python//:python_headers"],
++            deps=deps + ["@local_config_python//:python_headers"] + cc_kwargs.pop("deps", []),
+-            linkshared=1,
++            linkshared=cc_kwargs.pop("linkshared", 1),
 +            **cc_kwargs
          )
 --

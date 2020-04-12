@@ -1,5 +1,4 @@
 import logging
-import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -41,7 +40,7 @@ def _make_scheduler(args):
 
 
 def _check_default_resources_override(run_identifier):
-    if not isinstance(run_identifier, six.string_types):
+    if not isinstance(run_identifier, str):
         # If obscure dtype, assume it is overriden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
@@ -62,7 +61,7 @@ def _report_progress(runner, reporter, done=False):
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, sched_debug_str, executor_debug_str)
+        reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
 def run(run_or_experiment,
@@ -85,6 +84,7 @@ def run(run_or_experiment,
         global_checkpoint_period=10,
         export_formats=None,
         max_failures=0,
+        fail_fast=False,
         restore=None,
         search_alg=None,
         scheduler=None,
@@ -98,12 +98,11 @@ def run(run_or_experiment,
         trial_executor=None,
         raise_on_failed_trial=True,
         return_trials=False,
-        ray_auto_init=True,
-        sync_function=None):
+        ray_auto_init=True):
     """Executes training.
 
     Args:
-        run_or_experiment (function|class|str|Experiment): If
+        run_or_experiment (function | class | str | :class:`Experiment`): If
             function|class|str, this is the algorithm or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
@@ -112,11 +111,11 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict|callable): The stopping criteria. If dict, the keys may be
-            any field in the return result of 'train()', whichever is
-            reached first. If function, it must take (trial_id, result) as
-            arguments and return a boolean (True if trial should be stopped,
-            False otherwise). This can also be a subclass of
+        stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
+            the keys may be any field in the return result of 'train()',
+            whichever is reached first. If function, it must take (trial_id,
+            result) as arguments and return a boolean (True if trial should be
+            stopped, False otherwise). This can also be a subclass of
             ``ray.tune.Stopper``, which allows users to implement
             custom experiment-wide stopping (i.e., stopping an entire Tune
             run based on some time constraint).
@@ -174,6 +173,7 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
+        fail_fast (bool): Whether to fail upon the first error.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
@@ -211,14 +211,12 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
-        sync_function: Deprecated. See `sync_to_cloud` and
-            `sync_to_driver`.
 
     Returns:
-        List of Trial objects.
+        ExperimentAnalysis: Object for experiment analysis.
 
     Raises:
-        TuneError if any trials failed and `raise_on_failed_trial` is True.
+        TuneError: Any trials failed and `raise_on_failed_trial` is True.
 
     Examples:
         >>> tune.run(mytrainable, scheduler=PopulationBasedTraining())
@@ -242,10 +240,6 @@ def run(run_or_experiment,
         experiments = run_or_experiment
     else:
         experiments = [run_or_experiment]
-    if len(experiments) > 1:
-        logger.info(
-            "Running multiple concurrent experiments is experimental and may "
-            "not work with certain features.")
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
@@ -269,8 +263,7 @@ def run(run_or_experiment,
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
-                restore=restore,
-                sync_function=sync_function)
+                restore=restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
@@ -278,6 +271,9 @@ def run(run_or_experiment,
         for exp in experiments:
             assert exp.remote_checkpoint_dir, (
                 "Need `upload_dir` if `sync_to_cloud` given.")
+
+    if fail_fast and max_failures != 0:
+        raise ValueError("max_failures must be 0 if fail_fast=True.")
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
@@ -291,6 +287,7 @@ def run(run_or_experiment,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=bool(verbose > 1),
+        fail_fast=fail_fast,
         trial_executor=trial_executor)
 
     for exp in experiments:
@@ -335,23 +332,20 @@ def run(run_or_experiment,
 
     wait_for_sync()
 
-    errored_trials = []
+    incomplete_trials = []
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
-            errored_trials += [trial]
+            incomplete_trials += [trial]
 
-    if errored_trials:
+    if incomplete_trials:
         if raise_on_failed_trial:
-            raise TuneError("Trials did not complete", errored_trials)
+            raise TuneError("Trials did not complete", incomplete_trials)
         else:
-            logger.error("Trials did not complete: %s", errored_trials)
+            logger.error("Trials did not complete: %s", incomplete_trials)
 
     trials = runner.get_trials()
     if return_trials:
         return trials
-    logger.info("Returning an analysis object by default. You can call "
-                "`analysis.trials` to retrieve a list of trials. "
-                "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 

@@ -3,15 +3,17 @@
 https://arxiv.org/abs/1803.00933"""
 
 import collections
+import logging
+import numpy as np
 import os
 import random
-import time
-import threading
-
-import numpy as np
 from six.moves import queue
+import threading
+import time
 
 import ray
+from ray.exceptions import RayError
+from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -26,6 +28,8 @@ from ray.rllib.utils.window_stat import WindowStat
 SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4
 LEARNER_QUEUE_MAX_SIZE = 16
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncReplayOptimizer(PolicyOptimizer):
@@ -52,7 +56,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                  prioritized_replay_beta=0.4,
                  prioritized_replay_eps=1e-6,
                  train_batch_size=512,
-                 sample_batch_size=50,
+                 rollout_fragment_length=50,
                  num_replay_buffer_shards=1,
                  max_weight_sync_delay=400,
                  debug=False,
@@ -69,7 +73,8 @@ class AsyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_beta (float): replay beta hyperparameter
             prioritized_replay_eps (float): replay eps hyperparameter
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
             num_replay_buffer_shards (int): number of actors to use to store
                 replay samples
             max_weight_sync_delay (int): update the weights of a rollout worker
@@ -206,19 +211,42 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
-            counts = ray_get_and_free([c[1][1] for c in completed])
-            for i, (ev, (sample_batch, count)) in enumerate(completed):
-                sample_timesteps += counts[i]
+            # First try a batched ray.get().
+            ray_error = None
+            try:
+                counts = {
+                    i: v
+                    for i, v in enumerate(
+                        ray_get_and_free([c[1][1] for c in completed]))
+                }
+            # If there are failed workers, try to recover the still good ones
+            # (via non-batched ray.get()) and store the first error (to raise
+            # later).
+            except RayError:
+                counts = {}
+                for i, c in enumerate(completed):
+                    try:
+                        counts[i] = ray_get_and_free(c[1][1])
+                    except RayError as e:
+                        logger.exception(
+                            "Error in completed task: {}".format(e))
+                        ray_error = ray_error if ray_error is not None else e
 
+            for i, (ev, (sample_batch, count)) in enumerate(completed):
+                # Skip failed tasks.
+                if i not in counts:
+                    continue
+
+                sample_timesteps += counts[i]
                 # Send the data to the replay buffer
                 random.choice(
                     self.replay_actors).add_batch.remote(sample_batch)
 
-                # Update weights if needed
+                # Update weights if needed.
                 self.steps_since_update[ev] += counts[i]
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     # Note that it's important to pull new weights once
-                    # updated to avoid excessive correlation between actors
+                    # updated to avoid excessive correlation between actors.
                     if weights is None or self.learner.weights_updated:
                         self.learner.weights_updated = False
                         with self.timers["put_weights"]:
@@ -228,8 +256,13 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
 
-                # Kick off another sample request
+                # Kick off another sample request.
                 self.sample_tasks.add(ev, ev.sample_with_count.remote())
+
+            # Now that all still good tasks have been kicked off again,
+            # we can throw the error.
+            if ray_error:
+                raise ray_error
 
         with self.timers["replay_processing"]:
             for ra, replay in self.replay_tasks.completed():
@@ -252,7 +285,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
 
 @ray.remote(num_cpus=0)
-class ReplayActor:
+class ReplayActor(ParallelIteratorWorker):
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
@@ -266,6 +299,12 @@ class ReplayActor:
         self.train_batch_size = train_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+
+        def gen_replay():
+            while True:
+                yield self.replay()
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
             return PrioritizedReplayBuffer(
@@ -404,6 +443,7 @@ class LearnerThread(threading.Thread):
         self.outqueue = queue.Queue()
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
+        self.overall_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
@@ -414,17 +454,20 @@ class LearnerThread(threading.Thread):
             self.step()
 
     def step(self):
-        with self.queue_timer:
-            ra, replay = self.inqueue.get()
-        if replay is not None:
-            prio_dict = {}
-            with self.grad_timer:
-                grad_out = self.local_worker.learn_on_batch(replay)
-                for pid, info in grad_out.items():
-                    prio_dict[pid] = (
-                        replay.policy_batches[pid].data.get("batch_indexes"),
-                        info.get("td_error"))
-                    self.stats[pid] = get_learner_stats(info)
-            self.outqueue.put((ra, prio_dict, replay.count))
-        self.learner_queue_size.push(self.inqueue.qsize())
-        self.weights_updated = True
+        with self.overall_timer:
+            with self.queue_timer:
+                ra, replay = self.inqueue.get()
+            if replay is not None:
+                prio_dict = {}
+                with self.grad_timer:
+                    grad_out = self.local_worker.learn_on_batch(replay)
+                    for pid, info in grad_out.items():
+                        prio_dict[pid] = (replay.policy_batches[pid].data.get(
+                            "batch_indexes"), info.get("td_error"))
+                        self.stats[pid] = get_learner_stats(info)
+                    self.grad_timer.push_units_processed(replay.count)
+                self.outqueue.put((ra, prio_dict, replay.count))
+            self.learner_queue_size.push(self.inqueue.qsize())
+            self.weights_updated = True
+            self.overall_timer.push_units_processed(replay and replay.count
+                                                    or 0)

@@ -53,7 +53,8 @@ class AggregationWorkerBase:
 
     def __init__(self, initial_weights_obj_id, remote_workers,
                  max_sample_requests_in_flight_per_worker, replay_proportion,
-                 replay_buffer_num_slots, train_batch_size, sample_batch_size):
+                 replay_buffer_num_slots, train_batch_size,
+                 rollout_fragment_length):
         """Initialize an aggregator.
 
         Arguments:
@@ -65,20 +66,22 @@ class AggregationWorkerBase:
             replay_buffer_num_slots (int): max number of sample batches to
                 store in the replay buffer
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
         """
 
         self.broadcasted_weights = initial_weights_obj_id
         self.remote_workers = remote_workers
-        self.sample_batch_size = sample_batch_size
+        self.rollout_fragment_length = rollout_fragment_length
         self.train_batch_size = train_batch_size
 
         if replay_proportion:
-            if replay_buffer_num_slots * sample_batch_size <= train_batch_size:
+            if (replay_buffer_num_slots * rollout_fragment_length <=
+                    train_batch_size):
                 raise ValueError(
                     "Replay buffer size is too small to produce train, "
                     "please increase replay_buffer_num_slots.",
-                    replay_buffer_num_slots, sample_batch_size,
+                    replay_buffer_num_slots, rollout_fragment_length,
                     train_batch_size)
 
         # Kick off async background sampling
@@ -159,7 +162,7 @@ class AggregationWorkerBase:
     def _augment_with_replay(self, sample_futures):
         def can_replay():
             num_needed = int(
-                np.ceil(self.train_batch_size / self.sample_batch_size))
+                np.ceil(self.train_batch_size / self.rollout_fragment_length))
             return len(self.replay_batches) > num_needed
 
         for ev, sample_batch in sample_futures:
@@ -184,7 +187,7 @@ class SimpleAggregator(AggregationWorkerBase, Aggregator):
                  replay_proportion=0.0,
                  replay_buffer_num_slots=0,
                  train_batch_size=500,
-                 sample_batch_size=50,
+                 rollout_fragment_length=50,
                  broadcast_interval=5):
         self.workers = workers
         self.local_worker = workers.local_worker()
@@ -193,7 +196,7 @@ class SimpleAggregator(AggregationWorkerBase, Aggregator):
         AggregationWorkerBase.__init__(
             self, self.broadcasted_weights, self.workers.remote_workers(),
             max_sample_requests_in_flight_per_worker, replay_proportion,
-            replay_buffer_num_slots, train_batch_size, sample_batch_size)
+            replay_buffer_num_slots, train_batch_size, rollout_fragment_length)
 
     @override(Aggregator)
     def broadcast_new_weights(self):

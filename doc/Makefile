@@ -2,11 +2,11 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    =
+SPHINXOPTS    = 
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = _build
-AUTOGALLERYDIR= source/auto_examples
+AUTOGALLERYDIR= source/auto_examples source/tune/generated_guides
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -51,6 +51,7 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/* $(AUTOGALLERYDIR)
+	rm -rf site/_site site/Gemfile.lock site/.sass-cache
 
 html:
 	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html

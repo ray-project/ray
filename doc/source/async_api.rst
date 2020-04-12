@@ -1,10 +1,10 @@
-Async API (Experimental)
-========================
+AsyncIO / Concurrency for Actors
+================================
 
 Since Python 3.5, it is possible to write concurrent code using the
 ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
 Ray natively integrates with asyncio. You can use ray alongside with popular
-async frameworks like aiohttp, aioredis, etc. 
+async frameworks like aiohttp, aioredis, etc.
 
 You can try it about by running the following snippet in ``ipython`` or a shell
 that supports top level ``await``:
@@ -25,14 +25,14 @@ that supports top level ``await``:
             print("finished")
 
     actor = AsyncActor.remote()
-    
+
     # regular ray.get
     ray.get([actor.run_concurrent.remote() for _ in range(4)])
 
     # async ray.get
     await actor.run_concurrent.remote()
 
-    
+
 ObjectIDs as asyncio.Futures
 ----------------------------
 ObjectIDs can be translated to asyncio.Future. This feature
@@ -105,7 +105,7 @@ You can limit the number of concurrent task running at once using the
             await asyncio.sleep(1) # Network, I/O task here
             print("ended")
 
-    actor = AsyncActor.options(max_concurreny=10).remote()
+    actor = AsyncActor.options(max_concurrency=10).remote()
 
     # Only 10 tasks will be running concurrently. Once 10 finish, the next 10 should run.
     ray.get([actor.run_task.remote() for _ in range(50)])

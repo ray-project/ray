@@ -3,7 +3,7 @@
 pendulum_sac:
     env: Pendulum-v0
     run: SAC
-    stop: 
+    stop:
         episode_reward_mean: -150
     config:
         horizon: 200
@@ -18,13 +18,12 @@ pendulum_sac:
         target_entropy: auto
         no_done_at_end: True
         n_step: 1
-        sample_batch_size: 1
+        rollout_fragment_length: 1
         prioritized_replay: False
         train_batch_size: 256
         target_network_update_freq: 1
         timesteps_per_iteration: 1000
         learning_starts: 256
-        exploration_enabled: True
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

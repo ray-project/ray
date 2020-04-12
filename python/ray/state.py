@@ -5,7 +5,6 @@ import sys
 import time
 
 import ray
-from ray.function_manager import FunctionDescriptor
 
 from ray import (
     gcs_utils,
@@ -106,8 +105,8 @@ def _parse_resource_table(redis_client, client_id):
     gcs_entry = gcs_utils.GcsEntry.FromString(message)
     entries_len = len(gcs_entry.entries)
     if entries_len % 2 != 0:
-        raise Exception("Invalid entry size for resource lookup: " +
-                        str(entries_len))
+        raise ValueError("Invalid entry size for resource lookup: " +
+                         str(entries_len))
 
     for i in range(0, entries_len, 2):
         resource_table_data = gcs_utils.ResourceTableData.FromString(
@@ -140,16 +139,16 @@ class GlobalState:
         """Check that the object has been initialized before it is used.
 
         Raises:
-            Exception: An exception is raised if ray.init() has not been called
-                yet.
+            RuntimeError: An exception is raised if ray.init() has not been
+                called yet.
         """
         if self.redis_client is None:
-            raise Exception("The ray global state API cannot be used before "
-                            "ray.init has been called.")
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
 
         if self.redis_clients is None:
-            raise Exception("The ray global state API cannot be used before "
-                            "ray.init has been called.")
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -185,9 +184,9 @@ class GlobalState:
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if num_redis_shards < 1:
-                raise Exception("Expected at least one Redis shard, found "
-                                "{}.".format(num_redis_shards))
+            assert num_redis_shards >= 1, (
+                "Expected at least one Redis "
+                "shard, found {}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
             redis_shard_addresses = self.redis_client.lrange(
@@ -202,10 +201,10 @@ class GlobalState:
 
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
-            raise Exception("Timed out while attempting to initialize the "
-                            "global state. num_redis_shards = {}, "
-                            "redis_shard_addresses = {}".format(
-                                num_redis_shards, redis_shard_addresses))
+            raise TimeoutError("Timed out while attempting to initialize the "
+                               "global state. num_redis_shards = {}, "
+                               "redis_shard_addresses = {}".format(
+                                   num_redis_shards, redis_shard_addresses))
 
         # Get the rest of the information.
         self.redis_clients = []
@@ -319,9 +318,9 @@ class GlobalState:
             return {}
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
 
-        assert len(gcs_entries.entries) == 1
+        assert len(gcs_entries.entries) > 0
         actor_table_data = gcs_utils.ActorTableData.FromString(
-            gcs_entries.entries[0])
+            gcs_entries.entries[-1])
 
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
@@ -334,7 +333,7 @@ class GlobalState:
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
-            "IsDirectCall": actor_table_data.is_direct_call,
+            "IsDirectCall": True,
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
         }
@@ -368,92 +367,6 @@ class GlobalState:
             for actor_id_binary in actor_ids_binary:
                 results[binary_to_hex(actor_id_binary)] = self._actor_table(
                     ray.ActorID(actor_id_binary))
-            return results
-
-    def _task_table(self, task_id):
-        """Fetch and parse the task table information for a single task ID.
-
-        Args:
-            task_id: A task ID to get information about.
-
-        Returns:
-            A dictionary with information about the task ID in question.
-        """
-        assert isinstance(task_id, ray.TaskID)
-        message = self._execute_command(
-            task_id, "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("RAYLET_TASK"), "", task_id.binary())
-        if message is None:
-            return {}
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-
-        assert len(gcs_entries.entries) == 1
-        task_table_data = gcs_utils.TaskTableData.FromString(
-            gcs_entries.entries[0])
-
-        task = ray._raylet.TaskSpec.from_string(
-            task_table_data.task.task_spec.SerializeToString())
-        function_descriptor_list = task.function_descriptor_list()
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            function_descriptor_list)
-
-        task_spec_info = {
-            "JobID": task.job_id().hex(),
-            "TaskID": task.task_id().hex(),
-            "ParentTaskID": task.parent_task_id().hex(),
-            "ParentCounter": task.parent_counter(),
-            "ActorID": (task.actor_id().hex()),
-            "ActorCreationID": task.actor_creation_id().hex(),
-            "ActorCreationDummyObjectID": (
-                task.actor_creation_dummy_object_id().hex()),
-            "PreviousActorTaskDummyObjectID": (
-                task.previous_actor_task_dummy_object_id().hex()),
-            "ActorCounter": task.actor_counter(),
-            "Args": task.arguments(),
-            "ReturnObjectIDs": task.returns(),
-            "RequiredResources": task.required_resources(),
-            "FunctionID": function_descriptor.function_id.hex(),
-            "FunctionHash": binary_to_hex(function_descriptor.function_hash),
-            "ModuleName": function_descriptor.module_name,
-            "ClassName": function_descriptor.class_name,
-            "FunctionName": function_descriptor.function_name,
-        }
-
-        execution_spec = ray._raylet.TaskExecutionSpec.from_string(
-            task_table_data.task.task_execution_spec.SerializeToString())
-        return {
-            "ExecutionSpec": {
-                "NumForwards": execution_spec.num_forwards(),
-            },
-            "TaskSpec": task_spec_info
-        }
-
-    def task_table(self, task_id=None):
-        """Fetch and parse the task table information for one or more task IDs.
-
-        Args:
-            task_id: A hex string of the task ID to fetch information about. If
-                this is None, then the task object table is fetched.
-
-        Returns:
-            Information from the task table.
-        """
-        self._check_connected()
-        if task_id is not None:
-            task_id = ray.TaskID(hex_to_binary(task_id))
-            return self._task_table(task_id)
-        else:
-            task_table_keys = self._keys(
-                gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
-            task_ids_binary = [
-                key[len(gcs_utils.TablePrefix_RAYLET_TASK_string):]
-                for key in task_table_keys
-            ]
-
-            results = {}
-            for task_id_binary in task_ids_binary:
-                results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.TaskID(task_id_binary))
             return results
 
     def client_table(self):
@@ -1138,19 +1051,6 @@ def actors(actor_id=None):
         Information about the actors.
     """
     return state.actor_table(actor_id=actor_id)
-
-
-def tasks(task_id=None):
-    """Fetch and parse the task table information for one or more task IDs.
-
-    Args:
-        task_id: A hex string of the task ID to fetch information about. If
-            this is None, then the task object table is fetched.
-
-    Returns:
-        Information from the task table.
-    """
-    return state.task_table(task_id=task_id)
 
 
 def objects(object_id=None):

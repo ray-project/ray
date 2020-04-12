@@ -1,16 +1,16 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 ###############################################################################
-build --action_env=BAZEL_LLVM
-build --action_env=BAZEL_SH
+# On       Windows, provide: USE_CLANG_CL=1, CC=clang, BAZEL_LLVM, BAZEL_SH
+# On all platforms, provide: PYTHON2_BIN_PATH, PYTHON3_BIN_PATH
+###############################################################################
 build --action_env=PATH
-build --action_env=PYTHON2_BIN_PATH
-build --action_env=PYTHON3_BIN_PATH
-# Use Clang-Cl (Clang front-end with Visual C++ backend) on Windows
-build --action_env=USE_CLANG_CL=1
 build:linux   --compilation_mode=opt
 build:macos   --compilation_mode=opt
 build:windows --compilation_mode=fastbuild
+# This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
+build:linux --force_pic
+build:macos --force_pic
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
@@ -19,6 +19,11 @@ build --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="-\\.(asm|S)$,\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
+# Ignore this warning since it's impractical to fix in the relevant headers
+build --per_file_copt="-\\.(asm|S)$,.*/ray/raylet/reconstruction_policy_test\\.cc@-Wno-inconsistent-missing-override"
+# Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
+build --per_file_copt="-\\.(asm|S)$,.*/_raylet\\.cpp@-Wno-deprecated-declarations"
+build --per_file_copt="-\\.(asm|S)$,.*/_streaming\\.cpp@-Wno-deprecated-declarations"
 # Ignore minor warnings for host tools, which we generally can't control
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"
@@ -26,9 +31,21 @@ build --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
-# This workaround is due to an incompatibility of
-# bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
-build --incompatible_depset_is_not_iterable=false
+build:iwyu --experimental_action_listener=//:iwyu_cpp
+
+# Print relative paths when possible
+build:windows --attempt_to_print_relative_paths
+# Save disk space by hardlinking cache hits instead of copying
+build:windows --experimental_repository_cache_hardlinks
+# Avoid duplicate noise in the build output
+build:windows --experimental_ui_deduplicate
+# Clean the environment before building, to make builds more deterministic
+build:windows --incompatible_strict_action_env
+# For colored output (seems necessary on Windows)
+build:windows --color=yes
+# For compiler colored output (seems necessary on Windows)
+build:windows --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
+build:windows --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 
 # Thread sanitizer configuration:
 build:tsan --strip=never
@@ -37,3 +54,8 @@ build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
+
+# [Linux] Uncomment this line to print a stack trace on exit.
+#test:linux --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
+# [Linux] Uncomment this line to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
+#test:linux --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"

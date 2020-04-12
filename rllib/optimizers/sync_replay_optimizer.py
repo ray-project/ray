@@ -25,24 +25,24 @@ class SyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    def __init__(self,
-                 workers,
-                 learning_starts=1000,
-                 buffer_size=10000,
-                 prioritized_replay=True,
-                 prioritized_replay_alpha=0.6,
-                 prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6,
-                 schedule_max_timesteps=100000,
-                 beta_annealing_fraction=0.2,
-                 final_prioritized_replay_beta=0.4,
-                 train_batch_size=32,
-                 sample_batch_size=4,
-                 before_learn_on_batch=None,
-                 synchronize_sampling=False):
+    def __init__(
+            self,
+            workers,
+            learning_starts=1000,
+            buffer_size=10000,
+            prioritized_replay=True,
+            prioritized_replay_alpha=0.6,
+            prioritized_replay_beta=0.4,
+            prioritized_replay_eps=1e-6,
+            final_prioritized_replay_beta=0.4,
+            train_batch_size=32,
+            before_learn_on_batch=None,
+            synchronize_sampling=False,
+            prioritized_replay_beta_annealing_timesteps=100000 * 0.2,
+    ):
         """Initialize an sync replay optimizer.
 
-        Arguments:
+        Args:
             workers (WorkerSet): all workers
             learning_starts (int): wait until this many steps have been sampled
                 before starting optimization.
@@ -51,27 +51,27 @@ class SyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_alpha (float): replay alpha hyperparameter
             prioritized_replay_beta (float): replay beta hyperparameter
             prioritized_replay_eps (float): replay eps hyperparameter
-            schedule_max_timesteps (int): number of timesteps in the schedule
-            beta_annealing_fraction (float): fraction of schedule to anneal
-                beta over
-            final_prioritized_replay_beta (float): final value of beta
+            final_prioritized_replay_beta (float): Final value of beta.
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
             before_learn_on_batch (function): callback to run before passing
                 the sampled batch to learn on
             synchronize_sampling (bool): whether to sample the experiences for
                 all policies with the same indices (used in MADDPG).
+            prioritized_replay_beta_annealing_timesteps (int): The timestep at
+                which PR-beta annealing should end.
         """
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
+
         # Linearly annealing beta used in Rainbow paper, stopping at
         # `final_prioritized_replay_beta`.
         self.prioritized_replay_beta = PiecewiseSchedule(
             endpoints=[(0, prioritized_replay_beta),
-                       (schedule_max_timesteps * beta_annealing_fraction,
+                       (prioritized_replay_beta_annealing_timesteps,
                         final_prioritized_replay_beta)],
-            outside_value=final_prioritized_replay_beta)
+            outside_value=final_prioritized_replay_beta,
+            framework=None)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
         self.before_learn_on_batch = before_learn_on_batch
@@ -169,7 +169,12 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 self.learner_stats[policy_id] = get_learner_stats(info)
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
-                    td_error = info["td_error"]
+                    # TODO(sven): This is currently structured differently for
+                    #  torch/tf. Clean up these results/info dicts across
+                    #  policies (note: fixing this in torch_policy.py will
+                    #  break e.g. DDPPO!).
+                    td_error = info.get(
+                        "td_error", info["learner_stats"].get("td_error"))
                     new_priorities = (
                         np.abs(td_error) + self.prioritized_replay_eps)
                     replay_buffer.update_priorities(

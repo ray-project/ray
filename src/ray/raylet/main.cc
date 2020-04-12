@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <iostream>
 
 #include "gflags/gflags.h"
@@ -7,6 +21,8 @@
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
+
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -97,6 +113,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
+  node_manager_config.raylet_config = raylet_config;
   node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
@@ -122,6 +139,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.free_objects_period_ms =
+      RayConfig::instance().free_objects_period_milliseconds();
   node_manager_config.fair_queueing_enabled =
       RayConfig::instance().fair_queueing_enabled();
   node_manager_config.object_pinning_enabled =
@@ -156,7 +175,13 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
-  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+
+  if (RayConfig::instance().gcs_service_enabled()) {
+    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  } else {
+    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
@@ -176,7 +201,12 @@ int main(int argc, char *argv[]) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };
-  boost::asio::signal_set signals(main_service, SIGTERM);
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
   signals.async_wait(handler);
 
   main_service.run();

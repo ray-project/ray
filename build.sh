@@ -5,20 +5,24 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
+# As the supported Python versions change, edit this array:
+SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" "3.8" )
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 function usage()
 {
-  echo "Usage: build.sh [<args>]"
-  echo
-  echo "Options:"
-  echo "  -h|--help               print the help info"
-  echo "  -l|--language language1[,language2]"
-  echo "                          a list of languages to build native libraries."
-  echo "                          Supported languages include \"python\" and \"java\"."
-  echo "                          If not specified, only python library will be built."
-  echo "  -p|--python             which python executable (default from which python)"
-  echo
+  cat <<EOF
+Usage: build.sh [<args>]
+
+Options:
+  -h|--help               print the help info
+  -l|--language language1[,language2]
+                          a list of languages to build native libraries.
+                          Supported languages include "python" and "java".
+                          If not specified, only python library will be built.
+  -p|--python  mypython   which python executable (default: result of "which python")
+EOF
 }
 
 # Determine how many parallel jobs to use for make based on the number of cores
@@ -45,7 +49,7 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    -l|--languags)
+    -l|--language)
       LANGUAGE="$2"
       RAY_BUILD_PYTHON="NO"
       RAY_BUILD_JAVA="NO"
@@ -78,6 +82,26 @@ done
 if [[ -z  "$PYTHON_EXECUTABLE" ]]; then
   PYTHON_EXECUTABLE=$(which python)
 fi
+
+PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
+found=
+for allowed in ${SUPPORTED_PYTHONS[@]}
+do
+  if [[ "$PYTHON_VERSION" == $allowed ]]
+  then
+    found=$allowed
+    break
+  fi
+done
+if [[ -z $found ]]
+then
+  cat <<EOF
+ERROR: Detected Python version $PYTHON_VERSION, which is not supported.
+       Please use version 3.6 or 3.7.
+EOF
+  exit 1
+fi
+
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
 # Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
@@ -93,30 +117,24 @@ fi
 
 pushd "$BUILD_DIR"
 
-# The following line installs pyarrow from S3, these wheels have been
-# generated from https://github.com/ray-project/arrow-build from
-# the commit listed in the command.
-if [ -z "$SKIP_PYARROW_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q \
-        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
-fi
 
-PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
-if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
-  WORK_DIR=`mktemp -d`
-  pushd $WORK_DIR
-    git clone https://github.com/pitrou/pickle5-backport
-    pushd pickle5-backport
-      git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
-      "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-      unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
-    popd
-  popd
+WORK_DIR=`mktemp -d`
+pushd $WORK_DIR
+git clone https://github.com/suquark/pickle5-backport
+pushd pickle5-backport
+  git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
+  "$PYTHON_EXECUTABLE" setup.py bdist_wheel
+  unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+popd
+popd
+
+
+if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+            --target="$ROOT_DIR/python/ray/thirdparty_files"
 fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
-export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures

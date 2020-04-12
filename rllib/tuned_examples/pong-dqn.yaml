@@ -11,11 +11,11 @@ pong-deterministic-dqn:
         lr: .0001
         learning_starts: 10000
         buffer_size: 50000
-        sample_batch_size: 4
+        rollout_fragment_length: 4
         train_batch_size: 32
-        schedule_max_timesteps: 2000000
-        exploration_final_eps: .01
-        exploration_fraction: .1
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: .01
         model:
           grayscale: True
           zero_mean: False

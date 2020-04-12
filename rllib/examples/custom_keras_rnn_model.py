@@ -1,10 +1,10 @@
 """Example of using a custom RNN keras model."""
 
+import argparse
 import gym
 from gym.spaces import Discrete
 import numpy as np
 import random
-import argparse
 
 import ray
 from ray import tune
@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--stop", type=int, default=90)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class MyKerasRNN(RecurrentTFModelV2):
@@ -88,13 +89,17 @@ class MyKerasRNN(RecurrentTFModelV2):
 
 
 class RepeatInitialEnv(gym.Env):
-    """Simple env in which the policy learns to repeat the initial observation
-    seen at timestep 0."""
+    """Simple env where policy has to always repeat the initial observation.
 
-    def __init__(self):
+    Runs for 100 steps.
+    r=1 if action correct, -1 otherwise (max. R=100).
+    """
+
+    def __init__(self, episode_len=100):
         self.observation_space = Discrete(2)
         self.action_space = Discrete(2)
         self.token = None
+        self.episode_len = episode_len
         self.num_steps = 0
 
     def reset(self):
@@ -108,7 +113,7 @@ class RepeatInitialEnv(gym.Env):
         else:
             reward = -1
         self.num_steps += 1
-        done = self.num_steps > 100
+        done = self.num_steps >= self.episode_len
         return 0, reward, done, {}
 
 
@@ -142,27 +147,31 @@ class RepeatAfterMeEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())
+
+    config = {
+        "env": args.env,
+        "env_config": {
+            "repeat_delay": 2,
+        },
+        "gamma": 0.9,
+        "num_workers": 0,
+        "num_envs_per_worker": 20,
+        "entropy_coeff": 0.001,
+        "num_sgd_iter": 5,
+        "vf_loss_coeff": 1e-5,
+        "model": {
+            "custom_model": "rnn",
+            "max_seq_len": 20,
+        },
+    }
+
     tune.run(
         args.run,
+        config=config,
         stop={"episode_reward_mean": args.stop},
-        config={
-            "env": args.env,
-            "env_config": {
-                "repeat_delay": 2,
-            },
-            "gamma": 0.9,
-            "num_workers": 0,
-            "num_envs_per_worker": 20,
-            "entropy_coeff": 0.001,
-            "num_sgd_iter": 5,
-            "vf_loss_coeff": 1e-5,
-            "model": {
-                "custom_model": "rnn",
-                "max_seq_len": 20,
-            },
-        })
+    )

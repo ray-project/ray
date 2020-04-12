@@ -1,8 +1,23 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_COMMON_JAVA_JNI_UTILS_H
 #define RAY_COMMON_JAVA_JNI_UTILS_H
 
 #include <jni.h>
 #include "ray/common/buffer.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
@@ -96,14 +111,12 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_default_use_direct_call;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_reconstructions;
-/// useDirectCall field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
+/// maxConcurrency field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_concurrency;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -180,7 +193,7 @@ class JavaByteArrayBuffer : public ray::Buffer {
 
   bool OwnsData() const override { return true; }
 
-  bool IsPlasmaBuffer() const { return false; }
+  bool IsPlasmaBuffer() const override { return false; }
 
   ~JavaByteArrayBuffer() {
     env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);
@@ -284,6 +297,39 @@ inline jobject NativeIdVectorToJavaByteArrayList(JNIEnv *env,
   });
 }
 
+/// Convert a Java Map<?, ?> to a C++ std::unordered_map<?, ?>
+template <typename key_type, typename value_type>
+inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
+    JNIEnv *env, jobject java_map,
+    const std::function<key_type(JNIEnv *, jobject)> &key_converter,
+    const std::function<value_type(JNIEnv *, jobject)> &value_converter) {
+  std::unordered_map<key_type, value_type> native_map;
+  if (java_map) {
+    jobject entry_set = env->CallObjectMethod(java_map, java_map_entry_set);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      key_type key = key_converter(env, java_key);
+      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
+      value_type value = value_converter(env, java_value);
+      native_map.emplace(key, value);
+      env->DeleteLocalRef(java_key);
+      env->DeleteLocalRef(java_value);
+      env->DeleteLocalRef(map_entry);
+    }
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(iterator);
+    env->DeleteLocalRef(entry_set);
+  }
+  return native_map;
+}
+
 /// Convert a C++ ray::Buffer to a Java byte array.
 inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
                                               const std::shared_ptr<ray::Buffer> buffer) {
@@ -326,7 +372,9 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
+  // TODO: Support nested IDs for Java.
+  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
+                                          std::vector<ray::ObjectID>());
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
@@ -342,6 +390,28 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   env->DeleteLocalRef(java_metadata);
   env->DeleteLocalRef(java_data);
   return java_obj;
+}
+
+// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
+inline jobject NativeRayFunctionDescriptorToJavaStringList(
+    JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
+  if (function_descriptor->Type() ==
+      ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
+                                                         typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Signature()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {
+        typed_descriptor->ModuleName(), typed_descriptor->ClassName(),
+        typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  }
+  RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
+  return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_UTILS_H

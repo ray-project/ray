@@ -2,16 +2,17 @@ import os
 
 import colorama
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
-
 import ray
+import setproctitle
 
 
 class RayError(Exception):
     """Super class of all ray exception types."""
+    pass
+
+
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
     pass
 
 
@@ -40,10 +41,8 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         if proctitle:
             self.proctitle = proctitle
-        elif setproctitle:
-            self.proctitle = setproctitle.getproctitle()
         else:
-            self.proctitle = "ray_worker"
+            self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name
@@ -133,7 +132,17 @@ class ObjectStoreFullError(RayError):
     This is raised if the attempt to store the object fails
     because the object store is full even after multiple retries.
     """
-    pass
+
+    def __str__(self):
+        return super(ObjectStoreFullError, self).__str__() + (
+            "\n"
+            "The local object store is full of objects that are still in scope"
+            " and cannot be evicted. Try increasing the object store memory "
+            "available with ray.init(object_store_memory=<bytes>). "
+            "You can also try setting an option to fallback to LRU eviction "
+            "when the object store is full by calling "
+            "ray.init(lru_evict=True). See also: "
+            "https://ray.readthedocs.io/en/latest/memory-management.html.")
 
 
 class UnreconstructableError(RayError):
@@ -166,7 +175,13 @@ class RayTimeoutError(RayError):
     pass
 
 
+class PlasmaObjectNotAvailable(RayError):
+    """Called when an object was not available within the given timeout."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
+    PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
     RayWorkerError,

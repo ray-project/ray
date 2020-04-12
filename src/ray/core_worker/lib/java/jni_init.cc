@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 jclass java_boolean_class;
@@ -52,10 +66,9 @@ jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_default_use_direct_call;
 jfieldID java_actor_creation_options_max_reconstructions;
-jfieldID java_actor_creation_options_use_direct_call;
 jfieldID java_actor_creation_options_jvm_options;
+jfieldID java_actor_creation_options_max_concurrency;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -156,15 +169,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_default_use_direct_call = env->GetStaticFieldID(
-      java_actor_creation_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
-  java_actor_creation_options_use_direct_call =
-      env->GetFieldID(java_actor_creation_options_class, "useDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
-
+  java_actor_creation_options_max_concurrency =
+      env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
   java_gcs_client_options_class = LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");

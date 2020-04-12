@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
+import os
+from pathlib import Path
 import yaml
 
 import ray
@@ -154,6 +156,16 @@ def run(args, parser):
 
     verbose = 1
     for exp in experiments.values():
+        # Bazel makes it hard to find files specified in `args` (and `data`).
+        # Look for them here.
+        # NOTE: Some of our yaml files don't have a `config` section.
+        if exp.get("config", {}).get("input") and \
+                not os.path.exists(exp["config"]["input"]):
+            # This script runs in the ray/rllib dir.
+            rllib_dir = Path(__file__).parent
+            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
+            exp["config"]["input"] = str(input_file)
+
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):

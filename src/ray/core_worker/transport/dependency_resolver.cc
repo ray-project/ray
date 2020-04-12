@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
@@ -18,7 +32,8 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined) {
+    TaskSpecification &task, std::vector<ObjectID> *inlined_dependency_ids,
+    std::vector<ObjectID> *contained_ids) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -43,7 +58,11 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          inlined->push_back(id);
+          for (const auto &nested_id : it->second->GetNestedIds()) {
+            mutable_arg->add_nested_inlined_ids(nested_id.Binary());
+            contained_ids->push_back(nested_id);
+          }
+          inlined_dependency_ids->push_back(id);
         }
         found++;
       } else {
@@ -80,27 +99,29 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
-    in_memory_store_->GetAsync(
-        obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
-          RAY_CHECK(obj != nullptr);
-          bool complete = false;
-          std::vector<ObjectID> inlined;
-          {
-            absl::MutexLock lock(&mu_);
-            state->local_dependencies[obj_id] = std::move(obj);
-            if (--state->dependencies_remaining == 0) {
-              InlineDependencies(state->local_dependencies, state->task, &inlined);
-              complete = true;
-              num_pending_ -= 1;
-            }
-          }
-          if (inlined.size() > 0) {
-            task_finisher_->OnTaskDependenciesInlined(inlined);
-          }
-          if (complete) {
-            on_complete();
-          }
-        });
+    in_memory_store_->GetAsync(obj_id, [this, state, obj_id,
+                                        on_complete](std::shared_ptr<RayObject> obj) {
+      RAY_CHECK(obj != nullptr);
+      bool complete = false;
+      std::vector<ObjectID> inlined_dependency_ids;
+      std::vector<ObjectID> contained_ids;
+      {
+        absl::MutexLock lock(&mu_);
+        state->local_dependencies[obj_id] = std::move(obj);
+        if (--state->dependencies_remaining == 0) {
+          InlineDependencies(state->local_dependencies, state->task,
+                             &inlined_dependency_ids, &contained_ids);
+          complete = true;
+          num_pending_ -= 1;
+        }
+      }
+      if (inlined_dependency_ids.size() > 0) {
+        task_finisher_->OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
+      }
+      if (complete) {
+        on_complete();
+      }
+    });
   }
 }
 

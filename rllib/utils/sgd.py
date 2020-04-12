@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 import random
 
+from ray.util import log_once
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 def averaged(kv):
     """Average the value lists of a dictionary.
+
+    For non-scalar values, we simply pick the first value.
 
     Arguments:
         kv (dict): dictionary with values that are lists of floats.
@@ -25,6 +28,8 @@ def averaged(kv):
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
             out[k] = np.mean(v)
+        else:
+            out[k] = v[0]
     return out
 
 
@@ -59,7 +64,8 @@ def minibatches(samples, sgd_minibatch_size):
             "Minibatching not implemented for multi-agent in simple mode")
 
     if "state_in_0" in samples.data:
-        logger.warning("Not shuffling RNN data for SGD in simple mode")
+        if log_once("not_shuffling_rnn_data_in_simple_mode"):
+            logger.warning("Not shuffling RNN data for SGD in simple mode")
     else:
         samples.shuffle()
 
@@ -109,7 +115,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
-                for k, v in batch_fetches[LEARNER_STATS_KEY].items():
+                for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
                     iter_extra_fetches[k].append(v)
             logger.debug("{} {}".format(i, averaged(iter_extra_fetches)))
         fetches[policy_id] = averaged(iter_extra_fetches)

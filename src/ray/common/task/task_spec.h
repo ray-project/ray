@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -17,9 +18,7 @@ extern "C" {
 }
 
 namespace ray {
-
-typedef std::vector<std::string> FunctionDescriptor;
-typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClassDescriptor;
+typedef std::pair<ResourceSet, ray::FunctionDescriptor> SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
@@ -63,7 +62,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ParentCounter() const;
 
-  std::vector<std::string> FunctionDescriptor() const;
+  ray::FunctionDescriptor FunctionDescriptor() const;
 
   size_t NumArgs() const;
 
@@ -88,6 +87,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return the ObjectIDs that were inlined in this task argument.
+  const std::vector<ObjectID> ArgInlinedIds(size_t arg_index) const;
 
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
@@ -157,8 +159,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
-  bool IsDirectActorCreationCall() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;
@@ -168,6 +168,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
+
+  // A one-word summary of the task func as a call site (e.g., __main__.foo).
+  std::string CallSiteString() const;
 
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
@@ -202,9 +205,7 @@ template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(ray::SchedulingClassDescriptor const &k) const {
     size_t seed = std::hash<ray::ResourceSet>()(k.first);
-    for (const auto &str : k.second) {
-      seed ^= std::hash<std::string>()(str);
-    }
+    seed ^= k.second->Hash();
     return seed;
   }
 };

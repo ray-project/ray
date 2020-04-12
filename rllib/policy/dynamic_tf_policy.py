@@ -4,13 +4,13 @@ from collections import OrderedDict
 import logging
 import numpy as np
 
+from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils import try_import_tf, override
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf = try_import_tf()
@@ -48,6 +48,7 @@ class DynamicTFPolicy(TFPolicy):
                  before_loss_init=None,
                  make_model=None,
                  action_sampler_fn=None,
+                 action_distribution_fn=None,
                  existing_inputs=None,
                  existing_model=None,
                  get_batch_divisibility_req=None,
@@ -70,10 +71,19 @@ class DynamicTFPolicy(TFPolicy):
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (func): optional function that returns a
-                tuple of action and action logp tensors given
-                (policy, model, input_dict, obs_space, action_space, config).
-                If not specified, a default action distribution will be used.
+            action_sampler_fn (Optional[callable]): An optional callable
+                 returning a tuple of action and action prob tensors given
+                 (policy, model, input_dict, obs_space, action_space, config).
+                 If None, a default action distribution will be used.
+            action_distribution_fn (Optional[callable]): A callable returning
+                distribution inputs (parameters), a dist-class to generate an
+                action distribution object from, and internal-state outputs
+                (or an empty list if not applicable).
+                Note: No Exploration hooks have to be called from within
+                `action_distribution_fn`. It's should only perform a simple
+                forward pass through some model.
+                If None, pass inputs through `self.model()` to get the
+                distribution inputs.
             existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
@@ -84,7 +94,10 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward (bool): whether to include the
                 previous action and reward in the model input
         """
+        self.observation_space = obs_space
+        self.action_space = action_space
         self.config = config
+        self.framework = "tf"
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
@@ -98,16 +111,23 @@ class DynamicTFPolicy(TFPolicy):
             if self._obs_include_prev_action_reward:
                 prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
                 prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
+            action_input = existing_inputs[SampleBatch.ACTIONS]
+            explore = existing_inputs["is_exploring"]
+            timestep = existing_inputs["timestep"]
         else:
             obs = tf.placeholder(
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
+            action_input = ModelCatalog.get_action_placeholder(action_space)
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
-                    action_space)
+                    action_space, "prev_action")
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
+            explore = tf.placeholder_with_default(
+                True, (), name="is_exploring")
+            timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -115,19 +135,21 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        # Placeholder for RNN time-chunk valid lengths.
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
-        # Setup model
-        if action_sampler_fn:
+        dist_class = dist_inputs = None
+        if action_sampler_fn or action_distribution_fn:
             if not make_model:
                 raise ValueError(
-                    "make_model is required if action_sampler_fn is given")
-            self.dist_class = None
+                    "`make_model` is required if `action_sampler_fn` OR "
+                    "`action_distribution_fn` is given")
         else:
-            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+            dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
+        # Setup self.model.
         if existing_model:
             self.model = existing_model
         elif make_model:
@@ -139,6 +161,9 @@ class DynamicTFPolicy(TFPolicy):
                 logit_dim,
                 self.config["model"],
                 framework="tf")
+
+        # Create the Exploration object to use for this Policy.
+        self.exploration = self._create_exploration()
 
         if existing_inputs:
             self._state_in = [
@@ -153,34 +178,66 @@ class DynamicTFPolicy(TFPolicy):
                 for s in self.model.get_initial_state()
             ]
 
-        model_out, self._state_out = self.model(self._input_dict,
-                                                self._state_in, self._seq_lens)
-
-        # Setup action sampler
+        # Fully customized action generation (e.g., custom policy).
         if action_sampler_fn:
-            action_sampler, action_logp = action_sampler_fn(
-                self, self.model, self._input_dict, obs_space, action_space,
-                config)
+            sampled_action, sampled_action_logp = action_sampler_fn(
+                self,
+                self.model,
+                obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                state_batches=self._state_in,
+                seq_lens=self._seq_lens,
+                prev_action_batch=self._input_dict[SampleBatch.PREV_ACTIONS],
+                prev_reward_batch=self._input_dict[SampleBatch.PREV_REWARDS],
+                explore=explore,
+                is_training=self._input_dict["is_training"])
         else:
-            action_dist = self.dist_class(model_out, self.model)
-            action_sampler = action_dist.sample()
-            action_logp = action_dist.sampled_action_logp()
+            # Distribution generation is customized, e.g., DQN, DDPG.
+            if action_distribution_fn:
+                dist_inputs, dist_class, self._state_out = \
+                    action_distribution_fn(
+                        self, self.model,
+                        obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                        state_batches=self._state_in,
+                        seq_lens=self._seq_lens,
+                        prev_action_batch=self._input_dict[
+                            SampleBatch.PREV_ACTIONS],
+                        prev_reward_batch=self._input_dict[
+                            SampleBatch.PREV_REWARDS],
+                        explore=explore,
+                        is_training=self._input_dict["is_training"])
+            # Default distribution generation behavior:
+            # Pass through model. E.g., PG, PPO.
+            else:
+                dist_inputs, self._state_out = self.model(
+                    self._input_dict, self._state_in, self._seq_lens)
 
-        # Phase 1 init
+            action_dist = dist_class(dist_inputs, self.model)
+
+            # Using exploration to get final action (e.g. via sampling).
+            sampled_action, sampled_action_logp = \
+                self.exploration.get_exploration_action(
+                    action_distribution=action_dist,
+                    timestep=timestep,
+                    explore=explore)
+
+        # Phase 1 init.
         sess = tf.get_default_session() or tf.Session()
         if get_batch_divisibility_req:
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:
             batch_divisibility_req = 1
-        TFPolicy.__init__(
-            self,
+
+        super().__init__(
             obs_space,
             action_space,
             config,
             sess,
             obs_input=obs,
-            action_sampler=action_sampler,
-            action_logp=action_logp,
+            action_input=action_input,  # for logp calculations
+            sampled_action=sampled_action,
+            sampled_action_logp=sampled_action_logp,
+            dist_inputs=dist_inputs,
+            dist_class=dist_class,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
@@ -190,7 +247,9 @@ class DynamicTFPolicy(TFPolicy):
             prev_reward_input=prev_rewards,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
-            batch_divisibility_req=batch_divisibility_req)
+            batch_divisibility_req=batch_divisibility_req,
+            explore=explore,
+            timestep=timestep)
 
         # Phase 2 init.
         if before_loss_init is not None:
@@ -223,9 +282,9 @@ class DynamicTFPolicy(TFPolicy):
                                existing_inputs[len(self._loss_inputs) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict(
-            [(k, existing_inputs[i])
-             for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+        input_dict = OrderedDict([("is_exploring", self._is_exploring), (
+            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, (
+                k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,

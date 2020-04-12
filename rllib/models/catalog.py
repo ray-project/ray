@@ -1,30 +1,29 @@
+from functools import partial
 import gym
 import logging
 import numpy as np
-from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
-
 from ray.rllib.models.extra_spaces import Simplex
-from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
-                                                      TorchDiagGaussian)
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.models.tf.tf_action_dist import (
-    Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution, Dirichlet)
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
+from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchMultiCategorical, TorchDiagGaussian
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.deprecation import deprecation_warning
 
 tf = try_import_tf()
 
@@ -77,8 +76,9 @@ MODEL_DEFAULTS = {
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
-    # Name of a custom action distribution to use
+    # Name of a custom action distribution to use.
     "custom_action_dist": None,
+
     # Extra options to pass to the custom classes
     "custom_options": {},
     # Custom preprocessors are deprecated. Please use a wrapper class around
@@ -106,38 +106,39 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(
-        action_space, config, dist_type=None, torch=None,
-        framework="tf"
-    ):
-        """
-        Returns action distribution class and size for the given action space.
+    def get_action_dist(action_space,
+                        config,
+                        dist_type=None,
+                        framework="tf",
+                        **kwargs):
+        """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
-            config (dict): Optional model config.
-            dist_type (str): Optional identifier of the action distribution.
-            torch (bool): Obsoleted: Whether to return PyTorch Model and
-                distribution (use framework="torch" instead).
+            config (Optional[dict]): Optional model config.
+            dist_type (Optional[str]): Identifier of the action distribution.
             framework (str): One of "tf" or "torch".
+            kwargs (dict): Optional kwargs to pass on to the Distribution's
+                constructor.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
             dist_dim (int): The size of the input vector to the distribution.
         """
-        # Obsoleted parameter `torch`:
-        if torch is not None:
-            deprecation_warning("`torch` parameter", "`framework`='tf|torch'")
-            framework = "torch" if torch else "tf"
-
         dist = None
         config = config or MODEL_DEFAULTS
+        # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
-
+        # Dist_type is given directly as a class.
+        elif type(dist_type) is type and \
+                issubclass(dist_type, ActionDistribution) and \
+                dist_type is not MultiActionDistribution:
+            dist = dist_type
+        # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
@@ -146,18 +147,21 @@ class ModelCatalog:
                     "Consider reshaping this into a single dimension, "
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
+            # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
                 dist = Deterministic
+        # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical
-        elif isinstance(action_space, gym.spaces.Tuple):
+        # Tuple Space -> MultiAction.
+        elif dist_type is MultiActionDistribution or \
+                isinstance(action_space, gym.spaces.Tuple):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Tuple action spaces not supported for Pytorch."
-                )
+                    "Tuple action spaces not supported for Pytorch.")
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
@@ -167,34 +171,32 @@ class ModelCatalog:
                 input_lens.append(action_size)
             return partial(
                 MultiActionDistribution,
-                child_distributions=child_dist,
                 action_space=action_space,
+                child_distributions=child_dist,
                 input_lens=input_lens), sum(input_lens)
+        # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Simplex action spaces not supported for Pytorch."
-                )
+                    "Simplex action spaces not supported for torch.")
             dist = Dirichlet
+        # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "MultiDiscrete action spaces not supported for Pytorch."
-                )
-            return partial(MultiCategorical, input_lens=action_space.nvec), \
+            dist = MultiCategorical if framework == "tf" else \
+                TorchMultiCategorical
+            return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+        # Dict -> TODO(sven)
         elif isinstance(action_space, gym.spaces.Dict):
             # TODO(sven): implement
             raise NotImplementedError(
                 "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead"
-            )
+                "gym.spaces.Tuple instead")
+        # Unknown type -> Error.
         else:
-            raise NotImplementedError(
-                "Unsupported args: {} {}".format(action_space, dist_type)
-            )
+            raise NotImplementedError("Unsupported args: {} {}".format(
+                action_space, dist_type))
 
         return dist, dist.required_model_output_shape(action_space, config)
 
@@ -225,6 +227,7 @@ class ModelCatalog:
                 else:
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
+            size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
         elif isinstance(action_space, gym.spaces.Dict):
             raise NotImplementedError(
@@ -236,7 +239,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space):
+    def get_action_placeholder(action_space, name=None):
         """Returns an action placeholder consistent with the action space
 
         Args:
@@ -247,7 +250,7 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name="action")
+        return tf.placeholder(dtype, shape=shape, name=(name or "action"))
 
     @staticmethod
     @DeveloperAPI
@@ -255,7 +258,7 @@ class ModelCatalog:
                      action_space,
                      num_outputs,
                      model_config,
-                     framework,
+                     framework="tf",
                      name="default_model",
                      model_interface=None,
                      default_model=None,
@@ -268,7 +271,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): Either "tf" or "torch".
+            framework (str): One of "tf" or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -347,8 +350,12 @@ class ModelCatalog:
             if default_model:
                 return default_model(obs_space, action_space, num_outputs,
                                      model_config, name)
-            return ModelCatalog._get_default_torch_model_v2(
+            v2_class = ModelCatalog._get_default_torch_model_class_v2(
                 obs_space, action_space, num_outputs, model_config, name)
+            # wrap in the requested interface
+            wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
         else:
             raise NotImplementedError(
                 "Framework must be 'tf' or 'torch': {}".format(framework))
@@ -448,7 +455,7 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, TFModelV2), model_cls
+        assert issubclass(model_cls, (TFModelV2, TorchModelV2)), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
@@ -463,30 +470,22 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
-    def _get_default_torch_model_v2(obs_space, action_space, num_outputs,
-                                    model_config, name):
+    def _get_default_torch_model_class_v2(obs_space, action_space, num_outputs,
+                                          model_config, name):
         from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                   PyTorchFCNet)
         from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                       PyTorchVisionNet)
-
         model_config = model_config or MODEL_DEFAULTS
-
         if model_config.get("use_lstm"):
             raise NotImplementedError(
                 "LSTM auto-wrapping not implemented for torch")
 
-        if isinstance(obs_space, gym.spaces.Discrete):
-            obs_rank = 1
+        if isinstance(obs_space, gym.spaces.Discrete) or \
+                len(obs_space.shape) <= 2:
+            return PyTorchFCNet
         else:
-            obs_rank = len(obs_space.shape)
-
-        if obs_rank > 2:
-            return PyTorchVisionNet(obs_space, action_space, num_outputs,
-                                    model_config, name)
-
-        return PyTorchFCNet(obs_space, action_space, num_outputs, model_config,
-                            name)
+            return PyTorchVisionNet
 
     @staticmethod
     def get_model(input_dict,

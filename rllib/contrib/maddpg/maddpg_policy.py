@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.agents.dqn.dqn_policy import minimize_and_clip, _adjust_nstep
+from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
@@ -73,14 +73,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     "Space {} is not supported.".format(space))
 
         obs_space_n = [
-            _make_continuous_space(space)
-            for _, (_, space, _,
-                    _) in sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space) for _, (_, space, _, _) in
+            sorted(config["multiagent"]["policies"].items())
         ]
         act_space_n = [
-            _make_continuous_space(space)
-            for _, (_, _, space,
-                    _) in sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space) for _, (_, _, space, _) in
+            sorted(config["multiagent"]["policies"].items())
         ]
 
         # _____ Placeholders
@@ -245,9 +243,10 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             config=config,
             sess=self.sess,
             obs_input=obs_ph_n[agent_id],
-            action_sampler=act_sampler,
+            sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
-            loss_inputs=loss_inputs)
+            loss_inputs=loss_inputs,
+            dist_inputs=actor_feature)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -339,9 +338,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = tf.concat(obs_n + act_n, axis=1)
 
             for hidden in hiddens:
-                out = tf.layers.dense(
-                    out, units=hidden, activation=activation
-                )
+                out = tf.layers.dense(out, units=hidden, activation=activation)
             feature = out
             out = tf.layers.dense(feature, units=1, activation=None)
 
@@ -367,9 +364,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = obs
 
             for hidden in hiddens:
-                out = tf.layers.dense(
-                    out, units=hidden, activation=activation
-                )
+                out = tf.layers.dense(out, units=hidden, activation=activation)
             feature = tf.layers.dense(
                 out, units=act_space.shape[0], activation=None)
             sampler = tfp.distributions.RelaxedOneHotCategorical(

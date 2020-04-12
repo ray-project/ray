@@ -7,7 +7,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.testng.Assert;
@@ -15,7 +14,6 @@ import org.testng.annotations.Test;
 
 public class DynamicResourceTest extends BaseTest {
 
-  @RayRemote
   public static String sayHi() {
     return "hi";
   }
@@ -47,7 +45,7 @@ public class DynamicResourceTest extends BaseTest {
     // Assert ray call result.
     result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 1);
-    Assert.assertEquals(Ray.get(obj.getId()), "hi");
+    Assert.assertEquals(obj.get(), "hi");
 
   }
 

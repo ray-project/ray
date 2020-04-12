@@ -75,8 +75,8 @@ TaskID TaskSpecification::ParentTaskId() const {
 
 size_t TaskSpecification::ParentCounter() const { return message_->parent_counter(); }
 
-std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
-  return VectorFromProtobuf(message_->function_descriptor());
+ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
+  return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -122,6 +122,10 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
+const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) const {
+  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
+}
+
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
@@ -145,8 +149,7 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 }
 
 bool TaskSpecification::IsDriverTask() const {
-  // Driver tasks are empty tasks that have no function ID set.
-  return FunctionDescriptor().empty();
+  return message_->type() == TaskType::DRIVER_TASK;
 }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
@@ -218,16 +221,6 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
-
-bool TaskSpecification::IsDirectActorCreationCall() const {
-  if (IsActorCreationTask()) {
-    return message_->actor_creation_task_spec().is_direct_call();
-  } else {
-    return false;
-  }
-}
-
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
@@ -249,15 +242,7 @@ std::string TaskSpecification::DebugString() const {
          << ", function_descriptor=";
 
   // Print function descriptor.
-  const auto list = VectorFromProtobuf(message_->function_descriptor());
-  // The 4th is the code hash which is binary bits. No need to output it.
-  const size_t size = std::min(static_cast<size_t>(3), list.size());
-  for (size_t i = 0; i < size; ++i) {
-    if (i != 0) {
-      stream << ",";
-    }
-    stream << list[i];
-  }
+  stream << FunctionDescriptor()->ToString();
 
   stream << ", task_id=" << TaskId() << ", job_id=" << JobId()
          << ", num_args=" << NumArgs() << ", num_returns=" << NumReturns();
@@ -266,7 +251,6 @@ std::string TaskSpecification::DebugString() const {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
-           << ", is_direct_call=" << IsDirectCall()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -277,6 +261,20 @@ std::string TaskSpecification::DebugString() const {
            << "}";
   }
 
+  return stream.str();
+}
+
+std::string TaskSpecification::CallSiteString() const {
+  std::ostringstream stream;
+  auto desc = FunctionDescriptor();
+  if (IsActorCreationTask()) {
+    stream << "(deserialize actor creation task arg) ";
+  } else if (IsActorTask()) {
+    stream << "(deserialize actor task arg) ";
+  } else {
+    stream << "(deserialize task arg) ";
+  }
+  stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
 }
 

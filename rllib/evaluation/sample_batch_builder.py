@@ -2,9 +2,10 @@ import collections
 import logging
 import numpy as np
 
+from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +95,9 @@ class MultiAgentSampleBatchBuilder:
     def total(self):
         """Returns summed number of steps across all agent buffers."""
 
-        return sum(p.count for p in self.policy_builders.values())
+        return sum(a.count for a in self.agent_builders.values())
 
-    def has_pending_data(self):
+    def has_pending_agent_data(self):
         """Returns whether there is pending unprocessed data."""
 
         return len(self.agent_builders) > 0
@@ -150,6 +151,9 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            # Call the Policy's Exploration's postprocess method.
+            policy.exploration.postprocess_trajectory(
+                policy, post_batches[agent_id], getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(
@@ -158,8 +162,6 @@ class MultiAgentSampleBatchBuilder:
 
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
-            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
-                post_batch)
             if self.postp_callback:
                 self.postp_callback({
                     "episode": episode,
@@ -168,6 +170,8 @@ class MultiAgentSampleBatchBuilder:
                     "post_batch": post_batch,
                     "all_pre_batches": pre_batches,
                 })
+            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
+                post_batch)
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()

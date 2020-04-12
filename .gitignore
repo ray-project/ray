@@ -3,6 +3,7 @@
 /python/ray/core
 /python/ray/pyarrow_files/
 /python/ray/pickle5_files/
+/python/ray/thirdparty_files/
 /python/ray/jars/
 /python/build
 /python/dist
@@ -134,6 +135,7 @@ scripts/nodes.txt
 **/.pytest_cache
 **/.cache
 .benchmarks
+python-driver-*
 
 # Vscode
 .vscode/
@@ -168,3 +170,6 @@ venv
 
 # tools
 tools/prometheus*
+
+# ray project files
+project-id

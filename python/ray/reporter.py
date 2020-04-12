@@ -6,16 +6,13 @@ import traceback
 import time
 import datetime
 import grpc
+import socket
 import subprocess
+import sys
 from concurrent import futures
 
-try:
-    import psutil
-except ImportError:
-    print("The reporter requires psutil to run.")
-    import sys
-    sys.exit(1)
-
+import ray
+import psutil
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
@@ -35,7 +32,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
     def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
-        profiling_file_path = os.path.join("/tmp/ray/",
+        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
                                            "{}_profiling.txt".format(pid))
         process = subprocess.Popen(
             "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
@@ -95,7 +92,7 @@ class Reporter:
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = os.uname().nodename
+        self.hostname = socket.gethostname()
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -132,7 +129,11 @@ class Reporter:
 
     @staticmethod
     def get_disk_usage():
-        return {x: psutil.disk_usage(x) for x in ["/", "/tmp"]}
+        dirs = [
+            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
+            ray.utils.get_user_temp_dir(),
+        ]
+        return {x: psutil.disk_usage(x) for x in dirs}
 
     @staticmethod
     def get_workers():
@@ -149,7 +150,11 @@ class Reporter:
         ]
 
     def get_load_avg(self):
-        load = os.getloadavg()
+        if sys.platform == "win32":
+            cpu_percent = psutil.cpu_percent()
+            load = (cpu_percent, cpu_percent, cpu_percent)
+        else:
+            load = os.getloadavg()
         per_cpu_load = tuple((round(x / self.cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 

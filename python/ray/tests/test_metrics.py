@@ -1,7 +1,7 @@
 import os
 import json
 import grpc
-import psutil
+import pytest
 import requests
 import time
 
@@ -10,7 +10,11 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import (RayTestTimeoutException,
+                            wait_until_succeeded_without_exception,
+                            wait_until_server_available)
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
@@ -122,6 +126,8 @@ def test_worker_stats(shutdown_only):
         else:
             return False
 
+    assert (wait_until_server_available(addresses["webui_url"]) is True)
+
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
     for worker in reply.workers_stats:
@@ -182,18 +188,26 @@ def test_raylet_info_endpoint(shutdown_only):
     c.local_store.remote()
     c.remote_store.remote()
 
+    assert (wait_until_server_available(addresses["webui_url"]) is True)
+
     start_time = time.time()
     while True:
         time.sleep(1)
         try:
             webui_url = addresses["webui_url"]
             webui_url = webui_url.replace("localhost", "http://127.0.0.1")
-            raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+            response = requests.get(webui_url + "/api/raylet_info")
+            response.raise_for_status()
+            try:
+                raylet_info = response.json()
+            except Exception as ex:
+                print("failed response: {}".format(response.text))
+                raise ex
             actor_info = raylet_info["result"]["actors"]
             try:
                 assert len(actor_info) == 1
                 _, parent_actor_info = actor_info.popitem()
-                assert parent_actor_info["numObjectIdsInScope"] == 11
+                assert parent_actor_info["numObjectIdsInScope"] == 13
                 assert parent_actor_info["numLocalObjects"] == 10
                 children = parent_actor_info["children"]
                 assert len(children) == 2
@@ -242,6 +256,94 @@ def test_raylet_info_endpoint(shutdown_only):
         time.sleep(1)
 
 
+def test_raylet_infeasible_tasks(shutdown_only):
+    """
+    This test creates an actor that requires 5 GPUs
+    but a ray cluster only has 3 GPUs. As a result,
+    the new actor should be an infeasible actor.
+    """
+    addresses = ray.init(num_gpus=3)
+
+    @ray.remote(num_gpus=5)
+    class ActorRequiringGPU:
+        def __init__(self):
+            pass
+
+    ActorRequiringGPU.remote()
+
+    def test_infeasible_actor(ray_addresses):
+        assert (wait_until_server_available(addresses["webui_url"]) is True)
+        webui_url = ray_addresses["webui_url"].replace("localhost",
+                                                       "http://127.0.0.1")
+        raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+        actor_info = raylet_info["result"]["actors"]
+        assert len(actor_info) == 1
+
+        _, infeasible_actor_info = actor_info.popitem()
+        assert infeasible_actor_info["state"] == -1
+        assert infeasible_actor_info["invalidStateType"] == "infeasibleActor"
+
+    assert (wait_until_succeeded_without_exception(
+        test_infeasible_actor,
+        (AssertionError, requests.exceptions.ConnectionError),
+        addresses,
+        timeout_ms=30000,
+        retry_interval_ms=1000) is True)
+
+
+def test_raylet_pending_tasks(shutdown_only):
+    # Make sure to specify num_cpus. Otherwise, the test can be broken
+    # when the number of cores is less than the number of spawned actors.
+    addresses = ray.init(num_gpus=3, num_cpus=4)
+
+    @ray.remote(num_gpus=1)
+    class ActorRequiringGPU:
+        def __init__(self):
+            pass
+
+    @ray.remote
+    class ParentActor:
+        def __init__(self):
+            self.a = [ActorRequiringGPU.remote() for i in range(4)]
+
+    # If we do not get ParentActor actor handler, reference counter will
+    # terminate ParentActor.
+    parent_actor = ParentActor.remote()
+    assert parent_actor is not None
+
+    def test_pending_actor(ray_addresses):
+        assert (wait_until_server_available(addresses["webui_url"]) is True)
+        webui_url = ray_addresses["webui_url"].replace("localhost",
+                                                       "http://127.0.0.1")
+        raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+        actor_info = raylet_info["result"]["actors"]
+        assert len(actor_info) == 1
+        _, infeasible_actor_info = actor_info.popitem()
+
+        # Verify there are 4 spawned actors.
+        children = infeasible_actor_info["children"]
+        assert len(children) == 4
+
+        pending_actor_detected = 0
+        for child_id, child in children.items():
+            if ("invalidStateType" in child
+                    and child["invalidStateType"] == "pendingActor"):
+                pending_actor_detected += 1
+        # 4 GPUActors are spawned although there are only 3 GPUs.
+        # One actor should be in the pending state.
+        assert pending_actor_detected == 1
+
+    assert (wait_until_succeeded_without_exception(
+        test_pending_actor,
+        (AssertionError, requests.exceptions.ConnectionError),
+        addresses,
+        timeout_ms=30000,
+        retry_interval_ms=1000) is True)
+
+
+@pytest.mark.skipif(
+    os.environ.get("TRAVIS") is None,
+    reason="This test requires password-less sudo due to py-spy requirement.")
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 

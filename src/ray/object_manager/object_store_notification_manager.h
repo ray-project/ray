@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
 #define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
 
@@ -28,8 +42,11 @@ class ObjectStoreNotificationManager {
   ///
   /// \param io_service The asio service to be used.
   /// \param store_socket_name The store socket to connect to.
+  /// \param exit_on_error The manager will exit with error when it fails
+  ///                      to process messages from socket.
   ObjectStoreNotificationManager(boost::asio::io_service &io_service,
-                                 const std::string &store_socket_name);
+                                 const std::string &store_socket_name,
+                                 bool exit_on_error = true);
 
   ~ObjectStoreNotificationManager();
 
@@ -45,6 +62,9 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
+
+  /// Explicitly shutdown the manager.
+  void Shutdown();
 
   /// Returns debug string for class.
   ///
@@ -70,7 +90,14 @@ class ObjectStoreNotificationManager {
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
-  local_stream_protocol::socket socket_;
+  local_stream_socket socket_;
+
+  /// Flag to indicate whether or not to exit the process when received socket
+  /// error. When it is false, socket error will be ignored. This flag is needed
+  /// when running object store notification manager in core worker. On core worker
+  /// exit, plasma store will be killed before deconstructor of this manager. So we
+  /// we have to silence the errors.
+  bool exit_on_error_;
 };
 
 }  // namespace ray

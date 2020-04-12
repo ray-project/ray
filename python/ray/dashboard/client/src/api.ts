@@ -22,7 +22,7 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
-export interface RayConfigResponse {
+export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
   initial_workers: number;
@@ -30,11 +30,11 @@ export interface RayConfigResponse {
   idle_timeout_minutes: number;
   head_type: string;
   worker_type: string;
-}
+};
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
-export interface NodeInfoResponse {
+export type NodeInfoResponse = {
   clients: Array<{
     now: number;
     hostname: string;
@@ -82,11 +82,11 @@ export interface NodeInfoResponse {
       [pid: string]: number;
     };
   };
-}
+};
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
-export interface RayletInfoResponse {
+export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
       extraInfo?: string;
@@ -103,7 +103,7 @@ export interface RayletInfoResponse {
           actorTitle: string;
           averageTaskExecutionSpeed: number;
           children: RayletInfoResponse["actors"];
-          currentTaskFuncDesc: string[];
+          // currentTaskFuncDesc: string[];
           ipAddress: string;
           isDirectCall: boolean;
           jobId: string;
@@ -124,44 +124,52 @@ export interface RayletInfoResponse {
         }
       | {
           actorId: string;
+          actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
+          invalidStateType?: "infeasibleActor" | "pendingActor";
         };
   };
-}
+};
 
 export const getRayletInfo = () =>
   get<RayletInfoResponse>("/api/raylet_info", {});
 
-export interface ErrorsResponse {
+export type ErrorsResponse = {
   [pid: string]: Array<{
     message: string;
     timestamp: number;
     type: string;
   }>;
-}
+};
 
-export const getErrors = (hostname: string, pid: string | undefined) =>
-  get<ErrorsResponse>("/api/errors", { hostname, pid: pid || "" });
+export const getErrors = (hostname: string, pid: number | null) =>
+  get<ErrorsResponse>("/api/errors", {
+    hostname,
+    pid: pid === null ? "" : pid,
+  });
 
-export interface LogsResponse {
+export type LogsResponse = {
   [pid: string]: string[];
-}
+};
 
-export const getLogs = (hostname: string, pid: string | undefined) =>
-  get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+export const getLogs = (hostname: string, pid: number | null) =>
+  get<LogsResponse>("/api/logs", {
+    hostname,
+    pid: pid === null ? "" : pid,
+  });
 
 export type LaunchProfilingResponse = string;
 
 export const launchProfiling = (
   nodeId: string,
   pid: number,
-  duration: number
+  duration: number,
 ) =>
   get<LaunchProfilingResponse>("/api/launch_profiling", {
     node_id: nodeId,
     pid: pid,
-    duration: duration
+    duration: duration,
   });
 
 export type CheckProfilingStatusResponse =
@@ -171,21 +179,60 @@ export type CheckProfilingStatusResponse =
 
 export const checkProfilingStatus = (profilingId: string) =>
   get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
-    profiling_id: profilingId
+    profiling_id: profilingId,
   });
 
 export const getProfilingResultURL = (profilingId: string) =>
   `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
-    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`,
   )}`;
 
 export const launchKillActor = (
   actorId: string,
   actorIpAddress: string,
-  actorPort: number
+  actorPort: number,
 ) =>
-  get<string>("/api/kill_actor", {
+  get<object>("/api/kill_actor", {
+    // make sure object is okay
     actor_id: actorId,
     ip_address: actorIpAddress,
-    port: actorPort
+    port: actorPort,
   });
+
+export type TuneTrial = {
+  date: string;
+  episodes_total: string;
+  experiment_id: string;
+  experiment_tag: string;
+  hostname: string;
+  iterations_since_restore: number;
+  logdir: string;
+  node_ip: string;
+  pid: number;
+  time_since_restore: number;
+  time_this_iter_s: number;
+  time_total_s: number;
+  timestamp: number;
+  timesteps_since_restore: number;
+  timesteps_total: number;
+  training_iteration: number;
+  start_time: string;
+  status: string;
+  trial_id: string;
+  job_id: string;
+  params: { [key: string]: string | number };
+  metrics: { [key: string]: string | number };
+};
+
+export type TuneJobResponse = {
+  trial_records: { [key: string]: TuneTrial };
+};
+
+export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+
+export type TuneAvailabilityResponse = {
+  available: boolean;
+};
+
+export const getTuneAvailability = () =>
+  get<TuneAvailabilityResponse>("/api/tune_availability", {});

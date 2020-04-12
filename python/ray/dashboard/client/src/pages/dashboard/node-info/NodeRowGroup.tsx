@@ -1,8 +1,11 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import TableCell from "@material-ui/core/TableCell";
-import TableRow from "@material-ui/core/TableRow";
+import {
+  createStyles,
+  TableCell,
+  TableRow,
+  Theme,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
@@ -25,27 +28,27 @@ const styles = (theme: Theme) =>
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
+        paddingRight: theme.spacing(1),
+      },
     },
     expandCollapseCell: {
-      cursor: "pointer"
+      cursor: "pointer",
     },
     expandCollapseIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
-      verticalAlign: "middle"
+      verticalAlign: "middle",
     },
     extraInfo: {
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre"
-    }
+      whiteSpace: "pre",
+    },
   });
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 type Node = ArrayType<NodeInfoResponse["clients"]>;
 
-interface Props {
+type Props = {
   node: Node;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
@@ -56,29 +59,39 @@ interface Props {
     perWorker: { [pid: string]: number };
     total: number;
   };
+  setLogDialog: (hostname: string, pid: number | null) => void;
+  setErrorDialog: (hostname: string, pid: number | null) => void;
   initialExpanded: boolean;
-}
+};
 
-interface State {
+type State = {
   expanded: boolean;
-}
+};
 
 class NodeRowGroup extends React.Component<
   Props & WithStyles<typeof styles>,
   State
 > {
   state: State = {
-    expanded: this.props.initialExpanded
+    expanded: this.props.initialExpanded,
   };
 
   toggleExpand = () => {
-    this.setState(state => ({
-      expanded: !state.expanded
+    this.setState((state) => ({
+      expanded: !state.expanded,
     }));
   };
 
   render() {
-    const { classes, node, raylet, logCounts, errorCounts } = this.props;
+    const {
+      classes,
+      node,
+      raylet,
+      logCounts,
+      errorCounts,
+      setLogDialog,
+      setErrorDialog,
+    } = this.props;
     const { expanded } = this.state;
 
     const features = [
@@ -91,13 +104,13 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
-        NodeFeature: makeNodeLogs(logCounts),
-        WorkerFeature: makeWorkerLogs(logCounts)
+        NodeFeature: makeNodeLogs(logCounts, setLogDialog),
+        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
       },
       {
-        NodeFeature: makeNodeErrors(errorCounts),
-        WorkerFeature: makeWorkerErrors(errorCounts)
-      }
+        NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
+        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
+      },
     ];
 
     return (

@@ -2,19 +2,19 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink
 
@@ -66,6 +66,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
+        self.kernel_fate_share = bool(
+            spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -81,16 +83,16 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir="/tmp/ray",
+            temp_dir=ray.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
         self._resource_spec = None
+        self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None
@@ -154,7 +156,7 @@ class Node:
                 # raylet starts.
                 self._ray_params.node_manager_port = self._get_unused_port()
 
-        if not connect_only and spawn_reaper:
+        if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
 
         # Start processes.
@@ -183,7 +185,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -250,10 +252,6 @@ class Node:
         return self._ray_params.load_code_from_local
 
     @property
-    def use_pickle(self):
-        return self._ray_params.use_pickle
-
-    @property
     def object_id_seed(self):
         """Get the seed for deterministic generation of object IDs"""
         return self._ray_params.object_id_seed
@@ -317,7 +315,7 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
@@ -330,6 +328,8 @@ class Node:
                 the same name, the returned name will look like
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
+        if directory_name is None:
+            directory_name = ray.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -397,14 +397,21 @@ class Node:
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if socket_path is not None:
-            if os.path.exists(socket_path):
-                raise Exception("Socket file {} exists!".format(socket_path))
-            socket_dir = os.path.dirname(socket_path)
-            try_to_create_directory(socket_dir)
-            return socket_path
-        return self._make_inc_temp(
-            prefix=default_prefix, directory_name=self._sockets_dir)
+        result = socket_path
+        if sys.platform == "win32":
+            if socket_path is None:
+                result = "tcp://{}:{}".format(self._localhost,
+                                              self._get_unused_port())
+        else:
+            if socket_path is None:
+                result = self._make_inc_temp(
+                    prefix=default_prefix, directory_name=self._sockets_dir)
+            else:
+                if os.path.exists(socket_path):
+                    raise RuntimeError(
+                        "Socket file {} exists!".format(socket_path))
+                try_to_create_directory(os.path.dirname(socket_path))
+        return result
 
     def start_reaper_process(self):
         """
@@ -413,7 +420,9 @@ class Node:
         This must be the first process spawned and should only be called when
         ray processes should be cleaned up if this process dies.
         """
-        process_info = ray.services.start_reaper()
+        assert not self.kernel_fate_share, (
+            "a reaper should not be used with kernel fate-sharing")
+        process_info = ray.services.start_reaper(fate_share=False)
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
@@ -438,7 +447,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java)
+             include_java=self._ray_params.include_java,
+             fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -452,7 +462,8 @@ class Node:
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info
@@ -465,7 +476,8 @@ class Node:
             self.redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
@@ -488,7 +500,8 @@ class Node:
             self._temp_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -506,10 +519,28 @@ class Node:
             stderr_file=stderr_file,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
-            plasma_store_socket_name=self._plasma_store_socket_name)
+            plasma_store_socket_name=self._plasma_store_socket_name,
+            fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
+            process_info
+        ]
+
+    def start_gcs_server(self):
+        """Start the gcs server.
+        """
+        stdout_file, stderr_file = self.new_log_files("gcs_server")
+        process_info = ray.services.start_gcs_server(
+            self._redis_address,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password,
+            config=self._config,
+            fate_share=self.kernel_fate_share)
+        assert (
+            ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info
         ]
 
@@ -543,7 +574,7 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            use_pickle=self._ray_params.use_pickle)
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -565,7 +596,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
@@ -577,7 +609,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            config=self._config)
+            config=self._config,
+            fate_share=self.kernel_fate_share)
         assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
@@ -592,8 +625,14 @@ class Node:
         assert self._redis_address is None
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
+
+        if ray_constants.GCS_SERVICE_ENABLED:
+            self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
+
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:
@@ -649,9 +688,10 @@ class Node:
             # Handle the case where the process has already exited.
             if process.poll() is not None:
                 if check_alive:
-                    raise Exception("Attempting to kill a process of type "
-                                    "'{}', but this process is already dead."
-                                    .format(process_type))
+                    raise RuntimeError(
+                        "Attempting to kill a process of type "
+                        "'{}', but this process is already dead."
+                        .format(process_type))
                 else:
                     continue
 
@@ -668,7 +708,7 @@ class Node:
                     if process_info.stderr_file is not None:
                         with open(process_info.stderr_file, "r") as f:
                             message += "\nPROCESS STDERR:\n" + f.read()
-                    raise Exception(message)
+                    raise RuntimeError(message)
                 continue
 
             if process_info.use_valgrind_profiler:
@@ -678,25 +718,21 @@ class Node:
                 time.sleep(0.1)
 
             if allow_graceful:
-                # Allow the process one second to exit gracefully.
                 process.terminate()
-                timer = threading.Timer(1, lambda process: process.kill(),
-                                        [process])
+                # Allow the process one second to exit gracefully.
+                timeout_seconds = 1
                 try:
-                    timer.start()
+                    process.wait(timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
+
+            # If the process did not exit, force kill it.
+            if process.poll() is None:
+                process.kill()
+                # The reason we usually don't call process.wait() here is that
+                # there's some chance we'd end up waiting a really long time.
+                if wait:
                     process.wait()
-                finally:
-                    timer.cancel()
-
-                if process.poll() is not None:
-                    continue
-
-            # If the process did not exit within one second, force kill it.
-            process.kill()
-            # The reason we usually don't call process.wait() here is that
-            # there's some chance we'd end up waiting a really long time.
-            if wait:
-                process.wait()
 
         del self.all_processes[process_type]
 
@@ -769,6 +805,15 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_MONITOR, check_alive=check_alive)
+
+    def kill_gcs_server(self, check_alive=True):
+        """Kill the gcs server.
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive)
 
     def kill_raylet_monitor(self, check_alive=True):
         """Kill the raylet monitor.
@@ -876,16 +921,3 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
-
-
-class LocalNode:
-    """Imitate the node that manages the processes in local mode."""
-
-    def kill_all_processes(self, *args, **kwargs):
-        """Kill all of the processes."""
-        pass  # Keep this function empty because it will be used in worker.py
-
-    @property
-    def address_info(self):
-        """Get a dictionary of addresses."""
-        return {}  # Return a null dict.

@@ -1,3 +1,16 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/common/common_protocol.h"
@@ -7,11 +20,8 @@ namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     const WorkerID &worker_id, std::shared_ptr<raylet::RayletClient> &raylet_client,
-    const TaskHandler &task_handler, const std::function<void(bool)> &exit_handler)
-    : worker_id_(worker_id),
-      raylet_client_(raylet_client),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler) {}
+    const TaskHandler &task_handler)
+    : worker_id_(worker_id), raylet_client_(raylet_client), task_handler_(task_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -48,9 +58,11 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, resource_ids, &results);
+  ReferenceCounter::ReferenceTableProto borrower_refs;
+  // NOTE(swang): Distributed ref counting does not work for the raylet
+  // transport.
+  auto status = task_handler_(task_spec, resource_ids, &results, &borrower_refs);
   if (status.IsSystemExit()) {
-    exit_handler_(status.IsIntentionalSystemExit());
     return;
   }
 

@@ -1,10 +1,9 @@
 import gym
+from gym.spaces import Box, Discrete, Tuple
 import numpy as np
 import unittest
-from gym.spaces import Box, Discrete, Tuple
 
 import ray
-
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -55,14 +54,14 @@ class ModelCatalogTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testGymPreprocessors(self):
+    def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
         self.assertEqual(type(p1), NoPreprocessor)
 
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-    def testTuplePreprocessor(self):
+    def test_tuple_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
         class TupleEnv:
@@ -77,7 +76,7 @@ class ModelCatalogTest(unittest.TestCase):
             list(p1.transform((0, np.array([1, 2, 3])))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
-    def testCustomPreprocessor(self):
+    def test_custom_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
         ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
@@ -89,7 +88,7 @@ class ModelCatalogTest(unittest.TestCase):
         p3 = ModelCatalog.get_preprocessor(env)
         self.assertEqual(type(p3), NoPreprocessor)
 
-    def testDefaultModels(self):
+    def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
         with tf.variable_scope("test1"):
@@ -105,7 +104,7 @@ class ModelCatalogTest(unittest.TestCase):
                                         {})
             self.assertEqual(type(p2), VisionNetwork)
 
-    def testCustomModel(self):
+    def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model({
@@ -114,11 +113,13 @@ class ModelCatalogTest(unittest.TestCase):
                                     {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
-    def testCustomActionDistribution(self):
+    def test_custom_action_distribution(self):
         class Model():
             pass
 
-        ray.init(object_store_memory=1000 * 1024 * 1024)
+        ray.init(
+            object_store_memory=1000 * 1024 * 1024,
+            ignore_reinit_error=True)  # otherwise fails sometimes locally
         # registration
         ModelCatalog.register_custom_action_dist("test",
                                                  CustomActionDistribution)
@@ -157,4 +158,6 @@ class ModelCatalogTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

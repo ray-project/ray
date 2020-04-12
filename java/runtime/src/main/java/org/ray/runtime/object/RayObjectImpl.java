@@ -1,6 +1,7 @@
 package org.ray.runtime.object;
 
 import java.io.Serializable;
+
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
@@ -18,15 +19,18 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
    * Note, this is necessary for direct calls, in which case, it's not allowed to call `Ray.get` on
    * the same object twice.
    */
-  private T object;
+  private transient T object;
+
+  private Class<T> type;
 
   /**
    * Whether the object is already gotten from the object store.
    */
-  private boolean objectGotten;
+  private transient boolean objectGotten;
 
-  public RayObjectImpl(ObjectId id) {
+  public RayObjectImpl(ObjectId id, Class<T> type) {
     this.id = id;
+    this.type = type;
     object = null;
     objectGotten = false;
   }
@@ -34,7 +38,7 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   @Override
   public synchronized T get() {
     if (!objectGotten) {
-      object = Ray.get(id);
+      object = Ray.get(id, type);
       objectGotten = true;
     }
     return object;
@@ -43,6 +47,11 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   @Override
   public ObjectId getId() {
     return id;
+  }
+
+  @Override
+  public Class<T> getType() {
+    return type;
   }
 
 }

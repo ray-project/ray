@@ -7,9 +7,25 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_advanced",
+    size = "medium",
+    srcs = ["test_actor_advanced.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_pool",
     size = "small",
     srcs = ["test_actor_pool.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_memstat",
+    size = "small",
+    srcs = ["test_memstat.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -196,6 +212,22 @@ py_test(
 )
 
 py_test(
+    name = "test_reference_counting_2",
+    size = "medium",
+    srcs = ["test_reference_counting_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_global_gc",
+    size = "medium",
+    srcs = ["test_global_gc.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_global_state",
     size = "small",
     srcs = ["test_global_state.py"],
@@ -228,6 +260,14 @@ py_test(
 )
 
 py_test(
+    name = "test_metrics_export",
+    size = "small",
+    srcs = ["test_metrics_export.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_microbenchmarks",
     size = "small",
     srcs = ["test_microbenchmarks.py"],
@@ -239,15 +279,6 @@ py_test(
     name = "test_mini",
     size = "small",
     srcs = ["test_mini.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_monitors",
-    size = "small",
-    srcs = ["test_monitors.py"],
-    # TODO(ekl) tasks() and objects() are different in direct call mode.
-    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -321,14 +352,6 @@ py_test(
 )
 
 py_test(
-    name = "test_signal",
-    size = "medium",
-    srcs = ["test_signal.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_tempfile",
     size = "small",
     srcs = ["test_tempfile.py"],
@@ -356,6 +379,30 @@ py_test(
     name = "test_webui",
     size = "small",
     srcs = ["test_webui.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_args",
+    size = "small",
+    srcs = ["test_args.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_asyncio",
+    size = "small",
+    srcs = ["test_asyncio.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_numba",
+    size = "small",
+    srcs = ["test_numba.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

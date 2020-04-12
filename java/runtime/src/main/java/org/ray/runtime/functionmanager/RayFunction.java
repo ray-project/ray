@@ -3,7 +3,7 @@ package org.ray.runtime.functionmanager;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
-import org.ray.api.annotation.RayRemote;
+import java.util.Optional;
 
 /**
  * Represents a Ray function (either a Method or a Constructor in Java) and its metadata.
@@ -57,21 +57,6 @@ public class RayFunction {
     return functionDescriptor;
   }
 
-  public RayRemote getRayRemoteAnnotation() {
-    RayRemote rayRemote;
-
-    // If this method is a constructor, the task of it should be a actorCreationTask.
-    // And the annotation of actorCreationTask should inherit from class.
-    // Otherwise, it's a normal method, and it shouldn't inherit annotation from class.
-    if (isConstructor()) {
-      rayRemote = executable.getDeclaringClass().getAnnotation(RayRemote.class);
-    } else {
-      rayRemote = executable.getAnnotation(RayRemote.class);
-    }
-
-    return rayRemote;
-  }
-
   /**
    * @return Whether this function has a return value.
    */
@@ -80,6 +65,17 @@ public class RayFunction {
       return true;
     } else {
       return !getMethod().getReturnType().equals(void.class);
+    }
+  }
+
+  /**
+   * @return Return type.
+   */
+  public Optional<Class<?>> getReturnType() {
+    if (hasReturn()) {
+      return Optional.of(((Method) executable).getReturnType());
+    } else {
+      return Optional.empty();
     }
   }
 

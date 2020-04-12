@@ -13,6 +13,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
 
@@ -249,10 +250,10 @@ class TrialRunnerTest3(unittest.TestCase):
                     break
 
                 if self._index > 4:
-                    self._finished = True
+                    self.set_finished()
                 return trials
 
-            def _suggest(self, trial_id):
+            def suggest(self, trial_id):
                 return {}
 
         ray.init(num_cpus=2)
@@ -297,8 +298,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 checkpoint_freq=1)
         ]
         runner.add_trial(trials[0])
-        runner.step()  # start
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         self.assertEquals(trials[0].status, Trial.TERMINATED)
 
         trials += [
@@ -310,9 +312,10 @@ class TrialRunnerTest3(unittest.TestCase):
                 config={"mock_error": True})
         ]
         runner.add_trial(trials[1])
-        runner.step()
-        runner.step()
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
+        runner.step()  # Error
         self.assertEquals(trials[1].status, Trial.ERROR)
 
         trials += [
@@ -323,7 +326,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 checkpoint_freq=1)
         ]
         runner.add_trial(trials[2])
-        runner.step()
+        runner.step()  # Start trial
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
@@ -336,9 +339,11 @@ class TrialRunnerTest3(unittest.TestCase):
         restored_trial = runner2.get_trial("trial_succ")
         self.assertEqual(Trial.PENDING, restored_trial.status)
 
-        runner2.step()
-        runner2.step()
-        runner2.step()
+        runner2.step()  # Start trial
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
@@ -444,27 +449,32 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        runner.step()  # 0
+        runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # 1
+        runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # 2
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
-        runner2.step()
+        runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()
+
     def testNestedSuggestion(self):
         class TestSuggestion(SuggestionAlgorithm):
-            def _suggest(self, trial_id):
+            def suggest(self, trial_id):
                 return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
 
         alg = TestSuggestion()
@@ -472,6 +482,41 @@ class SearchAlgorithmTest(unittest.TestCase):
         trial = alg.next_trials()[0]
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
+
+    def _test_repeater(self, repeat):
+        ray.init(num_cpus=4)
+
+        class TestSuggestion(SuggestionAlgorithm):
+            count = 0
+
+            def suggest(self, trial_id):
+                return {"test_variable": 5}
+
+            def on_trial_complete(self, *args, **kwargs):
+                self.count += 1
+
+        alg = TestSuggestion(metric="episode_reward_mean")
+        repeat_alg = Repeater(alg, repeat=repeat, set_index=False)
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 1,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        repeat_alg.add_configurations({"test": experiment_spec})
+        runner = TrialRunner(search_alg=repeat_alg)
+        for i in range(repeat * 2):
+            runner.step()
+
+        trials = runner.get_trials()
+        self.assertEquals(len(trials), repeat)
+
+    def testRepeat1(self):
+        self._test_repeater(repeat=1)
+
+    def testRepeat4(self):
+        self._test_repeater(repeat=4)
 
 
 class ResourcesTest(unittest.TestCase):

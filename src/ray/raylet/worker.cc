@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "worker.h"
 
 #include <boost/bind.hpp>
@@ -12,11 +26,10 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-               std::shared_ptr<LocalClientConnection> connection,
+Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
+               std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
-      pid_(pid),
       language_(language),
       port_(port),
       connection_(connection),
@@ -25,8 +38,11 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       client_call_manager_(client_call_manager),
       is_detached_actor_(false) {
   if (port_ > 0) {
+    rpc::Address addr;
+    addr.set_ip_address("127.0.0.1");
+    addr.set_port(port_);
     rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_));
+        new rpc::CoreWorkerClient(addr, client_call_manager_));
   }
 }
 
@@ -42,7 +58,12 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-pid_t Worker::Pid() const { return pid_; }
+Process Worker::GetProcess() const { return proc_; }
+
+void Worker::SetProcess(Process proc) {
+  RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
+  proc_ = std::move(proc);
+}
 
 Language Worker::GetLanguage() const { return language_; }
 
@@ -83,9 +104,7 @@ void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
 
 bool Worker::IsDetachedActor() const { return is_detached_actor_; }
 
-const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
-  return connection_;
-}
+const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
@@ -121,14 +140,6 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   // The "release" terminology is a bit confusing here. The resources are being
   // given back to the worker and so "released" by the caller.
   task_resource_ids_.Release(cpu_resources);
-}
-
-const std::unordered_set<ObjectID> &Worker::GetActiveObjectIds() const {
-  return active_object_ids_;
-}
-
-void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids) {
-  active_object_ids_ = object_ids;
 }
 
 Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {

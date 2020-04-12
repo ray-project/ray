@@ -15,6 +15,11 @@ def _import_appo():
     return ppo.APPOTrainer
 
 
+def _import_ddppo():
+    from ray.rllib.agents import ppo
+    return ppo.DDPPOTrainer
+
+
 def _import_qmix():
     from ray.rllib.agents import qmix
     return qmix.QMixTrainer
@@ -113,6 +118,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
+    "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
 }
 

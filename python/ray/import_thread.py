@@ -109,20 +109,15 @@ class ImportThread:
 
     def _process_key(self, key):
         """Process the given export key from redis."""
-        # Handle the driver case first.
         if self.mode != ray.WORKER_MODE:
-            if key.startswith(b"FunctionsToRun"):
-                with profiling.profile("fetch_and_run_function"):
-                    self.fetch_and_execute_function_to_run(key)
-
             # If the same remote function or actor definition appears to be
             # exported many times, then print a warning. We only issue this
             # warning from the driver so that it is only triggered once instead
             # of many times. TODO(rkn): We may want to push this to the driver
             # through Redis so that it can be displayed in the dashboard more
             # easily.
-            elif (key.startswith(b"RemoteFunction")
-                  or key.startswith(b"ActorClass")):
+            if (key.startswith(b"RemoteFunction")
+                    or key.startswith(b"ActorClass")):
                 collision_identifier, name, import_type = (
                     self._get_import_info_for_collision_detection(key))
                 self.imported_collision_identifiers[collision_identifier] += 1
@@ -140,10 +135,6 @@ class ImportThread:
                         "more discussion.", import_type, name,
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
 
-            # Return because FunctionsToRun are the only things that
-            # the driver should import.
-            return
-
         if key.startswith(b"RemoteFunction"):
             with profiling.profile("register_remote_function"):
                 (self.worker.function_actor_manager.
@@ -159,7 +150,7 @@ class ImportThread:
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
-            raise Exception("This code should be unreachable.")
+            assert False, "This code should be unreachable."
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""

@@ -1,0 +1,190 @@
+diff --git cpp/src/plasma/io.h cpp/src/plasma/io.h
+--- cpp/src/plasma/io.h
++++ cpp/src/plasma/io.h
+@@ -30,2 +30,3 @@
+ #include "arrow/status.h"
++#include "plasma/common.h"
+ #include "plasma/compat.h"
+@@ -57,3 +58,1 @@
+-int BindIpcSock(const std::string& pathname, bool shall_listen);
+-
+-int ConnectIpcSock(const std::string& pathname);
++int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen);
+diff --git cpp/src/plasma/store.cc cpp/src/plasma/store.cc
+--- cpp/src/plasma/store.cc
++++ cpp/src/plasma/store.cc
+@@ -1150,1 +1150,1 @@
+-    int socket = BindIpcSock(socket_name, true);
++    int socket = ConnectOrListenIpcSock(socket_name, true);
+@@ -1301,1 +1301,5 @@
++#ifdef _WINSOCKAPI_
++  WSADATA wsadata;
++  WSAStartup(MAKEWORD(2, 2), &wsadata);
++#endif
+   plasma::StartServer(socket_name, plasma_directory, hugepages_enabled, external_store);
+@@ -1307,1 +1311,4 @@
++#ifdef _WINSOCKAPI_
++  WSACleanup();
++#endif
+   return 0;
+diff --git cpp/src/plasma/io.cc cpp/src/plasma/io.cc
+--- cpp/src/plasma/io.cc
++++ cpp/src/plasma/io.cc
+@@ -29,1 +29,5 @@
++#ifndef _WIN32
++#include <arpa/inet.h>
++#include <netinet/in.h>
++#endif
+ 
+@@ -117,39 +121,79 @@
+-int BindIpcSock(const std::string& pathname, bool shall_listen) {
+-  struct sockaddr_un socket_address;
+-  int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
++int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
++  union {
++    struct sockaddr addr;
++    struct sockaddr_un un;
++    struct sockaddr_in in;
++  } socket_address;
++  int addrlen;
++  memset(&socket_address, 0, sizeof(socket_address));
++  if (pathname.find("tcp://") == 0) {
++    addrlen = sizeof(socket_address.in);
++    socket_address.in.sin_family = AF_INET;
++    std::string addr = pathname.substr(pathname.find('/') + 2);
++    size_t i = addr.rfind(':'), j;
++    if (i >= addr.size()) {
++      j = i = addr.size();
++    } else {
++      j = i + 1;
++    }
++    socket_address.in.sin_addr.s_addr = inet_addr(addr.substr(0, i).c_str());
++    socket_address.in.sin_port = htons(static_cast<short>(atoi(addr.substr(j).c_str())));
++    if (socket_address.in.sin_addr.s_addr == INADDR_NONE) {
++      ARROW_LOG(ERROR) << "Socket address is not a valid IPv4 address: " << pathname;
++      return -1;
++    }
++    if (socket_address.in.sin_port == htons(0)) {
++      ARROW_LOG(ERROR) << "Socket address is missing a valid port: " << pathname;
++      return -1;
++    }
++  } else {
++    addrlen = sizeof(socket_address.un);
++    socket_address.un.sun_family = AF_UNIX;
++    if (pathname.size() + 1 > sizeof(socket_address.un.sun_path)) {
++      ARROW_LOG(ERROR) << "Socket pathname is too long.";
++      return -1;
++    }
++    strncpy(socket_address.un.sun_path, pathname.c_str(), pathname.size() + 1);
++  }
++
++  int socket_fd = socket(socket_address.addr.sa_family, SOCK_STREAM, 0);
+   if (socket_fd < 0) {
+     ARROW_LOG(ERROR) << "socket() failed for pathname " << pathname;
+     return -1;
+   }
+-  // Tell the system to allow the port to be reused.
+-  int on = 1;
+-  if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&on),
+-                 sizeof(on)) < 0) {
+-    ARROW_LOG(ERROR) << "setsockopt failed for pathname " << pathname;
+-    close(socket_fd);
+-    return -1;
+-  }
++  if (shall_listen) {
++    // Tell the system to allow the port to be reused.
++    int on = 1;
++    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&on),
++                   sizeof(on)) < 0) {
++      ARROW_LOG(ERROR) << "setsockopt failed for pathname " << pathname;
++      close(socket_fd);
++      return -1;
++    }
+ 
+-  unlink(pathname.c_str());
+-  memset(&socket_address, 0, sizeof(socket_address));
+-  socket_address.sun_family = AF_UNIX;
+-  if (pathname.size() + 1 > sizeof(socket_address.sun_path)) {
+-    ARROW_LOG(ERROR) << "Socket pathname is too long.";
+-    close(socket_fd);
+-    return -1;
+-  }
+-  strncpy(socket_address.sun_path, pathname.c_str(), pathname.size() + 1);
++    if (socket_address.addr.sa_family == AF_UNIX) {
++#ifdef _WIN32
++      _unlink(pathname.c_str());
++#else
++      unlink(pathname.c_str());
++#endif
++    }
++    if (bind(socket_fd, &socket_address.addr, addrlen) != 0) {
++      ARROW_LOG(ERROR) << "Bind failed for pathname " << pathname;
++      close(socket_fd);
++      return -1;
++    }
+ 
+-  if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&socket_address),
+-           sizeof(socket_address)) != 0) {
+-    ARROW_LOG(ERROR) << "Bind failed for pathname " << pathname;
+-    close(socket_fd);
+-    return -1;
+-  }
+-  if (shall_listen && listen(socket_fd, 128) == -1) {
+-    ARROW_LOG(ERROR) << "Could not listen to socket " << pathname;
+-    close(socket_fd);
+-    return -1;
++    if (listen(socket_fd, 128) == -1) {
++      ARROW_LOG(ERROR) << "Could not listen to socket " << pathname;
++      close(socket_fd);
++      return -1;
++    }
++  } else {
++    if (connect(socket_fd, &socket_address.addr, addrlen) != 0) {
++      close(socket_fd);
++      return -1;
++    }
+   }
+   return socket_fd;
+ }
+@@ -166,9 +270,9 @@
+-  *fd = ConnectIpcSock(pathname);
++  *fd = ConnectOrListenIpcSock(pathname, false);
+   while (*fd < 0 && num_retries > 0) {
+     ARROW_LOG(ERROR) << "Connection to IPC socket failed for pathname " << pathname
+                      << ", retrying " << num_retries << " more times";
+     // Sleep for timeout milliseconds.
+     usleep(static_cast<int>(timeout * 1000));
+-    *fd = ConnectIpcSock(pathname);
++    *fd = ConnectOrListenIpcSock(pathname, false);
+     --num_retries;
+   }
+@@ -184,28 +228,0 @@
+-int ConnectIpcSock(const std::string& pathname) {
+-  struct sockaddr_un socket_address;
+-  int socket_fd;
+-
+-  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+-  if (socket_fd < 0) {
+-    ARROW_LOG(ERROR) << "socket() failed for pathname " << pathname;
+-    return -1;
+-  }
+-
+-  memset(&socket_address, 0, sizeof(socket_address));
+-  socket_address.sun_family = AF_UNIX;
+-  if (pathname.size() + 1 > sizeof(socket_address.sun_path)) {
+-    ARROW_LOG(ERROR) << "Socket pathname is too long.";
+-    close(socket_fd);
+-    return -1;
+-  }
+-  strncpy(socket_address.sun_path, pathname.c_str(), pathname.size() + 1);
+-
+-  if (connect(socket_fd, reinterpret_cast<struct sockaddr*>(&socket_address),
+-              sizeof(socket_address)) != 0) {
+-    close(socket_fd);
+-    return -1;
+-  }
+-
+-  return socket_fd;
+-}
+-
+-- 

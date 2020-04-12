@@ -9,7 +9,6 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
@@ -17,10 +16,9 @@ import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"directCall"})
+@Test
 public class ActorReconstructionTest extends BaseTest {
 
-  @RayRemote()
   public static class Counter {
 
     protected int value = 0;
@@ -52,31 +50,30 @@ public class ActorReconstructionTest extends BaseTest {
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
-      Ray.call(Counter::increase, actor).get();
+      actor.call(Counter::increase).get();
     }
 
-    Assert.assertFalse(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
+    Assert.assertFalse(actor.call(Counter::wasCurrentActorReconstructed).get());
 
     // Kill the actor process.
-    int pid = Ray.call(Counter::getPid, actor).get();
+    int pid = actor.call(Counter::getPid).get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
-    // Try calling increase on this actor again and check the value is now 4.
-    int value = Ray.call(Counter::increase, actor).get();
-    Assert.assertEquals(value, options.useDirectCall ? 1 : 4);
+    int value = actor.call(Counter::increase).get();
+    Assert.assertEquals(value, 1);
 
-    Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
+    Assert.assertTrue(actor.call(Counter::wasCurrentActorReconstructed).get());
 
     // Kill the actor process again.
-    pid = Ray.call(Counter::getPid, actor).get();
+    pid = actor.call(Counter::getPid).get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     TimeUnit.SECONDS.sleep(1);
 
     // Try calling increase on this actor again and this should fail.
     try {
-      Ray.call(Counter::increase, actor).get();
+      actor.call(Counter::increase).get();
       Assert.fail("The above task didn't fail.");
     } catch (RayActorException e) {
       // We should receive a RayActorException because the actor is dead.
@@ -132,20 +129,20 @@ public class ActorReconstructionTest extends BaseTest {
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
-      Ray.call(CheckpointableCounter::increase, actor).get();
+      actor.call(CheckpointableCounter::increase).get();
     }
     // Assert that the actor wasn't resumed from a checkpoint.
-    Assert.assertFalse(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
-    int pid = Ray.call(CheckpointableCounter::getPid, actor).get();
+    Assert.assertFalse(actor.call(CheckpointableCounter::wasResumedFromCheckpoint).get());
+    int pid = actor.call(CheckpointableCounter::getPid).get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
     // Try calling increase on this actor again and check the value is now 4.
-    int value = Ray.call(CheckpointableCounter::increase, actor).get();
+    int value = actor.call(CheckpointableCounter::increase).get();
     Assert.assertEquals(value, 4);
     // Assert that the actor was resumed from a checkpoint.
-    Assert.assertTrue(Ray.call(CheckpointableCounter::wasResumedFromCheckpoint, actor).get());
+    Assert.assertTrue(actor.call(CheckpointableCounter::wasResumedFromCheckpoint).get());
   }
 }
 

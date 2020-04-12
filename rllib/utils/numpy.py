@@ -1,5 +1,9 @@
 import numpy as np
 
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+tf = try_import_tf()
+torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
 # Some large int number. May be increased here, if needed.
@@ -42,7 +46,10 @@ def softmax(x, axis=-1):
     Returns:
         np.ndarray: The softmax over x.
     """
+    # x_exp = np.maximum(np.exp(x), SMALL_NUMBER)
     x_exp = np.exp(x)
+    # return x_exp /
+    #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
     return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
 
 
@@ -58,7 +65,7 @@ def relu(x, alpha=0.0):
     Returns:
         np.ndarray: The leaky ReLU output for x.
     """
-    return np.maximum(x, x*alpha, x)
+    return np.maximum(x, x * alpha, x)
 
 
 def one_hot(x, depth=0, on_value=1, off_value=0):
@@ -76,6 +83,10 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     Returns:
         np.ndarray: The one-hot encoded equivalent of the input array.
     """
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
     # Handle bool arrays correctly.
     if x.dtype == np.bool_:
         x = x.astype(np.int)
@@ -89,7 +100,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     shape = x.shape
 
     # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = shape[:]
+    shape_list = list(shape[:])
     shape_list.append(depth)
     out = np.ones(shape_list) * off_value
     indices = []
@@ -99,7 +110,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
         s[i] = -1
         r = np.arange(shape[i]).reshape(s)
         if i > 0:
-            tiles[i-1] = shape[i-1]
+            tiles[i - 1] = shape[i - 1]
             r = np.tile(r, tiles)
         indices.append(r)
     indices.append(x)
@@ -107,7 +118,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     return out
 
 
-def fc(x, weights, biases=None):
+def fc(x, weights, biases=None, framework=None):
     """
     Calculates the outputs of a fully-connected (dense) layer given
     weights/biases and an input.
@@ -116,15 +127,38 @@ def fc(x, weights, biases=None):
         x (np.ndarray): The input to the dense layer.
         weights (np.ndarray): The weights matrix.
         biases (Optional[np.ndarray]): The biases vector. All 0s if None.
+        framework (Optional[str]): An optional framework hint (to figure out,
+            e.g. whether to transpose torch weight matrices).
 
     Returns:
         The dense layer's output.
     """
+
+    def map_(data, transpose=False):
+        if torch:
+            if isinstance(data, torch.Tensor):
+                data = data.cpu().detach().numpy()
+        if tf and tf.executing_eagerly():
+            if isinstance(data, tf.Variable):
+                data = data.numpy()
+        if transpose:
+            data = np.transpose(data)
+        return data
+
+    x = map_(x)
+    # Torch stores matrices in transpose (faster for backprop).
+    weights = map_(weights, transpose=framework == "torch")
+    biases = map_(biases)
+
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
-def lstm(x, weights, biases=None, initial_internal_states=None,
-         time_major=False, forget_bias=1.0):
+def lstm(x,
+         weights,
+         biases=None,
+         initial_internal_states=None,
+         time_major=False,
+         forget_bias=1.0):
     """
     Calculates the outputs of an LSTM layer given weights/biases,
     internal_states, and input.
@@ -174,15 +208,15 @@ def lstm(x, weights, biases=None, initial_internal_states=None,
         input_matrix = np.concatenate((input_matrix, h_states), axis=1)
         input_matmul_matrix = np.matmul(input_matrix, weights) + biases
         # Forget gate (3rd slot in tf output matrix). Add static forget bias.
-        sigmoid_1 = sigmoid(input_matmul_matrix[:, units*2:units*3] +
+        sigmoid_1 = sigmoid(input_matmul_matrix[:, units * 2:units * 3] +
                             forget_bias)
         c_states = np.multiply(c_states, sigmoid_1)
         # Add gate (1st and 2nd slots in tf output matrix).
         sigmoid_2 = sigmoid(input_matmul_matrix[:, 0:units])
-        tanh_3 = np.tanh(input_matmul_matrix[:, units:units*2])
+        tanh_3 = np.tanh(input_matmul_matrix[:, units:units * 2])
         c_states = np.add(c_states, np.multiply(sigmoid_2, tanh_3))
         # Output gate (last slot in tf output matrix).
-        sigmoid_4 = sigmoid(input_matmul_matrix[:, units*3:units*4])
+        sigmoid_4 = sigmoid(input_matmul_matrix[:, units * 3:units * 4])
         h_states = np.multiply(sigmoid_4, np.tanh(c_states))
 
         # Store this output time-slice.
@@ -192,3 +226,10 @@ def lstm(x, weights, biases=None, initial_internal_states=None,
             unrolled_outputs[:, t, :] = h_states
 
     return unrolled_outputs, (c_states, h_states)
+
+
+def huber_loss(x, delta=1.0):
+    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+    return np.where(
+        np.abs(x) < delta,
+        np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta))
