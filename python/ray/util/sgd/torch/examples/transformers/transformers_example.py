@@ -144,8 +144,7 @@ def data_creator(config):
         if args.tokenizer_name else args.model_name_or_path,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
-    logger.info("tokenizer instantiation: {}".format(time.time() - start))
-    config["tokenizer"] = tokenizer
+    logger.info("tokenizer instantiation time: {}".format(time.time() - start))
 
     train_dataset = load_and_cache_examples(
         args, args.task_name, tokenizer, evaluate=False)
@@ -160,7 +159,11 @@ def data_creator(config):
 class TransformerOperator(TrainingOperator):
     def setup(self, config):
         self.args = args = config["args"]
-        self.tokenizer = config["tokenizer"]
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name
+            if args.tokenizer_name else args.model_name_or_path,
+            cache_dir=args.cache_dir if args.cache_dir else None,
+        )
 
         self.train_data_len = len(self.train_loader)
         self._warmup_scheduler = get_linear_schedule_with_warmup(
@@ -238,11 +241,7 @@ class TransformerOperator(TrainingOperator):
                 train_data_len // grad_accum_steps * args.num_train_epochs)
         return t_total
 
-    def validate(self, _):
-        return evaluate(self.args, self.model, self.tokenizer)
 
-
-# flake8: disable
 @dataclass
 class ModelArguments:
     """Arguments pertaining to model/config/tokenizer."""
@@ -287,7 +286,6 @@ class DataProcessingArguments:
         metadata={"help": "Overwrite the cached training and evaluation sets"})
 
 
-# flake8: enable
 @dataclass
 class RayArguments:
     num_workers: int = field(
