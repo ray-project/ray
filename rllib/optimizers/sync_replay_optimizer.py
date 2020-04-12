@@ -112,6 +112,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if fake_batch:
                 batch = SampleBatch(fake_batch)
+                # Sample either way.
+                self.workers.local_worker().sample()
             elif self.workers.remote_workers():
                 batch = SampleBatch.concat_samples(
                     ray_get_and_free([

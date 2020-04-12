@@ -52,10 +52,10 @@ class TestSAC(unittest.TestCase):
     
     def test_sac_pytorch_learning_cont(self):
         config = sac.DEFAULT_CONFIG.copy()
-        config["use_pytorch"] = False
+        config["use_pytorch"] = True
         config["_use_beta_distribution"] = False
         config["num_workers"] = 0  # Run locally.
-        config["twin_q"] = True
+        config["twin_q"] = False
         config["normalize_actions"] = True
         config["clip_actions"] = False
         config["metrics_smoothing_episodes"] = 5
@@ -74,7 +74,7 @@ class TestSAC(unittest.TestCase):
 
         num_iterations = 2000
 
-        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
+        trainer = sac.SACTrainer(config=config, env=SimpleEnv)
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
