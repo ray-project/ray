@@ -113,6 +113,14 @@ struct Mocker {
       return Status::OK();
     }
 
+    ray::Status CancelWorkerLease(
+        const TaskID &task_id,
+        const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+      num_leases_canceled += 1;
+      cancel_callbacks.push_back(callback);
+      return Status::OK();
+    }
+
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
                           const ClientID &raylet_id, const ClientID &retry_at_raylet_id,
@@ -139,13 +147,28 @@ struct Mocker {
       }
     }
 
+    bool ReplyCancelWorkerLease(bool success = true) {
+      rpc::CancelWorkerLeaseReply reply;
+      reply.set_success(success);
+      if (cancel_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = cancel_callbacks.front();
+        callback(Status::OK(), reply);
+        cancel_callbacks.pop_front();
+        return true;
+      }
+    }
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
     int num_workers_returned = 0;
     int num_workers_disconnected = 0;
+    int num_leases_canceled = 0;
     ClientID auto_grant_node_id;
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
+    std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
   };
 
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
