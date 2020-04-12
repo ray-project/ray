@@ -154,6 +154,7 @@ class HTTPProxy:
             except Exception as e:
                 error_message = "Internal Error. Traceback: {}.".format(e)
                 await error_sender(error_message, 500)
+                break
         else:
             logger.debug("Maximum actor death retries exceeded")
             await error_sender(
