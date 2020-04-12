@@ -713,10 +713,8 @@ def init(address=None,
 
     global _global_node
     if redis_address is None:
-        if (
-            raylet_ip_address is not None and
-            raylet_ip_address != node_ip_address
-        ):
+        if (raylet_ip_address is not None
+                and raylet_ip_address != node_ip_address):
             raise ValueError(
                 "When creating a new cluster, raylet_ip_address must be the "
                 "same as node_ip_address.")
@@ -792,16 +790,12 @@ def init(address=None,
         if temp_dir is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "temp_dir must not be provided.")
-        if (
-            plasma_store_socket_name is not None and
-            raylet_ip_address == node_ip_address
-        ):
+        if (plasma_store_socket_name is not None
+                and raylet_ip_address == node_ip_address):
             raise ValueError("When connecting to an existing cluster, "
                              "plasma_store_socket_name must not be provided.")
-        if (
-            raylet_socket_name is not None and
-            raylet_ip_address == node_ip_address
-        ):
+        if (raylet_socket_name is not None
+                and raylet_ip_address == node_ip_address):
             raise ValueError("When connecting to an existing cluster, "
                              "raylet_socket_name must not be provided.")
         if _internal_config is not None:
