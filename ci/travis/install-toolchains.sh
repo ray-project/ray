@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-set -eo pipefail
+{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
+
+set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -u; fi  # some options interfere with Travis's RVM on Mac
 
 LLVM_VERSION="9.0.0"
 
@@ -41,3 +43,5 @@ install_toolchains() {
 }
 
 install_toolchains "$@"
+
+{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
