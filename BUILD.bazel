@@ -272,6 +272,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@msgpack",
         "@plasma//:plasma_client",
@@ -538,6 +539,16 @@ cc_test(
 cc_test(
     name = "reference_count_test",
     srcs = ["src/ray/core_worker/reference_count_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_recovery_manager_test",
+    srcs = ["src/ray/core_worker/test/object_recovery_manager_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",
