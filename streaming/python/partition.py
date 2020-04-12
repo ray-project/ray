@@ -88,7 +88,7 @@ def load_partition(descriptor_partition_bytes: bytes):
     Deserialize `descriptor_partition_bytes` to get partition info, then
     get or load partition function.
     Note that this function must be kept in sync with
-     `org.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
+     `io.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
 
     Args:
         descriptor_partition_bytes: serialized partition info
