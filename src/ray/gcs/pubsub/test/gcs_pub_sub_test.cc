@@ -133,7 +133,7 @@ TEST_F(GcsPubSubTest, TestPubSubApi) {
   RAY_LOG(INFO) << "aaaaaaaaaaaaaaaaaaa";
 }
 
-TEST_F(GcsPubSubTest, TestMultithreading) {
+TEST_F(GcsPubSubTest, DISABLED_TestMultithreading) {
   std::string channel("channel");
   auto sub_message_count = std::make_shared<std::atomic<int>>(0);
   auto sub_finished_count = std::make_shared<std::atomic<int>>(0);
