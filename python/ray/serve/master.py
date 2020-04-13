@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 
 import ray
@@ -9,7 +10,7 @@ from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
-from ray.serve.utils import expand, get_random_letters
+from ray.serve.utils import expand, get_random_letters, logger
 
 import numpy as np
 
@@ -36,13 +37,23 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_monitor = None
 
+    async def _retry_actor_failures(self, call_actor_method):
+        while True:
+            try:
+                return await call_actor_method()
+            except ray.RayActorError:
+                logger.info("failure")
+                await asyncio.sleep(0.1)
+
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
 
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
         self.router = router_class.options(
-            max_concurrency=ASYNC_CONCURRENCY).remote(**init_kwargs)
+            max_concurrency=ASYNC_CONCURRENCY,
+            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        ).remote(**init_kwargs)
 
     def get_router(self):
         assert self.router is not None, "Router not started yet."
@@ -106,7 +117,7 @@ class ServeMaster:
                 await self._start_backend_replica(backend_tag)
         elif delta_num_replicas < 0:
             for _ in range(-delta_num_replicas):
-                self._remove_backend_replica(backend_tag)
+                await self._remove_backend_replica(backend_tag)
 
     async def get_backend_worker_config(self):
         return self.get_router()
@@ -121,6 +132,7 @@ class ServeMaster:
         # TODO(edoakes): we should guarantee that if calls to the master
         # succeed, the cluster state has changed and if they fail, it hasn't.
         # Once we have master actor fault tolerance, this breaks that guarantee
+
         # because this method could fail after writing the replica to the DB.
         self.backend_table.add_replica(backend_tag, replica_tag)
 
@@ -143,14 +155,18 @@ class ServeMaster:
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
-        # XXX
-        await self.get_router()[0].add_new_worker.remote(
-            backend_tag, worker_handle)
+
+        [router] = self.get_router()
+
+        async def add_worker():
+            await router.add_new_worker.remote(backend_tag, worker_handle)
+
+        await self._retry_actor_failures(add_worker)
 
         # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
-    def _remove_backend_replica(self, backend_tag):
+    async def _remove_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
         assert (len(self._list_replicas(backend_tag)) >
@@ -166,12 +182,16 @@ class ServeMaster:
 
         # Remove the replica from metric monitor.
         [monitor] = self.get_metric_monitor()
-        ray.get(monitor.remove_target.remote(replica_handle))
+        await monitor.remove_target.remote(replica_handle)
 
         # Remove the replica from router.
         # This will also destroy the actor handle.
         [router] = self.get_router()
-        ray.get(router.remove_worker.remote(backend_tag, replica_handle))
+
+        async def remove_worker():
+            await router.remove_worker.remote(backend_tag, replica_handle)
+
+        await self._retry_actor_failures(remove_worker)
 
     def get_all_worker_handles(self):
         return self.workers
@@ -180,7 +200,7 @@ class ServeMaster:
         return expand(
             self.route_table.list_service(include_headless=True).values())
 
-    def split_traffic(self, endpoint_name, traffic_policy_dictionary):
+    async def split_traffic(self, endpoint_name, traffic_policy_dictionary):
         assert endpoint_name in expand(
             self.route_table.list_service(include_headless=True).values())
 
@@ -198,18 +218,20 @@ class ServeMaster:
         self.policy_table.register_traffic_policy(endpoint_name,
                                                   traffic_policy_dictionary)
         [router] = self.get_router()
-        ray.get(
-            router.set_traffic.remote(endpoint_name,
-                                      traffic_policy_dictionary))
 
-    def create_endpoint(self, route, endpoint_name, methods):
+        async def set_traffic():
+            await router.set_traffic.remote(endpoint_name,
+                                            traffic_policy_dictionary)
+
+        await self._retry_actor_failures(set_traffic)
+
+    async def create_endpoint(self, route, endpoint_name, methods):
         self.route_table.register_service(
             route, endpoint_name, methods=methods)
         [http_proxy] = self.get_http_proxy()
-        ray.get(
-            http_proxy.set_route_table.remote(
-                self.route_table.list_service(
-                    include_methods=True, include_headless=False)))
+        await http_proxy.set_route_table.remote(
+            self.route_table.list_service(
+                include_methods=True, include_headless=False))
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
@@ -228,8 +250,12 @@ class ServeMaster:
         # Set the backend config inside the router
         # (particularly for max-batch-size).
         [router] = self.get_router()
-        ray.get(
-            router.set_backend_config.remote(backend_tag, backend_config_dict))
+
+        async def set_backend_config():
+            await router.set_backend_config.remote(backend_tag,
+                                                   backend_config_dict)
+
+        await self._retry_actor_failures(set_backend_config)
         await self.scale_replicas(backend_tag,
                                   backend_config_dict["num_replicas"])
 
@@ -251,8 +277,8 @@ class ServeMaster:
         # Inform the router about change in configuration
         # (particularly for setting max_batch_size).
         [router] = self.get_router()
-        ray.get(
-            router.set_backend_config.remote(backend_tag, backend_config_dict))
+        await router.set_backend_config.remote(backend_tag,
+                                               backend_config_dict)
 
         # Restart replicas if there is a change in the backend config related
         # to restart_configs.

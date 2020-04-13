@@ -181,7 +181,7 @@ async def test_power_of_two_choices(serve_instance):
 
 async def test_queue_remove_replicas(serve_instance):
     temp_actor = make_task_runner_mock()
-    q = RandomPolicyQueue()
+    q = await RandomPolicyQueue()
     await q.add_new_worker("backend", temp_actor)
     await q.remove_worker("backend", temp_actor)
     assert q.worker_queues["backend"].qsize() == 0
