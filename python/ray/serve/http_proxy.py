@@ -8,8 +8,13 @@ from ray.serve.constants import SERVE_MASTER_NAME
 from ray.serve.context import TaskContext
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
+from ray.serve.utils import logger
 
 from urllib.parse import parse_qs
+
+# The maximum number of times to retry a request due to actor failure.
+# TODO(edoakes): this should probably be configurable.
+MAX_ACTOR_DEAD_RETRIES = 10
 
 
 class HTTPProxy:
@@ -102,16 +107,15 @@ class HTTPProxy:
             await Response(self.route_table).send(scope, receive, send)
             return
 
-        # TODO(simon): Use werkzeug route mapper to support variable path
-        if current_path not in self.route_table:
+        try:
+            endpoint_name, methods_allowed = self.route_table[current_path]
+        except KeyError:
             error_message = (
                 "Path {} not found. "
                 "Please ping http://.../-/routes for routing table"
             ).format(current_path)
             await error_sender(error_message, 404)
             return
-
-        endpoint_name, methods_allowed = self.route_table[current_path]
 
         if scope["method"] not in methods_allowed:
             error_message = ("Methods {} not allowed. "
@@ -137,13 +141,24 @@ class HTTPProxy:
             absolute_slo_ms=absolute_slo_ms,
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
-        try:
-            result = await self.router_handle.enqueue_request.remote(
-                request_metadata, scope, http_body_bytes)
-            await Response(result).send(scope, receive, send)
-        except Exception as e:
-            error_message = "Internal Error. Traceback: {}.".format(e)
-            await error_sender(error_message, 500)
+        retries = 0
+        while retries <= MAX_ACTOR_DEAD_RETRIES:
+            try:
+                result = await self.router_handle.enqueue_request.remote(
+                    request_metadata, scope, http_body_bytes)
+                if not isinstance(result, ray.exceptions.RayActorError):
+                    await Response(result).send(scope, receive, send)
+                    break
+                logger.warning("Got RayActorError:", str(result))
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                error_message = "Internal Error. Traceback: {}.".format(e)
+                await error_sender(error_message, 500)
+                break
+        else:
+            logger.debug("Maximum actor death retries exceeded")
+            await error_sender(
+                "Internal Error. Maximum actor death retries exceeded", 500)
 
 
 @ray.remote
