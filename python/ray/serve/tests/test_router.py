@@ -180,8 +180,13 @@ async def test_power_of_two_choices(serve_instance):
 
 
 async def test_queue_remove_replicas(serve_instance):
+    @ray.remote
+    class TestRandomPolicyQueueActor(RandomPolicyQueue):
+        def worker_queue_size(self, backend):
+            return self.worker_queues["backend"].qsize()
+
     temp_actor = make_task_runner_mock()
-    q = await RandomPolicyQueue()
-    await q.add_new_worker("backend", temp_actor)
-    await q.remove_worker("backend", temp_actor)
-    assert q.worker_queues["backend"].qsize() == 0
+    q = TestRandomPolicyQueueActor.remote()
+    await q.add_new_worker.remote("backend", temp_actor)
+    await q.remove_worker.remote("backend", temp_actor)
+    assert ray.get(q.worker_queue_size.remote("backend")) == 0
