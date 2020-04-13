@@ -77,9 +77,6 @@ versionwarning_messages = {
     ),
 }
 
-# For debugging locally
-versionwarning_project_version = "master"
-
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples", "tune/guides"],  # path to example scripts
     # path where to save generated examples
