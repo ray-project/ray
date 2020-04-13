@@ -182,7 +182,7 @@ class TestSAC(unittest.TestCase):
             if expect_c is None:
                 expect_c, expect_a, expect_e, expect_t = \
                     self._sac_loss_helper(input_, weights_dict,
-                                          sorted(list(weights_dict.keys())),
+                                          sorted(weights_dict.keys()),
                                           log_alpha, fw,
                                           gamma=config["gamma"], sess=sess)
 
@@ -327,7 +327,7 @@ class TestSAC(unittest.TestCase):
                     trainer.optimizer._fake_batch = in_
                     trainer.train()
                     # Compare updated model.
-                    for tf_key in sorted(list(tf_weights.keys()))[2:10]:
+                    for tf_key in sorted(tf_weights.keys())[2:10]:
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
@@ -338,7 +338,7 @@ class TestSAC(unittest.TestCase):
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
                     # Compare target nets.
-                    for tf_key in sorted(list(tf_weights.keys()))[10:18]:
+                    for tf_key in sorted(tf_weights.keys())[10:18]:
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.target_model.state_dict()[map_[
                             tf_key]]
