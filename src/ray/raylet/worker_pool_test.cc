@@ -114,7 +114,7 @@ class WorkerPoolTest : public ::testing::Test {
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker = std::make_shared<Worker>(
-        WorkerID::FromRandom(), language, -1, client, client_call_manager_);
+        WorkerID::FromRandom(), language, client, client_call_manager_);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }

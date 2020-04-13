@@ -984,6 +984,9 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
+  case protocol::MessageType::AnnounceWorkerPort: {
+    ProcessAnnounceWorkerPortMessage(client, message_data);
+  } break;
   case protocol::MessageType::TaskDone: {
     HandleWorkerAvailable(client);
   } break;
@@ -1075,29 +1078,17 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
-  flatbuffers::FlatBufferBuilder fbb;
-  auto reply =
-      ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
-  fbb.Finish(reply);
-  client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          ProcessDisconnectClientMessage(client);
-        }
-      });
-
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  auto worker = std::make_shared<Worker>(worker_id, language, message->port(), client,
-                                         client_call_manager_);
+  auto worker =
+      std::make_shared<Worker>(worker_id, language, client, client_call_manager_);
+
+  int assigned_port;
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker_pool_.RegisterWorker(worker, pid).ok()) {
-      HandleWorkerAvailable(worker->Connection());
-    }
+    RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, &assigned_port));
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
@@ -1107,7 +1098,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    Status status = worker_pool_.RegisterDriver(worker);
+    Status status = worker_pool_.RegisterDriver(worker, &assigned_port);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
@@ -1116,6 +1107,27 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, self_node_id_), assigned_port);
+  fbb.Finish(reply);
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
+        if (!status.ok()) {
+          ProcessDisconnectClientMessage(client);
+        }
+      });
+}
+
+void NodeManager::ProcessAnnounceWorkerPortMessage(
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
+  int port = message->port();
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  worker->Connect(port);
+  HandleWorkerAvailable(worker->Connection());
 }
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,

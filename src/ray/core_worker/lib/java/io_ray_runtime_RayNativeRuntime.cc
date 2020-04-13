@@ -37,7 +37,6 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
@@ -136,7 +135,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
-                                                                            jclass o) {
+                                                                           jclass o) {
   ray::CoreWorkerProcess::Shutdown();
 }
 

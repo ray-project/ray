@@ -84,8 +84,6 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// Port that this worker should bind on. If 0, a random port will be chosen.
-  int worker_port;
   /// The name of the driver.
   std::string driver_name;
   /// The stdout file of this process.
@@ -916,7 +914,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   boost::asio::steady_timer internal_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer core_worker_server_;
+  std::unique_ptr<rpc::GrpcServer> core_worker_server_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

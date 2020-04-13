@@ -26,25 +26,16 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
+Worker::Worker(const WorkerID &worker_id, const Language &language,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
-      port_(port),
       connection_(connection),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {
-  if (port_ > 0) {
-    rpc::Address addr;
-    addr.set_ip_address("127.0.0.1");
-    addr.set_port(port_);
-    rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr, client_call_manager_));
-  }
-}
+      is_detached_actor_(false) {}
 
 void Worker::MarkDead() { dead_ = true; }
 
@@ -68,6 +59,18 @@ void Worker::SetProcess(Process proc) {
 Language Worker::GetLanguage() const { return language_; }
 
 int Worker::Port() const { return port_; }
+
+int Worker::AssignedPort() const { return assigned_port_; }
+
+void Worker::Connect(int port) {
+  RAY_CHECK(port_ > 0);
+  port_ = port;
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  addr.set_port(port_);
+  rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
+      new rpc::CoreWorkerClient(addr, client_call_manager_));
+}
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 

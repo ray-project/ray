@@ -165,16 +165,16 @@ raylet::RayletClient::RayletClient(
     boost::asio::io_service &io_service,
     std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
-    const JobID &job_id, const Language &language, ClientID *raylet_id, int port)
+    const JobID &job_id, const Language &language, ClientID *raylet_id, int *port)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
-      language, port);
+  auto message =
+      protocol::CreateRegisterClientRequest(fbb, is_worker, to_flatbuf(fbb, worker_id),
+                                            getpid(), to_flatbuf(fbb, job_id), language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -184,6 +184,14 @@ raylet::RayletClient::RayletClient(
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.get());
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  *port = reply_message->port();
+}
+
+Status raylet::RayletClient::AnnounceWorkerPort(int port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
 Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {

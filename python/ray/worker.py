@@ -521,7 +521,6 @@ def init(address=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=ray_constants.NODE_DEFAULT_IP,
-         driver_port=None,
          object_id_seed=None,
          local_mode=False,
          redirect_worker_output=None,
@@ -593,8 +592,6 @@ def init(address=None,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
-        driver_port (int): The port that this driver process use for its gRPC
-            server.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same driver in order to generate the object IDs in a consistent
@@ -691,11 +688,6 @@ def init(address=None,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-
-    if driver_port is not None and (not isinstance(driver_port, int) or
-                                    driver_port < 1024 or driver_port > 65535):
-        raise ValueError(
-            "driver_port must be an integer between 1024 and 65535.")
 
     _internal_config = (json.loads(_internal_config)
                         if _internal_config else {})
@@ -816,8 +808,7 @@ def init(address=None,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id,
-        internal_config=_internal_config,
-        worker_port=driver_port)
+        internal_config=_internal_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -1094,8 +1085,7 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            internal_config=None,
-            worker_port=None):
+            internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1245,7 +1235,6 @@ def connect(node,
         node.get_logs_dir_path(),
         node.node_ip_address,
         node.node_manager_port,
-        worker_port,
         (mode == LOCAL_MODE),
         driver_name,
         log_stdout_file_name,

@@ -459,6 +459,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
+  /// Process client message of AnnounceWorkerPort
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
+                                        const uint8_t *message_data);
+
   /// Handle the case that a worker is available.
   ///
   /// \param client The connection for the worker.

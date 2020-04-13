@@ -77,15 +77,20 @@ class WorkerPool {
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
-  /// \param The Worker to be registered.
+  /// \param[in] worker The worker to be registered.
+  /// \param[in] pid The PID of the worker.
+  /// \param[out] port The port that this worker's gRPC server should listen on.
+  /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid, int *port);
 
   /// Register a new driver.
   ///
-  /// \param The driver to be registered.
+  /// \param[in] worker The driver to be registered.
+  /// \param[out] port The port that this driver's gRPC server should listen on.
+  /// Returns 0 if the driver should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker, int *port);
 
   /// Get the client connection's registered worker.
   ///
@@ -253,6 +258,15 @@ class WorkerPool {
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
   void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+
+  /// Get the next unallocated port in the free ports list. If a port range isn't
+  /// configured, returns 0.
+  /// \param[out] port The next available port.
+  Status GetNextFreePort(int *port);
+
+  /// Mark this port as free to be used by another worker.
+  /// \param[in] port The port to mark as free.
+  void MarkPortAsFree(int port);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
