@@ -42,7 +42,7 @@ class ServeMaster:
             try:
                 return await call_actor_method()
             except ray.RayActorError:
-                logger.info(
+                logger.warning(
                     "Actor method '{}' failed, retrying after 100ms.".format(
                         name))
                 await asyncio.sleep(0.1)
@@ -293,8 +293,8 @@ class ServeMaster:
             await router.set_backend_config.remote(backend_tag,
                                                    backend_config_dict)
 
-        self._retry_actor_failures(set_backend_config,
-                                   "router.set_backend_config")
+        await self._retry_actor_failures(set_backend_config,
+                                         "router.set_backend_config")
 
         # Restart replicas if there is a change in the backend config related
         # to restart_configs.
