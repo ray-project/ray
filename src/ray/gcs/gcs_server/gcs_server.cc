@@ -15,6 +15,7 @@
 #include "gcs_server.h"
 #include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
+#include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
@@ -44,6 +45,9 @@ void GcsServer::Start() {
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
       main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
+
+  // Init gcs actor manager
+  InitGcsActorManager();
 
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
@@ -119,7 +123,15 @@ void GcsServer::InitBackendClient() {
 }
 
 void GcsServer::InitGcsNodeManager() {
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_);
+  RAY_CHECK(redis_gcs_client_ != nullptr);
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors());
+}
+
+void GcsServer::InitGcsActorManager() {
+  RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
@@ -129,7 +141,7 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
   return std::unique_ptr<rpc::DefaultActorInfoHandler>(
-      new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
 }
 
 std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
@@ -198,7 +210,7 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
   return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
 }
 
 }  // namespace gcs
