@@ -65,7 +65,7 @@ int Worker::AssignedPort() const { return assigned_port_; }
 void Worker::SetAssignedPort(int port) { assigned_port_ = port; };
 
 void Worker::Connect(int port) {
-  RAY_CHECK(port_ > 0);
+  RAY_CHECK(port > 0);
   port_ = port;
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");

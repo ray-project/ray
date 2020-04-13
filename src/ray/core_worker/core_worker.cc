@@ -319,12 +319,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
+  RAY_LOG(ERROR) << "assigned port: " << assigned_port;
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
       new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
   // Tell the raylet the port that we are listening on.
+  RAY_LOG(ERROR) << "announced port: " << core_worker_server_->GetPort();
   RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 
   // Set our own address.
