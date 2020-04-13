@@ -21,6 +21,12 @@ namespace ray {
 namespace gcs {
 
 template <typename Key, typename Data>
+Status GcsTable<Key, Data>::Put(const Key &key, const Data &value,
+                                const StatusCallback &callback) {
+  return store_client_->AsyncPut(table_name_, key, value, callback);
+}
+
+template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const JobID &job_id, const Key &key, const Data &value,
                                 const StatusCallback &callback) {
   return store_client_->AsyncPutWithIndex(table_name_, key, job_id, value, callback);
@@ -47,6 +53,7 @@ Status GcsTable<Key, Data>::Delete(const JobID &job_id, const Key &key,
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const JobID &job_id, const std::vector<Key> &keys,
                                    const StatusCallback &callback) {
+  // TODO(ffbin): We will use redis store client batch delete interface directly later.
   auto finished_count = std::make_shared<int>(0);
   int size = keys.size();
   for (Key key : keys) {
