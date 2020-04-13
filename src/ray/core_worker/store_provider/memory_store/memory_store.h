@@ -154,7 +154,7 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Set of objects that should be promoted to plasma once available.
   absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
