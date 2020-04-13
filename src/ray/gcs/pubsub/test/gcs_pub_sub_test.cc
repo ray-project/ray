@@ -35,9 +35,13 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
   }
 
   virtual void TearDown() override {
+    pub_sub_.reset();
     client_->Disconnect();
+    RAY_LOG(INFO) << "bbbbbbbbbbbbbbbbb";
     io_service_.stop();
+    RAY_LOG(INFO) << "ccccccccccccccccccc";
     thread_io_service_->join();
+    RAY_LOG(INFO) << "dddddddddddddddddd";
   }
 
   void Subscribe(const std::string &channel, const std::string &id,
