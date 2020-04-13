@@ -435,6 +435,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         if sample_async:
             self.sampler = AsyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
@@ -453,6 +454,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,

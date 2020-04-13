@@ -126,24 +126,10 @@ COMMON_CONFIG = {
     # `rllib train` command, you can also use the `-v` and `-vv` flags as
     # shorthand for INFO and DEBUG.
     "log_level": "WARN",
-    # Callbacks that will be run during various phases of training. These all
-    # take a single "info" dict as an argument. For episode callbacks, custom
-    # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
-    # may also mutate the passed in batch data in your callback.
-    "callbacks": {
-        "on_episode_start": None,     # arg: {"env": .., "episode": ...}
-        "on_episode_step": None,      # arg: {"env": .., "episode": ...}
-        "on_episode_end": None,       # arg: {"env": .., "episode": ...}
-        "on_sample_end": None,        # arg: {"samples": .., "worker": ...}
-        "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {
-                                      #   "agent_id": ..., "episode": ...,
-                                      #   "pre_batch": (before processing),
-                                      #   "post_batch": (after processing),
-                                      #   "all_pre_batches": (other agent ids),
-                                      # }
-    },
+    # Callbacks that will be run during various phases of training. See the
+    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
+    # for more usage information.
+    "callbacks": DefaultCallbacks,
     # Whether to attempt to continue training if a worker crashes. The number
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
@@ -536,11 +522,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def _log_result(self, result):
-        if self.config["callbacks"].get("on_train_result"):
-            self.config["callbacks"]["on_train_result"]({
-                "trainer": self,
-                "result": result,
-            })
+        self.callbacks.on_train_result(trainer, result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
@@ -919,6 +901,10 @@ class Trainer(Trainable):
                 "sample_batch_size", new="rollout_fragment_length")
             config2["rollout_fragment_length"] = config2["sample_batch_size"]
             del config2["sample_batch_size"]
+        if "callbacks" in config2 and type(config2["callbacks"]) is dict:
+            # Deprecation warning will be logged by DefaultCallbacks.
+            config2["callbacks"] = DefaultCallbacks(
+                legacy_callbacks_dict=config2["callbacks"])
         return deep_update(config1, config2, cls._allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
