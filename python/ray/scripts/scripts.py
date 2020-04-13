@@ -169,7 +169,7 @@ def dashboard(cluster_config_file, cluster_name, port):
     "--max-worker-port",
     required=False,
     type=int,
-    default=10099,
+    default=10999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
 @click.option(
