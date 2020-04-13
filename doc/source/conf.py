@@ -66,6 +66,7 @@ extensions = [
     'versionwarning.extension',
 ]
 
+print("WE ARE IN THIS ENV", os.environ.get("READTHEDOCS_VERSION"))
 versionwarning_messages = {
     "master": (
         "This document is for the master branch. TEST ME"
@@ -76,7 +77,8 @@ versionwarning_messages = {
         'Visit the <a href="/en/master/">master branch documentation here</a>'
     ),
 }
-
+versionwarning_body_selector = "div.document"
+# For debugging locally
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples", "tune/guides"],  # path to example scripts
     # path where to save generated examples
