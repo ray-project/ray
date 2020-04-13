@@ -31,7 +31,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
   @Override
   public void onTestStart(ITestResult result) {
-    printInfo("TEST START", getFullTestName(result));
+    // Don't print anything here since beforeInvocation() will already print everything that is needed
   }
 
   @Override
