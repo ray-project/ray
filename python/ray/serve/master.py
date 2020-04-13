@@ -156,7 +156,10 @@ class ServeMaster:
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Wait for the worker to start up.
-        await worker_handle.ready.remote()
+        async def worker_ready():
+            await worker_handle.ready.remote()
+
+        await self._retry_actor_failures(worker_ready, "worker.ready")
 
         [router] = self.get_router()
 
@@ -231,9 +234,14 @@ class ServeMaster:
         self.route_table.register_service(
             route, endpoint_name, methods=methods)
         [http_proxy] = self.get_http_proxy()
-        await http_proxy.set_route_table.remote(
-            self.route_table.list_service(
-                include_methods=True, include_headless=False))
+
+        async def set_route_table():
+            await http_proxy.set_route_table.remote(
+                self.route_table.list_service(
+                    include_methods=True, include_headless=False))
+
+        await self._retry_actor_failures(set_route_table,
+                                         "http_proxy.set_route_table")
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
@@ -280,8 +288,13 @@ class ServeMaster:
         # Inform the router about change in configuration
         # (particularly for setting max_batch_size).
         [router] = self.get_router()
-        await router.set_backend_config.remote(backend_tag,
-                                               backend_config_dict)
+
+        async def set_backend_config():
+            await router.set_backend_config.remote(backend_tag,
+                                                   backend_config_dict)
+
+        self._retry_actor_failures(set_backend_config,
+                                   "router.set_backend_config")
 
         # Restart replicas if there is a change in the backend config related
         # to restart_configs.
