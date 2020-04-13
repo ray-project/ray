@@ -166,7 +166,6 @@ genrule(
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         cp -f $(location //streaming/java:io_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
         cp -f $(location //streaming/java:io_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
@@ -184,7 +183,6 @@ genrule(
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated"
         rm -rf "$$GENERATED_DIR"
@@ -208,7 +206,6 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         # Copy native dependencies.
         NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"

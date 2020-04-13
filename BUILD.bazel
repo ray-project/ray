@@ -1338,7 +1338,6 @@ genrule(
             mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
-            set -x &&
             tmpdir="redis.tmp" &&
             path=$(location @com_github_antirez_redis//:file) &&
             cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
@@ -1410,7 +1409,6 @@ genrule(
     ],
     outs = ["ray_pkg.out"],
     cmd = """
-        set -x &&
         WORK_DIR="$$(pwd)" &&
         RAYDIR="$$WORK_DIR/python/ray"
         RAYLET="$(location python/ray/_raylet.so)"
