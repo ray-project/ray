@@ -7,6 +7,7 @@ import itertools
 import os
 import tempfile
 import torch
+import torch.nn as nn
 
 import ray
 from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP, NUM_STEPS
@@ -21,14 +22,6 @@ try:
 except ImportError:
     logger.debug("apex is not installed.")
     pass
-
-
-def _remind_gpu_usage(use_gpu, is_chief):
-    if not is_chief:
-        return
-    if not use_gpu and torch.cuda.is_available():
-        logger.info("GPUs detected but not using them. Set `use_gpu` to "
-                    "enable GPU usage. ")
 
 
 class TorchRunner:
@@ -79,6 +72,7 @@ class TorchRunner:
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
+        self.training_operator = None
         self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
@@ -149,24 +143,35 @@ class TorchRunner:
                 self.models, self.optimizers, **self.apex_args)
 
     def setup(self):
-        """Initializes the model."""
-        _remind_gpu_usage(self.use_gpu, is_chief=True)
+        """Merges setup_components and setup_operator in one call."""
+        self.setup_components()
+        self.setup_operator()
+
+    def setup_components(self):
+        """Runs the creator functions without any distributed coordination."""
+        logger.debug("Loading data.")
         self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
+        assert all(isinstance(model, nn.Module) for model in self.models), (
+            "All models must be PyTorch models: {}.".format(self.models))
         if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
-        logger.debug("Creating optimizer")
+        logger.debug("Creating optimizer.")
         self.optimizers = self.optimizer_creator(self.given_models,
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
+
         self._create_schedulers_if_available()
         self._try_setup_apex()
         self._create_loss()
+
+    def setup_operator(self):
+        """Create the training operator."""
         self.training_operator = self.training_operator_cls(
             self.config,
             models=self.models,

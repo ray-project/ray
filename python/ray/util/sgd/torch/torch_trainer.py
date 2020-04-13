@@ -30,6 +30,12 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
+def _remind_gpu_usage(use_gpu):
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
+
+
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
@@ -69,6 +75,14 @@ class TorchTrainer:
         for i in range(4):
             trainer.train()
 
+    The creator functions will execute before distributed coordination and
+    training is setup. This is so that creator functions that download
+    large datasets will not trigger any timeouts.
+
+    The order of operations for creator functions are:
+
+    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
+    ``scheduler_creator`` -> ``loss_creator``.
 
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
@@ -213,6 +227,8 @@ class TorchTrainer:
         if use_gpu == "auto":
             use_gpu = torch.cuda.is_available()
 
+        _remind_gpu_usage(use_gpu)
+
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
@@ -320,13 +336,32 @@ class TorchTrainer:
 
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
-            remote_setups = [
-                worker.setup.remote(address, i + 1, num_workers)
+            # Runs the creator functions.
+            remote_component_setup = [
+                worker.setup_components.remote()
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup(address, 0, num_workers)
+            self.local_worker.setup_components()
             # Get setup tasks in order to throw errors on failure
-            ray.get(remote_setups)
+            ray.get(remote_component_setup)
+
+            # Setup the process group among all workers.
+            remote_pgroup_setups = [
+                worker.setup_process_group.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
+            ]
+            self.local_worker.setup_process_group(address, 0, num_workers)
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_pgroup_setups)
+
+            # Runs code that requires all creator functions to have run.
+            remote_operator_setups = [
+                worker.setup_ddp_and_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_ddp_and_operator()
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,

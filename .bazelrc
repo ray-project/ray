@@ -55,6 +55,15 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 
+test:ci --flaky_test_attempts=3
+test:ci --nocache_test_results
+test:ci --progress_report_interval=100
+test:ci --show_progress_rate_limit=100
+test:ci --show_timestamps
+test:ci --spawn_strategy=local
+test:ci --test_output=errors
+test:ci --test_verbose_timeout_warnings
+
 # [Linux] Uncomment this line to print a stack trace on exit.
 #test:linux --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
 # [Linux] Uncomment this line to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
