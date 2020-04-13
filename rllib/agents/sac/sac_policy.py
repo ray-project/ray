@@ -44,10 +44,14 @@ def build_sac_model(policy, obs_space, action_space, config):
         config["model"]["no_final_linear"] = True
     else:
         num_outputs = int(np.product(obs_space.shape))
-    # Force-ignore any additionally provided hidden layer sizes.
-    # Everything should be configured using SAC's "Q_model" and "policy_model"
-    # settings.
-    config["model"]["fcnet_hiddens"] = []
+        # No state preprocessor: fcnet_hiddens should be empty.
+        if config["model"]["fcnet_hiddens"]:
+            logger.warning(
+                "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
+                " will be set to an empty list! Any hidden layer sizes are "
+                "defined via `policy_model.hidden_layer_sizes` and "
+                "`Q_model.hidden_layer_sizes`.")
+            config["model"]["fcnet_hiddens"] = []
 
     policy.model = ModelCatalog.get_model_v2(
         obs_space,
