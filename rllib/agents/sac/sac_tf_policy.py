@@ -46,24 +46,12 @@ def build_sac_model(policy, obs_space, action_space, config):
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
     #num_outputs = 0  # None -> no additional output layer
-    if not config["use_state_preprocessor"]:
+    if config["use_state_preprocessor"]:
+        num_outputs = 256  # Flatten last Conv2D to this many nodes.
+    else:
         config["model"]["fcnet_hiddens"] = []
         num_outputs = 0
-    else:
-        num_outputs = 256  # Flatten last Conv2D to this many nodes.
 
-    #    default_model = None
-    #else:
-    #    default_model = TorchNoopModel if config["use_pytorch"] else \
-    #        TFNoopModel
-
-    #config["model"]["no_final_linear"] = True
-    #else:
-    #if isinstance(action_space, Discrete):
-    #    num_outputs = action_space.n
-    #else:
-    #    num_outputs = int(np.product(action_space.shape))
-    #num_outputs = 0
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
@@ -73,7 +61,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        #default_model=default_model,
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
@@ -97,7 +84,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs=num_outputs,
         model_config=config["model"],
         framework="torch" if config["use_pytorch"] else "tf",
-        #default_model=default_model,
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],

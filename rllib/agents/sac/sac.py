@@ -106,7 +106,7 @@ DEFAULT_CONFIG = with_common_config({
     # for debugging!
     "_deterministic_loss": False,
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
-    # continuous action spaces.
+    # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
 
     # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten

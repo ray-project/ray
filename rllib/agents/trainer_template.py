@@ -137,7 +137,7 @@ def build_trainer(name,
                 after_init(self)
 
         @override(Trainer)
-        def _train(self, fake_batch=None):
+        def _train(self):  #, fake_batch=None):
             if self.train_exec_impl:
                 return self._train_exec_impl()
 
@@ -146,23 +146,23 @@ def build_trainer(name,
             prev_steps = self.optimizer.num_steps_sampled
 
             start = time.time()
-            count = 0
+            optimizer_steps_this_iter = 0
             while True:
-                fetches = self.optimizer.step(fake_batch)
-                count += 1
+                fetches = self.optimizer.step()  #fake_batch)
+                optimizer_steps_this_iter += 1
                 if after_optimizer_step:
                     after_optimizer_step(self, fetches)
                 if (time.time() - start >= self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
                         self.config["timesteps_per_iteration"]):
                     break
-            print("Performed {} optimizer steps (policy={}).".format(count, self.get_policy()))
 
             if collect_metrics_fn:
                 res = collect_metrics_fn(self)
             else:
                 res = self.collect_metrics()
             res.update(
+                optimizer_steps_this_iter=optimizer_steps_this_iter,
                 timesteps_this_iter=self.optimizer.num_steps_sampled -
                 prev_steps,
                 info=res.get("info", {}))

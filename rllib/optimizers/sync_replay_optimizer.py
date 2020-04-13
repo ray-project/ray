@@ -101,8 +101,15 @@ class SyncReplayOptimizer(PolicyOptimizer):
             logger.warning("buffer_size={} < replay_starts={}".format(
                 buffer_size, self.replay_starts))
 
+        # If set, will use this batch for stepping/updating, instead of
+        # sampling from the replay buffer. Actual sampling from the env
+        # (and adding collected experiences to the replay will still happen
+        # normally).
+        # After self.step(), self.fake_batch must be set again.
+        self._fake_batch = None
+
     @override(PolicyOptimizer)
-    def step(self, fake_batch=None):
+    def step(self):
         with self.update_weights_timer:
             if self.workers.remote_workers():
                 weights = ray.put(self.workers.local_worker().get_weights())
@@ -110,8 +117,9 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if fake_batch:
-                batch = SampleBatch(fake_batch)
+            # Use a pre-set fake-batch (for debugging purposes only!).
+            if self._fake_batch is not None:
+                batch = SampleBatch(self._fake_batch)
                 # Sample either way.
                 self.workers.local_worker().sample()
             elif self.workers.remote_workers():
@@ -140,7 +148,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                         weight=None)
 
         if self.num_steps_sampled >= self.replay_starts:
-            self._optimize(batch if fake_batch else None)
+            self._optimize()
 
         self.num_steps_sampled += batch.count
 
@@ -159,9 +167,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 "learner": self.learner_stats,
             })
 
-    def _optimize(self, fake_batch=None):
-        if fake_batch:
-            samples = fake_batch
+    def _optimize(self):
+        if self._fake_batch:
+            samples = self._fake_batch
+            # Must be set again each learning step.
+            self._fake_batch = None
         else:
             samples = self._replay()
 

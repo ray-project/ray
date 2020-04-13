@@ -58,6 +58,8 @@ class FullyConnectedNetwork(TFModelV2):
                     name="fc_out",
                     activation=None,
                     kernel_initializer=normc_initializer(0.01))(last_layer)
+            # Adjust self.num_outputs to be the number of nodes in the last
+            # layer.
             else:
                 self.num_outputs = ([np.product(obs_space.shape)] +
                     hiddens[-1:-1])[-1]

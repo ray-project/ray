@@ -102,15 +102,14 @@ class TestDistributions(unittest.TestCase):
         """Tests the SquashedGaussian ActionDistribution for all frameworks."""
         input_space = Box(-2.0, 2.0, shape=(200, 10))
         low, high = -2.0, 1.0
-        inputs_1 = input_space.sample()
 
-        for fw, sess in framework_iterator(frameworks=("torch", "tf"), session=True):
-
+        for fw, sess in framework_iterator(session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Batch of size=n and deterministic.
-            means, _ = np.split(inputs_1, 2, axis=-1)
-            squashed_distribution = cls(inputs_1, {}, low=low, high=high)
+            inputs = input_space.sample()
+            means, _ = np.split(inputs, 2, axis=-1)
+            squashed_distribution = cls(inputs, {}, low=low, high=high)
             expected = ((np.tanh(means) + 1.0) / 2.0) * (high - low) + low
             # Sample n times, expect always mean value (deterministic draw).
             out = squashed_distribution.deterministic_sample()
@@ -142,11 +141,12 @@ class TestDistributions(unittest.TestCase):
             stds = np.exp(
                 np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
             # Unsquash values, then get log-llh from regular gaussian.
-            #atanh_in = np.clip((values - low) / (high - low) * 2.0 - 1.0, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+            # atanh_in = np.clip((values - low) / (high - low) * 2.0 - 1.0,
+            #   -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
             atanh_in = (values - low) / (high - low) * 2.0 - 1.0
             unsquashed_values = np.arctanh(atanh_in)
-            log_prob_unsquashed = \
-                np.sum(np.log(norm.pdf(unsquashed_values, means, stds) + SMALL_NUMBER), -1)
+            log_prob_unsquashed = np.sum(np.log(norm.pdf(
+                unsquashed_values, means, stds) + SMALL_NUMBER), -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)

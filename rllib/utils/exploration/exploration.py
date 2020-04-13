@@ -37,6 +37,8 @@ class Exploration:
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
+        # The device on which the Model has been placed.
+        # This Exploration will be on the same device.
         self.device = None if not isinstance(self.model, nn.Module) else \
             next(self.model.parameters()).device
 

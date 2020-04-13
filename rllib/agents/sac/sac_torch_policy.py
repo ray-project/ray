@@ -163,12 +163,10 @@ def actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
         q_tp1 -= alpha * log_pis_tp1
-        #print("q_tp1(min)-alpha log(pi(tp1))={}".format(q_tp1[0]))
 
         q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
         q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * \
             q_tp1_best
-        #print("q_tp1_best_masked={}".format(q_tp1_best_masked[0]))
 
     assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
@@ -386,32 +384,14 @@ class TargetNetworkMixin:
         self.update_target(tau=1.0)
 
     def update_target(self, tau=None):
-        tau = tau or self.config.get("tau")
-        model_state_dict = self.model.state_dict()
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
-        # Full sync from Q-model to target Q-model.
+        tau = tau or self.config.get("tau")
+        model_state_dict = self.model.state_dict()
+        # Support partial (soft) synching.
+        # If tau == 1.0: Full sync from Q-model to target Q-model.
         if tau != 1.0:
             target_state_dict = self.target_model.state_dict()
-            #update_state_dict = model_state_dict
-        # Partial (soft) sync using tau-synching.
-        #else:
-            #model_vars = self.model.variables(as_dict=True)
-            #target_model_vars = self.target_model.variables(as_dict=True)
-            #assert sorted(model_vars.keys()) == sorted(target_model_vars.keys())
-            #model_vars = [model_vars[k] for k in sorted(model_vars.keys())]
-            #target_model_vars = [target_model_vars[k] for k in sorted(target_model_vars.keys())]
-            ##print("model-var={} target-var={}".format(model_vars[0][0][0], target_model_vars[0][0][0]))
-            #assert len(model_vars) == len(target_model_vars), \
-            #    (model_vars, target_model_vars)
-            #for var, var_target in zip(model_vars, target_model_vars):
-            #    assert var.shape == var_target.shape
-            #    #print("before update: {}".format(var_target))
-            #    #print("var={}".format(var))
-            #    var_target.mul_(1.0 - tau)
-            #    var_target.add_(tau * var.data)  #var_target.data + \
-            #        #tau * var.data
-            #    #print("after update: {}".format(var_target))
             model_state_dict = {k: tau * model_state_dict[k] + (1 - tau) * v
                          for k, v in target_state_dict.items()}
         self.target_model.load_state_dict(model_state_dict)

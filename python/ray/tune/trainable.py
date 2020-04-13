@@ -218,7 +218,7 @@ class Trainable:
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
-    def train(self, fake_batch=None):
+    def train(self):
         """Runs one logical iteration of training.
 
         Subclasses should override ``_train()`` instead to return results.
@@ -258,7 +258,7 @@ class Trainable:
             A dict that describes training progress.
         """
         start = time.time()
-        result = self._train(fake_batch)
+        result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
 
         # We do not modify internal state nor update this result if duplicate.
