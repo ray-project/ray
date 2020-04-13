@@ -44,7 +44,7 @@ Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callbac
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithIndex<Key, Data>::PutWithJobId(const JobID &job_id, const Key &key,
+Status GcsTableWithJobId<Key, Data>::PutWithJobId(const JobID &job_id, const Key &key,
                                                   const Data &value,
                                                   const StatusCallback &callback) {
   return this->store_client_->AsyncPutWithIndex(this->table_name_, key, job_id, value,
@@ -52,7 +52,7 @@ Status GcsTableWithIndex<Key, Data>::PutWithJobId(const JobID &job_id, const Key
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithIndex<Key, Data>::GetByJobId(
+Status GcsTableWithJobId<Key, Data>::GetByJobId(
     const JobID &job_id, const SegmentedCallback<std::pair<Key, Data>> &callback) {
   // TODO(ffbin): We will add this function after redis store client support
   // AsyncGetByIndex interface.
@@ -60,7 +60,7 @@ Status GcsTableWithIndex<Key, Data>::GetByJobId(
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithIndex<Key, Data>::DeleteByJobId(const JobID &job_id,
+Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                    const StatusCallback &callback) {
   return this->store_client_->AsyncDeleteByIndex(this->table_name_, job_id, callback);
 }
@@ -97,13 +97,13 @@ template class GcsTable<TaskID, TaskTableData>;
 template class GcsTable<TaskID, TaskLeaseData>;
 template class GcsTable<TaskID, TaskReconstructionData>;
 template class GcsTable<ObjectID, ObjectTableDataList>;
-template class GcsTableWithIndex<ActorID, ActorTableData>;
-template class GcsTableWithIndex<ActorCheckpointID, ActorCheckpointData>;
-template class GcsTableWithIndex<ActorID, ActorCheckpointIdData>;
-template class GcsTableWithIndex<TaskID, TaskTableData>;
-template class GcsTableWithIndex<TaskID, TaskLeaseData>;
-template class GcsTableWithIndex<TaskID, TaskReconstructionData>;
-template class GcsTableWithIndex<ObjectID, ObjectTableDataList>;
+template class GcsTableWithJobId<ActorID, ActorTableData>;
+template class GcsTableWithJobId<ActorCheckpointID, ActorCheckpointData>;
+template class GcsTableWithJobId<ActorID, ActorCheckpointIdData>;
+template class GcsTableWithJobId<TaskID, TaskTableData>;
+template class GcsTableWithJobId<TaskID, TaskLeaseData>;
+template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
+template class GcsTableWithJobId<ObjectID, ObjectTableDataList>;
 
 }  // namespace gcs
 }  // namespace ray

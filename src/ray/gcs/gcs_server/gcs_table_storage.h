@@ -67,16 +67,16 @@ class GcsTable {
   std::shared_ptr<StoreClient<Key, Data, JobID>> store_client_;
 };
 
-/// \class GcsTableWithIndex
+/// \class GcsTableWithJobId
 ///
-/// GcsTableWithIndex supports putting, getting and deleting of GCS table data.
+/// GcsTableWithJobId supports putting, getting and deleting of GCS table data.
 /// This class is not meant to be used directly. All gcs table classes with job id should
 /// derive from this class and override the table_name_ member with a unique value
 /// for that table.
 template <typename Key, typename Data>
-class GcsTableWithIndex : public GcsTable<Key, Data> {
+class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
-  explicit GcsTableWithIndex(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
+  explicit GcsTableWithJobId(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
       : GcsTable<Key, Data>(store_client) {}
 
   Status PutWithJobId(const JobID &job_id, const Key &key, const Data &value,
@@ -97,71 +97,71 @@ class GcsJobTable : public GcsTable<JobID, JobTableData> {
   }
 };
 
-class GcsActorTable : public GcsTableWithIndex<ActorID, ActorTableData> {
+class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
   explicit GcsActorTable(
       std::shared_ptr<StoreClient<ActorID, ActorTableData, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
 };
 
 class GcsActorCheckpointTable
-    : public GcsTableWithIndex<ActorCheckpointID, ActorCheckpointData> {
+    : public GcsTableWithJobId<ActorCheckpointID, ActorCheckpointData> {
  public:
   explicit GcsActorCheckpointTable(
       std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>
           store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT);
   }
 };
 
 class GcsActorCheckpointIdTable
-    : public GcsTableWithIndex<ActorID, ActorCheckpointIdData> {
+    : public GcsTableWithJobId<ActorID, ActorCheckpointIdData> {
  public:
   explicit GcsActorCheckpointIdTable(
       std::shared_ptr<StoreClient<ActorID, ActorCheckpointIdData, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT_ID);
   }
 };
 
-class GcsTaskTable : public GcsTableWithIndex<TaskID, TaskTableData> {
+class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(
       std::shared_ptr<StoreClient<TaskID, TaskTableData, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK);
   }
 
   Status BatchDelete(const std::vector<TaskID> &keys, const StatusCallback &callback);
 };
 
-class GcsTaskLeaseTable : public GcsTableWithIndex<TaskID, TaskLeaseData> {
+class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
  public:
   explicit GcsTaskLeaseTable(
       std::shared_ptr<StoreClient<TaskID, TaskLeaseData, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
   }
 };
 
 class GcsTaskReconstructionTable
-    : public GcsTableWithIndex<TaskID, TaskReconstructionData> {
+    : public GcsTableWithJobId<TaskID, TaskReconstructionData> {
  public:
   explicit GcsTaskReconstructionTable(
       std::shared_ptr<StoreClient<TaskID, TaskReconstructionData, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
   }
 };
 
-class GcsObjectTable : public GcsTableWithIndex<ObjectID, ObjectTableDataList> {
+class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
  public:
   explicit GcsObjectTable(
       std::shared_ptr<StoreClient<ObjectID, ObjectTableDataList, JobID>> store_client)
-      : GcsTableWithIndex(std::move(store_client)) {
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
   }
 };
