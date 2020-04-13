@@ -73,9 +73,12 @@ versionwarning_messages = {
     ),
     "latest": (
         "This document is for the latest pip release. "
-        'Visit the <a href="/en/latest/">master branch documentation here</a>'
+        'Visit the <a href="/en/master/">master branch documentation here</a>'
     ),
 }
+
+# For debugging locally
+versionwarning_project_version = "master"
 
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples", "tune/guides"],  # path to example scripts
