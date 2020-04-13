@@ -63,13 +63,6 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
-    # Make sure!
-    for v in policy.target_model.q_variables():
-        v.requires_grad = False
-    for v in policy.target_model.policy_variables():
-        v.requires_grad = False
-    policy.target_model.log_alpha.requires_grad = False
-
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": True,
@@ -330,6 +323,8 @@ class TargetNetworkMixin:
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     policy.target_model = policy.target_model.to(policy.device)
+    policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
+    policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 

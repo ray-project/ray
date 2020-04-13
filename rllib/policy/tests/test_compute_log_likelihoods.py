@@ -18,7 +18,8 @@ def do_test_log_likelihood(run,
                            config,
                            prev_a=None,
                            continuous=False,
-                           layer_key=("fc", (0, 4)),
+                           layer_key=("fc", (0, 4),
+                                      ("_hidden_layers.0.", "_logits.")),
                            logp_func=None):
     config = config.copy()
     # Run locally.
@@ -37,7 +38,7 @@ def do_test_log_likelihood(run,
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        if run in [dqn.DQNTrainer, sac.SACTrainer] and fw == "torch":
+        if run in [sac.SACTrainer] and fw == "eager":
             continue
 
         trainer = run(config=config, env=env)
@@ -75,12 +76,10 @@ def do_test_log_likelihood(run,
                             vars["default_policy/{}_out/kernel".format(
                                 layer_key[0])])
                 else:
-                    expected_mean_logstd = fc(
-                        fc(
-                            obs_batch,
-                            np.transpose(
-                                vars["_hidden_layers.0._model.0.weight"])),
-                        np.transpose(vars["_logits._model.0.weight"]))
+                    expected_mean_logstd = fc(fc(
+                        obs_batch, vars["{}_model.0.weight".format(layer_key[2][0])],
+                        framework=fw),
+                        vars["{}_model.0.weight".format(layer_key[2][1])], framework=fw)
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:
                     expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
@@ -124,7 +123,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("fc", (0, 2)))
+            layer_key=("fc", (0, 2), ("_hidden_layers.0.", "_logits.")))
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
@@ -170,7 +169,10 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("sequential/action", (0, 2)),
+            layer_key=(
+                "sequential/action",
+                (0, 2),
+                ("action_model.action_0.", "action_model.action_out.")),
             logp_func=logp_func)
 
     def test_sac_discr(self):
@@ -184,7 +186,9 @@ class TestComputeLogLikelihood(unittest.TestCase):
             sac.SACTrainer,
             config,
             prev_a,
-            layer_key=("sequential/action", (0, 2)))
+            layer_key=("sequential/action",
+                       (0, 2),
+                       ("action_model.action_0.", "action_model.action_out.")))
 
 
 if __name__ == "__main__":

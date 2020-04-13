@@ -53,6 +53,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     out_size=self.num_outputs,
                     initializer=normc_initializer(1.0),
                     activation_fn=activation))
+            prev_layer_size = self.num_outputs
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
         else:
@@ -63,6 +64,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                         out_size=hiddens[-1],
                         initializer=normc_initializer(1.0),
                         activation_fn=activation))
+                prev_layer_size = hiddens[-1]
             if self.num_outputs:
                 self._logits = SlimFC(
                     in_size=hiddens[-1],
