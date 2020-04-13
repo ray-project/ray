@@ -12,7 +12,7 @@ halfcheetah_sac:
           fcnet_hiddens: [256, 256]
         policy_model:
           fcnet_activation: relu
-          hidden_hiddens: [256, 256]
+          fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
         no_done_at_end: True
