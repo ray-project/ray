@@ -63,6 +63,7 @@ extensions = [
     'sphinx-jsonschema',
     'sphinx_gallery.gen_gallery',
     'sphinx_copybutton',
+    'versionwarning.extension',
 ]
 
 sphinx_gallery_conf = {
