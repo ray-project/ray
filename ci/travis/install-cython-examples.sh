@@ -4,11 +4,11 @@
 
 set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -u; fi  # some options interfere with Travis's RVM on Mac
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 install_cython_examples() {
   (
-    cd "${ROOT_DIR}/../../doc/examples/cython"
+    builtin cd "${ROOT_DIR}/../../doc/examples/cython"
     pip install scipy
     python setup.py install --user
   )

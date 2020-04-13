@@ -4,7 +4,7 @@
 
 set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -u; fi  # some options interfere with Travis's RVM on Mac
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 pkg_install() {
@@ -68,7 +68,7 @@ install_nvm() {
         mkdir -p -- "${NVM_HOME}"
         export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
         (
-          cd "${NVM_HOME}"
+          builtin cd "${NVM_HOME}"
           local target="./nvm-${version}.zip"
           curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
           unzip -q -- "${target}"
