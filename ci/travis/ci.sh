@@ -71,12 +71,12 @@ build() {
   if [ -z "${wheels}" ]; then  # NOT building wheels
     if [ "${LINT-}" != 1 ]; then  # NOT linting
       bazel build -k "//:*"   # Do a full build first to ensure it passes
-      . "${ROOT_DIR}"/install-ray.sh
+      "${ROOT_DIR}"/install-ray.sh
     fi
   fi
 
   if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    . "${ROOT_DIR}"/install-cython-examples.sh
+    "${ROOT_DIR}"/install-cython-examples.sh
   fi
 
   if [ "${LINUX_WHEELS-}" = 1 ]; then

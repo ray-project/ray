@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euxo pipefail
 
 LLVM_VERSION="9.0.0"
 
@@ -8,7 +8,6 @@ install_toolchains() {
   local osversion="" url="" urlbase="https://releases.llvm.org" targetdir="/usr/local"
   case "${OSTYPE}" in
     msys)
-      export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
       osversion=win
       if [ "${HOSTTYPE}" != "${HOSTTYPE%64}" ]; then
         osversion="${osversion}64"

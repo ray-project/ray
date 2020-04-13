@@ -2,7 +2,7 @@
 
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
 
-set -euo pipefail
+set -euxo pipefail
 
 ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
@@ -25,7 +25,7 @@ install_base() {
         sudo usermod -a -G docker travis
       fi
       if [ -n "${PYTHON-}" ]; then
-        . "${ROOT_DIR}/install-strace.sh" || true
+        "${ROOT_DIR}/install-strace.sh" || true
       fi
       ;;
   esac
@@ -122,7 +122,7 @@ install_dependencies() {
 
   install_base
   if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Keep Travis's built-in compilers and only use this for GitHub Actions (for now)
-    . "${ROOT_DIR}"/install-toolchains.sh
+    "${ROOT_DIR}"/install-toolchains.sh
   fi
   install_nvm
   install_pip
