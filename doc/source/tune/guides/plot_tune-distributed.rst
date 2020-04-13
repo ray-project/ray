@@ -261,7 +261,7 @@ Below are some commonly used commands for submitting experiments. Please see the
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
     # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
-    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py  -- --address=localhost:6379
+    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
     # To start or update your cluster:
     $ ray up CLUSTER.YAML [-y]
