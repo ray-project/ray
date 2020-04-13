@@ -66,7 +66,6 @@ extensions = [
     'versionwarning.extension',
 ]
 
-print("WE ARE IN THIS ENV", os.environ.get("READTHEDOCS_VERSION"))
 versionwarning_messages = {
     "master": (
         "This document is for the master branch. "
@@ -74,7 +73,7 @@ versionwarning_messages = {
     ),
     "latest": (
         "This document is for the latest pip release. "
-        'Visit the <a href="/en/master/">master branch documentation here</a>'
+        'Visit the <a href="/en/master/">master branch documentation here</a>.'
     ),
 }
 
