@@ -141,6 +141,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
+        self.worker = worker
         self.base_env = BaseEnv.to_base_env(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
@@ -180,7 +181,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            worker, self.base_env, extra_batches_putter, self.policies,
+            self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
@@ -341,7 +342,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         # Process observations and prepare for policy evaluation
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
-            base_env, policies, batch_builder_pool, active_episodes,
+            worker, base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, rollout_fragment_length, pack,
             callbacks, soft_horizon, no_done_at_end)
@@ -369,7 +370,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         perf_stats.env_wait_time += time.time() - t4
 
 
-def _process_observations(base_env, policies, batch_builder_pool,
+def _process_observations(worker, base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
                           obs_filters, rollout_fragment_length, pack,

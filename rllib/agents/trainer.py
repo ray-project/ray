@@ -9,6 +9,7 @@ import tempfile
 
 import ray
 from ray.exceptions import RayError
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -522,7 +523,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def _log_result(self, result):
-        self.callbacks.on_train_result(trainer, result)
+        self.callbacks.on_train_result(self, result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)

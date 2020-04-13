@@ -1,7 +1,8 @@
 from typing import Dict
 
+from ray.rllib.agents import Trainer
 from ray.rllib.env import BaseEnv
-from ray.rllib.policy import Policy
+from ray.rllib.policy import Policy, SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from rllib.utils.deprecation import deprecation_warning
 
@@ -11,7 +12,7 @@ class DefaultCallbacks:
 
     These callbacks will be invoked during training, and can be used to record
     custom metrics, apply custom postprocessing, etc.
-    
+
     By default, all of these callbacks are no-ops. To configure custom training
     callbacks, subclass DefaultCallbacks and then set
     {"callbacks": YourCallbacksClass} in the trainer config.

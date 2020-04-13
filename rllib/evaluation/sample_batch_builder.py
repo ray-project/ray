@@ -163,7 +163,7 @@ class MultiAgentSampleBatchBuilder:
         # Append into policy batches and reset
         from rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            callbacks.after_postprocess_trajectory(
+            self.callbacks.after_postprocess_trajectory(
                 worker=get_global_worker(),
                 episode=episode,
                 agent_id=agent_id,
