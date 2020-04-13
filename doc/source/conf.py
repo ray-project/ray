@@ -68,7 +68,7 @@ extensions = [
 
 versionwarning_messages = {
     "master": (
-        "This document is for the master branch. "
+        "This document is for the master branch. TEST ME"
         'Visit the <a href="/en/latest/">latest pip release documentation here</a>.'
     ),
     "latest": (
