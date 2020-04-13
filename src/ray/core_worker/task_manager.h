@@ -92,7 +92,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// not already pending and was successfully resubmitted.
   /// \return OK if the task was successfully resubmitted or was
   /// already pending, Invalid if the task spec is no longer present.
-  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps);
+  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
