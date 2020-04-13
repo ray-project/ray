@@ -193,21 +193,24 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
-        if self.min_worker_port is not None and (self.min_worker_port < 1024 or
-                                                 self.min_worker_port > 65535):
-            raise ValueError("min_worker_port must be an integer between "
-                             "1024 and 65535.")
+        if self.min_worker_port is not None:
+            if self.min_worker_port != 0 and (self.min_worker_port < 1024
+                                              or self.min_worker_port > 65535):
+                raise ValueError("min_worker_port must be 0 or an integer "
+                                 "between 1024 and 65535.")
 
         if self.max_worker_port is not None:
             if self.min_worker_port is None:
                 raise ValueError("If max_worker_port is set, min_worker_port "
                                  "must also be set.")
-            elif self.max_worker_port < 1024 or self.max_worker_port > 65535:
-                raise ValueError("max_worker_port must be an integer between "
-                                 "1024 and 65535.")
-            elif self.max_worker_port <= self.min_worker_port:
-                raise ValueError("max_worker_port must be higher than "
-                                 "min_worker_port.")
+            elif self.max_worker_port != 0:
+                if self.max_worker_port < 1024 or self.max_worker_port > 65535:
+                    raise ValueError(
+                        "max_worker_port must be 0 or an integer between "
+                        "1024 and 65535.")
+                elif self.max_worker_port <= self.min_worker_port:
+                    raise ValueError("max_worker_port must be higher than "
+                                     "min_worker_port.")
 
         if self.resources is not None:
             assert "CPU" not in self.resources, (
