@@ -329,6 +329,7 @@ class TargetNetworkMixin:
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
+    policy.target_model = policy.target_model.to(policy.device)
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
