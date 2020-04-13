@@ -280,7 +280,7 @@ Status ConnectWithRetries(const std::string &address, int port,
       }
       break;
     }
-    RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
+    RAY_LOG(WARNING) << "Failed to connect to Redis, retrying. address = " << address << ", port = " << port;
     // Sleep for a little.
     usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     *context = connect_function(address.c_str(), port);

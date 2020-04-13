@@ -63,6 +63,54 @@ void RedisServiceManagerForTest::FlushAll() {
   usleep(100 * 1000);
 }
 
+void RedisShardServiceManagerForTest::SetUpTestCase() {
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  std::mt19937 gen(seed);
+  std::uniform_int_distribution<int> random_gen{2000, 7000};
+  // Use random port to avoid port conflicts between UTs.
+//  REDIS_SERVER_PORT = random_gen(gen);
+  REDIS_SERVER_PORT = 6379;
+  REDIS_SHARD_SERVER_PORT = REDIS_SERVER_PORT + 1;
+
+  std::string load_module_command;
+  if (!REDIS_MODULE_LIBRARY_PATH.empty()) {
+    // Fill load module command.
+    load_module_command = "--loadmodule " + REDIS_MODULE_LIBRARY_PATH;
+  }
+
+  std::string start_redis_command = REDIS_SERVER_EXEC_PATH + " --loglevel warning " +
+      load_module_command + " --port " +
+      std::to_string(REDIS_SERVER_PORT) + " &";
+  RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
+  RAY_CHECK(system(start_redis_command.c_str()) == 0);
+  usleep(200 * 1000);
+
+  start_redis_command = REDIS_SERVER_EXEC_PATH + " --loglevel warning " +
+      load_module_command + " --port " +
+      std::to_string(REDIS_SHARD_SERVER_PORT) + " &";
+  RAY_LOG(INFO) << "Start redis shard command is: " << start_redis_command;
+  RAY_CHECK(system(start_redis_command.c_str()) == 0);
+  usleep(200 * 1000);
+}
+
+void RedisShardServiceManagerForTest::TearDownTestCase() {
+  std::string stop_redis_command =
+      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " shutdown";
+  RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
+  if (system(stop_redis_command.c_str()) != 0) {
+    RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
+  }
+  usleep(100 * 1000);
+
+  stop_redis_command =
+      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SHARD_SERVER_PORT) + " shutdown";
+  RAY_LOG(INFO) << "Stop redis shard command is: " << stop_redis_command;
+  if (system(stop_redis_command.c_str()) != 0) {
+    RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
+  }
+  usleep(100 * 1000);
+}
+
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {
@@ -111,12 +159,15 @@ std::string REDIS_CLIENT_EXEC_PATH;
 std::string REDIS_MODULE_LIBRARY_PATH;
 /// Port of redis server.
 int REDIS_SERVER_PORT;
+/// Port of redis shard server.
+int REDIS_SHARD_SERVER_PORT;
 /// Path to raylet executable binary.
 std::string RAYLET_EXEC_PATH;
 /// Path to store executable binary.
 std::string STORE_EXEC_PATH;
 /// Path to gcs server executable binary.
 std::string GCS_SERVER_EXEC_PATH;
-
+/// Path to mock worker executable binary.
+std::string MOCK_WORKER_EXEC_PATH;
 
 }  // namespace ray

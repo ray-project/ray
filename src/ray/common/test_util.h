@@ -55,6 +55,16 @@ extern std::string REDIS_CLIENT_EXEC_PATH;
 extern std::string REDIS_MODULE_LIBRARY_PATH;
 /// Port of redis server.
 extern int REDIS_SERVER_PORT;
+/// Port of redis shard server.
+extern int REDIS_SHARD_SERVER_PORT;
+/// Path to raylet executable binary.
+extern std::string RAYLET_EXEC_PATH;
+/// Path to gcs server executable binary.
+extern std::string GCS_SERVER_EXEC_PATH;
+/// Path to store executable binary.
+extern std::string STORE_EXEC_PATH;
+/// Path to mock worker executable binary.
+extern std::string MOCK_WORKER_EXEC_PATH;
 
 /// Test helper class, it will start redis server before the test runs,
 /// and stop redis server after the test is completed.
@@ -63,6 +73,14 @@ class RedisServiceManagerForTest : public ::testing::Test {
   static void SetUpTestCase();
   static void TearDownTestCase();
   static void FlushAll();
+};
+
+/// Test helper class, it will start two redis server before the test runs,
+/// and stop redis server after the test is completed.
+class RedisShardServiceManagerForTest : public ::testing::Test {
+ public:
+  static void SetUpTestCase();
+  static void TearDownTestCase();
 };
 
 }  // namespace ray

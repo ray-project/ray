@@ -515,12 +515,16 @@ cc_binary(
 cc_test(
     name = "job_gc_test",
     srcs = ["src/ray/core_worker/test/job_gc_test.cc"],
-    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so) $(location raylet) $(location gcs_server) $(location @plasma//:plasma_store_server) $(location mock_worker)"],
     copts = COPTS,
     data = [
             "//:libray_redis_module.so",
             "//:redis-cli",
             "//:redis-server",
+            "//:raylet",
+            "//:gcs_server",
+            "@plasma//:plasma_store_server",
+            "//:mock_worker",
         ],
     deps = [
         ":core_worker_lib",

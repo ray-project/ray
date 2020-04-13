@@ -36,24 +36,14 @@
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-namespace {
-
-std::string store_executable;
-std::string raylet_executable;
-int node_manager_port = 0;
-std::string raylet_monitor_executable;
-std::string mock_worker_executable;
-std::string gcs_server_executable;
-
-}  // namespace
-
 namespace ray {
 
 static void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORT);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
-  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
+  std::string cmd = "LPUSH RedisShards 127.0.0.1:" + std::to_string(REDIS_SHARD_SERVER_PORT);
+  freeReplyObject(redisCommand(context, cmd.c_str()));
   redisFree(context);
 }
 
@@ -87,11 +77,11 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
   return std::string(reinterpret_cast<const char *>(metadata->Data()), metadata->Size());
 }
 
-class JobGcTest : public ::testing::Test {
+class JobGcTest : public RedisShardServiceManagerForTest {
  public:
-  JobGcTest() {}
-
-  JobGcTest(int num_nodes) : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
+  JobGcTest(int num_nodes)
+      : num_nodes_(num_nodes), gcs_options_("127.0.0.1", REDIS_SERVER_PORT, "") {
+    RAY_LOG(INFO) << "hellp.........gcs_options_ port = " << gcs_options_.server_port_;
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
@@ -110,19 +100,14 @@ class JobGcTest : public ::testing::Test {
     }
 
     // start gcs server
-    if (RayConfig::instance().gcs_service_enabled()) {
-      gcs_server_pid_ = StartGcsServer("127.0.0.1");
-    } else {
-      // core worker test relies on node resources. It's important that one raylet can
-      // receive the heartbeat from another. So starting raylet monitor is required here.
-      raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
-    }
+    gcs_server_pid_ = StartGcsServer("127.0.0.1");
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
+    node_manager_port_ = REDIS_SHARD_SERVER_PORT + 1;
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] =
-          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port + i,
+          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_ + i,
                       "127.0.0.1", "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
   }
@@ -134,10 +119,6 @@ class JobGcTest : public ::testing::Test {
 
     for (const auto &store_socket : raylet_store_socket_names_) {
       StopStore(store_socket);
-    }
-
-    if (!raylet_monitor_pid_.empty()) {
-      StopRayletMonitor(raylet_monitor_pid_);
     }
 
     if (!gcs_server_pid_.empty()) {
@@ -154,97 +135,77 @@ class JobGcTest : public ::testing::Test {
     std::string store_socket_name =
         ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
     std::string store_pid = store_socket_name + ".pid";
-    std::string plasma_command = store_executable + " -m 10000000 -s " +
+    std::string plasma_command = STORE_EXEC_PATH + " -m 100000000 -s " +
                                  store_socket_name +
                                  " 1> /dev/null 2> /dev/null & echo $! > " + store_pid;
-    RAY_LOG(DEBUG) << plasma_command;
+    RAY_LOG(INFO) << plasma_command;
     RAY_CHECK(system(plasma_command.c_str()) == 0);
     usleep(200 * 1000);
     return store_socket_name;
   }
 
-  void StopStore(std::string store_socket_name) {
+  void StopStore(const std::string &store_socket_name) {
     std::string store_pid = store_socket_name + ".pid";
     std::string kill_9 = "kill -9 `cat " + store_pid + "`";
-    RAY_LOG(DEBUG) << kill_9;
+    RAY_LOG(INFO) << kill_9;
     ASSERT_EQ(system(kill_9.c_str()), 0);
     ASSERT_EQ(system(("rm -rf " + store_socket_name).c_str()), 0);
     ASSERT_EQ(system(("rm -rf " + store_socket_name + ".pid").c_str()), 0);
   }
 
-  std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
-                          int port, std::string redis_address, std::string resource) {
+  std::string StartRaylet(const std::string &store_socket_name,
+                          const std::string &node_ip_address, int port,
+                          const std::string &redis_address, const std::string &resource) {
     std::string raylet_socket_name =
         ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
-    std::string ray_start_cmd = raylet_executable;
-    ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
-        .append(" --store_socket_name=" + store_socket_name)
-        .append(" --object_manager_port=0 --node_manager_port=" + std::to_string(port))
-        .append(" --node_ip_address=" + node_ip_address)
-        .append(" --redis_address=" + redis_address)
-        .append(" --redis_port=6379")
-        .append(" --num_initial_workers=1")
-        .append(" --maximum_startup_concurrency=10")
-        .append(" --static_resource_list=" + resource)
-        .append(" --python_worker_command=\"" + mock_worker_executable + " " +
-                store_socket_name + " " + raylet_socket_name + " " +
-                std::to_string(port) + "\"")
-        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
-        .append(" & echo $! > " + raylet_socket_name + ".pid");
+    std::stringstream ray_start_cmd;
+    ray_start_cmd << RAYLET_EXEC_PATH << " --raylet_socket_name=" << raylet_socket_name
+                  << " --store_socket_name=" << store_socket_name
+                  << " --object_manager_port=0"
+                  << " --node_manager_port=" << port
+                  << " --node_ip_address=" << node_ip_address
+                  << " --redis_address=" << redis_address
+                  << " --redis_port=" << REDIS_SERVER_PORT << " --num_initial_workers=1"
+                  << " --maximum_startup_concurrency=10"
+                  << " --static_resource_list=" << resource
+                  << " --python_worker_command=\"" << MOCK_WORKER_EXEC_PATH << " "
+                  << store_socket_name << " " << raylet_socket_name << " " << port << "\""
+                  << " --config_list=initial_reconstruction_timeout_milliseconds,2000"
+                  << " & echo $! > " << raylet_socket_name << ".pid";
 
-    RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
-    RAY_CHECK(system(ray_start_cmd.c_str()) == 0);
+    RAY_LOG(INFO) << "Ray Start command: " << ray_start_cmd.str();
+    RAY_CHECK(system(ray_start_cmd.str().c_str()) == 0);
     usleep(200 * 1000);
     return raylet_socket_name;
   }
 
-  void StopRaylet(std::string raylet_socket_name) {
+  void StopRaylet(const std::string &raylet_socket_name) {
     std::string raylet_pid = raylet_socket_name + ".pid";
     std::string kill_9 = "kill -9 `cat " + raylet_pid + "`";
-    RAY_LOG(DEBUG) << kill_9;
+    RAY_LOG(INFO) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name).c_str()) == 0);
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  std::string StartRayletMonitor(std::string redis_address) {
-    std::string raylet_monitor_pid = ray::JoinPaths(
-        ray::GetUserTempDir(), "raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid");
-    std::string raylet_monitor_start_cmd = raylet_monitor_executable;
-    raylet_monitor_start_cmd.append(" --redis_address=" + redis_address)
-        .append(" --redis_port=6379")
-        .append(" & echo $! > " + raylet_monitor_pid);
-
-    RAY_LOG(DEBUG) << "Raylet monitor Start command: " << raylet_monitor_start_cmd;
-    RAY_CHECK(system(raylet_monitor_start_cmd.c_str()) == 0);
-    usleep(200 * 1000);
-    return raylet_monitor_pid;
-  }
-
-  void StopRayletMonitor(std::string raylet_monitor_pid) {
-    std::string kill_9 = "kill -9 `cat " + raylet_monitor_pid + "`";
-    RAY_LOG(DEBUG) << kill_9;
-    ASSERT_TRUE(system(kill_9.c_str()) == 0);
-    ASSERT_TRUE(system(("rm -f " + raylet_monitor_pid).c_str()) == 0);
-  }
-
-  std::string StartGcsServer(std::string redis_address) {
+  std::string StartGcsServer(const std::string &redis_address) {
     std::string gcs_server_pid = ray::JoinPaths(
         ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex() + ".pid");
-    std::string gcs_server_start_cmd = gcs_server_executable;
-    gcs_server_start_cmd.append(" --redis_address=" + redis_address)
-        .append(" --redis_port=6379")
-        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
-        .append(" & echo $! > " + gcs_server_pid);
+    std::stringstream gcs_server_start_cmd;
+    gcs_server_start_cmd
+        << GCS_SERVER_EXEC_PATH << " --redis_address=" << redis_address
+        << " --redis_port=" << REDIS_SERVER_PORT
+        << " --config_list=initial_reconstruction_timeout_milliseconds,2000"
+        << " & echo $! > " << gcs_server_pid;
 
-    RAY_LOG(DEBUG) << "Starting GCS server, command: " << gcs_server_start_cmd;
-    RAY_CHECK(system(gcs_server_start_cmd.c_str()) == 0);
-    usleep(200 * 1000);
+    RAY_LOG(INFO) << "Starting GCS server, command: " << gcs_server_start_cmd.str();
+    RAY_CHECK(system(gcs_server_start_cmd.str().c_str()) == 0);
+    usleep(2000 * 1000);
     RAY_LOG(INFO) << "GCS server started.";
     return gcs_server_pid;
   }
 
-  void StopGcsServer(std::string gcs_server_pid) {
+  void StopGcsServer(const std::string &gcs_server_pid) {
     std::string kill_9 = "kill -9 `cat " + gcs_server_pid + "`";
     RAY_LOG(DEBUG) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
@@ -263,7 +224,7 @@ class JobGcTest : public ::testing::Test {
           "",                             // log_dir
           true,                           // install_failure_signal_handler
           "127.0.0.1",                    // node_ip_address
-          node_manager_port,              // node_manager_port
+          node_manager_port_,              // node_manager_port
           "core_worker_test",             // driver_name
           "",                             // stdout_file
           "",                             // stderr_file
@@ -288,30 +249,71 @@ class JobGcTest : public ::testing::Test {
   int num_nodes_;
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
-  std::string raylet_monitor_pid_;
   gcs::GcsClientOptions gcs_options_;
   std::string gcs_server_pid_;
+  int node_manager_port_;
 };
 
-TEST_F(JobGcTest, TestApi) {
+class JobGcSingleNodeTest : public JobGcTest {
+ public:
+  JobGcSingleNodeTest() : JobGcTest(1) {}
+};
+
+TEST_F(JobGcSingleNodeTest, TestApi) {
   RAY_LOG(INFO) << "Hello world!!!!!";
+
+  std::unordered_map<std::string, double> resources;
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
+  auto buffer1 = GenerateRandomBuffer();
+  auto buffer2 = GenerateRandomBuffer();
+
+  ObjectID object_id;
+  RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
+                          &object_id));
+
+  std::vector<TaskArg> args;
+  args.emplace_back(TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+  args.emplace_back(TaskArg::PassByReference(object_id));
+
+  RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+  "MergeInputArgsAsOutput", "", "", ""));
+  TaskOptions options;
+  std::vector<ObjectID> return_ids;
+  RAY_CHECK_OK(
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
+
+  ASSERT_EQ(return_ids.size(), 1);
+
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
+
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
+  ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+            0);
+  ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+                   buffer2->Size()),
+            0);
 }
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-//  RAY_CHECK(argc == 7);
-//  store_executable = std::string(argv[1]);
-//  raylet_executable = std::string(argv[2]);
-//  node_manager_port = std::stoi(std::string(argv[3]));
-//  raylet_monitor_executable = std::string(argv[4]);
-//  mock_worker_executable = std::string(argv[5]);
-//  gcs_server_executable = std::string(argv[6]);
 
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 8);
+  for (int index = 0; index < argc; ++index) {
+    RAY_LOG(INFO) << "Argc " << index << " = " << argv[index];
+  }
+
   ray::REDIS_SERVER_EXEC_PATH = argv[1];
   ray::REDIS_CLIENT_EXEC_PATH = argv[2];
   ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::RAYLET_EXEC_PATH = argv[4];
+  ray::GCS_SERVER_EXEC_PATH = argv[5];
+  ray::STORE_EXEC_PATH = argv[6];
+  ray::MOCK_WORKER_EXEC_PATH = argv[7];
+
   return RUN_ALL_TESTS();
 }

@@ -107,6 +107,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
+  RAY_LOG(INFO) << "CoreWorkerProcess::CoreWorkerProcess.....PORT = " << options.gcs_options.server_port_;
   if (options_.log_dir != "") {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -265,6 +266,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  RAY_LOG(INFO) << "CoreWorker::CoreWorker......PORT = " << options_.gcs_options.server_port_;
   // Initialize gcs client.
   if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);

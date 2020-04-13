@@ -268,7 +268,6 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
       RedisCallbackManager::instance().add(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
-    RAY_LOG(INFO) << "888888888888888888 length = " << length;
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
       status = redis_async_context_->RedisAsyncCommand(
