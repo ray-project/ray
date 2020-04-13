@@ -2,14 +2,16 @@ import collections
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
+from ray.rllib.execution.replay_ops import StoreToReplayActors, ParallelReplay
+from ray.rllib.execution.train_ops import UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import AsyncReplayOptimizer
 from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, ParallelReplay, StandardMetricsReporting,
-    StoreToReplayActors, UpdateTargetNetwork, Enqueue, Dequeue,
-    STEPS_TRAINED_COUNTER)
 from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
 from ray.util.iter import LocalIterator
 
@@ -101,6 +103,8 @@ def execution_plan(workers, config):
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = LocalIterator.get_metrics()
+        # Manually update the steps trained counter since the learner thread
+        # is executing outside the pipeline.
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer

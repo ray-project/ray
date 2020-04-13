@@ -24,6 +24,26 @@
 #include <thread>
 #include <unordered_map>
 
+// Boost forward-declarations (to avoid forcing slow header inclusions)
+namespace boost {
+
+namespace asio {
+
+namespace generic {
+
+template <class Protocol>
+class basic_endpoint;
+
+class stream_protocol;
+
+}  // namespace generic
+
+}  // namespace asio
+
+}  // namespace boost
+
+enum class CommandLineSyntax { System, POSIX, Windows };
+
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has
 /// no relation to wall clock time. It must not be used for synchronization
@@ -47,17 +67,36 @@ inline int64_t current_sys_time_ms() {
   return ms_since_epoch.count();
 }
 
-/// A helper function to split a string by whitespaces.
+/// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
-/// \param str The string with whitespaces.
+/// \param cmdline The command-line to split.
 ///
-/// \return A vector that contains strings split by whitespaces.
-inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
-  std::istringstream iss(str);
-  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-                                  std::istream_iterator<std::string>());
-  return result;
-}
+/// \return The command-line arguments, after processing any escape sequences.
+std::vector<std::string> ParseCommandLine(
+    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
+
+/// A helper function to combine command-line arguments in a platform-compatible manner.
+/// The result of this function is intended to be suitable for the shell used by popen().
+///
+/// \param cmdline The command-line arguments to combine.
+///
+/// \return The command-line string, including any necessary escape sequences.
+std::string CreateCommandLine(const std::vector<std::string> &args,
+                              CommandLineSyntax syntax = CommandLineSyntax::System);
+
+/// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
+/// \param include_scheme Whether to include the scheme prefix (such as tcp://).
+///                       This is recommended to avoid later ambiguity when parsing.
+std::string EndpointToUrl(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme = true);
+
+/// Parses the endpoint socket address of a URL.
+/// If a scheme:// prefix is absent, the address family is guessed automatically.
+/// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
+/// For UNIX domain sockets, the endpoint comprises the socket path.
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 
 class InitShutdownRAII {
  public:

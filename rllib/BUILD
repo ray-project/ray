@@ -1077,6 +1077,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_L"],
     size = "medium",

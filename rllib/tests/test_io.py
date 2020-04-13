@@ -222,7 +222,7 @@ class JsonIOTest(unittest.TestCase):
     def test_write_file_uri(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            "file:" + self.test_dir,
+            "file://" + self.test_dir,
             ioctx,
             max_file_size=1000,
             compress_columns=["obs"])
@@ -278,7 +278,7 @@ class JsonIOTest(unittest.TestCase):
         reader = JsonReader([
             self.test_dir + "/empty",
             self.test_dir + "/f1",
-            "file:" + self.test_dir + "/f2",
+            "file://" + self.test_dir + "/f2",
         ])
         seen_a = set()
         for i in range(100):
