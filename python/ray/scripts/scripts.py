@@ -754,7 +754,10 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @click.argument("script", required=True, type=str)
 @click.option(
-    "--args", required=False, type=str, help="(deprecated) Use '-- --arg1 --arg2' for script args.")
+    "--args",
+    required=False,
+    type=str,
+    help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
            cluster_name, port_forward, script, args, script_args):
