@@ -84,7 +84,7 @@ public class RunManager {
       }
       numAttempts++;
     }
-    LOGGER.debug("Process {} is now terminated.", name);
+    LOGGER.info("Process {} is now terminated.", name);
   }
 
   /**
@@ -170,12 +170,12 @@ public class RunManager {
       throw new RuntimeException(message);
     }
     processes.add(Pair.of(name, p));
-    if (LOGGER.isDebugEnabled()) {
+    if (LOGGER.isInfoEnabled()) {
       String message = String.format("%s process started.", name);
       if (rayConfig.redirectOutput) {
         message += String.format(" Logs are redirected to %s and %s.", stdout, stderr);
       }
-      LOGGER.debug(message);
+      LOGGER.info(message);
     }
   }
 
@@ -185,14 +185,14 @@ public class RunManager {
    * @param isHead Whether this node is the head node. If true, redis server will be started.
    */
   public void startRayProcesses(boolean isHead) {
-    LOGGER.debug("Starting ray processes @ {}.", rayConfig.nodeIp);
+    LOGGER.info("Starting ray processes @ {}.", rayConfig.nodeIp);
     try {
       if (isHead) {
         startGcs();
       }
       startObjectStore();
       startRaylet();
-      LOGGER.debug("All processes started @ {}.", rayConfig.nodeIp);
+      LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
       cleanup();

@@ -2,7 +2,7 @@
 
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
 
-set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -u; fi  # some options interfere with Travis's RVM on Mac
+set -euo pipefail
 
 ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
@@ -68,7 +68,7 @@ install_nvm() {
         mkdir -p -- "${NVM_HOME}"
         export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
         (
-          builtin cd "${NVM_HOME}"
+          cd "${NVM_HOME}"
           local target="./nvm-${version}.zip"
           curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
           unzip -q -- "${target}"

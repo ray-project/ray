@@ -2,9 +2,11 @@
 
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
 
+unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
+
 set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi  # some options interfere with Travis's RVM on Mac
 
-ROOT_DIR="$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 should_run_job() {
