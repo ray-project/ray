@@ -31,6 +31,8 @@ Worker::Worker(const WorkerID &worker_id, const Language &language,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
+      assigned_port_(-1),
+      port_(-1),
       connection_(connection),
       dead_(false),
       blocked_(false),
@@ -58,7 +60,10 @@ void Worker::SetProcess(Process proc) {
 
 Language Worker::GetLanguage() const { return language_; }
 
-int Worker::Port() const { return port_; }
+int Worker::Port() const {
+  RAY_CHECK(port_ > 0);
+  return port_;
+}
 
 int Worker::AssignedPort() const { return assigned_port_; }
 

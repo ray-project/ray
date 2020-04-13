@@ -1088,7 +1088,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   int assigned_port;
   if (message->is_worker()) {
     // Register the new worker.
-    RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, &assigned_port));
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, pid, &assigned_port));
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
@@ -1123,11 +1123,21 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
 void NodeManager::ProcessAnnounceWorkerPortMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  bool is_worker = true;
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (worker == nullptr) {
+    is_worker = false;
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(worker != nullptr) << "No worker exists for CoreWorker with client: "
+                               << client->DebugString();
+
   auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
   int port = message->port();
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   worker->Connect(port);
-  HandleWorkerAvailable(worker->Connection());
+  if (is_worker) {
+    HandleWorkerAvailable(worker->Connection());
+  }
 }
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,

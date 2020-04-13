@@ -135,14 +135,13 @@ class Worker {
   Process proc_;
   /// The language type of this worker.
   Language language_;
-  /// Port that this worker listens on.
-  /// If port <= 0, this indicates that the worker will not listen to a port.
-  int port_;
   /// Port assigned to this worker by the raylet. If this is 0, the actual
   /// port the worker listens (port_) on will be a random one. This is required
   /// because a worker could crash before announcing its port, in which case
   /// we still need to be able to mark that port as free.
   int assigned_port_;
+  /// Port that this worker listens on.
+  int port_;
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
   /// The worker's currently assigned task.
