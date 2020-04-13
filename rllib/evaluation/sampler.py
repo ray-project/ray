@@ -85,8 +85,7 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = PerfStats()
         self.rollout_provider = _env_runner(
-            worker,
-            self.base_env, self.extra_batches.put, self.policies,
+            worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
@@ -181,8 +180,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            worker,
-            self.base_env, extra_batches_putter, self.policies,
+            worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
@@ -228,10 +226,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(worker, base_env, extra_batch_callback, policies, policy_mapping_fn,
-                rollout_fragment_length, horizon, preprocessors, obs_filters,
-                clip_rewards, clip_actions, pack, callbacks, tf_sess,
-                perf_stats, soft_horizon, no_done_at_end):
+def _env_runner(worker, base_env, extra_batch_callback, policies,
+                policy_mapping_fn, rollout_fragment_length, horizon,
+                preprocessors, obs_filters, clip_rewards, clip_actions, pack,
+                callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end):
     """This implements the common experience collection logic.
 
     Args:
@@ -305,8 +303,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies, policy_mapping
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(
-                policies, clip_rewards, callbacks)
+            return MultiAgentSampleBatchBuilder(policies, clip_rewards,
+                                                callbacks)
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
@@ -319,7 +317,10 @@ def _env_runner(worker, base_env, extra_batch_callback, policies, policy_mapping
                 episode=episode,
                 tf_sess=getattr(p, "_sess", None))
         callbacks.on_episode_start(
-            worker=worker, base_env=base_env, policies=policies, episode=episode)
+            worker=worker,
+            base_env=base_env,
+            policies=policies,
+            episode=episode)
         return episode
 
     active_episodes = defaultdict(new_episode)
@@ -482,7 +483,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     **episode.last_pi_info_for(agent_id))
 
         # Invoke the step callback after the step is logged to the episode
-        callbacks.on_episode_step(worker=worker, base_env=base_env, episode=episode)
+        callbacks.on_episode_step(
+            worker=worker, base_env=base_env, episode=episode)
 
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
@@ -507,7 +509,11 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     episode=episode,
                     tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
-            callbacks.on_episode_end(worker=worker, base_env=base_env, policies=policies, episode=episode)
+            callbacks.on_episode_end(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode)
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs = agent_obs
