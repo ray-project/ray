@@ -158,15 +158,15 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  void Put(TABLE &table, const JobID &job_id, const KEY &key, const VALUE &value) {
+  void Put(TABLE &table, const KEY &key, const VALUE &value) {
     auto on_done = [this](Status status) { --pending_count_; };
     ++pending_count_;
-    RAY_CHECK_OK(table.Put(job_id, key, value, on_done));
+    RAY_CHECK_OK(table.Put(key, value, on_done));
     WaitPendingDone();
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int Get(TABLE &table, const JobID &job_id, const KEY &key, std::vector<VALUE> &values) {
+  int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
     auto on_done = [this, &values](Status status, const boost::optional<VALUE> &result) {
       RAY_CHECK_OK(status);
       --pending_count_;
@@ -176,14 +176,49 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
       }
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Get(job_id, key, on_done));
+    RAY_CHECK_OK(table.Get(key, on_done));
     WaitPendingDone();
     return values.size();
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int GetAll(TABLE &table, const JobID &job_id,
-             std::vector<std::pair<KEY, VALUE>> &values) {
+  int GetAll(TABLE &table, std::vector<std::pair<KEY, VALUE>> &values) {
+    auto on_done = [this, &values](Status status, bool has_more,
+                                   const std::vector<std::pair<KEY, VALUE>> &result) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+      values.clear();
+      values.push_back(result);
+    };
+    ++pending_count_;
+    RAY_CHECK_OK(table.GetAll(on_done));
+    WaitPendingDone();
+    return values.size();
+  }
+
+  template <typename TABLE, typename KEY>
+  void Delete(TABLE &table, const KEY &key) {
+    auto on_done = [this](Status status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    ++pending_count_;
+    RAY_CHECK_OK(table.Delete(key, on_done));
+    WaitPendingDone();
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  void PutWithJobId(TABLE &table, const JobID &job_id, const KEY &key,
+                    const VALUE &value) {
+    auto on_done = [this](Status status) { --pending_count_; };
+    ++pending_count_;
+    RAY_CHECK_OK(table.PutWithJobId(job_id, key, value, on_done));
+    WaitPendingDone();
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  int GetByJobId(TABLE &table, const JobID &job_id,
+                 std::vector<std::pair<KEY, VALUE>> &values) {
     auto on_done = [this, &values](Status status, bool has_more,
                                    const std::vector<std::pair<KEY, VALUE>> &result) {
       RAY_CHECK_OK(status);
@@ -191,30 +226,19 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.GetAll(job_id, on_done));
+    RAY_CHECK_OK(table.GetByJobId(job_id, on_done));
     WaitPendingDone();
     return values.size();
   }
 
-  template <typename TABLE, typename KEY>
-  void Delete(TABLE &table, const JobID &job_id, const KEY &key) {
-    auto on_done = [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    };
-    ++pending_count_;
-    RAY_CHECK_OK(table.Delete(job_id, key, on_done));
-    WaitPendingDone();
-  }
-
   template <typename TABLE>
-  void Delete(TABLE &table, const JobID &job_id) {
+  void DeleteByJobId(TABLE &table, const JobID &job_id) {
     auto on_done = [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Delete(job_id, on_done));
+    RAY_CHECK_OK(table.DeleteByJobId(job_id, on_done));
     WaitPendingDone();
   }
 
@@ -228,18 +252,18 @@ TEST_F(GcsTableStorageTest, TestJobTableApi) {
   JobID job2_id = JobID::FromInt(2);
 
   // Put.
-  Put(table, job1_id, job1_id, GenJobTableData(job1_id));
-  Put(table, job2_id, job2_id, GenJobTableData(job1_id));
+  Put(table, job1_id, GenJobTableData(job1_id));
+  Put(table, job2_id, GenJobTableData(job2_id));
 
   // Get.
   std::vector<rpc::JobTableData> values;
-  std::vector<std::pair<JobID, rpc::JobTableData>> all_values;
-  ASSERT_EQ(Get(table, job2_id, job2_id, values), 1);
-  ASSERT_EQ(Get(table, job2_id, job2_id, values), 1);
+  ASSERT_EQ(Get(table, job2_id, values), 1);
+  ASSERT_EQ(Get(table, job2_id, values), 1);
 
   // Delete.
-  Delete(table, job1_id, job1_id);
-  ASSERT_EQ(Get(table, job1_id, job1_id, values), 0);
+  Delete(table, job1_id);
+  ASSERT_EQ(Get(table, job1_id, values), 0);
+  ASSERT_EQ(Get(table, job2_id, values), 1);
 }
 
 TEST_F(GcsTableStorageTest, TestActorTableApi) {
@@ -248,15 +272,15 @@ TEST_F(GcsTableStorageTest, TestActorTableApi) {
   ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
 
   // Put.
-  Put(table, job_id, actor_id, GenActorTableData(job_id, actor_id));
+  PutWithJobId(table, job_id, actor_id, GenActorTableData(job_id, actor_id));
 
   // Get.
   std::vector<rpc::ActorTableData> values;
-  ASSERT_EQ(Get(table, job_id, actor_id, values), 1);
+  ASSERT_EQ(Get(table, actor_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, actor_id);
-  ASSERT_EQ(Get(table, job_id, actor_id, values), 0);
+  Delete(table, actor_id);
+  ASSERT_EQ(Get(table, actor_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
@@ -266,15 +290,16 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
 
   // Put.
-  Put(table, job_id, checkpoint_id, GenActorCheckpointData(actor_id, checkpoint_id));
+  PutWithJobId(table, job_id, checkpoint_id,
+               GenActorCheckpointData(actor_id, checkpoint_id));
 
   // Get.
   std::vector<rpc::ActorCheckpointData> values;
-  ASSERT_EQ(Get(table, job_id, checkpoint_id, values), 1);
+  ASSERT_EQ(Get(table, checkpoint_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, checkpoint_id);
-  ASSERT_EQ(Get(table, job_id, checkpoint_id, values), 0);
+  Delete(table, checkpoint_id);
+  ASSERT_EQ(Get(table, checkpoint_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
@@ -284,15 +309,16 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
 
   // Put.
-  Put(table, job_id, actor_id, GenActorCheckpointIdData(actor_id, checkpoint_id));
+  PutWithJobId(table, job_id, actor_id,
+               GenActorCheckpointIdData(actor_id, checkpoint_id));
 
   // Get.
   std::vector<rpc::ActorCheckpointIdData> values;
-  ASSERT_EQ(Get(table, job_id, actor_id, values), 1);
+  ASSERT_EQ(Get(table, actor_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, actor_id);
-  ASSERT_EQ(Get(table, job_id, actor_id, values), 0);
+  Delete(table, actor_id);
+  ASSERT_EQ(Get(table, actor_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestTaskTableApi) {
@@ -301,15 +327,15 @@ TEST_F(GcsTableStorageTest, TestTaskTableApi) {
   TaskID task_id = TaskID::ForDriverTask(job_id);
 
   // Put.
-  Put(table, job_id, task_id, GenTaskTableData(job_id, task_id));
+  PutWithJobId(table, job_id, task_id, GenTaskTableData(job_id, task_id));
 
   // Get.
   std::vector<rpc::TaskTableData> values;
-  ASSERT_EQ(Get(table, job_id, task_id, values), 1);
+  ASSERT_EQ(Get(table, task_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, task_id);
-  ASSERT_EQ(Get(table, job_id, task_id, values), 0);
+  Delete(table, task_id);
+  ASSERT_EQ(Get(table, task_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
@@ -319,15 +345,15 @@ TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, task_id, GenTaskLeaseData(task_id, node_id));
+  PutWithJobId(table, job_id, task_id, GenTaskLeaseData(task_id, node_id));
 
   // Get.
   std::vector<rpc::TaskLeaseData> values;
-  ASSERT_EQ(Get(table, job_id, task_id, values), 1);
+  ASSERT_EQ(Get(table, task_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, task_id);
-  ASSERT_EQ(Get(table, job_id, task_id, values), 0);
+  Delete(table, task_id);
+  ASSERT_EQ(Get(table, task_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
@@ -337,15 +363,15 @@ TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, task_id, GenTaskReconstructionData(task_id, node_id));
+  PutWithJobId(table, job_id, task_id, GenTaskReconstructionData(task_id, node_id));
 
   // Get.
   std::vector<rpc::TaskReconstructionData> values;
-  ASSERT_EQ(Get(table, job_id, task_id, values), 1);
+  ASSERT_EQ(Get(table, task_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, task_id);
-  ASSERT_EQ(Get(table, job_id, task_id, values), 0);
+  Delete(table, task_id);
+  ASSERT_EQ(Get(table, task_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestObjectTableApi) {
@@ -355,83 +381,79 @@ TEST_F(GcsTableStorageTest, TestObjectTableApi) {
   ObjectID object_id = ObjectID::FromRandom();
 
   // Put.
-  Put(table, job_id, object_id, GenObjectTableDataList(node_id));
+  PutWithJobId(table, job_id, object_id, GenObjectTableDataList(node_id));
 
   // Get.
   std::vector<rpc::ObjectTableDataList> values;
-  ASSERT_EQ(Get(table, job_id, object_id, values), 1);
+  ASSERT_EQ(Get(table, object_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, object_id);
-  ASSERT_EQ(Get(table, job_id, object_id, values), 0);
+  Delete(table, object_id);
+  ASSERT_EQ(Get(table, object_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestNodeTableApi) {
   auto table = gcs_table_storage_->NodeTable();
-  JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, node_id, GenGcsNodeInfo(node_id));
+  Put(table, node_id, GenGcsNodeInfo(node_id));
 
   // Get.
   std::vector<rpc::GcsNodeInfo> values;
-  ASSERT_EQ(Get(table, job_id, node_id, values), 1);
+  ASSERT_EQ(Get(table, node_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, node_id);
-  ASSERT_EQ(Get(table, job_id, node_id, values), 0);
+  Delete(table, node_id);
+  ASSERT_EQ(Get(table, node_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestNodeResourceTableApi) {
   auto table = gcs_table_storage_->NodeResourceTable();
-  JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, node_id, GenResourceMap(node_id));
+  Put(table, node_id, GenResourceMap(node_id));
 
   // Get.
   std::vector<rpc::ResourceMap> values;
-  ASSERT_EQ(Get(table, job_id, node_id, values), 1);
+  ASSERT_EQ(Get(table, node_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, node_id);
-  ASSERT_EQ(Get(table, job_id, node_id, values), 0);
+  Delete(table, node_id);
+  ASSERT_EQ(Get(table, node_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestHeartbeatTableApi) {
   auto table = gcs_table_storage_->HeartbeatTable();
-  JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, node_id, GenHeartbeatTableData(node_id));
+  Put(table, node_id, GenHeartbeatTableData(node_id));
 
   // Get.
   std::vector<rpc::HeartbeatTableData> values;
-  ASSERT_EQ(Get(table, job_id, node_id, values), 1);
+  ASSERT_EQ(Get(table, node_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, node_id);
-  ASSERT_EQ(Get(table, job_id, node_id, values), 0);
+  Delete(table, node_id);
+  ASSERT_EQ(Get(table, node_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestHeartbeatBatchTableApi) {
   auto table = gcs_table_storage_->HeartbeatBatchTable();
-  JobID job_id = JobID::FromInt(1);
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  Put(table, job_id, node_id, GenHeartbeatBatchTableData(node_id));
+  Put(table, node_id, GenHeartbeatBatchTableData(node_id));
 
   // Get.
   std::vector<rpc::HeartbeatBatchTableData> values;
-  ASSERT_EQ(Get(table, job_id, node_id, values), 1);
+  ASSERT_EQ(Get(table, node_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, node_id);
-  ASSERT_EQ(Get(table, job_id, node_id, values), 0);
+  Delete(table, node_id);
+  ASSERT_EQ(Get(table, node_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestErrorInfoTableApi) {
@@ -439,49 +461,47 @@ TEST_F(GcsTableStorageTest, TestErrorInfoTableApi) {
   JobID job_id = JobID::FromInt(1);
 
   // Put.
-  Put(table, job_id, job_id, GenErrorInfoTable(job_id));
+  Put(table, job_id, GenErrorInfoTable(job_id));
 
   // Get.
   std::vector<rpc::ErrorTableData> values;
-  ASSERT_EQ(Get(table, job_id, job_id, values), 1);
+  ASSERT_EQ(Get(table, job_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, job_id);
-  ASSERT_EQ(Get(table, job_id, job_id, values), 0);
+  Delete(table, job_id);
+  ASSERT_EQ(Get(table, job_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestProfileTableApi) {
   auto table = gcs_table_storage_->ProfileTable();
-  JobID job_id = JobID::FromInt(1);
   UniqueID unique_id = UniqueID::FromRandom();
 
   // Put.
-  Put(table, job_id, unique_id, GenProfileTableData());
+  Put(table, unique_id, GenProfileTableData());
 
   // Get.
   std::vector<rpc::ProfileTableData> values;
-  ASSERT_EQ(Get(table, job_id, unique_id, values), 1);
+  ASSERT_EQ(Get(table, unique_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, unique_id);
-  ASSERT_EQ(Get(table, job_id, unique_id, values), 0);
+  Delete(table, unique_id);
+  ASSERT_EQ(Get(table, unique_id, values), 0);
 }
 
 TEST_F(GcsTableStorageTest, TestWorkerFailureTableApi) {
   auto table = gcs_table_storage_->WorkerFailureTable();
-  JobID job_id = JobID::FromInt(1);
   WorkerID worker_id = WorkerID::FromRandom();
 
   // Put.
-  Put(table, job_id, worker_id, GenWorkerFailureData());
+  Put(table, worker_id, GenWorkerFailureData());
 
   // Get.
   std::vector<rpc::WorkerFailureData> values;
-  ASSERT_EQ(Get(table, job_id, worker_id, values), 1);
+  ASSERT_EQ(Get(table, worker_id, values), 1);
 
   // Delete.
-  Delete(table, job_id, worker_id);
-  ASSERT_EQ(Get(table, job_id, worker_id, values), 0);
+  Delete(table, worker_id);
+  ASSERT_EQ(Get(table, worker_id, values), 0);
 }
 
 }  // namespace ray

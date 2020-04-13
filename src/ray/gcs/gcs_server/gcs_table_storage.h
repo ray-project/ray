@@ -44,8 +44,8 @@ using rpc::WorkerFailureData;
 /// \class GcsTable
 ///
 /// GcsTable supports putting, getting and deleting of GCS table data.
-/// This class is not meant to be used directly. All gcs table classes should
-/// derive from this class and override the table_name_ member with a unique value
+/// This class is not meant to be used directly. All gcs table classes without job id
+/// should derive from this class and override the table_name_ member with a unique value
 /// for that table.
 template <typename Key, typename Data>
 class GcsTable {
@@ -55,30 +55,37 @@ class GcsTable {
 
   virtual ~GcsTable() { store_client_.reset(); }
 
-  Status Put(const Key &key, const Data &value,
-             const StatusCallback &callback);
+  Status Put(const Key &key, const Data &value, const StatusCallback &callback);
 
-  Status Put(const JobID &job_id, const Key &key, const Data &value,
-             const StatusCallback &callback);
+  Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
 
-  Status Get(const JobID &job_id, const Key &key,
-             const OptionalItemCallback<Data> &callback);
+  Status GetAll(const SegmentedCallback<std::pair<Key, Data>> &callback);
 
-  Status GetAll(const JobID &job_id,
-                const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status Delete(const Key &key, const StatusCallback &callback);
 
-  Status Delete(const JobID &job_id, const Key &key, const StatusCallback &callback);
-
-  Status Delete(const JobID &job_id, const std::vector<Key> &keys,
-                const StatusCallback &callback);
-
-  Status Delete(const JobID &job_id, const StatusCallback &callback);
-
- protected:
   std::string table_name_;
-
- private:
   std::shared_ptr<StoreClient<Key, Data, JobID>> store_client_;
+};
+
+/// \class GcsTableWithIndex
+///
+/// GcsTableWithIndex supports putting, getting and deleting of GCS table data.
+/// This class is not meant to be used directly. All gcs table classes with job id should
+/// derive from this class and override the table_name_ member with a unique value
+/// for that table.
+template <typename Key, typename Data>
+class GcsTableWithIndex : public GcsTable<Key, Data> {
+ public:
+  explicit GcsTableWithIndex(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
+      : GcsTable<Key, Data>(store_client) {}
+
+  Status PutWithJobId(const JobID &job_id, const Key &key, const Data &value,
+                      const StatusCallback &callback);
+
+  Status GetByJobId(const JobID &job_id,
+                    const SegmentedCallback<std::pair<Key, Data>> &callback);
+
+  Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
 };
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
@@ -90,66 +97,71 @@ class GcsJobTable : public GcsTable<JobID, JobTableData> {
   }
 };
 
-class GcsActorTable : public GcsTable<ActorID, ActorTableData> {
+class GcsActorTable : public GcsTableWithIndex<ActorID, ActorTableData> {
  public:
   explicit GcsActorTable(
       std::shared_ptr<StoreClient<ActorID, ActorTableData, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
 };
 
-class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
+class GcsActorCheckpointTable
+    : public GcsTableWithIndex<ActorCheckpointID, ActorCheckpointData> {
  public:
   explicit GcsActorCheckpointTable(
       std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>
           store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT);
   }
 };
 
-class GcsActorCheckpointIdTable : public GcsTable<ActorID, ActorCheckpointIdData> {
+class GcsActorCheckpointIdTable
+    : public GcsTableWithIndex<ActorID, ActorCheckpointIdData> {
  public:
   explicit GcsActorCheckpointIdTable(
       std::shared_ptr<StoreClient<ActorID, ActorCheckpointIdData, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT_ID);
   }
 };
 
-class GcsTaskTable : public GcsTable<TaskID, TaskTableData> {
+class GcsTaskTable : public GcsTableWithIndex<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(
       std::shared_ptr<StoreClient<TaskID, TaskTableData, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK);
   }
+
+  Status BatchDelete(const std::vector<TaskID> &keys, const StatusCallback &callback);
 };
 
-class GcsTaskLeaseTable : public GcsTable<TaskID, TaskLeaseData> {
+class GcsTaskLeaseTable : public GcsTableWithIndex<TaskID, TaskLeaseData> {
  public:
   explicit GcsTaskLeaseTable(
       std::shared_ptr<StoreClient<TaskID, TaskLeaseData, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
   }
 };
 
-class GcsTaskReconstructionTable : public GcsTable<TaskID, TaskReconstructionData> {
+class GcsTaskReconstructionTable
+    : public GcsTableWithIndex<TaskID, TaskReconstructionData> {
  public:
   explicit GcsTaskReconstructionTable(
       std::shared_ptr<StoreClient<TaskID, TaskReconstructionData, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
   }
 };
 
-class GcsObjectTable : public GcsTable<ObjectID, ObjectTableDataList> {
+class GcsObjectTable : public GcsTableWithIndex<ObjectID, ObjectTableDataList> {
  public:
   explicit GcsObjectTable(
       std::shared_ptr<StoreClient<ObjectID, ObjectTableDataList, JobID>> store_client)
-      : GcsTable(std::move(store_client)) {
+      : GcsTableWithIndex(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
   }
 };
