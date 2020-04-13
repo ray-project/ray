@@ -13,5 +13,5 @@
   <suppress checks=".*" files="RayCall.java"/>
   <suppress checks=".*" files="ActorCall.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
-  <suppress checks=".*" files="org[\\/]ray[\\/]runtime[\\/]generated[\\/]" />
+  <suppress checks=".*" files="io[\\/]ray[\\/]runtime[\\/]generated[\\/]" />
 </suppressions>

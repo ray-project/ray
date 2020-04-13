@@ -63,6 +63,14 @@ Status RedisLogBasedActorInfoAccessor::AsyncGet(
                                                       on_done);
 }
 
+Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  const std::string error_msg =
+      "Unsupported method of AsyncCreateActor in RedisLogBasedActorInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
+}
+
 Status RedisLogBasedActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,

@@ -485,7 +485,7 @@ def stop(force, verbose):
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker.
-        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],

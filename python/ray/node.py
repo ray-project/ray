@@ -413,6 +413,7 @@ class Node:
             socket_path (string): the socket file to prepare.
         """
         result = socket_path
+        is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
                 result = "tcp://{}:{}".format(self._localhost,
@@ -426,6 +427,12 @@ class Node:
                     raise RuntimeError(
                         "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
+
+            # Check socket path length to make sure it's short enough
+            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
+            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
+                raise OSError("AF_UNIX path length cannot exceed "
+                              "{} bytes: {!r}".format(maxlen, result))
         return result
 
     def start_reaper_process(self):

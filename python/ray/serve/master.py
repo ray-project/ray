@@ -27,7 +27,7 @@ class ServeMaster:
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
         self.policy_table = TrafficPolicyTable(kv_store_connector)
-        self.tag_to_actor_handles = dict()
+        self.replica_tag_to_workers = dict()
 
         self.router = None
         self.http_proxy = None
@@ -131,10 +131,12 @@ class ServeMaster:
             self.backend_table.get_init_args(backend_tag)
         ]
         kwargs = backend_config.get_actor_creation_args(init_args)
+        kwargs[
+            "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
 
         # Start the worker.
         worker_handle = backend_actor._remote(**kwargs)
-        self.tag_to_actor_handles[replica_tag] = worker_handle
+        self.replica_tag_to_workers[replica_tag] = worker_handle
 
         # Wait for the worker to start up.
         await worker_handle.ready.remote()
@@ -152,8 +154,8 @@ class ServeMaster:
                     backend_tag)
 
         replica_tag = self.backend_table.remove_replica(backend_tag)
-        assert replica_tag in self.tag_to_actor_handles
-        replica_handle = self.tag_to_actor_handles.pop(replica_tag)
+        assert replica_tag in self.replica_tag_to_workers
+        replica_handle = self.replica_tag_to_workers.pop(replica_tag)
 
         # Remove the replica from metric monitor.
         [monitor] = self.get_metric_monitor()
@@ -166,8 +168,8 @@ class ServeMaster:
             router.remove_and_destroy_replica.remote(backend_tag,
                                                      replica_handle))
 
-    def get_all_handles(self):
-        return self.tag_to_actor_handles
+    def get_all_worker_handles(self):
+        return self.replica_tag_to_workers
 
     def get_all_endpoints(self):
         return expand(
