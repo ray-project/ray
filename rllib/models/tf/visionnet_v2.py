@@ -33,6 +33,7 @@ class VisionNetwork(TFModelV2):
                 strides=(stride, stride),
                 activation=activation,
                 padding="same",
+                data_format="channels_last",
                 name="conv{}".format(i))(last_layer)
         out_size, kernel, stride = filters[-1]
         # If num_outputs provided, the last layer is adjusted to be of
@@ -44,6 +45,7 @@ class VisionNetwork(TFModelV2):
                 strides=(stride, stride),
                 activation=activation,
                 padding="valid",
+                data_format="channels_last",
                 name="conv_out")(last_layer)
             conv_out = last_layer
         # Finish network normally (w/o overriding last layer size with
@@ -56,11 +58,13 @@ class VisionNetwork(TFModelV2):
                 strides=(stride, stride),
                 activation=activation,
                 padding="valid",
+                data_format="channels_last",
                 name="conv{}".format(i + 1))(last_layer)
             conv_out = tf.keras.layers.Conv2D(
                 num_outputs, [1, 1],
                 activation=None,
                 padding="same",
+                data_format="channels_last",
                 name="conv_out")(last_layer)
 
         # Build the value layers
@@ -82,6 +86,7 @@ class VisionNetwork(TFModelV2):
                     strides=(stride, stride),
                     activation=activation,
                     padding="same",
+                    data_format="channels_last",
                     name="conv_value_{}".format(i))(last_layer)
             out_size, kernel, stride = filters[-1]
             last_layer = tf.keras.layers.Conv2D(
@@ -90,11 +95,13 @@ class VisionNetwork(TFModelV2):
                 strides=(stride, stride),
                 activation=activation,
                 padding="valid",
+                data_format="channels_last",
                 name="conv_value_{}".format(i + 1))(last_layer)
             last_layer = tf.keras.layers.Conv2D(
                 1, [1, 1],
                 activation=None,
                 padding="same",
+                data_format="channels_last",
                 name="conv_value_out")(last_layer)
             value_out = tf.keras.layers.Lambda(
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)

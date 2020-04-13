@@ -52,10 +52,10 @@ class TestSAC(unittest.TestCase):
         config["normalize_actions"] = True
         config["learning_starts"] = 0
         num_iterations = 1
-        # eager (discrete and cont. actions).
-        for _ in framework_iterator(config, ("torch", "tf")):
+        for _ in framework_iterator(config, ("tf", "torch")):
+            # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                    "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
+                    "MsPacmanNoFrameskip-v4", "Pendulum-v0", "CartPole-v0"
             ]:
                 print("Env={}".format(env))
                 config["use_state_preprocessor"] = \
