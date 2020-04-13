@@ -62,6 +62,8 @@ int Worker::Port() const { return port_; }
 
 int Worker::AssignedPort() const { return assigned_port_; }
 
+void Worker::SetAssignedPort(int port) { assigned_port_ = port; };
+
 void Worker::Connect(int port) {
   RAY_CHECK(port_ > 0);
   port_ = port;
