@@ -1315,6 +1315,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_metrics_and_callbacks_legacy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
     name = "examples/custom_tf_policy",
     tags = ["examples", "examples_C"],
     size = "medium",

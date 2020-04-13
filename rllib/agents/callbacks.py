@@ -1,29 +1,28 @@
 from typing import Dict
 
-from ray.rllib.agents import Trainer
 from ray.rllib.env import BaseEnv
-from ray.rllib.policy import Policy, SampleBatch
+from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
-from rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 class DefaultCallbacks:
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
-    These callbacks will be invoked during training, and can be used to record
-    custom metrics, apply custom postprocessing, etc.
+    These callbacks can be used for custom metrics and custom postprocessing.
 
     By default, all of these callbacks are no-ops. To configure custom training
     callbacks, subclass DefaultCallbacks and then set
     {"callbacks": YourCallbacksClass} in the trainer config.
     """
 
-    def __init__(self, legacy_callbacks_dict: Dict[str, callable]):
+    def __init__(self, legacy_callbacks_dict: Dict[str, callable] = None):
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
                 "a class extending rllib.agents.DefaultCallbacks")
-        self.legacy_callbacks = legacy_callbacks_dict
+        self.legacy_callbacks = legacy_callbacks_dict or {}
 
     def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
                          policies: Dict[str, Policy],
@@ -145,7 +144,7 @@ class DefaultCallbacks:
                 "samples": samples,
             })
 
-    def on_train_result(self, trainer: Trainer, result: dict, **kwargs):
+    def on_train_result(self, trainer, result: dict, **kwargs):
         """Called at the end of Trainable.train().
 
         Args:

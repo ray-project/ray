@@ -523,7 +523,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def _log_result(self, result):
-        self.callbacks.on_train_result(self, result)
+        self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
@@ -561,6 +561,7 @@ class Trainer(Trainable):
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
+        self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -903,9 +904,14 @@ class Trainer(Trainable):
             config2["rollout_fragment_length"] = config2["sample_batch_size"]
             del config2["sample_batch_size"]
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
-            # Deprecation warning will be logged by DefaultCallbacks.
-            config2["callbacks"] = DefaultCallbacks(
-                legacy_callbacks_dict=config2["callbacks"])
+            legacy_callbacks_dict = config2["callbacks"]
+
+            def make_callbacks():
+                # Deprecation warning will be logged by DefaultCallbacks.
+                return DefaultCallbacks(
+                    legacy_callbacks_dict=legacy_callbacks_dict)
+
+            config2["callbacks"] = make_callbacks
         return deep_update(config1, config2, cls._allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
