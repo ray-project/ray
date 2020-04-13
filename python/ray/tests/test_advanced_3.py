@@ -661,6 +661,34 @@ def test_move_log_files_to_old(shutdown_only):
     assert ray.services.remaining_processes_alive()
 
 
+def test_lease_request_leak(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
+    assert len(ray.objects()) == 0
+
+    @ray.remote
+    def f(x):
+        time.sleep(0.1)
+        return
+
+    # Submit pairs of tasks. Tasks in a pair can reuse the same worker leased
+    # from the raylet.
+    tasks = []
+    for _ in range(10):
+        oid = ray.put(1)
+        for _ in range(2):
+            tasks.append(f.remote(oid))
+        del oid
+    ray.get(tasks)
+
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
