@@ -138,43 +138,52 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
   auto sub_message_count = std::make_shared<std::atomic<int>>(0);
   auto sub_finished_count = std::make_shared<std::atomic<int>>(0);
   int size = 5;
+  std::vector<std::unique_ptr<std::thread>> threads;
+  threads.resize(size);
   for (int index = 0; index < size; ++index) {
     std::stringstream ss;
     ss << index;
     auto id = ss.str();
-    new std::thread([this, sub_message_count, sub_finished_count, id, channel] {
-      auto subscribe = [sub_message_count](const std::string &id,
-                                           const std::string &data) {
-        ++(*sub_message_count);
-        RAY_LOG(INFO) << "sub_message_count = " << *sub_message_count;
-      };
-      auto on_done = [sub_finished_count](Status status) {
-        RAY_CHECK_OK(status);
-        ++(*sub_finished_count);
-        RAY_LOG(INFO) << "sub_finished_count = " << *sub_finished_count;
-      };
-      RAY_CHECK_OK(pub_sub_->Subscribe(channel, id, subscribe, on_done));
-    });
+    threads[index].reset(
+        new std::thread([this, sub_message_count, sub_finished_count, id, channel] {
+          auto subscribe = [sub_message_count](const std::string &id,
+                                               const std::string &data) {
+            ++(*sub_message_count);
+            RAY_LOG(INFO) << "sub_message_count = " << *sub_message_count;
+          };
+          auto on_done = [sub_finished_count](Status status) {
+            RAY_CHECK_OK(status);
+            ++(*sub_finished_count);
+            RAY_LOG(INFO) << "sub_finished_count = " << *sub_finished_count;
+          };
+          RAY_CHECK_OK(pub_sub_->Subscribe(channel, id, subscribe, on_done));
+        }));
   }
   auto sub_finished_condition = [sub_finished_count, size]() {
     return sub_finished_count->load() == size;
   };
   EXPECT_TRUE(WaitForCondition(sub_finished_condition, timeout_ms_.count()));
+  for (auto &thread : threads) {
+    thread->join();
+  }
 
   std::string data("data");
   for (int index = 0; index < size; ++index) {
     std::stringstream ss;
     ss << index;
     auto id = ss.str();
-    new std::thread([this, channel, id, data] {
+    threads[index].reset(new std::thread([this, channel, id, data] {
       RAY_CHECK_OK(pub_sub_->Publish(channel, id, data, nullptr));
-    });
+    }));
   }
 
   auto sub_message_condition = [sub_message_count, size]() {
     return sub_message_count->load() == size;
   };
   EXPECT_TRUE(WaitForCondition(sub_message_condition, timeout_ms_.count()));
+  for (auto &thread : threads) {
+    thread->join();
+  }
 }
 
 }  // namespace ray
