@@ -169,11 +169,11 @@ This document describes the process for creating new releases.
     Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
     Message @richardliaw to add you if you don't have access.
 
-10. **Update 'Default Branch' on the readthedocs page:** Go to the `Ray Readthedocs advanced settings page`_.
+11. **Update 'Default Branch' on the readthedocs page:** Go to the `Ray Readthedocs advanced settings page`_.
     In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
     Message @richardliaw to add you if you don't have access.
 
-11. **Improve the release process:** Find some way to improve the release
+12. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
 .. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/6303
