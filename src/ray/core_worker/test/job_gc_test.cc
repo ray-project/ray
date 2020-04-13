@@ -260,7 +260,7 @@ class JobGcSingleNodeTest : public JobGcTest {
 };
 
 TEST_F(JobGcSingleNodeTest, TestApi) {
-  RAY_LOG(INFO) << "Hello world!!!!!";
+  RAY_LOG(INFO) << "Hello world!!!!!----begining";
 
   std::unordered_map<std::string, double> resources;
   auto &driver = CoreWorkerProcess::GetCoreWorker();
@@ -295,6 +295,7 @@ TEST_F(JobGcSingleNodeTest, TestApi) {
   ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
                    buffer2->Size()),
             0);
+  RAY_LOG(INFO) << "Hello world!!!!!----ending";
 }
 
 }  // namespace ray

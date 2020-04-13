@@ -681,6 +681,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandlePush on.....................";
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -704,7 +705,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
-  RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << client_id
+  RAY_LOG(INFO) << "ReceiveObjectChunk on " << self_node_id_ << " from " << client_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
@@ -729,7 +730,7 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
-  RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
+  RAY_LOG(INFO) << "Received pull request from client " << client_id << " for object ["
                  << object_id << "].";
 
   rpc::ProfileTableData::ProfileEvent profile_event;
@@ -750,6 +751,7 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
 void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
                                       rpc::FreeObjectsReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleFreeObjects.....................";
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));

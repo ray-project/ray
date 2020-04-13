@@ -299,7 +299,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_LOG(INFO) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
   // Kill all the workers. The actual cleanup for these workers is done
@@ -327,11 +327,12 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   local_queues_.RemoveTasks(tasks_to_remove);
 
   // Remove object of local plasma.
-  auto on_done = [this](Status status, const std::vector<ObjectID> &result) {
-    object_manager_.FreeObjects(result, /*local_only=*/true);
-  };
-  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetObjectIdsOfNodeByJob(
-      job_id, gcs_client_->Nodes().GetSelfId(), on_done));
+//  auto on_done = [](Status status, const std::vector<ObjectID> &result) {
+//    RAY_LOG(INFO) << "Remove object of local plasma, result size = " << result.size();
+//    object_manager_.FreeObjects(result, /*local_only=*/true);
+//  };
+//  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetObjectIdsOfNodeByJob(
+//      job_id, gcs_client_->Nodes().GetSelfId(), on_done));
 }
 
 void NodeManager::Heartbeat() {
