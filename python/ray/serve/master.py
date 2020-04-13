@@ -37,12 +37,14 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_monitor = None
 
-    async def _retry_actor_failures(self, call_actor_method):
+    async def _retry_actor_failures(self, call_actor_method, name):
         while True:
             try:
                 return await call_actor_method()
             except ray.RayActorError:
-                logger.info("failure")
+                logger.info(
+                    "Actor method '{}' failed, retrying after 100ms.".format(
+                        name))
                 await asyncio.sleep(0.1)
 
     def get_traffic_policy(self, endpoint_name):
@@ -161,7 +163,7 @@ class ServeMaster:
         async def add_worker():
             await router.add_new_worker.remote(backend_tag, worker_handle)
 
-        await self._retry_actor_failures(add_worker)
+        await self._retry_actor_failures(add_worker, "router.add_new_worker")
 
         # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
@@ -191,7 +193,7 @@ class ServeMaster:
         async def remove_worker():
             await router.remove_worker.remote(backend_tag, replica_handle)
 
-        await self._retry_actor_failures(remove_worker)
+        await self._retry_actor_failures(remove_worker, "router.remove_worker")
 
     def get_all_worker_handles(self):
         return self.workers
@@ -223,7 +225,7 @@ class ServeMaster:
             await router.set_traffic.remote(endpoint_name,
                                             traffic_policy_dictionary)
 
-        await self._retry_actor_failures(set_traffic)
+        await self._retry_actor_failures(set_traffic, "router.set_traffic")
 
     async def create_endpoint(self, route, endpoint_name, methods):
         self.route_table.register_service(
@@ -255,7 +257,8 @@ class ServeMaster:
             await router.set_backend_config.remote(backend_tag,
                                                    backend_config_dict)
 
-        await self._retry_actor_failures(set_backend_config)
+        await self._retry_actor_failures(set_backend_config,
+                                         "router.set_backend_config")
         await self.scale_replicas(backend_tag,
                                   backend_config_dict["num_replicas"])
 
