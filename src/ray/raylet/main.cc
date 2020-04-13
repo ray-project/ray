@@ -132,11 +132,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
+        make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
+        make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)

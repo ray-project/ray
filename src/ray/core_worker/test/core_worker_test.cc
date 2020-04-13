@@ -57,8 +57,7 @@ static void flushall_redis(void) {
   redisFree(context);
 }
 
-ActorID CreateActorHelper(CoreWorker &worker,
-                          std::unordered_map<std::string, double> &resources,
+ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                           uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -78,8 +77,8 @@ ActorID CreateActorHelper(CoreWorker &worker,
 
   // Create an actor.
   ActorID actor_id;
-  RAY_CHECK_OK(
-      worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(
+      func, args, actor_options, /*extension_data*/ "", &actor_id));
   return actor_id;
 }
 
@@ -90,7 +89,8 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest(int num_nodes) : gcs_options_("127.0.0.1", 6379, "") {
+  CoreWorkerTest(int num_nodes)
+      : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
@@ -250,9 +250,40 @@ class CoreWorkerTest : public ::testing::Test {
     ASSERT_TRUE(system(("rm -f " + gcs_server_pid).c_str()) == 0);
   }
 
-  void SetUp() {}
+  void SetUp() {
+    if (num_nodes_ > 0) {
+      CoreWorkerOptions options = {
+          WorkerType::DRIVER,             // worker_type
+          Language::PYTHON,               // langauge
+          raylet_store_socket_names_[0],  // store_socket
+          raylet_socket_names_[0],        // raylet_socket
+          NextJobId(),                    // job_id
+          gcs_options_,                   // gcs_options
+          "",                             // log_dir
+          true,                           // install_failure_signal_handler
+          "127.0.0.1",                    // node_ip_address
+          node_manager_port,              // node_manager_port
+          0,                              // worker_port
+          "core_worker_test",             // driver_name
+          "",                             // stdout_file
+          "",                             // stderr_file
+          nullptr,                        // task_execution_callback
+          nullptr,                        // check_signals
+          nullptr,                        // gc_collect
+          nullptr,                        // get_lang_stack
+          true,                           // ref_counting_enabled
+          false,                          // is_local_mode
+          1,                              // num_workers
+      };
+      CoreWorkerProcess::Initialize(options);
+    }
+  }
 
-  void TearDown() {}
+  void TearDown() {
+    if (num_nodes_ > 0) {
+      CoreWorkerProcess::Shutdown();
+    }
+  }
 
   // Test normal tasks.
   void TestNormalTask(std::unordered_map<std::string, double> &resources);
@@ -271,13 +302,14 @@ class CoreWorkerTest : public ::testing::Test {
   void TestActorReconstruction(std::unordered_map<std::string, double> &resources);
 
  protected:
-  bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
-                                   bool wait_alive, int timeout_ms);
+  bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+                                   int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
-  int GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+  int GetActorPid(const ActorID &actor_id,
                   std::unordered_map<std::string, double> &resources);
 
+  int num_nodes_;
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   std::string raylet_monitor_pid_;
@@ -285,18 +317,19 @@ class CoreWorkerTest : public ::testing::Test {
   std::string gcs_server_pid_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
-                                                 const ActorID &actor_id, bool wait_alive,
+bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
-  auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
-    bool actor_alive = worker.direct_actor_submitter_->IsActorAlive(actor_id);
+  auto condition_func = [actor_id, wait_alive]() -> bool {
+    bool actor_alive =
+        CoreWorkerProcess::GetCoreWorker().direct_actor_submitter_->IsActorAlive(
+            actor_id);
     return wait_alive ? actor_alive : !actor_alive;
   };
 
   return WaitForCondition(condition_func, timeout_ms);
 }
 
-int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources) {
   std::vector<TaskArg> args;
   TaskOptions options{1, resources};
@@ -304,10 +337,11 @@ int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
 
-  RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
+  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args,
+                                                                  options, &return_ids));
 
   std::vector<std::shared_ptr<ray::RayObject>> results;
-  RAY_CHECK_OK(worker.Get(return_ids, -1, &results));
+  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
 
   if (nullptr == results[0]->GetData()) {
     // If failed to get actor process pid, return -1
@@ -320,9 +354,7 @@ int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
 }
 
 void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    node_manager_port, nullptr);
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -364,11 +396,9 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 }
 
 void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    node_manager_port, nullptr);
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
 
-  auto actor_id = CreateActorHelper(driver, resources, 1000);
+  auto actor_id = CreateActorHelper(resources, 1000);
 
   // Test submitting some tasks with by-value args for that actor.
   {
@@ -452,18 +482,16 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
 void CoreWorkerTest::TestActorReconstruction(
     std::unordered_map<std::string, double> &resources) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    node_manager_port, nullptr);
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
-  auto actor_id = CreateActorHelper(driver, resources, 1000);
+  auto actor_id = CreateActorHelper(resources, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
-  auto pid = GetActorPid(driver, actor_id, resources);
+  auto pid = GetActorPid(actor_id, resources);
   RAY_CHECK(pid != -1);
 
   // Test submitting some tasks with by-value args for that actor.
@@ -477,9 +505,8 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        auto check_actor_restart_func = [this, pid, &driver, &actor_id,
-                                         &resources]() -> bool {
-          auto new_pid = GetActorPid(driver, actor_id, resources);
+        auto check_actor_restart_func = [this, pid, &actor_id, &resources]() -> bool {
+          auto new_pid = GetActorPid(actor_id, resources);
           return new_pid != -1 && new_pid != pid;
         };
         ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
@@ -514,12 +541,10 @@ void CoreWorkerTest::TestActorReconstruction(
 
 void CoreWorkerTest::TestActorFailure(
     std::unordered_map<std::string, double> &resources) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    node_manager_port, nullptr);
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
-  auto actor_id = CreateActorHelper(driver, resources, 0 /* not reconstructable */);
+  auto actor_id = CreateActorHelper(resources, 0 /* not reconstructable */);
 
   // Test submitting some tasks with by-value args for that actor.
   {
@@ -666,16 +691,14 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 }
 
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, "",
-                    "127.0.0.1", node_manager_port, nullptr);
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> object_ids;
   // Create an actor.
   std::unordered_map<std::string, double> resources;
-  auto actor_id = CreateActorHelper(driver, resources,
+  auto actor_id = CreateActorHelper(resources,
                                     /*max_reconstructions=*/0);
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
   const int num_tasks = 100000;
@@ -713,7 +736,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto job_id = NextJobId();
 
-  WorkerContext context(WorkerType::WORKER, job_id);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
@@ -779,7 +802,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   absl::flat_hash_set<ObjectID> wait_results;
 
   ObjectID nonexistent_id = ObjectID::FromRandom().WithDirectTransportType();
-  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   wait_ids.insert(nonexistent_id);
   RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, ctx, &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
@@ -880,10 +903,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
-  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
-                         raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromInt(1), gcs_options_, "", "127.0.0.1",
-                         node_manager_port, 0, nullptr);
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};

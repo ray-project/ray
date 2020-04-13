@@ -93,7 +93,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<Worker> GetRegisteredWorker(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Get the client connection's registered driver.
   ///
@@ -101,7 +101,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
   std::shared_ptr<Worker> GetRegisteredDriver(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Disconnect a registered worker.
   ///

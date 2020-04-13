@@ -7,6 +7,7 @@ import itertools
 import os
 import tempfile
 import torch
+import torch.nn as nn
 
 import ray
 from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP, NUM_STEPS
@@ -36,6 +37,7 @@ class TorchRunner:
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
         config (dict): see torch_trainer.py.
+        use_gpu (bool): see torch_trainer.py.
         use_fp16 (bool): see torch_trainer.py.
         apex_args (dict|None): see torch_trainer.py.
         scheduler_step_freq (str): see torch_trainer.py.
@@ -49,6 +51,7 @@ class TorchRunner:
                  scheduler_creator=None,
                  training_operator_cls=None,
                  config=None,
+                 use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False,
                  apex_args=None,
@@ -69,6 +72,8 @@ class TorchRunner:
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
+        self.training_operator = None
+        self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.apex_args = apex_args or {}
@@ -117,8 +122,9 @@ class TorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available() and hasattr(self.criterion, "cuda"):
-            self.criterion = self.criterion.cuda()
+        if self.use_gpu and torch.cuda.is_available():
+            if hasattr(self.criterion, "cuda"):
+                self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
         # Learning rate schedules are optional.
@@ -137,23 +143,35 @@ class TorchRunner:
                 self.models, self.optimizers, **self.apex_args)
 
     def setup(self):
-        """Initializes the model."""
+        """Merges setup_components and setup_operator in one call."""
+        self.setup_components()
+        self.setup_operator()
+
+    def setup_components(self):
+        """Runs the creator functions without any distributed coordination."""
+        logger.debug("Loading data.")
+        self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
-        if torch.cuda.is_available():
+        assert all(isinstance(model, nn.Module) for model in self.models), (
+            "All models must be PyTorch models: {}.".format(self.models))
+        if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
-        logger.debug("Creating optimizer")
+        logger.debug("Creating optimizer.")
         self.optimizers = self.optimizer_creator(self.given_models,
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
+
         self._create_schedulers_if_available()
         self._try_setup_apex()
         self._create_loss()
-        self._initialize_dataloaders()
+
+    def setup_operator(self):
+        """Create the training operator."""
         self.training_operator = self.training_operator_cls(
             self.config,
             models=self.models,
@@ -163,6 +181,7 @@ class TorchRunner:
             validation_loader=self.validation_loader,
             world_rank=0,
             schedulers=self.schedulers,
+            use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm)
 
@@ -225,19 +244,12 @@ class TorchRunner:
             self.timers.disable()
         self.training_operator._set_timers(self.timers)
 
-    def _get_model_state_dicts(self):
-        return [model.state_dict() for model in self.models]
-
-    def _set_model_state_dicts(self, models_state_dicts):
-        for model, state_dict in zip(self.models, models_state_dicts):
-            model.load_state_dict(state_dict)
-
     def state_dict(self):
         """Returns the state of the runner."""
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
-            "models": self._get_model_state_dicts(),
+            "models": [model.state_dict() for model in self.models],
             "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
         if self.schedulers:
@@ -253,7 +265,8 @@ class TorchRunner:
 
     def load_state_dict(self, state):
         """Sets the state of the model."""
-        self._set_model_state_dicts(state["models"])
+        for model, state_dict in zip(self.models, state["models"]):
+            model.load_state_dict(state_dict)
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
         if self.schedulers:

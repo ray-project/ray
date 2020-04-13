@@ -30,15 +30,22 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
+def _remind_gpu_usage(use_gpu):
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
+
+
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and
-    coordinate gradient updates to train the provided model.
+    coordinate gradient updates to train the provided model. If Ray is not
+    initialized, TorchTrainer will automatically initialize a local Ray
+    cluster for you. Be sure to run `ray.init(address="auto")` to leverage
+    multi-node training.
 
     .. code-block:: python
-
-        ray.init()
 
         def model_creator(config):
             return nn.Linear(1, 1)
@@ -68,6 +75,14 @@ class TorchTrainer:
         for i in range(4):
             trainer.train()
 
+    The creator functions will execute before distributed coordination and
+    training is setup. This is so that creator functions that download
+    large datasets will not trigger any timeouts.
+
+    The order of operations for creator functions are:
+
+    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
+    ``scheduler_creator`` -> ``loss_creator``.
 
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
@@ -116,6 +131,11 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
+        add_dist_sampler (bool): Whether to automatically add a
+            DistributedSampler to all created dataloaders. Only applicable
+            if num_workers > 1.
         use_fp16 (bool): Enables mixed precision training via apex if apex
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
@@ -148,11 +168,13 @@ class TorchTrainer:
             initialization_hook=None,
             config=None,
             num_workers=1,
-            use_gpu=False,
+            use_gpu="auto",
             backend="auto",
+            wrap_ddp=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
+            add_dist_sampler=True,
             scheduler_step_freq="batch",
             num_replicas=None,
             batch_size=None,
@@ -202,19 +224,23 @@ class TorchTrainer:
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
+        if use_gpu == "auto":
+            use_gpu = torch.cuda.is_available()
+
+        _remind_gpu_usage(use_gpu)
 
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
         logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
-
-        # TODO: Have an auto "use_gpu" option to detect and use GPUs.
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
+        self.add_dist_sampler = add_dist_sampler
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -230,6 +256,11 @@ class TorchTrainer:
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
+        if not ray.is_initialized() and self.max_replicas > 1:
+            logger.info("Automatically initializing single-node Ray. To use "
+                        "multi-node training, be sure to run `ray.init("
+                        "address='auto')` before instantiating the Trainer.")
+            ray.init()
         self._start_workers(self.max_replicas)
 
     def _configure_and_split_batch(self, num_workers):
@@ -259,39 +290,31 @@ class TorchTrainer:
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
 
+        params = dict(
+            model_creator=self.model_creator,
+            data_creator=self.data_creator,
+            optimizer_creator=self.optimizer_creator,
+            loss_creator=self.loss_creator,
+            scheduler_creator=self.scheduler_creator,
+            training_operator_cls=self.training_operator_cls,
+            config=worker_config,
+            use_fp16=self.use_fp16,
+            use_gpu=self.use_gpu,
+            use_tqdm=self.use_tqdm,
+            apex_args=self.apex_args,
+            scheduler_step_freq=self.scheduler_step_freq)
+
         if num_workers == 1:
             # Start local worker
-            self.local_worker = TorchRunner(
-                model_creator=self.model_creator,
-                data_creator=self.data_creator,
-                optimizer_creator=self.optimizer_creator,
-                loss_creator=self.loss_creator,
-                scheduler_creator=self.scheduler_creator,
-                training_operator_cls=self.training_operator_cls,
-                config=worker_config,
-                use_fp16=self.use_fp16,
-                use_tqdm=self.use_tqdm,
-                apex_args=self.apex_args,
-                scheduler_step_freq=self.scheduler_step_freq)
-
+            self.local_worker = TorchRunner(**params)
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
-
             self.local_worker.setup()
         else:
-            params = dict(
-                model_creator=self.model_creator,
-                data_creator=self.data_creator,
-                optimizer_creator=self.optimizer_creator,
-                loss_creator=self.loss_creator,
-                scheduler_creator=self.scheduler_creator,
+            params.update(
                 backend=self.backend,
-                training_operator_cls=self.training_operator_cls,
-                config=worker_config,
-                use_fp16=self.use_fp16,
-                use_tqdm=self.use_tqdm,
-                apex_args=self.apex_args,
-                scheduler_step_freq=self.scheduler_step_freq)
+                add_dist_sampler=self.add_dist_sampler,
+                wrap_ddp=self.wrap_ddp)
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
@@ -313,13 +336,32 @@ class TorchTrainer:
 
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
-            remote_setups = [
-                worker.setup.remote(address, i + 1, num_workers)
+            # Runs the creator functions.
+            remote_component_setup = [
+                worker.setup_components.remote()
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup(address, 0, num_workers)
+            self.local_worker.setup_components()
             # Get setup tasks in order to throw errors on failure
-            ray.get(remote_setups)
+            ray.get(remote_component_setup)
+
+            # Setup the process group among all workers.
+            remote_pgroup_setups = [
+                worker.setup_process_group.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
+            ]
+            self.local_worker.setup_process_group(address, 0, num_workers)
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_pgroup_setups)
+
+            # Runs code that requires all creator functions to have run.
+            remote_operator_setups = [
+                worker.setup_ddp_and_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_ddp_and_operator()
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,
@@ -455,7 +497,11 @@ class TorchTrainer:
         local_call = self.local_worker.apply_operator(fn)
         return [local_call] + ray.get(remote_calls)
 
-    def validate(self, num_steps=None, profile=False, info=None):
+    def validate(self,
+                 num_steps=None,
+                 profile=False,
+                 reduce_results=True,
+                 info=None):
         """Evaluates the model on the validation data set.
 
         Args:
@@ -463,6 +509,10 @@ class TorchTrainer:
                 This corresponds also to the number of times
                 ``TrainingOperator.validate_batch`` is called.
             profile (bool): Returns time stats for the evaluation procedure.
+            reduce_results (bool): Whether to average all metrics across
+                all workers into one dict. If a metric is a non-numerical
+                value (or nested dictionaries), one value will be randomly
+                selected among the workers. If False, returns a list of dicts.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
 
@@ -477,8 +527,12 @@ class TorchTrainer:
             w.validate.remote(**params) for w in self.remote_workers
         ]
         local_worker_stats = self.local_worker.validate(**params)
-        return self._process_stats([local_worker_stats] +
-                                   ray.get(remote_worker_stats))
+        worker_stats = [local_worker_stats] + ray.get(remote_worker_stats)
+
+        if reduce_results:
+            return self._process_stats(worker_stats)
+        else:
+            return worker_stats
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.
@@ -496,6 +550,17 @@ class TorchTrainer:
         if len(unwrapped) == 1:
             return unwrapped[0]
         return unwrapped
+
+    def get_local_operator(self):
+        """Returns the local TrainingOperator object.
+
+        Be careful not to perturb its state, or else you can cause the system
+        to enter an inconsistent state.
+
+        Returns:
+            TrainingOperator: The local TrainingOperator object.
+        """
+        return self.local_worker.training_operator
 
     def state_dict(self):
         return self.local_worker.state_dict()

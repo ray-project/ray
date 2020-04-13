@@ -1,3 +1,5 @@
+.. _tune-schedulers:
+
 Tune Trial Schedulers
 =====================
 
@@ -15,6 +17,7 @@ Current Available Trial Schedulers:
     :local:
     :backlinks: none
 
+.. _tune-scheduler-pbt:
 
 Population Based Training (PBT)
 -------------------------------
@@ -31,7 +34,7 @@ Tune includes a distributed implementation of `Population Based Training (PBT) <
             hyperparam_mutations={
                 "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
                 "alpha": lambda: random.uniform(0.0, 1.0),
-                ...
+            ...
             })
     tune.run( ... , scheduler=pbt_scheduler)
 

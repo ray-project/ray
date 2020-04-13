@@ -41,8 +41,6 @@ class RayParams:
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        local_mode (bool): True if the code should be executed serially
-            without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -104,7 +102,6 @@ class RayParams:
                  min_worker_port=None,
                  max_worker_port=None,
                  object_id_seed=None,
-                 local_mode=False,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -142,7 +139,6 @@ class RayParams:
         self.node_ip_address = node_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
-        self.local_mode = local_mode
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output

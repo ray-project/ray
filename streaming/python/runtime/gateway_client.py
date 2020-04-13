@@ -10,7 +10,7 @@ class GatewayClient:
     """GatewayClient is used to interact with `PythonGateway` java actor"""
 
     _PYTHON_GATEWAY_CLASSNAME = \
-        b"org.ray.streaming.runtime.python.PythonGateway"
+        b"io.ray.streaming.runtime.python.PythonGateway"
 
     def __init__(self):
         self._python_gateway_actor = ray.java_actor_class(

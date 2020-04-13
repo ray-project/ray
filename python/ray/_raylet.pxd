@@ -17,7 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject
 )
-from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.libcoreworker cimport CFiberEvent
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
@@ -72,10 +72,11 @@ cdef class ActorID(BaseID):
 
 cdef class CoreWorker:
     cdef:
-        unique_ptr[CCoreWorker] core_worker
+        c_bool is_driver
         object async_thread
         object async_event_loop
         object plasma_event_handler
+        c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
@@ -84,6 +85,7 @@ cdef class CoreWorker:
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
+    cdef yield_current_fiber(self, CFiberEvent &fiber_event)
 
 cdef class FunctionDescriptor:
     cdef:

@@ -84,12 +84,6 @@ class CoreWorkerDirectTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Retry a failed lease request.
-  void RetryLeaseRequest(Status status,
-                         std::shared_ptr<WorkerLeaseInterface> lease_client,
-                         const SchedulingKey &scheduling_key)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
   /// local raylet.
@@ -102,6 +96,13 @@ class CoreWorkerDirectTaskSubmitter {
   /// worker should be requested from the local raylet.
   void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
                                 const rpc::Address *raylet_address = nullptr)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Cancel a pending worker lease and retry until the cancellation succeeds
+  /// (i.e., the raylet drops the request). This should be called when there
+  /// are no more tasks queued with the given scheduling key and there is an
+  /// in-flight lease request for that key.
+  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
@@ -161,7 +162,9 @@ class CoreWorkerDirectTaskSubmitter {
       worker_to_lease_client_ GUARDED_BY(mu_);
 
   // Keeps track of pending worker lease requests to the raylet.
-  absl::flat_hash_set<SchedulingKey> pending_lease_requests_ GUARDED_BY(mu_);
+  absl::flat_hash_map<SchedulingKey,
+                      std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID>>
+      pending_lease_requests_ GUARDED_BY(mu_);
 
   // Tasks that are queued for execution. We keep individual queues per
   // scheduling class to ensure fairness.

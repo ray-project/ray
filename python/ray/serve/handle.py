@@ -1,3 +1,4 @@
+import ray
 from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.exceptions import RayServeException
@@ -102,13 +103,13 @@ class RayServeHandle:
             method_name=method_name,
         )
 
-    def get_traffic_policy(self):
-        policy_table = serve.api._get_global_state().policy_table
-        all_services = policy_table.list_traffic_policy()
-        return all_services[self.endpoint_name]
-
     def get_http_endpoint(self):
         return DEFAULT_HTTP_ADDRESS
+
+    def get_traffic_policy(self):
+        master_actor = serve.api._get_master_actor()
+        return ray.get(
+            master_actor.get_traffic_policy.remote(self.endpoint_name))
 
     def _ensure_backend_unique(self, backend_tag=None):
         traffic_policy = self.get_traffic_policy()
