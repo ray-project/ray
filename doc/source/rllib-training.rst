@@ -496,51 +496,10 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callbacks to be called at points during policy evaluation. These callbacks have access to state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
-.. code-block:: python
-
-    def on_episode_start(info):
-        print(info.keys())  # -> "env", 'episode"
-        episode = info["episode"]
-        print("episode {} started".format(episode.episode_id))
-        episode.user_data["pole_angles"] = []
-
-    def on_episode_step(info):
-        episode = info["episode"]
-        pole_angle = abs(episode.last_observation_for()[2])
-        episode.user_data["pole_angles"].append(pole_angle)
-
-    def on_episode_end(info):
-        episode = info["episode"]
-        pole_angle = np.mean(episode.user_data["pole_angles"])
-        print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, pole_angle))
-        episode.custom_metrics["pole_angle"] = pole_angle
-
-    def on_train_result(info):
-        print("trainer.train() result: {} -> {} episodes".format(
-            info["trainer"].__name__, info["result"]["episodes_this_iter"]))
-
-    def on_postprocess_traj(info):
-        episode = info["episode"]
-        batch = info["post_batch"]  # note: you can mutate this
-        print("postprocessed {} steps".format(batch.count))
-
-    ray.init()
-    analysis = tune.run(
-        "PG",
-        config={
-            "env": "CartPole-v0",
-            "callbacks": {
-                "on_episode_start": on_episode_start,
-                "on_episode_step": on_episode_step,
-                "on_episode_end": on_episode_end,
-                "on_train_result": on_train_result,
-                "on_postprocess_traj": on_postprocess_traj,
-            },
-        },
-    )
+.. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
+    :members:
 
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
