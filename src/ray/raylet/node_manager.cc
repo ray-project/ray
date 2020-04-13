@@ -1088,7 +1088,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   int assigned_port;
   if (message->is_worker()) {
     // Register the new worker.
-    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, pid, &assigned_port));
+    if (!worker_pool_.RegisterWorker(worker, pid, &assigned_port).ok()) {
+      // Return -1 to signal to the worker that registration failed.
+      assigned_port = -1;
+    }
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
@@ -1105,6 +1108,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
           gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
                                   initial_config_.node_manager_address, pid);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
+    } else {
+      // Return -1 to signal to the worker that registration failed.
+      assigned_port = -1;
     }
   }
 

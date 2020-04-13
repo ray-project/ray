@@ -317,6 +317,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       &assigned_port));
   connected_ = true;
 
+  RAY_CHECK(assigned_port != -1)
+      << "Failed to allocate a port for the worker. Please specify a wider port range "
+         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
+         "start'.";
+
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(

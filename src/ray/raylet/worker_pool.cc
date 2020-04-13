@@ -325,15 +325,15 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid,
                                   int *port) {
-  RAY_RETURN_NOT_OK(GetNextFreePort(port));
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << *port;
-  worker->SetAssignedPort(*port);
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
   }
+  RAY_RETURN_NOT_OK(GetNextFreePort(port));
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << *port;
+  worker->SetAssignedPort(*port);
   worker->SetProcess(it->first);
   it->second--;
   if (it->second == 0) {
@@ -345,9 +345,9 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver, int *port) {
+  RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   RAY_RETURN_NOT_OK(GetNextFreePort(port));
   driver->SetAssignedPort(*port);
-  RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   return Status::OK();
