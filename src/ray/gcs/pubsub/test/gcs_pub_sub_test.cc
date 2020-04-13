@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
@@ -39,8 +41,10 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
     client_->Disconnect();
     RAY_LOG(INFO) << "bbbbbbbbbbbbbbbbb";
     io_service_.stop();
+    client_.reset();
     RAY_LOG(INFO) << "ccccccccccccccccccc";
     thread_io_service_->join();
+    thread_io_service_.reset();
     RAY_LOG(INFO) << "dddddddddddddddddd";
   }
 
