@@ -34,7 +34,7 @@ class RayParams:
         node_manager_port: The port to use for the node manager.
         node_ip_address (str): The IP address of the node that we are on.
         min_worker_port (int): The lowest port number that workers will bind
-            on. If not set, random ports will be chosen.
+            on. If not set or set to 0, random ports will be chosen.
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         object_id_seed (int): Used to seed the deterministic generation of
