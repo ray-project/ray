@@ -4,9 +4,11 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 
 
+@PublicAPI
 class DefaultCallbacks:
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
@@ -21,7 +23,7 @@ class DefaultCallbacks:
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.agents.DefaultCallbacks")
+                "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
     def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
