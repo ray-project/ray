@@ -331,9 +331,9 @@ class TestSAC(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.0002)
+                            check(tf_var, np.transpose(torch_var), rtol=0.01)
                         else:
-                            check(tf_var, torch_var, rtol=0.0002)
+                            check(tf_var, torch_var, rtol=0.01)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -343,9 +343,9 @@ class TestSAC(unittest.TestCase):
                         torch_var = policy.target_model.state_dict()[map_[
                             tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.0002)
+                            check(tf_var, np.transpose(torch_var), rtol=0.01)
                         else:
-                            check(tf_var, torch_var, rtol=0.0002)
+                            check(tf_var, torch_var, rtol=0.01)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {

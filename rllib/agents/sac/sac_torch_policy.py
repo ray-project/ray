@@ -1,9 +1,9 @@
 from gym.spaces import Discrete
 import logging
-import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
@@ -212,7 +212,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         # the Q-net(s)' variables.
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
 
-    # save for stats function
+    # Save for stats function.
     policy.q_t = q_t
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
@@ -227,29 +227,6 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Return all loss terms corresponding to our optimizers.
     return tuple([policy.actor_loss] + policy.critic_loss +
                  [policy.alpha_loss])
-
-
-def apply_grad_clipping(policy):
-    info = {}
-    policy.mean_grad_actor = np.mean([
-        np.mean(v.grad.detach().numpy())
-        for v in policy.model.policy_variables()
-    ])
-    policy.mean_grad_critic = np.mean([
-        np.mean(v.grad.detach().numpy())
-        for v in policy.model.q_variables()[:6]
-    ])
-    policy.mean_grad_alpha = policy.model.log_alpha.grad[0].detach().numpy()
-    if policy.config["grad_clip"]:
-        info["grad_gnorm_policy"] = nn.utils.clip_grad_norm_(
-            policy.model.policy_variables(), policy.config["grad_clip"])
-
-        info["grad_gnorm_q_nets"] = nn.utils.clip_grad_norm_(
-            policy.model.q_variables(), policy.config["grad_clip"])
-
-        info["grad_gnorm_alpha"] = nn.utils.clip_grad_norm_(
-            [policy.model.log_alpha], policy.config["grad_clip"])
-    return info
 
 
 def stats(policy, train_batch):
