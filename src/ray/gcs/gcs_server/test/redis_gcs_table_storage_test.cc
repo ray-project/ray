@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
@@ -208,15 +208,6 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  void PutWithJobId(TABLE &table, const JobID &job_id, const KEY &key,
-                    const VALUE &value) {
-    auto on_done = [this](Status status) { --pending_count_; };
-    ++pending_count_;
-    RAY_CHECK_OK(table.PutWithJobId(job_id, key, value, on_done));
-    WaitPendingDone();
-  }
-
-  template <typename TABLE, typename KEY, typename VALUE>
   int GetByJobId(TABLE &table, const JobID &job_id,
                  std::vector<std::pair<KEY, VALUE>> &values) {
     auto on_done = [this, &values](Status status, bool has_more,
@@ -272,7 +263,7 @@ TEST_F(GcsTableStorageTest, TestActorTableApi) {
   ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
 
   // Put.
-  PutWithJobId(table, job_id, actor_id, GenActorTableData(job_id, actor_id));
+  Put(table, actor_id, GenActorTableData(job_id, actor_id));
 
   // Get.
   std::vector<rpc::ActorTableData> values;
@@ -290,8 +281,7 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointTableApi) {
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
 
   // Put.
-  PutWithJobId(table, job_id, checkpoint_id,
-               GenActorCheckpointData(actor_id, checkpoint_id));
+  Put(table, checkpoint_id, GenActorCheckpointData(actor_id, checkpoint_id));
 
   // Get.
   std::vector<rpc::ActorCheckpointData> values;
@@ -309,8 +299,7 @@ TEST_F(GcsTableStorageTest, TestActorCheckpointIdTableApi) {
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
 
   // Put.
-  PutWithJobId(table, job_id, actor_id,
-               GenActorCheckpointIdData(actor_id, checkpoint_id));
+  Put(table, actor_id, GenActorCheckpointIdData(actor_id, checkpoint_id));
 
   // Get.
   std::vector<rpc::ActorCheckpointIdData> values;
@@ -327,7 +316,7 @@ TEST_F(GcsTableStorageTest, TestTaskTableApi) {
   TaskID task_id = TaskID::ForDriverTask(job_id);
 
   // Put.
-  PutWithJobId(table, job_id, task_id, GenTaskTableData(job_id, task_id));
+  Put(table, task_id, GenTaskTableData(job_id, task_id));
 
   // Get.
   std::vector<rpc::TaskTableData> values;
@@ -345,7 +334,7 @@ TEST_F(GcsTableStorageTest, TestTaskLeaseTableApi) {
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  PutWithJobId(table, job_id, task_id, GenTaskLeaseData(task_id, node_id));
+  Put(table, task_id, GenTaskLeaseData(task_id, node_id));
 
   // Get.
   std::vector<rpc::TaskLeaseData> values;
@@ -363,7 +352,7 @@ TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
   ClientID node_id = ClientID::FromRandom();
 
   // Put.
-  PutWithJobId(table, job_id, task_id, GenTaskReconstructionData(task_id, node_id));
+  Put(table, task_id, GenTaskReconstructionData(task_id, node_id));
 
   // Get.
   std::vector<rpc::TaskReconstructionData> values;
@@ -377,11 +366,12 @@ TEST_F(GcsTableStorageTest, TestTaskReconstructionTableApi) {
 TEST_F(GcsTableStorageTest, TestObjectTableApi) {
   auto table = gcs_table_storage_->ObjectTable();
   JobID job_id = JobID::FromInt(1);
+  ActorID actor_id = ActorID::NilFromJob(job_id);
   ClientID node_id = ClientID::FromRandom();
-  ObjectID object_id = ObjectID::FromRandom();
+  ObjectID object_id = ObjectID::ForActorHandle(actor_id);
 
   // Put.
-  PutWithJobId(table, job_id, object_id, GenObjectTableDataList(node_id));
+  Put(table, object_id, GenObjectTableDataList(node_id));
 
   // Get.
   std::vector<rpc::ObjectTableDataList> values;

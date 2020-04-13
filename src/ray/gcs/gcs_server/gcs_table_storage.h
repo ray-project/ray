@@ -43,19 +43,19 @@ using rpc::WorkerFailureData;
 
 /// \class GcsTable
 ///
-/// GcsTable supports putting, getting and deleting of GCS table data.
-/// This class is not meant to be used directly. All gcs table classes without job id
-/// should derive from this class and override the table_name_ member with a unique value
-/// for that table.
+/// GcsTable is the storage interface for all GCS tables whose data do not belong to
+/// specific jobs. This class is not meant to be used directly. All gcs table classes
+/// without job id should derive from this class and override the table_name_ member with
+/// a unique value for that table.
 template <typename Key, typename Data>
 class GcsTable {
  public:
   explicit GcsTable(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
       : store_client_(store_client) {}
 
-  virtual ~GcsTable() { store_client_.reset(); }
+  virtual ~GcsTable() = default;
 
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
 
   Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
 
@@ -63,29 +63,34 @@ class GcsTable {
 
   Status Delete(const Key &key, const StatusCallback &callback);
 
+  Status BatchDelete(const std::vector<Key> &keys, const StatusCallback &callback);
+
+ protected:
   std::string table_name_;
   std::shared_ptr<StoreClient<Key, Data, JobID>> store_client_;
 };
 
 /// \class GcsTableWithJobId
 ///
-/// GcsTableWithJobId supports putting, getting and deleting of GCS table data.
-/// This class is not meant to be used directly. All gcs table classes with job id should
-/// derive from this class and override the table_name_ member with a unique value
-/// for that table.
+/// GcsTableWithJobId is the storage interface for all GCS tables whose data belongs to
+/// specific jobs. This class is not meant to be used directly. All gcs table classes with
+/// job id should derive from this class and override the table_name_ member with a unique
+/// value for that table.
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
   explicit GcsTableWithJobId(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
       : GcsTable<Key, Data>(store_client) {}
 
-  Status PutWithJobId(const JobID &job_id, const Key &key, const Data &value,
-                      const StatusCallback &callback);
+  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
 
   Status GetByJobId(const JobID &job_id,
                     const SegmentedCallback<std::pair<Key, Data>> &callback);
 
   Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+
+ protected:
+  virtual JobID GetJobIdFromKey(const Key &key) = 0;
 };
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
@@ -104,15 +109,17 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
+
+ private:
+  JobID GetJobIdFromKey(const ActorID &key) { return key.JobId(); }
 };
 
-class GcsActorCheckpointTable
-    : public GcsTableWithJobId<ActorCheckpointID, ActorCheckpointData> {
+class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
  public:
   explicit GcsActorCheckpointTable(
       std::shared_ptr<StoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>
           store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT);
   }
 };
@@ -125,6 +132,9 @@ class GcsActorCheckpointIdTable
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT_ID);
   }
+
+ private:
+  JobID GetJobIdFromKey(const ActorID &key) { return key.JobId(); }
 };
 
 class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
@@ -135,7 +145,8 @@ class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
     table_name_ = TablePrefix_Name(TablePrefix::TASK);
   }
 
-  Status BatchDelete(const std::vector<TaskID> &keys, const StatusCallback &callback);
+ private:
+  JobID GetJobIdFromKey(const TaskID &key) { return key.ActorId().JobId(); }
 };
 
 class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
@@ -145,6 +156,9 @@ class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
   }
+
+ private:
+  JobID GetJobIdFromKey(const TaskID &key) { return key.ActorId().JobId(); }
 };
 
 class GcsTaskReconstructionTable
@@ -155,6 +169,9 @@ class GcsTaskReconstructionTable
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
   }
+
+ private:
+  JobID GetJobIdFromKey(const TaskID &key) { return key.ActorId().JobId(); }
 };
 
 class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
@@ -164,6 +181,9 @@ class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
       : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
   }
+
+ private:
+  JobID GetJobIdFromKey(const ObjectID &key) { return key.TaskId().JobId(); }
 };
 
 class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {

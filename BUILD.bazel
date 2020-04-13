@@ -789,8 +789,8 @@ cc_library(
 )
 
 cc_test(
-    name = "gcs_table_storage_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_table_storage_test.cc"],
+    name = "redis_gcs_table_storage_test",
+    srcs = ["src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc"],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
