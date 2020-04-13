@@ -47,8 +47,8 @@ class SACTFModel(TFModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-        super(SACTFModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+        super(SACTFModel, self).__init__(obs_space, action_space, num_outputs,
+                                         model_config, name)
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True

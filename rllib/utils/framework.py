@@ -207,8 +207,8 @@ def get_activation_fn(name, framework="tf"):
         if fn is not None:
             return fn
 
-    raise ValueError(
-        "Unknown activation ({}) for framework={}!".format(name, framework))
+    raise ValueError("Unknown activation ({}) for framework={}!".format(
+        name, framework))
 
 
 # This call should never happen inside a module's functions/classes

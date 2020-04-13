@@ -474,7 +474,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     @PublicAPI
-    def train(self):  #, fake_batch=None):
+    def train(self):
         """Overrides super.train to synchronize global vars."""
 
         if self._has_policy_optimizer():
@@ -488,7 +488,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = Trainable.train(self)  #, fake_batch)
+                result = Trainable.train(self)
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(

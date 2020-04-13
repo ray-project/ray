@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete
+from gym.spaces import Discrete
 import logging
 import numpy as np
 
@@ -6,15 +6,12 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory
-from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
-    PRIO_WEIGHTS
+from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
-    TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils import try_import_torch
-from ray.rllib.utils.annotations import override
 
 torch, nn = try_import_torch()
 F = None
@@ -95,8 +92,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         # Get all action probs directly from pi and form their logp.
         log_pis_t = F.log_softmax(model.get_policy_output(model_out_t), dim=-1)
         policy_t = torch.exp(log_pis_t)
-        log_pis_tp1 = F.log_softmax(
-            model.get_policy_output(model_out_tp1), -1)
+        log_pis_tp1 = F.log_softmax(model.get_policy_output(model_out_tp1), -1)
         policy_tp1 = torch.exp(log_pis_tp1)
         # Q-values.
         q_t = model.get_q_values(model_out_t)
@@ -107,7 +103,6 @@ def actor_critic_loss(policy, model, _, train_batch):
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
-        #print("TODO: detach alpha*log_pis_tp1? from critic loss?")
         q_tp1 -= alpha * log_pis_tp1
 
         # Actually selected Q-values (from the actions batch).
@@ -147,8 +142,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_t_det_policy = model.get_twin_q_values(
                 model_out_t, policy_t)
-            q_t_det_policy = torch.min(
-                q_t_det_policy, twin_q_t_det_policy)
+            q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
         q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -171,9 +165,10 @@ def actor_critic_loss(policy, model, _, train_batch):
     assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
     # compute RHS of bellman equation
-    q_t_selected_target = (train_batch[SampleBatch.REWARDS] +
-                           policy.config["gamma"] ** policy.config["n_step"] *
-                           q_tp1_best_masked).detach()
+    q_t_selected_target = (
+        train_batch[SampleBatch.REWARDS] +
+        (policy.config["gamma"]**policy.config["n_step"]) * q_tp1_best_masked
+    ).detach()
 
     # Compute the TD-error (potentially clipped).
     base_td_error = torch.abs(q_t_selected - q_t_selected_target)
@@ -187,8 +182,8 @@ def actor_critic_loss(policy, model, _, train_batch):
         0.5 * torch.mean(torch.pow(q_t_selected_target - q_t_selected, 2.0))
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(0.5 * torch.mean(torch.pow(
-            q_t_selected_target - twin_q_t_selected, 2.0)))
+        critic_loss.append(0.5 * torch.mean(
+            torch.pow(q_t_selected_target - twin_q_t_selected, 2.0)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -196,20 +191,21 @@ def actor_critic_loss(policy, model, _, train_batch):
     # loss terms (no expectations needed).
     if model.discrete:
         weighted_log_alpha_loss = policy_t.detach() * (
-            -model.log_alpha * (log_pis_t + model.target_entropy).detach()
-        )
+            -model.log_alpha * (log_pis_t + model.target_entropy).detach())
         # Sum up weighted terms and mean over all batch items.
         alpha_loss = torch.mean(torch.sum(weighted_log_alpha_loss, dim=-1))
         # Actor loss.
-        actor_loss = torch.mean(torch.sum(torch.mul(
-            # NOTE: No stop_grad around policy output here
-            # (compare with q_t_det_policy for continuous case).
-            policy_t,
-            alpha.detach() * log_pis_t - q_t.detach()),
-            dim=-1))
+        actor_loss = torch.mean(
+            torch.sum(
+                torch.mul(
+                    # NOTE: No stop_grad around policy output here
+                    # (compare with q_t_det_policy for continuous case).
+                    policy_t,
+                    alpha.detach() * log_pis_t - q_t.detach()),
+                dim=-1))
     else:
-        alpha_loss = -torch.mean(
-            model.log_alpha * (log_pis_t + model.target_entropy).detach())
+        alpha_loss = -torch.mean(model.log_alpha *
+                                 (log_pis_t + model.target_entropy).detach())
         # Note: Do not detach q_t_det_policy here b/c is depends partly
         # on the policy vars (policy sample pushed through Q-net).
         # However, we must make sure `actor_loss` is not used to update
@@ -218,7 +214,6 @@ def actor_critic_loss(policy, model, _, train_batch):
 
     # save for stats function
     policy.q_t = q_t
-    #policy.q_t_det_policy = q_t_det_policy
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
     policy.td_error = td_error
@@ -229,31 +224,31 @@ def actor_critic_loss(policy, model, _, train_batch):
     policy.alpha_value = alpha
     policy.target_entropy = model.target_entropy
 
-    # In a custom apply op we handle the losses separately, but return them
-    # combined in one loss for now.
-    #combined_critic_loss = critic_loss[0] + \
-    #    (critic_loss[1] if len(critic_loss) > 1 else 0.0)
-    #return actor_loss + combined_critic_loss + alpha_loss
-    return torch.Tensor([0.0])
+    # Return all loss terms corresponding to our optimizers.
+    return tuple([policy.actor_loss] + policy.critic_loss +
+                 [policy.alpha_loss])
 
 
 def apply_grad_clipping(policy):
     info = {}
-    policy.mean_grad_actor = np.mean([np.mean(v.grad.detach().numpy()) for v in policy.model.policy_variables()])
-    policy.mean_grad_critic = np.mean([np.mean(v.grad.detach().numpy()) for v in policy.model.q_variables()[:6]])
+    policy.mean_grad_actor = np.mean([
+        np.mean(v.grad.detach().numpy())
+        for v in policy.model.policy_variables()
+    ])
+    policy.mean_grad_critic = np.mean([
+        np.mean(v.grad.detach().numpy())
+        for v in policy.model.q_variables()[:6]
+    ])
     policy.mean_grad_alpha = policy.model.log_alpha.grad[0].detach().numpy()
     if policy.config["grad_clip"]:
         info["grad_gnorm_policy"] = nn.utils.clip_grad_norm_(
-            policy.model.policy_variables(),
-            policy.config["grad_clip"])
+            policy.model.policy_variables(), policy.config["grad_clip"])
 
         info["grad_gnorm_q_nets"] = nn.utils.clip_grad_norm_(
-            policy.model.q_variables(),
-            policy.config["grad_clip"])
+            policy.model.q_variables(), policy.config["grad_clip"])
 
         info["grad_gnorm_alpha"] = nn.utils.clip_grad_norm_(
-            [policy.model.log_alpha],
-            policy.config["grad_clip"])
+            [policy.model.log_alpha], policy.config["grad_clip"])
     return info
 
 
@@ -261,17 +256,12 @@ def stats(policy, train_batch):
     return {
         "td_error": torch.mean(policy.td_error),
         "actor_loss": torch.mean(policy.actor_loss),
-        "mean_grads_actor": policy.mean_grad_actor,
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
-        "mean_grads_critic": policy.mean_grad_critic,
         "alpha_loss": torch.mean(policy.alpha_loss),
-        "mean_grads_alpha": policy.mean_grad_alpha,
         "alpha_value": torch.mean(policy.alpha_value),
         "log_alpha_value": torch.mean(policy.log_alpha_value),
         "target_entropy": policy.target_entropy,
-        #"q_t_det_policy": torch.mean(policy.q_t_det_policy),
         "policy_t": torch.mean(policy.policy_t),
-        "log_pis_t": torch.mean(policy.log_pis_t),
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
@@ -279,81 +269,43 @@ def stats(policy, train_batch):
 
 
 def optimizer_fn(policy, config):
-    #class Opt:
-    #    def __init__(self, *opts):
-    #        self.opts = opts
+    """Creates all necessary optimizers for SAC learning.
 
-    #    def step(self):
-    #        for o in self.opts:
-    #            o.step()
-
-    #    def zero_grad(self):
-    #        for o in self.opts:
-    #            o.zero_grad()
-
-    #policy.actor_optim = torch.optim.SGD(
-    #    params=policy.model.policy_variables(),
-    #    lr=config["optimization"]["actor_learning_rate"]
-    #)
-    #policy.critic_optim = torch.optim.SGD(
-    #    params=policy.model.q_variables(),
-    #    lr=config["optimization"]["critic_learning_rate"]
-    #)
-    #policy.alpha_optim = torch.optim.SGD(
-    #    params=[policy.model.log_alpha],
-    #    lr=config["optimization"]["entropy_learning_rate"]
-    #)
+    The 3 or 4 (twin_q=True) optimizers returned here correspond to the
+    number of loss terms returned by the loss function.
+    """
     policy.actor_optim = torch.optim.Adam(
         params=policy.model.policy_variables(),
         lr=config["optimization"]["actor_learning_rate"],
-        eps=1e-7,
+        eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
-    half_split = len(policy.model.q_variables()) // \
-                 (2 if config["twin_q"] else 1)
-    policy.critic_optim = torch.optim.Adam(
-        params=policy.model.q_variables()[:half_split],
-        lr=config["optimization"]["critic_learning_rate"],
-        eps=1e-7,
-    )
+
+    critic_split = len(policy.model.q_variables())
     if config["twin_q"]:
-        policy.critic_optim_2 = torch.optim.Adam(
-            params=policy.model.q_variables()[half_split:],
+        critic_split //= 2
+
+    policy.critic_optims = [
+        torch.optim.Adam(
+            params=policy.model.q_variables()[:critic_split],
             lr=config["optimization"]["critic_learning_rate"],
-            eps=1e-7,
+            eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
         )
+    ]
+    if config["twin_q"]:
+        policy.critic_optims.append(
+            torch.optim.Adam(
+                params=policy.model.q_variables()[critic_split:],
+                lr=config["optimization"]["critic_learning_rate"],
+                eps=1e-7,  # to match tf.keras.optimizers.Adam's eps default
+            ))
     policy.alpha_optim = torch.optim.Adam(
         params=[policy.model.log_alpha],
         lr=config["optimization"]["entropy_learning_rate"],
-        eps=1e-7,
+        eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
-    return None  #torch.optim.Adam([
-        #{
-        #    "params": policy.model.policy_variables(),
-        #    "lr": config["optimization"]["actor_learning_rate"],
-        #},
-        #{
-        #    "params": policy.model.q_variables(),
-        #    "lr": config["optimization"]["critic_learning_rate"],
-        #},
-        #{
-        #    "params": [policy.model.log_alpha],
-        #    "lr": config["optimization"]["entropy_learning_rate"],
-        #}
-    #])
-
-    # Joint optimizer for the different models using different learning rates.
-    #return Opt(
-    #    #torch.optim.Adam(
-    #    #    params=policy.model.policy_variables(),
-    #    #    lr=config["optimization"]["actor_learning_rate"]),
-    #    torch.optim.Adam(
-    #        params=policy.model.q_variables(),
-    #        lr=config["optimization"]["critic_learning_rate"])
-    #    torch.optim.Adam(
-    #        params=[policy.model.log_alpha],
-    #        lr=config["optimization"]["entropy_learning_rate"])
-    #)
+    return tuple([policy.actor_optim] + policy.critic_optims +
+                 [policy.alpha_optim])
 
 
 class ComputeTDErrorMixin:
@@ -392,9 +344,12 @@ class TargetNetworkMixin:
         # If tau == 1.0: Full sync from Q-model to target Q-model.
         if tau != 1.0:
             target_state_dict = self.target_model.state_dict()
-            model_state_dict = {k: tau * model_state_dict[k] + (1 - tau) * v
-                         for k, v in target_state_dict.items()}
+            model_state_dict = {
+                k: tau * model_state_dict[k] + (1 - tau) * v
+                for k, v in target_state_dict.items()
+            }
         self.target_model.load_state_dict(model_state_dict)
+
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     ComputeTDErrorMixin.__init__(policy)
@@ -411,8 +366,6 @@ SACTorchPolicy = build_torch_policy(
     optimizer_fn=optimizer_fn,
     after_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
-    mixins=[
-        TargetNetworkMixin, ComputeTDErrorMixin
-    ],
+    mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
 )

@@ -1,7 +1,7 @@
 from gym.spaces import Discrete
 import numpy as np
 
-from ray.rllib.models.torch.misc import SlimFC, normc_initializer
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
@@ -52,8 +52,8 @@ class SACTorchModel(TorchModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-        super(SACTorchModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+        super(SACTorchModel, self).__init__(obs_space, action_space,
+                                            num_outputs, model_config, name)
 
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
@@ -76,14 +76,19 @@ class SACTorchModel(TorchModelV2):
         for i, n in enumerate(actor_hiddens):
             self.action_model.add_module(
                 "action_{}".format(i),
-                SlimFC(ins, n, initializer=torch.nn.init.xavier_uniform_,
-                       activation_fn=activation))
+                SlimFC(
+                    ins,
+                    n,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=activation))
             ins = n
         self.action_model.add_module(
             "action_out",
-            SlimFC(ins, self.action_outs,
-                   initializer=torch.nn.init.xavier_uniform_,
-                   activation_fn=None))
+            SlimFC(
+                ins,
+                self.action_outs,
+                initializer=torch.nn.init.xavier_uniform_,
+                activation_fn=None))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
@@ -96,15 +101,20 @@ class SACTorchModel(TorchModelV2):
             for i, n in enumerate(critic_hiddens):
                 q_net.add_module(
                     "{}_hidden_{}".format(name_, i),
-                    SlimFC(ins, n, initializer=torch.nn.init.xavier_uniform_,
-                           activation_fn=activation))
+                    SlimFC(
+                        ins,
+                        n,
+                        initializer=torch.nn.init.xavier_uniform_,
+                        activation_fn=activation))
                 ins = n
 
             q_net.add_module(
                 "{}_out".format(name_),
-                SlimFC(ins, q_outs,
-                       initializer=torch.nn.init.xavier_uniform_,
-                       activation_fn=None))
+                SlimFC(
+                    ins,
+                    q_outs,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=None))
             return q_net
 
         self.q_net = build_q_net("q")
@@ -129,9 +139,7 @@ class SACTorchModel(TorchModelV2):
                 target_entropy = -np.prod(action_space.shape)
 
         self.target_entropy = torch.tensor(
-            data = [target_entropy],
-            dtype=torch.float32,
-            requires_grad=False)
+            data=[target_entropy], dtype=torch.float32, requires_grad=False)
 
     def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.
@@ -197,4 +205,4 @@ class SACTorchModel(TorchModelV2):
         """Return the list of variables for Q / twin Q nets."""
 
         return list(self.q_net.parameters()) + \
-               (list(self.twin_q_net.parameters()) if self.twin_q_net else [])
+            (list(self.twin_q_net.parameters()) if self.twin_q_net else [])

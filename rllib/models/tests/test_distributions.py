@@ -145,8 +145,10 @@ class TestDistributions(unittest.TestCase):
             #   -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
             atanh_in = (values - low) / (high - low) * 2.0 - 1.0
             unsquashed_values = np.arctanh(atanh_in)
-            log_prob_unsquashed = np.sum(np.log(norm.pdf(
-                unsquashed_values, means, stds) + SMALL_NUMBER), -1)
+            log_prob_unsquashed = np.sum(
+                np.log(
+                    norm.pdf(unsquashed_values, means, stds) + SMALL_NUMBER),
+                -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
@@ -177,8 +179,8 @@ class TestDistributions(unittest.TestCase):
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
 
-            outs = squashed_distribution.logp(
-                values if fw != "torch" else torch.Tensor(values))
+            outs = squashed_distribution.logp(values if fw != "torch" else
+                                              torch.Tensor(values))
             if sess:
                 outs = sess.run(outs)
             check(outs, log_prob, decimals=4)

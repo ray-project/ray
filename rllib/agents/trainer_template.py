@@ -137,7 +137,7 @@ def build_trainer(name,
                 after_init(self)
 
         @override(Trainer)
-        def _train(self):  #, fake_batch=None):
+        def _train(self):
             if self.train_exec_impl:
                 return self._train_exec_impl()
 
@@ -148,7 +148,7 @@ def build_trainer(name,
             start = time.time()
             optimizer_steps_this_iter = 0
             while True:
-                fetches = self.optimizer.step()  #fake_batch)
+                fetches = self.optimizer.step()
                 optimizer_steps_this_iter += 1
                 if after_optimizer_step:
                     after_optimizer_step(self, fetches)

@@ -46,7 +46,7 @@ class FullyConnectedNetwork(TFModelV2):
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
         else:
-            if len(hiddens)  > 0:
+            if len(hiddens) > 0:
                 last_layer = tf.keras.layers.Dense(
                     hiddens[-1],
                     name="fc_{}".format(i),
@@ -61,8 +61,8 @@ class FullyConnectedNetwork(TFModelV2):
             # Adjust self.num_outputs to be the number of nodes in the last
             # layer.
             else:
-                self.num_outputs = ([np.product(obs_space.shape)] +
-                    hiddens[-1:-1])[-1]
+                self.num_outputs = (
+                    [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
 
         if not vf_share_layers:
             # build a parallel set of hidden layers for the value net

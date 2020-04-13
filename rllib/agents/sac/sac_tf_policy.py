@@ -1,6 +1,5 @@
 from gym.spaces import Box, Discrete
 import logging
-import numpy as np
 
 import ray
 import ray.experimental.tf_utils
@@ -10,10 +9,8 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
-#from ray.rllib.models.tf.noop_model import TFNoopModel
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
-#from ray.rllib.models.torch.noop_model import TorchNoopModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -45,7 +42,6 @@ def build_sac_model(policy, obs_space, action_space, config):
     # 2 cases:
     # 1) with separate state-preprocessor (before obs+action concat).
     # 2) no separate state-preprocessor: concat obs+actions right away.
-    #num_outputs = 0  # None -> no additional output layer
     if config["use_state_preprocessor"]:
         num_outputs = 256  # Flatten last Conv2D to this many nodes.
     else:

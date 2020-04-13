@@ -147,9 +147,8 @@ def fc(x, weights, biases=None, framework=None):
 
     x = map_(x)
     # Torch stores matrices in transpose (faster for backprop).
-    transpose = (framework == "torch" and
-                 (x.shape[1] != weights.shape[0] and x.shape[1] ==
-                  weights.shape[1]))
+    transpose = (framework == "torch" and (x.shape[1] != weights.shape[0]
+                                           and x.shape[1] == weights.shape[1]))
     weights = map_(weights, transpose=transpose)
     biases = map_(biases)
 

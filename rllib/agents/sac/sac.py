@@ -127,8 +127,7 @@ def get_policy_class(config):
 
 
 def validate_config(config):
-    if config.get("grad_norm_clipping",
-                  DEPRECATED_VALUE) != DEPRECATED_VALUE:
+    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("grad_norm_clipping", "grad_clip")
         config["grad_clip"] = config.pop("grad_norm_clipping")
 

@@ -40,7 +40,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 SlimFC(
                     in_size=prev_layer_size,
                     out_size=size,
-                    initializer=normc_initializer(),
+                    initializer=normc_initializer(1.0),
                     activation_fn=activation))
             prev_layer_size = size
 
@@ -51,7 +51,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 SlimFC(
                     in_size=prev_layer_size,
                     out_size=self.num_outputs,
-                    initializer=normc_initializer(),
+                    initializer=normc_initializer(1.0),
                     activation_fn=activation))
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
@@ -61,7 +61,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     SlimFC(
                         in_size=prev_layer_size,
                         out_size=hiddens[-1],
-                        initializer=normc_initializer(),
+                        initializer=normc_initializer(1.0),
                         activation_fn=activation))
             if self.num_outputs:
                 self._logits = SlimFC(
@@ -70,8 +70,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     initializer=normc_initializer(0.01),
                     activation_fn=None)
             else:
-                self.num_outputs = ([np.product(obs_space.shape)] +
-                    hiddens[-1:-1])[-1]
+                self.num_outputs = (
+                    [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
 
         self._hidden_layers = nn.Sequential(*layers)
 

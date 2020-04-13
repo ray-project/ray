@@ -180,13 +180,10 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
                 (excluding this value).
         """
         super().__init__(inputs, model)
-        # Stabilize input parameters (possibly coming from a linear layer).
-        #self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
-        #self.inputs = torch.log(torch.exp(self.inputs) + 1.0) + 1.0
+        # Split inputs into mean and log(std).
         mean, log_std = torch.chunk(self.inputs, 2, dim=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
-        log_std = torch.clamp(
-            log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+        log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
         std = torch.exp(log_std)
         self.dist = torch.distributions.normal.Normal(mean, std)
         assert np.all(np.less(low, high))
@@ -217,12 +214,10 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     @override(ActionDistribution)
     def logp(self, x):
         unsquashed_values = self._unsquash(x)
-        log_prob = torch.sum(
-            self.dist.log_prob(unsquashed_values), dim=-1)
+        log_prob = torch.sum(self.dist.log_prob(unsquashed_values), dim=-1)
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
         log_prob -= torch.sum(
-            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            dim=-1)
+            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
         return log_prob
 
     def _squash(self, raw_values):
@@ -233,11 +228,9 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
             -1.0 + SMALL_NUMBER,
             1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
                 self.low
-        #return (clamped + 1.0) / 2.0 * (self.high - self.low) + self.low
 
     def _unsquash(self, values):
-        return atanh((values - self.low) /
-                     (self.high - self.low) * 2.0 - 1.0)
+        return atanh((values - self.low) / (self.high - self.low) * 2.0 - 1.0)
 
 
 class TorchBeta(TorchDistributionWrapper):
@@ -249,10 +242,12 @@ class TorchBeta(TorchDistributionWrapper):
         with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
         and Gamma(n) = (n - 1)!
     """
+
     def __init__(self, inputs, model, low=0.0, high=1.0):
         super().__init__(inputs, model)
         # Stabilize input parameters (possibly coming from a linear layer).
-        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
+        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER),
+                                  -log(SMALL_NUMBER))
         self.inputs = torch.log(torch.exp(self.inputs) + 1.0) + 1.0
         self.low = low
         self.high = high

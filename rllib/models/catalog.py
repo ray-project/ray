@@ -527,15 +527,12 @@ class ModelCatalog:
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)
-            #from ray.rllib.models.torch.noop_model import (TorchNoopModel as
-            #                                               NoopModel)
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
             if model_config.get("use_lstm"):
                 raise NotImplementedError(
                     "LSTM auto-wrapping not implemented for torch")
         else:
-            #from ray.rllib.models.tf.noop_model import TFNoopModel as NoopModel
             from ray.rllib.models.tf.fcnet_v2 import \
                 FullyConnectedNetwork as FCNet
             from ray.rllib.models.tf.visionnet_v2 import \
@@ -544,12 +541,6 @@ class ModelCatalog:
         # Discrete/1D obs-spaces.
         if isinstance(obs_space, gym.spaces.Discrete) or \
                 len(obs_space.shape) <= 2:
-            # If model-config hints at not using any pre-hidden-fc-net: use
-            # NoopModels.
-            #if not model_config.get("fcnet_hiddens") and \
-            #        model_config.get("no_final_linear"):
-            #    return NoopModel
-            # Multi-layered perceptron.
             return FCNet
         # Default Conv2D net.
         else:

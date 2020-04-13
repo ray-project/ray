@@ -117,12 +117,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            # Use a pre-set fake-batch (for debugging purposes only!).
-            if self._fake_batch is not None:
-                batch = SampleBatch(self._fake_batch)
-                # Sample either way.
-                self.workers.local_worker().sample()
-            elif self.workers.remote_workers():
+            if self.workers.remote_workers():
                 batch = SampleBatch.concat_samples(
                     ray_get_and_free([
                         e.sample.remote()
@@ -169,9 +164,10 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
     def _optimize(self):
         if self._fake_batch:
-            samples = self._fake_batch
-            # Must be set again each learning step.
-            self._fake_batch = None
+            fake_batch = SampleBatch(self._fake_batch)
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: fake_batch
+            }, fake_batch.count)
         else:
             samples = self._replay()
 
@@ -190,8 +186,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     #  torch/tf. Clean up these results/info dicts across
                     #  policies (note: fixing this in torch_policy.py will
                     #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info["learner_stats"].get("td_error"))
+                    td_error = info.get("td_error",
+                                        info["learner_stats"].get("td_error"))
                     new_priorities = (
                         np.abs(td_error) + self.prioritized_replay_eps)
                     replay_buffer.update_priorities(

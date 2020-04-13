@@ -274,7 +274,7 @@ class SquashedGaussian(TFActionDistribution):
         mean, log_std = tf.split(inputs, 2, axis=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
         log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
-                                     MAX_LOG_NN_OUTPUT)
+                                   MAX_LOG_NN_OUTPUT)
         std = tf.exp(log_std)
         self.distr = tfp.distributions.Normal(loc=mean, scale=std)
         assert np.all(np.less(low, high))
