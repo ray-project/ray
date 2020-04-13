@@ -162,6 +162,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       node_manager_service_(io_service, *this),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
+  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   cluster_resource_map_.emplace(self_node_id_,
@@ -1785,6 +1786,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
+  task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
+    RAY_LOG(DEBUG) << "Task lease request canceled " << task_id;
+    reply->set_canceled(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
   SubmitTask(task, Lineage());
 }
 
@@ -1819,6 +1825,38 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                                          rpc::CancelWorkerLeaseReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  Task removed_task;
+  TaskState removed_task_state;
+  const auto canceled =
+      local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+  if (!canceled) {
+    // We do not have the task. This could be because we haven't received the
+    // lease request yet, or because we already granted the lease request and
+    // it has already been returned.
+  } else {
+    if (removed_task.OnDispatch()) {
+      // We have not yet granted the worker lease. Cancel it now.
+      removed_task.OnCancellation()();
+      task_dependency_manager_.TaskCanceled(task_id);
+      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+    } else {
+      // We already granted the worker lease and sent the reply. Re-queue the
+      // task and wait for the requester to return the leased worker.
+      local_queues_.QueueTasks({removed_task}, removed_task_state);
+    }
+  }
+  // The task cancellation failed if we did not have the task queued, since
+  // this means that we may not have received the task request yet. It is
+  // successful if we did have the task queued, since we have now replied to
+  // the client that requested the lease.
+  reply->set_success(canceled);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -3142,6 +3180,8 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
+    assigned_task.OnDispatchInstead(nullptr);
+    assigned_task.OnSpillbackInstead(nullptr);
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
@@ -3332,10 +3372,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     }
 
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    pinned_objects_.emplace(
-        object_id, std::unique_ptr<RayObject>(new RayObject(
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+    RAY_CHECK(
+        pinned_objects_
+            .emplace(object_id,
+                     std::unique_ptr<RayObject>(new RayObject(
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
+            .second);
     i++;
 
     // Send a long-running RPC request to the owner for each object. When we get a
@@ -3355,7 +3398,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           pinned_objects_.erase(object_id);
 
           // Try to evict all copies of the object from the cluster.
-          objects_to_free_.push_back(object_id);
+          if (free_objects_period_ >= 0) {
+            objects_to_free_.push_back(object_id);
+          }
           if (objects_to_free_.size() ==
                   RayConfig::instance().free_objects_batch_size() ||
               free_objects_period_ == 0) {
@@ -3372,10 +3417,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 }
 
 void NodeManager::FlushObjectsToFree() {
-  if (free_objects_period_ < 0) {
-    return;
-  }
-
   if (!objects_to_free_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
     object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
