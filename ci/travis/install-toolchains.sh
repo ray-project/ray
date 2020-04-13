@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euxo pipefail
+set -eo pipefail
 
 LLVM_VERSION="9.0.0"
 
@@ -10,7 +10,7 @@ install_toolchains() {
     msys)
       export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
       osversion=win
-      if [ ! "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then
+      if [ "${HOSTTYPE}" != "${HOSTTYPE%64}" ]; then
         osversion="${osversion}64"
       else
         osversion="${osversion}32"
@@ -31,7 +31,7 @@ install_toolchains() {
   curl -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
     local target="./${url##*/}"
     install /dev/stdin "${target}"
-    7z x "${target}" -o"${targetdir}"
+    7z x -bsp0 -bso0 "${target}" -o"${targetdir}"
     rm -f -- "${target}"
   else
     sudo tar -x -J --strip-components=1 -C "${targetdir}"

@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 import re
 import subprocess
@@ -25,7 +26,7 @@ def list_changed_files(commit_range):
         list: List of changed files within the commit range
     """
 
-    command = ["git", "diff", "--name-only", commit_range]
+    command = ["git", "diff", "--name-only", commit_range, "--"]
     out = subprocess.check_output(command)
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
@@ -45,9 +46,19 @@ if __name__ == "__main__":
     RAY_CI_STREAMING_PYTHON_AFFECTED = 0
     RAY_CI_STREAMING_JAVA_AFFECTED = 0
 
-    if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
+    event_type = None
+    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
+        event_type = os.getenv(key, event_type)
 
-        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"])
+    if event_type == "pull_request":
+
+        commit_range = os.getenv("TRAVIS_COMMIT_RANGE")
+        if commit_range is None:
+            with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
+                event = json.loads(f.read())
+            base = event["pull_request"]["base"]["sha"]
+            commit_range = "{}...{}".format(base, event["after"])
+        files = list_changed_files(commit_range)
 
         print(pformat(files), file=sys.stderr)
 

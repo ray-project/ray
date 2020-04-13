@@ -17,6 +17,8 @@ jobs:
             os: windows-2019
           - name: macos
             os: macos-10.15
+    env:
+      PYTHON: 3.6
     steps:
     - name: Pre-checkout system configuration
       # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
@@ -31,22 +33,16 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
-        fetch-depth: 1
-    - name: Setup Bazel
+        # we need full history to diff against the original for linting etc.
+        fetch-depth: 0
+    - name: Run CI script
       shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./ci/travis/install-bazel.sh
-    - name: Install C/C++ toolchains
-      shell: bash -e -o pipefail -l {0}
-      run: ./ci/travis/install-toolchains.sh
-    - name: Perform build
-      shell: bash -e -o pipefail -l {0}
       run: |
-        bazel build \
-          --keep_going \
-          "//:*"
+        . ./ci/travis/ci.sh prepare
+        . ./ci/travis/ci.sh build
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'

@@ -60,7 +60,7 @@ prepare() {
   if [ -z "${wheels}" ]; then  # NOT building wheels
     "${ROOT_DIR}"/install-bazel.sh
   fi
-  "${WORKSPACE_DIR}"/ci/suppress_output "${ROOT_DIR}"/install-dependencies.sh
+  . "${ROOT_DIR}"/install-dependencies.sh
   reload_env  # We just modified our environment; reload it so we can continue
 }
 
