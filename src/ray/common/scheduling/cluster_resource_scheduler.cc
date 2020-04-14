@@ -101,7 +101,6 @@ TaskRequest TaskResourceInstances::ToTaskRequest() const {
   return task_req;
 }
 
-
 /// Convert a map of resources to a TaskRequest data structure.
 ///
 /// \param string_to_int_map: Map between names and ids maintained by the
@@ -294,7 +293,6 @@ std::string TaskRequest::DebugString() const {
   buffer << "]" << std::endl;
   return buffer.str();
 }
-
 
 bool TaskResourceInstances::IsEmpty() const {
   // Check whether all resource instances of a task are zero.
@@ -505,7 +503,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   int64_t best_node = -1;
   *total_violations = 0;
 
-  
   if (actor_creation && task_req.IsEmpty()) {
     // This an actor which requires no resources.
     // Pick a random node to to avoid all scheduling all actors on the local node.
@@ -515,14 +512,13 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
         if (idx == 0) {
           best_node = node.first;
           break;
-        } 
+        }
         idx--;
       }
-    }  
-    RAY_LOG(WARNING) 
-        << "GetBestSchedulableNode, best_node = " << best_node 
-        << ", # nodes = " << nodes_.size() 
-        << ", task_req = " << task_req.DebugString();
+    }
+    RAY_LOG(WARNING) << "GetBestSchedulableNode, best_node = " << best_node
+                     << ", # nodes = " << nodes_.size()
+                     << ", task_req = " << task_req.DebugString();
     return best_node;
   }
 
@@ -570,11 +566,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources,
-    bool actor_creation,
+    const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
     int64_t *total_violations) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, total_violations);
+  int64_t node_id =
+      GetBestSchedulableNode(task_request, actor_creation, total_violations);
 
   std::string id_string;
   if (node_id == -1) {
@@ -1044,7 +1040,6 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
 bool ClusterResourceScheduler::AllocateTaskResources(
     int64_t node_id, const TaskRequest &task_req,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
-
   if (node_id == local_node_id_) {
     RAY_CHECK(task_allocation != nullptr);
     if (AllocateTaskResourceInstances(task_req, task_allocation)) {

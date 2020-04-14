@@ -190,6 +190,7 @@ def test_many_fractional_resources(shutdown_only):
     if not correct_available_resources:
         assert False, "Did not get correct available resources."
 
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
