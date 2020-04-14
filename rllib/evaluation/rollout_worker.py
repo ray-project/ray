@@ -255,7 +255,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             self._environs_need_reset = {}
             for key, value in extra_python_environs.items():
                 self._environs_need_reset[key] = os.environ.get(key, None)
-                os.environ[key] = value
+                os.environ[key] = str(value)
 
         def gen_rollouts():
             while True:
