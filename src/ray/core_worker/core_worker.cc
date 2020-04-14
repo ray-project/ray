@@ -420,6 +420,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     return std::shared_ptr<raylet::RayletClient>(
         new raylet::RayletClient(std::move(grpc_client)));
   };
+
+  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
+      actor_create_callback = nullptr;
+  if (RayConfig::instance().gcs_service_enabled()) {
+    actor_create_callback = [this](const TaskSpecification &task_spec,
+                                   const gcs::StatusCallback &callback) {
+      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+    };
+  }
+
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
@@ -428,7 +438,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
-          RayConfig::instance().worker_lease_timeout_milliseconds()));
+          RayConfig::instance().worker_lease_timeout_milliseconds(),
+          std::move(actor_create_callback)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -634,7 +645,6 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,
                                                           worker_info, nullptr));
 }
-
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
@@ -1254,7 +1264,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+      if (actor_data.state() == gcs::ActorTableData::PENDING) {
+        // The actor is being created and not yet ready, just ignore!
+      } else if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
@@ -1275,8 +1287,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
-      RAY_LOG(INFO) << "received notification on actor, state="
-                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+      const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
+      RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
+                    << ", actor_id: " << actor_id
                     << ", ip address: " << actor_data.address().ip_address()
                     << ", port: " << actor_data.address().port() << ", worker_id: "
                     << WorkerID::FromBinary(actor_data.address().worker_id())
