@@ -100,6 +100,9 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
   }
   if (scheme == "unix://") {
 #ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+    size_t maxlen = sizeof(sockaddr_un().sun_path) / sizeof(*sockaddr_un().sun_path) - 1;
+    RAY_CHECK(address.size() <= maxlen)
+        << "AF_UNIX path length cannot exceed " << maxlen << " bytes: " << address;
     result = boost::asio::local::stream_protocol::endpoint(address);
 #else
     RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported: " << endpoint;
