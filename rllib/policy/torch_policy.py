@@ -229,7 +229,8 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
 
         # Loop through all optimizers.
@@ -276,7 +277,8 @@ class TorchPolicy(Policy):
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
 
         grad_process_info = {}

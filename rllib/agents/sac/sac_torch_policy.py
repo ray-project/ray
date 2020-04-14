@@ -14,9 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
-F = None
-if nn is not None:
-    F = nn.functional
+F = nn.functional
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +222,8 @@ def actor_critic_loss(policy, model, _, train_batch):
 
 def stats(policy, train_batch):
     return {
-        "td_error": torch.mean(policy.td_error),
+        "td_error": policy.td_error,
+        "mean_td_error": torch.mean(policy.td_error),
         "actor_loss": torch.mean(policy.actor_loss),
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
         "alpha_loss": torch.mean(policy.alpha_loss),

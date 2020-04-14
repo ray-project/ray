@@ -135,12 +135,16 @@ def validate_config(config):
     for model in ["Q_model", "policy_model"]:
         if config[model].get("hidden_activation", DEPRECATED_VALUE) != \
                 DEPRECATED_VALUE:
-            deprecation_warning("{}.hidden_activation".format(model),
-                                "{}.fcnet_activation".format(model))
+            deprecation_warning(
+                "{}.hidden_activation".format(model),
+                "{}.fcnet_activation".format(model),
+                error=True)
         if config[model].get("hidden_layer_sizes", DEPRECATED_VALUE) != \
                 DEPRECATED_VALUE:
-            deprecation_warning("{}.hidden_layer_sizes".format(model),
-                                "{}.fcnet_hiddens".format(model))
+            deprecation_warning(
+                "{}.hidden_layer_sizes".format(model),
+                "{}.fcnet_hiddens".format(model),
+                error=True)
 
 
 SACTrainer = GenericOffPolicyTrainer.with_updates(

@@ -100,6 +100,7 @@ class MultiCategorical(TFActionDistribution):
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
+        self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @override(ActionDistribution)
     def deterministic_sample(self):

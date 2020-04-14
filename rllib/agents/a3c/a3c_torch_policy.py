@@ -58,7 +58,7 @@ def model_value_predictions(policy, input_dict, state_batches, model,
 def apply_grad_clipping(policy, optimizer, loss):
     info = {}
     if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups():
+        for param_group in optimizer.param_groups:
             info["grad_gnorm"] = nn.utils.clip_grad_norm_(
                 param_group["params"], policy.config["grad_clip"])
     return info

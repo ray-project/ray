@@ -67,13 +67,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
 
-    if not config["use_pytorch"]:
-        policy.model.action_model.summary()
-        policy.model.q_net.summary()
-    else:
-        print(policy.model.action_model)
-        print(policy.model.q_net)
-
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,

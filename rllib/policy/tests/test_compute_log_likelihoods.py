@@ -18,8 +18,8 @@ def do_test_log_likelihood(run,
                            config,
                            prev_a=None,
                            continuous=False,
-                           layer_key=("fc", (0, 4),
-                                      ("_hidden_layers.0.", "_logits.")),
+                           layer_key=("fc", (0, 4), ("_hidden_layers.0.",
+                                                     "_logits.")),
                            logp_func=None):
     config = config.copy()
     # Run locally.
@@ -76,10 +76,12 @@ def do_test_log_likelihood(run,
                             vars["default_policy/{}_out/kernel".format(
                                 layer_key[0])])
                 else:
-                    expected_mean_logstd = fc(fc(
-                        obs_batch, vars["{}_model.0.weight".format(layer_key[2][0])],
-                        framework=fw),
-                        vars["{}_model.0.weight".format(layer_key[2][1])], framework=fw)
+                    expected_mean_logstd = fc(
+                        fc(obs_batch,
+                           vars["{}_model.0.weight".format(layer_key[2][0])],
+                           framework=fw),
+                        vars["{}_model.0.weight".format(layer_key[2][1])],
+                        framework=fw)
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:
                     expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
@@ -169,10 +171,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=(
-                "sequential/action",
-                (0, 2),
-                ("action_model.action_0.", "action_model.action_out.")),
+            layer_key=("sequential/action", (0, 2),
+                       ("action_model.action_0.", "action_model.action_out.")),
             logp_func=logp_func)
 
     def test_sac_discr(self):
@@ -186,8 +186,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             sac.SACTrainer,
             config,
             prev_a,
-            layer_key=("sequential/action",
-                       (0, 2),
+            layer_key=("sequential/action", (0, 2),
                        ("action_model.action_0.", "action_model.action_out.")))
 
 
