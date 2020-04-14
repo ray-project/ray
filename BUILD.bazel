@@ -1112,24 +1112,6 @@ cc_test(
 )
 
 cc_library(
-    name = "gcs_pubsub",
-    srcs = [
-        "src/ray/gcs/pubsub/redis_message_publisher.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/pubsub/message_publisher.h",
-        "src/ray/gcs/pubsub/redis_message_publisher.h",
-    ],
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-        ":ray_util",
-        ":redis_client",
-    ],
-)
-
-cc_library(
     name = "gcs",
     srcs = glob(
         [
