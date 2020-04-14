@@ -43,15 +43,21 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-typedef
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::stream_protocol
-#else
-    boost::asio::ip::tcp
-#endif
-        local_stream_protocol;
-
 namespace ray {
+
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
+typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
+
+/// Interface for pinning objects. Abstract for testing.
+class PinObjectsInterface {
+ public:
+  /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
+  virtual ray::Status PinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+
+  virtual ~PinObjectsInterface(){};
+};
 
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
@@ -70,6 +76,10 @@ class WorkerLeaseInterface {
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
+
+  virtual ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -123,14 +133,16 @@ class RayletConnection {
 
  private:
   /// The Unix domain socket that connects to raylet.
-  local_stream_protocol::socket conn_;
+  local_stream_socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
 };
 
-class RayletClient : public WorkerLeaseInterface, public DependencyWaiterInterface {
+class RayletClient : public PinObjectsInterface,
+                     public WorkerLeaseInterface,
+                     public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -282,9 +294,13 @@ class RayletClient : public WorkerLeaseInterface, public DependencyWaiterInterfa
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
 
+  ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

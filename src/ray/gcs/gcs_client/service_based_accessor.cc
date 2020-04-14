@@ -79,7 +79,7 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : subscribe_id_(ClientID::FromRandom()),
       client_impl_(client_impl),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().log_based_actor_table()) {}
+      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -102,6 +102,22 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(task_spec.IsActorCreationTask() && callback);
+  rpc::CreateActorRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreateActor(
+      request, [callback](const Status &, const rpc::CreateActorReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
       });
   return Status::OK();
 }
@@ -871,6 +887,26 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
         }
         RAY_LOG(DEBUG) << "Finished reporting worker failure, "
                        << worker_address.DebugString() << ", status = " << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
+  rpc::RegisterWorkerRequest request;
+  request.set_worker_type(worker_type);
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+  client_impl_->GetGcsRpcClient().RegisterWorker(
+      request,
+      [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
       });
   return Status::OK();
 }

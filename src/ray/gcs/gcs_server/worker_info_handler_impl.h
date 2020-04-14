@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_WORKER_INFO_HANDLER_IMPL_H
 #define RAY_GCS_WORKER_INFO_HANDLER_IMPL_H
 
+#include "gcs_actor_manager.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -24,15 +25,21 @@ namespace rpc {
 /// This implementation class of `WorkerInfoHandler`.
 class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  public:
-  explicit DefaultWorkerInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultWorkerInfoHandler(gcs::RedisGcsClient &gcs_client,
+                                    gcs::GcsActorManager &gcs_actor_manager)
+      : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager) {}
 
   void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                  ReportWorkerFailureReply *reply,
                                  SendReplyCallback send_reply_callback) override;
 
+  void HandleRegisterWorker(const RegisterWorkerRequest &request,
+                            RegisterWorkerReply *reply,
+                            SendReplyCallback send_reply_callback) override;
+
  private:
   gcs::RedisGcsClient &gcs_client_;
+  gcs::GcsActorManager &gcs_actor_manager_;
 };
 
 }  // namespace rpc

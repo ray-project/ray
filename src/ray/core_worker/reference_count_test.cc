@@ -340,7 +340,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RAY_CHECK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
-  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1, ctx,
                          /*remove_after_get*/ true, &results));
   ASSERT_EQ(results.size(), 1);
@@ -1800,6 +1800,11 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
 
     // The task finishes but is retryable.
     rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+    // We should fail to set the deletion callback because the object has
+    // already gone out of scope.
+    ASSERT_FALSE(rc->SetDeleteCallback(
+        id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
+
     ASSERT_EQ(out.size(), 1);
     out.clear();
     ASSERT_TRUE(lineage_deleted.empty());
@@ -1813,6 +1818,81 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   // references.
   ASSERT_EQ(lineage_deleted.size(), ids.size());
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
+
+  // Local references.
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Submit 2 dependent tasks.
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Both tasks finish, 1 is retryable.
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  // The dependency is no longer in scope, but we still keep a reference to it
+  // because it is in the lineage of the retryable task.
+  ASSERT_EQ(out.size(), 1);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Simulate retrying the task.
+  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  ASSERT_FALSE(rc->HasReference(id));
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
+  auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
+  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+
+  ObjectID borrowed_id = ObjectID::FromRandom();
+  rc->AddLocalReference(borrowed_id, "");
+  bool pinned = false;
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned));
+
+  ObjectID id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(pinned);
+
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
+
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  auto objects = rc->ResetObjectsOnRemovedNode(node_id);
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
 }
 
 }  // namespace ray

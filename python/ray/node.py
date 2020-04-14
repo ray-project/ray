@@ -349,25 +349,21 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def new_log_files(self, name, redirect_output=True):
+    def new_log_files(self, name):
         """Generate partially randomized filenames for log files.
 
         Args:
             name (str): descriptive string for this log file.
-            redirect_output (bool): True if files should be generated for
-                logging stdout and stderr and false if stdout and stderr
-                should not be redirected.
-                If it is None, it will use the "redirect_output" Ray parameter.
 
         Returns:
-            If redirect_output is true, this will return a tuple of two
-                file handles. The first is for redirecting stdout and the
-                second is for redirecting stderr.
-                If redirect_output is false, this will return a tuple
-                of two None objects.
+            A tuple of two file handles for redirecting (stdout, stderr).
         """
+        redirect_output = self._ray_params.redirect_output
+
         if redirect_output is None:
-            redirect_output = self._ray_params.redirect_output
+            # Make the default behavior match that of glog.
+            redirect_output = os.getenv("GLOG_logtostderr") != "1"
+
         if not redirect_output:
             return None, None
 
@@ -398,6 +394,7 @@ class Node:
             socket_path (string): the socket file to prepare.
         """
         result = socket_path
+        is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
                 result = "tcp://{}:{}".format(self._localhost,
@@ -411,6 +408,12 @@ class Node:
                     raise RuntimeError(
                         "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
+
+            # Check socket path length to make sure it's short enough
+            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
+            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
+                raise OSError("AF_UNIX path length cannot exceed "
+                              "{} bytes: {!r}".format(maxlen, result))
         return result
 
     def start_reaper_process(self):
@@ -471,7 +474,7 @@ class Node:
 
     def start_reporter(self):
         """Start the reporter."""
-        stdout_file, stderr_file = self.new_log_files("reporter", True)
+        stdout_file, stderr_file = self.new_log_files("reporter")
         process_info = ray.services.start_reporter(
             self.redis_address,
             stdout_file=stdout_file,
@@ -492,7 +495,7 @@ class Node:
                 fail to start the webui. Otherwise it will print a warning if
                 we fail to start the webui.
         """
-        stdout_file, stderr_file = self.new_log_files("dashboard", True)
+        stdout_file, stderr_file = self.new_log_files("dashboard")
         self._webui_url, process_info = ray.services.start_dashboard(
             require_webui,
             self._ray_params.webui_host,
@@ -580,8 +583,8 @@ class Node:
 
     def new_worker_redirected_log_file(self, worker_id):
         """Create new logging files for workers to redirect its output."""
-        worker_stdout_file, worker_stderr_file = (self.new_log_files(
-            "worker-" + ray.utils.binary_to_hex(worker_id), True))
+        worker_stdout_file, worker_stderr_file = (
+            self.new_log_files("worker-" + ray.utils.binary_to_hex(worker_id)))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
@@ -921,16 +924,3 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
-
-
-class LocalNode:
-    """Imitate the node that manages the processes in local mode."""
-
-    def kill_all_processes(self, *args, **kwargs):
-        """Kill all of the processes."""
-        pass  # Keep this function empty because it will be used in worker.py
-
-    @property
-    def address_info(self):
-        """Get a dictionary of addresses."""
-        return {}  # Return a null dict.

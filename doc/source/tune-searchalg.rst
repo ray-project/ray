@@ -1,3 +1,5 @@
+.. _tune-search-alg:
+
 Tune Search Algorithms
 ======================
 

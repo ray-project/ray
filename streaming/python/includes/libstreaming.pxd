@@ -31,7 +31,6 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CObjectID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker
 
 cdef extern from "status.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingStatus "ray::streaming::StreamingStatus":
@@ -100,15 +99,13 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
 
 cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
     cdef cppclass CReaderClient "ray::streaming::ReaderClient":
-        CReaderClient(CCoreWorker *core_worker,
-                      CRayFunction &async_func,
+        CReaderClient(CRayFunction &async_func,
                       CRayFunction &sync_func)
         void OnReaderMessage(shared_ptr[CLocalMemoryBuffer] buffer);
         shared_ptr[CLocalMemoryBuffer] OnReaderMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
 
     cdef cppclass CWriterClient "ray::streaming::WriterClient":
-        CWriterClient(CCoreWorker *core_worker,
-                      CRayFunction &async_func,
+        CWriterClient(CRayFunction &async_func,
                       CRayFunction &sync_func)
         void OnWriterMessage(shared_ptr[CLocalMemoryBuffer] buffer);
         shared_ptr[CLocalMemoryBuffer] OnWriterMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);

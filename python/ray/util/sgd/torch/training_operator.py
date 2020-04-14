@@ -1,6 +1,4 @@
 import collections
-
-from tqdm import tqdm
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -16,6 +14,12 @@ except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
+    pass
+
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
     pass
 
 
@@ -56,6 +60,8 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
+                 device_ids=None,
+                 use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
         # You are not expected to override this method.
@@ -76,6 +82,11 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._device_ids = device_ids
+        self._use_gpu = use_gpu and torch.cuda.is_available()
+        self._device = torch.device("cuda" if self._use_gpu else "cpu")
+        if tqdm is None and use_tqdm:
+            raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
 
@@ -168,8 +179,10 @@ class TrainingOperator:
 
             if self.use_tqdm and self.world_rank == 0:
                 _progress_bar.n = batch_idx + 1
+                postfix = {}
                 if "train_loss" in metrics:
-                    _progress_bar.set_postfix({"loss": metrics["train_loss"]})
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
@@ -217,7 +230,7 @@ class TrainingOperator:
         """
         features, target = batch
         # Create non_blocking tensors for distributed training
-        if torch.cuda.is_available():
+        if self.use_gpu:
             features = features.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
@@ -259,7 +272,7 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics from the evaluation.
-                By default, returns "mean_accuracy" and "mean_val_loss"
+                By default, returns "val_accuracy" and "val_loss"
                 which is computed by aggregating "loss" and "correct" values
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
@@ -296,7 +309,7 @@ class TrainingOperator:
                 calculate averages.
         """
         features, target = batch
-        if torch.cuda.is_available():
+        if self.use_gpu:
             features = features.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
@@ -316,16 +329,27 @@ class TrainingOperator:
         }
 
     def state_dict(self):
-        """Returns a serializable representation of the operator state."""
+        """Override this to return a representation of the operator state.
+
+        Returns:
+            dict: The state dict of the operator."""
         pass
 
     def load_state_dict(self, state_dict):
-        """Loads a serializable representation of the operator state."""
+        """Override this to load the representation of the operator state.
+
+        Args:
+            state_dict (dict): State dict as returned by the operator. """
         pass
 
     @property
+    def device(self):
+        """torch.device: The appropriate torch device, at your convenience."""
+        return self._device
+
+    @property
     def config(self):
-        """Dictionary as provided into TorchTrainer."""
+        """dict: Provided into TorchTrainer."""
         return self._config
 
     @property
@@ -350,21 +374,18 @@ class TrainingOperator:
 
     @property
     def train_loader(self):
-        """
-        Data loader for the validation dataset created by the ``data_creator``.
+        """Iterable: 1st Dataloader from ``data_creator``.
         """
         return self._train_loader
 
     @property
     def validation_loader(self):
-        """
-        Data loader for the train dataset created by the ``data_creator``.
-        """
+        """Iterable: 2nd Dataloader from ``data_creator``."""
         return self._validation_loader
 
     @property
     def world_rank(self):
-        """The rank of the parent runner. Always 0 if not distributed."""
+        """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
 
     @property
@@ -384,14 +405,27 @@ class TrainingOperator:
         return self._schedulers
 
     @property
+    def use_gpu(self):
+        """Returns True if cuda is available and use_gpu is True."""
+        return self._use_gpu
+
+    @property
     def use_fp16(self):
-        """Whether the model and optimizer have been FP16 enabled."""
+        """bool: Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
 
     @property
     def use_tqdm(self):
-        """Whether tqdm progress bars are enabled."""
+        """bool: Whether tqdm progress bars are enabled."""
         return self._use_tqdm
+
+    @property
+    def device_ids(self):
+        """List[int]: Device IDs for the model.
+
+        This is useful for using batch norm with DistributedDataParallel.
+        """
+        return self._device_ids
 
 
 class _TestingOperator(TrainingOperator):

@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_REDIS_ACCESSOR_H
 #define RAY_GCS_REDIS_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -40,6 +41,9 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
@@ -396,6 +400,11 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
+
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

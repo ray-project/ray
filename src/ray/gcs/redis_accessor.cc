@@ -63,6 +63,14 @@ Status RedisLogBasedActorInfoAccessor::AsyncGet(
                                                       on_done);
 }
 
+Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  const std::string error_msg =
+      "Unsupported method of AsyncCreateActor in RedisLogBasedActorInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
+}
+
 Status RedisLogBasedActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -101,16 +109,6 @@ Status RedisLogBasedActorInfoAccessor::AsyncUpdate(
                  << ", actor id: " << actor_id << ", log_length: " << log_length;
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
-    // If we successfully appended a record to the GCS table of the actor that
-    // has died, signal this to anyone receiving signals from this actor.
-    if (data.state() == ActorTableData::DEAD ||
-        data.state() == ActorTableData::RECONSTRUCTING) {
-      std::vector<std::string> args = {"XADD", actor_id.Hex(), "*", "signal",
-                                       "ACTOR_DIED_SIGNAL"};
-      auto redis_context = client->primary_context();
-      RAY_CHECK_OK(redis_context->RunArgvAsync(args));
-    }
-
     if (callback != nullptr) {
       callback(Status::OK());
     }
@@ -755,6 +753,30 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
   WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
   WorkerFailureTable &worker_failure_table = client_impl_->worker_failure_table();
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
+}
+
+Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
+  std::vector<std::string> args;
+  args.emplace_back("HMSET");
+  if (worker_type == rpc::WorkerType::DRIVER) {
+    args.emplace_back("Drivers:" + worker_id.Binary());
+  } else {
+    args.emplace_back("Workers:" + worker_id.Binary());
+  }
+  for (const auto &entry : worker_info) {
+    args.push_back(entry.first);
+    args.push_back(entry.second);
+  }
+
+  auto status = client_impl_->primary_context()->RunArgvAsync(args);
+  if (callback) {
+    // TODO (kfstorm): Invoke the callback asynchronously.
+    callback(status);
+  }
+  return status;
 }
 
 }  // namespace gcs

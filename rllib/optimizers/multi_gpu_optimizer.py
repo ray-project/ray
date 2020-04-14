@@ -29,8 +29,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     A number of SGD passes are then taken over the in-memory data. For more
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
-    This optimizer is Tensorflow-specific and require the underlying
-    Policy to be a TFPolicy instance that support `.copy()`.
+    This optimizer is Tensorflow-specific and requires the underlying
+    Policy to be a TFPolicy instance that implements the `copy()` method
+    for multi-GPU tower generation.
 
     Note that all replicas of the TFPolicy will merge their
     extra_compute_grad and apply_grad feed_dicts and fetches. This
@@ -46,7 +47,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  train_batch_size=1024,
                  num_gpus=0,
                  standardize_fields=[],
-                 shuffle_sequences=True):
+                 shuffle_sequences=True,
+                 _fake_gpus=False):
         """Initialize a synchronous multi-gpu optimizer.
 
         Arguments:
@@ -62,6 +64,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 to normalize
             shuffle_sequences (bool): whether to shuffle the train batch prior
                 to SGD to break up correlations
+            _fake_gpus (bool): Whether to use fake-GPUs (CPUs) instead of
+                actual GPUs (should only be used for testing on non-GPU
+                machines).
         """
         PolicyOptimizer.__init__(self, workers)
 
@@ -71,12 +76,16 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.rollout_fragment_length = rollout_fragment_length
         self.train_batch_size = train_batch_size
         self.shuffle_sequences = shuffle_sequences
+
+        # Collect actual devices to use.
         if not num_gpus:
-            self.devices = ["/cpu:0"]
-        else:
-            self.devices = [
-                "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-            ]
+            _fake_gpus = True
+            num_gpus = 1
+        type_ = "cpu" if _fake_gpus else "gpu"
+        self.devices = [
+            "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
+        ]
+
         self.batch_size = int(sgd_batch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0
