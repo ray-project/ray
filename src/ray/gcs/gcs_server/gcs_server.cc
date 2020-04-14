@@ -127,7 +127,8 @@ void GcsServer::InitBackendClient() {
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors());
+      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors(),
+      redis_gcs_client_->GetRedisClient());
 }
 
 void GcsServer::InitGcsActorManager() {
@@ -142,8 +143,8 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultActorInfoHandler>(
-      new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
+  return std::unique_ptr<rpc::DefaultActorInfoHandler>(new rpc::DefaultActorInfoHandler(
+      *redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
 }
 
 std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
@@ -185,8 +186,8 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
+      *redis_gcs_client_, *gcs_actor_manager_, redis_gcs_client_->GetRedisClient()));
 }
 
 }  // namespace gcs

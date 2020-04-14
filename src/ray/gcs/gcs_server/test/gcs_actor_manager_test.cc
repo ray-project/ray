@@ -74,7 +74,7 @@ class GcsActorManagerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<Mocker::MockRayletClient>();
     worker_client_ = std::make_shared<Mocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, node_info_accessor_, error_info_accessor_);
+        io_service_, node_info_accessor_, error_info_accessor_, nullptr);
     gcs_actor_manager_ = std::make_shared<MockedGcsActorManager>(
         io_service_, actor_info_accessor_, *gcs_node_manager_,
         /*lease_client_factory=*/

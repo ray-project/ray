@@ -15,18 +15,20 @@
 #include "gcs_node_manager.h"
 #include <ray/common/ray_config.h>
 #include <ray/gcs/pb_util.h>
+#include <ray/gcs/redis_client.h>
 #include <ray/protobuf/gcs.pb.h>
 
 namespace ray {
 namespace gcs {
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
-                               gcs::ErrorInfoAccessor &error_info_accessor)
+                               gcs::ErrorInfoAccessor &error_info_accessor,
+                               std::shared_ptr<gcs::RedisClient> redis_client)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service),
-      gcs_pub_(gcs_client_->GetRedisClient()) {
+      gcs_pub_(redis_client) {
   Start();
 }
 

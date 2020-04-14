@@ -37,7 +37,8 @@ class GcsNodeManager {
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,
-                          gcs::ErrorInfoAccessor &error_info_accessor);
+                          gcs::ErrorInfoAccessor &error_info_accessor,
+                          std::shared_ptr<gcs::RedisClient> redis_client);
 
   /// Add an alive node.
   ///
