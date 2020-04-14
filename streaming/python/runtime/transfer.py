@@ -144,7 +144,7 @@ class DataMessage:
         return self.__message_id
 
 
-class ChannelCreationParameters:
+class ChannelCreationParametersBuilder:
     """
     wrap initial parameters needed by a streaming queue
     """
@@ -208,13 +208,13 @@ class ChannelCreationParameters:
 
     @staticmethod
     def set_python_writer_function_descriptor(async_function, sync_function):
-        ChannelCreationParameters._python_writer_async_function_descriptor = async_function
-        ChannelCreationParameters._python_writer_sync_function_descriptor = sync_function
+        ChannelCreationParametersBuilder._python_writer_async_function_descriptor = async_function
+        ChannelCreationParametersBuilder._python_writer_sync_function_descriptor = sync_function
 
     @staticmethod
     def set_python_reader_function_descriptor(async_function, sync_function):
-        ChannelCreationParameters._python_reader_async_function_descriptor = async_function
-        ChannelCreationParameters._python_reader_sync_function_descriptor = sync_function
+        ChannelCreationParametersBuilder._python_reader_async_function_descriptor = async_function
+        ChannelCreationParametersBuilder._python_reader_sync_function_descriptor = sync_function
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ class DataWriter:
         py_output_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in output_channels
         ]
-        creation_parameters = ChannelCreationParameters()
+        creation_parameters = ChannelCreationParametersBuilder()
         creation_parameters.build_output_queue_parameters(to_actors)
         channel_size = conf.get(Config.CHANNEL_SIZE,
                                 Config.CHANNEL_SIZE_DEFAULT)
@@ -290,7 +290,7 @@ class DataReader:
         py_input_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in input_channels
         ]
-        creation_parameters = ChannelCreationParameters()
+        creation_parameters = ChannelCreationParametersBuilder()
         creation_parameters.build_input_queue_parameters(from_actors)
         py_seq_ids = [0 for _ in range(len(input_channels))]
         py_msg_ids = [0 for _ in range(len(input_channels))]

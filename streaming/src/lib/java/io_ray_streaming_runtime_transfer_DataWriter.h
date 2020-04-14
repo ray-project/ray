@@ -10,7 +10,7 @@ extern "C" {
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
  * Method:    createWriterNative
- * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParameters;[[B[JJ[BZ)J
+ * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParametersBuilder;[[B[JJ[BZ)J
  */
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(

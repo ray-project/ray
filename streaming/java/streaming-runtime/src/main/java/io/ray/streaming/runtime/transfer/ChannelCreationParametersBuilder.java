@@ -17,7 +17,7 @@ import io.ray.streaming.runtime.worker.JobWorker;
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
  */
-public class ChannelCreationParameters {
+public class ChannelCreationParametersBuilder {
 
   public class Parameter {
 
@@ -89,7 +89,7 @@ public class ChannelCreationParameters {
       "ray.streaming.runtime.worker",
       "JobWorker", "on_writer_message_sync");
 
-  public ChannelCreationParameters() {
+  public ChannelCreationParametersBuilder() {
   }
 
   public static void setJavaReaderFunctionDesc(JavaFunctionDescriptor asyncFunc,
@@ -104,19 +104,19 @@ public class ChannelCreationParameters {
     javaWriterSyncFuncDesc = syncFunc;
   }
 
-  public ChannelCreationParameters buildInputQueueParameters(List<String> queues,
+  public ChannelCreationParametersBuilder buildInputQueueParameters(List<String> queues,
       Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
         pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
-  public ChannelCreationParameters buildOutputQueueParameters(List<String> queues,
+  public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
       Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
         pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
-  private ChannelCreationParameters buildParameters(List<String> queues,
+  private ChannelCreationParametersBuilder buildParameters(List<String> queues,
       Map<String, BaseActor> actors,
       JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
       PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc

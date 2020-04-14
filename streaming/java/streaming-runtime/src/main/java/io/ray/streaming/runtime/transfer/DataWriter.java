@@ -37,8 +37,8 @@ public class DataWriter {
                     Map<String, String> conf) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
-    ChannelCreationParameters initialParameters =
-        new ChannelCreationParameters().buildOutputQueueParameters(outputChannels, toActors);
+    ChannelCreationParametersBuilder initialParameters =
+        new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
     long channelSize = Long.parseLong(
@@ -123,7 +123,7 @@ public class DataWriter {
   }
 
   private static native long createWriterNative(
-      ChannelCreationParameters initialParameters,
+      ChannelCreationParametersBuilder initialParameters,
       byte[][] outputQueueIds,
       long[] msgIds,
       long channelSize,

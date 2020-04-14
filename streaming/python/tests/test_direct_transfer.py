@@ -27,7 +27,7 @@ class Worker:
         reader_sync_func = PythonFunctionDescriptor(
             __name__, self.on_reader_message_sync.__name__,
             self.__class__.__name__)
-        transfer.ChannelCreationParameters.set_python_reader_function_descriptor(reader_async_func, reader_sync_func);
+        transfer.ChannelCreationParametersBuilder.set_python_reader_function_descriptor(reader_async_func, reader_sync_func);
         self.writer = transfer.DataWriter([output_channel],
                                           [pickle.loads(reader_actor)], conf)
         self.output_channel_id = transfer.ChannelID(output_channel)
@@ -42,7 +42,7 @@ class Worker:
         writer_sync_func = PythonFunctionDescriptor(
             __name__, self.on_writer_message_sync.__name__,
             self.__class__.__name__)
-        transfer.ChannelCreationParameters.set_python_writer_function_descriptor(writer_async_func, writer_sync_func);
+        transfer.ChannelCreationParametersBuilder.set_python_writer_function_descriptor(writer_async_func, writer_sync_func);
         self.reader = transfer.DataReader([input_channel],
                                           [pickle.loads(writer_actor)], conf)
 

@@ -5,7 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.transfer.ChannelID;
-import io.ray.streaming.runtime.transfer.ChannelCreationParameters;
+import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
 import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
@@ -96,7 +96,7 @@ class ReaderWorker extends Worker {
     conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
-    ChannelCreationParameters.setJavaWriterFunctionDesc(
+    ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
     dataReader = new DataReader(inputQueueList, fromActors, conf);
@@ -222,7 +222,7 @@ class WriterWorker extends Worker {
     conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
-    ChannelCreationParameters.setJavaReaderFunctionDesc(
+    ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     dataWriter = new DataWriter(this.outputQueueList, this.toActors, conf);

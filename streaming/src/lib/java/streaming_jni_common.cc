@@ -146,7 +146,7 @@ void ParseChannelInitParameters(
   jclass java_streaming_queue_initial_parameters_class =
       LoadClass(env,
                 "io/ray/streaming/runtime/transfer/"
-                "ChannelCreationParameters");
+                "ChannelCreationParametersBuilder");
   jmethodID java_streaming_queue_initial_parameters_getParameters_method =
       env->GetMethodID(java_streaming_queue_initial_parameters_class, "getParameters",
                        "()Ljava/util/List;");
@@ -155,7 +155,7 @@ void ParseChannelInitParameters(
   jclass java_streaming_queue_initial_parameters_parameter_class =
       LoadClass(env,
                 "io/ray/streaming/runtime/transfer/"
-                "ChannelCreationParameters$Parameter");
+                "ChannelCreationParametersBuilder$Parameter");
   jmethodID java_getActorIdBytes_method = env->GetMethodID(
       java_streaming_queue_initial_parameters_parameter_class, "getActorIdBytes", "()[B");
   jmethodID java_getAsyncFunctionDescriptor_method =

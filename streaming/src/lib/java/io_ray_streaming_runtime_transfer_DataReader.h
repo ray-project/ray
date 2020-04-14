@@ -10,7 +10,7 @@ extern "C" {
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    createDataReaderNative
- * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParameters;[[B[J[JJZ[BZ)J
+ * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParametersBuilder;[[B[J[JJZ[BZ)J
  */
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(

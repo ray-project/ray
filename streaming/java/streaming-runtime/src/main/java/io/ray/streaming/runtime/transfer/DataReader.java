@@ -28,8 +28,8 @@ public class DataReader {
                     Map<String, String> conf) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
-    ChannelCreationParameters initialParameters =
-        new ChannelCreationParameters().buildInputQueueParameters(inputChannels, fromActors);
+    ChannelCreationParametersBuilder initialParameters =
+        new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
@@ -155,7 +155,7 @@ public class DataReader {
   }
 
   private static native long createDataReaderNative(
-      ChannelCreationParameters initialParameters,
+      ChannelCreationParametersBuilder initialParameters,
       byte[][] inputChannels,
       long[] seqIds,
       long[] msgIds,
