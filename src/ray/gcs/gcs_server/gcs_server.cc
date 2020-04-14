@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_server.h"
+#include <boost/system/error_code.hpp>
+
 #include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
 #include "gcs_node_manager.h"
+#include "gcs_server.h"
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
@@ -145,39 +147,52 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
-  boost::asio::ip::detail::endpoint primary_endpoint;
-  boost::asio::ip::tcp::resolver resolver(main_service_);
-  boost::asio::ip::tcp::resolver::query query(
-      boost::asio::ip::host_name(), "",
-      boost::asio::ip::resolver_query_base::flags::v4_mapped);
+  boost::asio::io_service io_service;
+  boost::asio::ip::tcp::socket socket(io_service);
   boost::system::error_code error_code;
-  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
-  boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-  if (!error_code) {
-    while (iter != end) {
-      boost::asio::ip::tcp::endpoint ep = *iter;
-      if (ep.address().is_v4() && !ep.address().is_loopback() &&
-          !ep.address().is_multicast()) {
-        primary_endpoint.address(ep.address());
-        primary_endpoint.port(ep.port());
-
-        if (Ping(primary_endpoint.address().to_string(), GetPort())) {
-          break;
-        }
-      }
-      iter++;
-    }
-  } else {
-    RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
-                     << strerror(error_code.value());
-    iter = end;
-  }
-
+  socket.connect(boost::asio::ip::tcp::endpoint(
+                     boost::asio::ip::address::from_string("8.8.8.8"), 53),
+                 error_code);
   std::string address;
-  if (iter == end) {
-    address = "127.0.0.1:" + std::to_string(GetPort());
+  if (!error_code) {
+    address =
+        socket.local_endpoint().address().to_string() + ":" + std::to_string(GetPort());
   } else {
-    address = primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+    address = "127.0.0.1:" + std::to_string(GetPort());
+
+    if (error_code == boost::system::errc::host_unreachable) {
+      boost::asio::ip::detail::endpoint primary_endpoint;
+      boost::asio::ip::tcp::resolver resolver(main_service_);
+      boost::asio::ip::tcp::resolver::query query(
+          boost::asio::ip::host_name(), "",
+          boost::asio::ip::resolver_query_base::flags::v4_mapped);
+      boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
+      boost::asio::ip::tcp::resolver::iterator end;  // End marker.
+      if (!error_code) {
+        while (iter != end) {
+          boost::asio::ip::tcp::endpoint ep = *iter;
+          if (ep.address().is_v4() && !ep.address().is_loopback() &&
+              !ep.address().is_multicast()) {
+            primary_endpoint.address(ep.address());
+            primary_endpoint.port(ep.port());
+
+            if (Ping(primary_endpoint.address().to_string(), GetPort())) {
+              break;
+            }
+          }
+          iter++;
+        }
+      } else {
+        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
+                         << strerror(error_code.value());
+        iter = end;
+      }
+
+      if (iter != end) {
+        address =
+            primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+      }
+    }
   }
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
