@@ -335,15 +335,12 @@ def test_remote(ray_start_regular_shared):
 
     ray.get(check_remote.remote(it))
 
-
-def test_local_remote(ray_start_regular_shared):
-    it = from_range(10)
-
     @ray.remote
-    def to_list(x):
-        return list(x)
+    def to_list(local_it):
+        return list(local_it)
 
-    assert ray.get(to_list.remote(it.get_shard(0))) == list(it.get_shard(0))
+    it = it.repartition(3)
+    assert set(ray.get(to_list.remote(it.get_shard(0)))) == set([0, 3, 5])
 
 
 def test_union(ray_start_regular_shared):

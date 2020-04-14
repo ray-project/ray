@@ -1,0 +1,229 @@
+Obtaining file:///Users/alex/anyscale/ray/python
+Requirement already satisfied: aiohttp in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (3.6.2)
+Requirement already satisfied: click in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (7.0)
+Requirement already satisfied: colorama in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (0.4.1)
+Requirement already satisfied: filelock in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (3.0.12)
+Requirement already satisfied: google in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (2.0.3)
+Requirement already satisfied: grpcio in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (1.26.0)
+Requirement already satisfied: jsonschema in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (3.0.2)
+Requirement already satisfied: msgpack<1.0.0,>=0.6.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (0.6.1)
+Requirement already satisfied: numpy>=1.16 in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (1.17.2)
+Requirement already satisfied: protobuf>=3.8.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (3.10.0)
+Requirement already satisfied: py-spy>=0.2.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (0.3.2)
+Requirement already satisfied: pyyaml in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (5.1.2)
+Requirement already satisfied: redis>=3.3.2 in /Users/alex/anaconda3/lib/python3.7/site-packages (from ray==0.9.0.dev0) (3.3.11)
+Requirement already satisfied: async-timeout<4.0,>=3.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from aiohttp->ray==0.9.0.dev0) (3.0.1)
+Requirement already satisfied: attrs>=17.3.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from aiohttp->ray==0.9.0.dev0) (19.2.0)
+Requirement already satisfied: yarl<2.0,>=1.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from aiohttp->ray==0.9.0.dev0) (1.4.2)
+Requirement already satisfied: multidict<5.0,>=4.5 in /Users/alex/anaconda3/lib/python3.7/site-packages (from aiohttp->ray==0.9.0.dev0) (4.7.4)
+Requirement already satisfied: chardet<4.0,>=2.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from aiohttp->ray==0.9.0.dev0) (3.0.4)
+Requirement already satisfied: beautifulsoup4 in /Users/alex/anaconda3/lib/python3.7/site-packages (from google->ray==0.9.0.dev0) (4.8.0)
+Requirement already satisfied: six>=1.5.2 in /Users/alex/anaconda3/lib/python3.7/site-packages (from grpcio->ray==0.9.0.dev0) (1.12.0)
+Requirement already satisfied: setuptools in /Users/alex/anaconda3/lib/python3.7/site-packages (from jsonschema->ray==0.9.0.dev0) (41.4.0)
+Requirement already satisfied: pyrsistent>=0.14.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from jsonschema->ray==0.9.0.dev0) (0.15.4)
+Requirement already satisfied: idna>=2.0 in /Users/alex/anaconda3/lib/python3.7/site-packages (from yarl<2.0,>=1.0->aiohttp->ray==0.9.0.dev0) (2.8)
+Requirement already satisfied: soupsieve>=1.2 in /Users/alex/anaconda3/lib/python3.7/site-packages (from beautifulsoup4->google->ray==0.9.0.dev0) (1.9.3)
+Installing collected packages: ray
+  Running setup.py develop for ray
+    ERROR: Command errored out with exit status 1:
+     command: /Users/alex/anaconda3/bin/python -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/Users/alex/anyscale/ray/python/setup.py'"'"'; __file__='"'"'/Users/alex/anyscale/ray/python/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' develop --no-deps
+         cwd: /Users/alex/anyscale/ray/python/
+    Complete output (196 lines):
+    running develop
+    running egg_info
+    writing ray.egg-info/PKG-INFO
+    writing dependency_links to ray.egg-info/dependency_links.txt
+    writing entry points to ray.egg-info/entry_points.txt
+    writing requirements to ray.egg-info/requires.txt
+    writing top-level names to ray.egg-info/top_level.txt
+    reading manifest file 'ray.egg-info/SOURCES.txt'
+    reading manifest template 'MANIFEST.in'
+    /Users/alex/anaconda3/lib/python3.7/site-packages/setuptools/dist.py:723: UserWarning: Module Cython was already imported from /Users/alex/anaconda3/lib/python3.7/site-packages/Cython/__init__.py, but /Users/alex/anyscale/ray/python/.eggs/Cython-3.0a1-py3.7.egg is being added to sys.path
+      pkg_resources.working_set.add(dist, replace=True)
+    /Users/alex/anaconda3/lib/python3.7/site-packages/setuptools/dist.py:723: UserWarning: Module cython was already imported from /Users/alex/anaconda3/lib/python3.7/site-packages/cython.py, but /Users/alex/anyscale/ray/python/.eggs/Cython-3.0a1-py3.7.egg is being added to sys.path
+      pkg_resources.working_set.add(dist, replace=True)
+    warning: no files found matching 'ray/python/ray/autoscaler/ray-schema.json'
+    writing manifest file 'ray.egg-info/SOURCES.txt'
+    running build_ext
+    + set -e
+    + SUPPORTED_PYTHONS=("3.5" "3.6" "3.7" "3.8")
+    +++ dirname ../build.sh
+    ++ cd ..
+    ++ pwd
+    + ROOT_DIR=/Users/alex/anyscale/ray
+    ++ uname
+    + unamestr=Darwin
+    + [[ Darwin == \L\i\n\u\x ]]
+    + [[ Darwin == \D\a\r\w\i\n ]]
+    ++ sysctl -n hw.ncpu
+    + PARALLEL=16
+    + RAY_BUILD_PYTHON=YES
+    + RAY_BUILD_JAVA=NO
+    + PYTHON_EXECUTABLE=
+    + BUILD_DIR=
+    + [[ 2 -gt 0 ]]
+    + key=-p
+    + case $key in
+    + PYTHON_EXECUTABLE=/Users/alex/anaconda3/bin/python
+    + shift
+    + shift
+    + [[ 0 -gt 0 ]]
+    + [[ -z /Users/alex/anaconda3/bin/python ]]
+    ++ /Users/alex/anaconda3/bin/python -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'
+    + PYTHON_VERSION=3.7
+    + found=
+    + for allowed in '${SUPPORTED_PYTHONS[@]}'
+    + [[ 3.7 == 3.5 ]]
+    + for allowed in '${SUPPORTED_PYTHONS[@]}'
+    + [[ 3.7 == 3.6 ]]
+    + for allowed in '${SUPPORTED_PYTHONS[@]}'
+    + [[ 3.7 == 3.7 ]]
+    + found=3.7
+    + break
+    + [[ -z 3.7 ]]
+    + echo 'Using Python executable /Users/alex/anaconda3/bin/python.'
+    Using Python executable /Users/alex/anaconda3/bin/python.
+    ++ PATH=/Users/alex/anaconda3/bin:/Users/alex/anaconda3/condabin:/Users/Alex/bin:/usr/local/opt/gnu-indent/libexec/gnubin:/usr/local/opt/binutils/bin:/usr/local/sbin/qasm2circ:/usr/local/scripts:/usr/local/opt/llvm/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:/Applications/MacVim.app/Contents/MacOS:/usr/local/go/bin:/Users/alex/.bazel/bin
+    ++ which bazel
+    + BAZEL_EXECUTABLE=/Users/Alex/bin/bazel
+    + echo 'Using Bazel executable /Users/Alex/bin/bazel.'
+    Using Bazel executable /Users/Alex/bin/bazel.
+    + BUILD_DIR=/Users/alex/anyscale/ray/build/
+    + '[' '!' -d /Users/alex/anyscale/ray/build/ ']'
+    + pushd /Users/alex/anyscale/ray/build/
+    ~/anyscale/ray/build ~/anyscale/ray/python
+    ++ mktemp -d
+    + WORK_DIR=/var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf
+    + pushd /var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf
+    /var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf ~/anyscale/ray/build ~/anyscale/ray/python
+    + git clone https://github.com/suquark/pickle5-backport
+    Cloning into 'pickle5-backport'...
+    + pushd pickle5-backport
+    /var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf/pickle5-backport /var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf ~/anyscale/ray/build ~/anyscale/ray/python
+    + git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
+    Note: checking out '8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72'.
+    
+    You are in 'detached HEAD' state. You can look around, make experimental
+    changes and commit them, and you can discard any commits you make in this
+    state without impacting any branches by performing another checkout.
+    
+    If you want to create a new branch to retain commits you create, you may
+    do so (now or later) by using -b with the checkout command again. Example:
+    
+      git checkout -b <new-branch-name>
+    
+    HEAD is now at 8ffe41c apply cpython patch bpo-39492 for the reference count issue
+    + /Users/alex/anaconda3/bin/python setup.py bdist_wheel
+    running bdist_wheel
+    running build
+    running build_py
+    creating build
+    creating build/lib.macosx-10.9-x86_64-3.7
+    creating build/lib.macosx-10.9-x86_64-3.7/pickle5
+    copying pickle5/__init__.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5
+    copying pickle5/pickletools.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5
+    copying pickle5/pickle.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5
+    creating build/lib.macosx-10.9-x86_64-3.7/pickle5/test
+    copying pickle5/test/test_pickle.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5/test
+    copying pickle5/test/pickletester.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5/test
+    copying pickle5/test/test_picklebuffer.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5/test
+    copying pickle5/test/__init__.py -> build/lib.macosx-10.9-x86_64-3.7/pickle5/test
+    running build_ext
+    building 'pickle5._pickle' extension
+    creating build/temp.macosx-10.9-x86_64-3.7
+    creating build/temp.macosx-10.9-x86_64-3.7/pickle5
+    gcc -Wno-unused-result -Wsign-compare -Wunreachable-code -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -I/Users/alex/anaconda3/include -arch x86_64 -I/Users/alex/anaconda3/include -arch x86_64 -I/usr/local/opt/binutils/include -I/Users/alex/anaconda3/include/python3.7m -c pickle5/_pickle.c -o build/temp.macosx-10.9-x86_64-3.7/pickle5/_pickle.o -std=c99
+    gcc -Wno-unused-result -Wsign-compare -Wunreachable-code -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -I/Users/alex/anaconda3/include -arch x86_64 -I/Users/alex/anaconda3/include -arch x86_64 -I/usr/local/opt/binutils/include -I/Users/alex/anaconda3/include/python3.7m -c pickle5/picklebufobject.c -o build/temp.macosx-10.9-x86_64-3.7/pickle5/picklebufobject.o -std=c99
+    gcc -bundle -undefined dynamic_lookup -L/Users/alex/anaconda3/lib -arch x86_64 -L/Users/alex/anaconda3/lib -arch x86_64 -L/usr/local/opt/binutils/lib -I/usr/local/opt/binutils/include -arch x86_64 build/temp.macosx-10.9-x86_64-3.7/pickle5/_pickle.o build/temp.macosx-10.9-x86_64-3.7/pickle5/picklebufobject.o -o build/lib.macosx-10.9-x86_64-3.7/pickle5/_pickle.cpython-37m-darwin.so
+    installing to build/bdist.macosx-10.9-x86_64/wheel
+    running install
+    running install_lib
+    creating build/bdist.macosx-10.9-x86_64
+    creating build/bdist.macosx-10.9-x86_64/wheel
+    creating build/bdist.macosx-10.9-x86_64/wheel/pickle5
+    creating build/bdist.macosx-10.9-x86_64/wheel/pickle5/test
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/test/test_pickle.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5/test
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/test/pickletester.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5/test
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/test/test_picklebuffer.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5/test
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/test/__init__.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5/test
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/_pickle.cpython-37m-darwin.so -> build/bdist.macosx-10.9-x86_64/wheel/pickle5
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/__init__.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/pickletools.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5
+    copying build/lib.macosx-10.9-x86_64-3.7/pickle5/pickle.py -> build/bdist.macosx-10.9-x86_64/wheel/pickle5
+    running install_egg_info
+    running egg_info
+    creating pickle5.egg-info
+    writing pickle5.egg-info/PKG-INFO
+    writing dependency_links to pickle5.egg-info/dependency_links.txt
+    writing top-level names to pickle5.egg-info/top_level.txt
+    writing manifest file 'pickle5.egg-info/SOURCES.txt'
+    reading manifest file 'pickle5.egg-info/SOURCES.txt'
+    reading manifest template 'MANIFEST.in'
+    writing manifest file 'pickle5.egg-info/SOURCES.txt'
+    Copying pickle5.egg-info to build/bdist.macosx-10.9-x86_64/wheel/pickle5-0.0.9-py3.7.egg-info
+    running install_scripts
+    adding license file "LICENSE" (matched pattern "LICEN[CS]E*")
+    creating build/bdist.macosx-10.9-x86_64/wheel/pickle5-0.0.9.dist-info/WHEEL
+    creating 'dist/pickle5-0.0.9-cp37-cp37m-macosx_10_9_x86_64.whl' and adding 'build/bdist.macosx-10.9-x86_64/wheel' to it
+    adding 'pickle5/__init__.py'
+    adding 'pickle5/_pickle.cpython-37m-darwin.so'
+    adding 'pickle5/pickle.py'
+    adding 'pickle5/pickletools.py'
+    adding 'pickle5/test/__init__.py'
+    adding 'pickle5/test/pickletester.py'
+    adding 'pickle5/test/test_pickle.py'
+    adding 'pickle5/test/test_picklebuffer.py'
+    adding 'pickle5-0.0.9.dist-info/LICENSE'
+    adding 'pickle5-0.0.9.dist-info/METADATA'
+    adding 'pickle5-0.0.9.dist-info/WHEEL'
+    adding 'pickle5-0.0.9.dist-info/top_level.txt'
+    adding 'pickle5-0.0.9.dist-info/RECORD'
+    removing build/bdist.macosx-10.9-x86_64/wheel
+    + unzip -o dist/pickle5-0.0.9-cp37-cp37m-macosx_10_9_x86_64.whl -d /Users/alex/anyscale/ray/python/ray/pickle5_files
+    Archive:  dist/pickle5-0.0.9-cp37-cp37m-macosx_10_9_x86_64.whl
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/__init__.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/_pickle.cpython-37m-darwin.so
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/pickle.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/pickletools.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/test/__init__.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/test/pickletester.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/test/test_pickle.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5/test/test_picklebuffer.py
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5-0.0.9.dist-info/LICENSE
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5-0.0.9.dist-info/METADATA
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5-0.0.9.dist-info/WHEEL
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5-0.0.9.dist-info/top_level.txt
+      inflating: /Users/alex/anyscale/ray/python/ray/pickle5_files/pickle5-0.0.9.dist-info/RECORD
+    + popd
+    /var/folders/nr/xmzgcs7s0wncr83m8lq8rt440000gn/T/tmp.a9sBkhKf ~/anyscale/ray/build ~/anyscale/ray/python
+    + popd
+    ~/anyscale/ray/build ~/anyscale/ray/python
+    + '[' -z '' ']'
+    + /Users/alex/anaconda3/bin/python -m pip install -q psutil setproctitle --target=/Users/alex/anyscale/ray/python/ray/thirdparty_files
+    WARNING: Target directory /Users/alex/anyscale/ray/python/ray/thirdparty_files/setproctitle.cpython-37m-darwin.so already exists. Specify --upgrade to force replacement.
+    WARNING: Target directory /Users/alex/anyscale/ray/python/ray/thirdparty_files/setproctitle-1.1.10.dist-info already exists. Specify --upgrade to force replacement.
+    WARNING: Target directory /Users/alex/anyscale/ray/python/ray/thirdparty_files/psutil-5.7.0.dist-info already exists. Specify --upgrade to force replacement.
+    WARNING: Target directory /Users/alex/anyscale/ray/python/ray/thirdparty_files/psutil already exists. Specify --upgrade to force replacement.
+    + export PYTHON3_BIN_PATH=/Users/alex/anaconda3/bin/python
+    + PYTHON3_BIN_PATH=/Users/alex/anaconda3/bin/python
+    + '[' NO == YES ']'
+    + '[' YES == YES ']'
+    + /Users/Alex/bin/bazel build //:ray_pkg --verbose_failures
+    INFO: Writing tracer profile to '/private/var/tmp/_bazel_alex/c33b12d7c3f4a59cc7ba37ff75ed011a/command.profile.gz'
+    Loading:
+    Loading: 0 packages loaded
+    Analyzing: target //:ray_pkg (0 packages loaded, 0 targets configured)
+    INFO: Analyzed target //:ray_pkg (0 packages loaded, 0 targets configured).
+    INFO: Found 1 target...
+    [0 / 1] [Prepa] BazelWorkspaceStatusAction stable-status.txt
+    Target //:ray_pkg up-to-date:
+      bazel-bin/ray_pkg.out
+    INFO: Elapsed time: 0.248s, Critical Path: 0.00s
+    INFO: 0 processes.
+    INFO: Build completed successfully, 1 total action
+    INFO: Build completed successfully, 1 total action
+    + popd
+    ~/anyscale/ray/python
+    error: [Errno 2] No such file or directory: 'ray/streaming/generated'
+    ----------------------------------------
+ERROR: Command errored out with exit status 1: /Users/alex/anaconda3/bin/python -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/Users/alex/anyscale/ray/python/setup.py'"'"'; __file__='"'"'/Users/alex/anyscale/ray/python/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' develop --no-deps Check the logs for full command output.
