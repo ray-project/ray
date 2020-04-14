@@ -784,8 +784,8 @@ cc_library(
     ),
     copts = COPTS,
     deps = [
-        ":ray_common",
         ":gcs",
+        ":ray_common",
         ":redis_store_client",
     ],
 )
