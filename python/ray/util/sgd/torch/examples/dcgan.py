@@ -260,6 +260,8 @@ if __name__ == "__main__":
     # Download a pre-trained MNIST model for inception score calculation.
     # This is a tiny model (<100kb).
     if not os.path.exists(MODEL_PATH):
+        print("downloading model")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
         urllib.request.urlretrieve(
             "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
             "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
