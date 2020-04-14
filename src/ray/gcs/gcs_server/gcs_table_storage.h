@@ -55,14 +55,40 @@ class GcsTable {
 
   virtual ~GcsTable() = default;
 
+  /// Write data to the table asynchronously.
+  ///
+  /// \param key The key that will be written to the table.
+  /// \param value The value of the key that will be written to the table.
+  /// \param callback Callback that will be called after write finishes.
+  /// \return Status
   virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
 
+  /// Get data from the table asynchronously.
+  ///
+  /// \param key The key to lookup from the table.
+  /// \param callback Callback that will be called after read finishes.
+  /// \return Status
   Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
 
+  /// Get all data from the table asynchronously.
+  ///
+  /// \param callback Callback that will be called after data has been received.
+  /// If the callback return `has_more == true` mean there's more data to be received.
+  /// \return Status
   Status GetAll(const SegmentedCallback<std::pair<Key, Data>> &callback);
 
+  /// Delete data from the table asynchronously.
+  ///
+  /// \param key The key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
   Status Delete(const Key &key, const StatusCallback &callback);
 
+  /// Delete a batch of data from the table asynchronously.
+  ///
+  /// \param keys The batch key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
   Status BatchDelete(const std::vector<Key> &keys, const StatusCallback &callback);
 
  protected:
@@ -82,11 +108,27 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   explicit GcsTableWithJobId(std::shared_ptr<StoreClient<Key, Data, JobID>> store_client)
       : GcsTable<Key, Data>(store_client) {}
 
+  /// Write data to the table asynchronously.
+  ///
+  /// \param key The key that will be written to the table. The job id can be obtained
+  /// from the key. \param value The value of the key that will be written to the table.
+  /// \param callback Callback that will be called after write finishes.
+  /// \return Status
   Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
 
+  /// Get all the data of the specified job id from the table asynchronously.
+  ///
+  /// \param job_id The key to lookup from the table.
+  /// \param callback Callback that will be called after read finishes.
+  /// \return Status
   Status GetByJobId(const JobID &job_id,
                     const SegmentedCallback<std::pair<Key, Data>> &callback);
 
+  /// Delete all the data of the specified job id from the table asynchronously.
+  ///
+  /// \param job_id The key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
   Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
 
  protected:

@@ -714,7 +714,10 @@ cc_test(
 
 cc_test(
     name = "gcs_server_rpc_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc"],
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
@@ -732,7 +735,7 @@ cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
@@ -745,7 +748,7 @@ cc_test(
     name = "gcs_actor_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
@@ -758,7 +761,7 @@ cc_test(
     name = "gcs_actor_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
@@ -784,13 +787,15 @@ cc_library(
         ":ray_common",
         ":gcs",
         ":redis_store_client",
-#        ":gcs_cc_proto",
     ],
 )
 
 cc_test(
     name = "redis_gcs_table_storage_test",
-    srcs = ["src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc"],
+    srcs = [
+        "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
@@ -801,6 +806,7 @@ cc_test(
     deps = [
         ":gcs_table_storage_lib",
         ":store_client_test_lib",
+        ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -827,7 +833,10 @@ cc_library(
 
 cc_test(
     name = "gcs_server_test",
-    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    srcs = [
+        "src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
