@@ -39,13 +39,10 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
   virtual void TearDown() override {
     pub_sub_.reset();
     client_->Disconnect();
-    RAY_LOG(INFO) << "bbbbbbbbbbbbbbbbb";
     io_service_.stop();
     client_.reset();
-    RAY_LOG(INFO) << "ccccccccccccccccccc";
     thread_io_service_->join();
     thread_io_service_.reset();
-    RAY_LOG(INFO) << "dddddddddddddddddd";
   }
 
   void Subscribe(const std::string &channel, const std::string &id,
@@ -105,39 +102,29 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
 };
 
 TEST_F(GcsPubSubTest, TestPubSubApi) {
-  RAY_LOG(INFO) << "11111111111111";
   std::string channel("channel");
   std::string id("id");
   std::string data("data");
   std::vector<std::pair<std::string, std::string>> all_result;
-  RAY_LOG(INFO) << "2222222222222";
   SubscribeAll(channel, all_result);
-  RAY_LOG(INFO) << "3333333333333";
   std::vector<std::string> result;
   Subscribe(channel, id, result);
-  RAY_LOG(INFO) << "444444444444";
   Publish(channel, id, data);
 
   WaitPendingDone(result, 1);
   WaitPendingDone(all_result, 1);
-  RAY_LOG(INFO) << "5555555555555";
   Unsubscribe(channel, id);
-  RAY_LOG(INFO) << "666666666666";
   Publish(channel, id, data);
   usleep(100 * 1000);
   EXPECT_EQ(result.size(), 1);
 
-  RAY_LOG(INFO) << "777777777777777";
   Subscribe(channel, id, result);
-  RAY_LOG(INFO) << "8888888888888888";
   Publish(channel, id, data);
-  RAY_LOG(INFO) << "999999999999999";
   WaitPendingDone(result, 2);
   WaitPendingDone(all_result, 3);
-  RAY_LOG(INFO) << "aaaaaaaaaaaaaaaaaaa";
 }
 
-TEST_F(GcsPubSubTest, DISABLED_TestMultithreading) {
+TEST_F(GcsPubSubTest, TestMultithreading) {
   std::string channel("channel");
   auto sub_message_count = std::make_shared<std::atomic<int>>(0);
   auto sub_finished_count = std::make_shared<std::atomic<int>>(0);
@@ -153,12 +140,10 @@ TEST_F(GcsPubSubTest, DISABLED_TestMultithreading) {
           auto subscribe = [sub_message_count](const std::string &id,
                                                const std::string &data) {
             ++(*sub_message_count);
-            RAY_LOG(INFO) << "sub_message_count = " << *sub_message_count;
           };
           auto on_done = [sub_finished_count](Status status) {
             RAY_CHECK_OK(status);
             ++(*sub_finished_count);
-            RAY_LOG(INFO) << "sub_finished_count = " << *sub_finished_count;
           };
           RAY_CHECK_OK(pub_sub_->Subscribe(channel, id, subscribe, on_done));
         }));
@@ -169,6 +154,7 @@ TEST_F(GcsPubSubTest, DISABLED_TestMultithreading) {
   EXPECT_TRUE(WaitForCondition(sub_finished_condition, timeout_ms_.count()));
   for (auto &thread : threads) {
     thread->join();
+    thread.reset();
   }
 
   std::string data("data");
@@ -187,6 +173,7 @@ TEST_F(GcsPubSubTest, DISABLED_TestMultithreading) {
   EXPECT_TRUE(WaitForCondition(sub_message_condition, timeout_ms_.count()));
   for (auto &thread : threads) {
     thread->join();
+    thread.reset();
   }
 }
 
