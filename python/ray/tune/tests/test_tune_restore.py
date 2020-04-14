@@ -291,7 +291,6 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-
     def set_basic_conf(self):
         dim_dict = {
             "height": (ValueType.CONTINUOUS, [-100, 100], 1e-2),
@@ -299,7 +298,8 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(dim_dict, reporter):
-            reporter(loss=(dim_dict["height"] - 14)**2 - abs(dim_dict["width"] - 3))
+            reporter(
+                loss=(dim_dict["height"] - 14)**2 - abs(dim_dict["width"] - 3))
 
         search_alg = ZOOptSearch(
             algo="Asracos",  # only support ASRacos currently

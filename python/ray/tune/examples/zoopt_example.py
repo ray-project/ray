@@ -29,7 +29,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    # This dict could mix continuous dimensions and discrete dimensions, for example:
+    # This dict could mix continuous dimensions and discrete dimensions,
+    # for example:
     dim_dict = {
         # for continuous dimensions: (continuous, search_range, precision)
         "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),

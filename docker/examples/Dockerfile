@@ -11,8 +11,9 @@ RUN pip install gym[atari] opencv-python-headless tensorflow lz4 pytest-timeout 
 RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade hyperopt==0.1.2
+RUN pip install -U zoopt
 RUN pip install ConfigSpace==0.4.10
-RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX dragonfly-opt zoopt
+RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX dragonfly-opt
 RUN pip install -U tabulate mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
 RUN pip install -U matplotlib jupyter pandas 

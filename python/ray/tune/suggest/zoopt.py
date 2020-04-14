@@ -11,18 +11,24 @@ logger = logging.getLogger(__name__)
 class ZOOptSearch(SuggestionAlgorithm):
     """A wrapper around ZOOpt to provide trial suggestions.
 
-    Requires zoopt package (>=0.4.0) to be installed. You can install it with the
-    command: ``pip install -U zoopt``.
+    Requires zoopt package (>=0.4.0) to be installed. You can install it
+    with the command: ``pip install -U zoopt``.
 
     Parameters:
-        algo (str): To specify an algorithm in zoopt you want to use. Only support ASRacos currently.
+        algo (str): To specify an algorithm in zoopt you want to use.
+            Only support ASRacos currently.
         budget (int): Number of samples.
-        dim_dict (dict): Dimension dictionary. For continuous dimensions: (continuous, search_range, precision);
-            for discrete dimensions: (discrete, search_range, has_order). More details can be found in zoopt package.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults to 10.
-        metric (str): The training result objective value attribute. Defaults to "episode_reward_mean".
+        dim_dict (dict): Dimension dictionary.
+            For continuous dimensions: (continuous, search_range, precision);
+            For discrete dimensions: (discrete, search_range, has_order).
+            More details can be found in zoopt package.
+        max_concurrent (int): Number of maximum concurrent trials.
+            Defaults to 10.
+        metric (str): The training result objective value attribute.
+            Defaults to "episode_reward_mean".
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute. Defaults to "min".
+            minimizing or maximizing the metric attribute.
+            Defaults to "min".
 
     .. code-block:: python
 
