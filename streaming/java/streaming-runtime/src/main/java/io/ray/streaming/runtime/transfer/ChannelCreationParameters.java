@@ -77,16 +77,16 @@ public class ChannelCreationParameters {
       "onWriterMessageSync", "([B)[B");
   // function descriptors of direct call entry point for Python workers
   private static PyFunctionDescriptor pyReaderAsyncFunctionDesc = new PyFunctionDescriptor(
-      "streaming.runtime.worker",
+      "ray.streaming.runtime.worker",
       "JobWorker", "on_reader_message");
   private static PyFunctionDescriptor pyReaderSyncFunctionDesc = new PyFunctionDescriptor(
-      "streaming.runtime.worker",
+      "ray.streaming.runtime.worker",
       "JobWorker", "on_reader_message_sync");
   private static PyFunctionDescriptor pyWriterAsyncFunctionDesc = new PyFunctionDescriptor(
-      "streaming.runtime.worker",
+      "ray.streaming.runtime.worker",
       "JobWorker", "on_writer_message");
   private static PyFunctionDescriptor pyWriterSyncFunctionDesc = new PyFunctionDescriptor(
-      "streaming.runtime.worker",
+      "ray.streaming.runtime.worker",
       "JobWorker", "on_writer_message_sync");
 
   public ChannelCreationParameters() {
@@ -125,9 +125,9 @@ public class ChannelCreationParameters {
     for (String queue : queues) {
       Parameter parameter = new Parameter();
       BaseActor actor = actors.get(queue);
+      Preconditions.checkArgument(actor != null && !(actor instanceof LocalModeRayActor));
       parameter.setActorId(actor.getId());
-      if (actor == null || actor instanceof NativeRayJavaActor
-          || actor instanceof LocalModeRayActor) {
+      if (actor instanceof NativeRayJavaActor) {
         parameter.setAsyncFunctionDescriptor(javaAsyncFunctionDesc);
         parameter.setSyncFunctionDescriptor(javaSyncFunctionDesc);
       } else if (actor instanceof NativeRayPyActor) {

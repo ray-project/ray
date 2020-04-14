@@ -137,7 +137,7 @@ cdef class DataWriter:
 
     @staticmethod
     def create(list py_output_channels,
-               list output_initial_parameters: list[ChannelCreationParameter],
+               list output_creation_parameters: list[ChannelCreationParameter],
                uint64_t queue_size,
                list py_msg_ids,
                bytes config_bytes,
@@ -149,7 +149,7 @@ cdef class DataWriter:
             CDataWriter *c_writer
             ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
-        for param in output_initial_parameters:
+        for param in output_creation_parameters:
             parameter = param
             initial_parameters.push_back(parameter.get_parameter())
         for py_msg_id in py_msg_ids:
@@ -217,7 +217,7 @@ cdef class DataReader:
 
     @staticmethod
     def create(list py_input_queues,
-               list output_initial_parameters: list[ChannelCreationParameter],
+               list input_creation_parameters: list[ChannelCreationParameter],
                list py_seq_ids,
                list py_msg_ids,
                int64_t timer_interval,
@@ -232,7 +232,7 @@ cdef class DataReader:
             CDataReader *c_reader
             ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
-        for param in output_initial_parameters:
+        for param in input_creation_parameters:
             parameter = param
             initial_parameters.push_back(parameter.get_parameter())
         for py_seq_id in py_seq_ids:

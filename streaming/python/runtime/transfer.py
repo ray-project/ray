@@ -161,19 +161,19 @@ class ChannelCreationParameters:
             'org.ray.streaming.runtime.worker',
             'onWriterMessageSync', '([B)[B')
     _python_reader_async_function_descriptor = PythonFunctionDescriptor(
-            'streaming.runtime.core.worker',
-            'on_reader_message', 'DynamicPyWorker')
+            'ray.streaming.runtime.core.worker',
+            'on_reader_message', 'JobWorker')
     _python_reader_sync_function_descriptor = PythonFunctionDescriptor(
-            'streaming.runtime.core.worker',
-            'on_reader_message_sync', 'DynamicPyWorker')
+            'ray.streaming.runtime.core.worker',
+            'on_reader_message_sync', 'JobWorker')
     _python_writer_async_function_descriptor = PythonFunctionDescriptor(
-            'streaming.runtime.core.worker',
-            'on_writer_message', 'DynamicPyWorker')
+            'ray.streaming.runtime.core.worker',
+            'on_writer_message', 'JobWorker')
     _python_writer_sync_function_descriptor = PythonFunctionDescriptor(
-            'streaming.runtime.core.worker',
-            'on_writer_message_sync', 'DynamicPyWorker')
+            'ray.streaming.runtime.core.worker',
+            'on_writer_message_sync', 'JobWorker')
 
-    def get_parameters_list(self):
+    def get_parameters(self):
         return self._parameters;
     
     def __init__(self):
@@ -197,12 +197,8 @@ class ChannelCreationParameters:
 
     def build_parameters(self, actors, java_async_func,
                          java_sync_func, py_async_func, py_sync_func):
-        """
-        actors:
-        """
         for handle in actors:
             parameter = None
-            logger.info("handle._ray_actor_language: %s", handle._ray_actor_language)
             if handle._ray_actor_language == Language.PYTHON:
                 parameter = _streaming.ChannelCreationParameter(handle._ray_actor_id, py_async_func, py_sync_func)
             else:
@@ -241,15 +237,15 @@ class DataWriter:
         py_output_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in output_channels
         ]
-        initial_parameters = ChannelCreationParameters()
-        initial_parameters.build_output_queue_parameters(to_actors)
+        creation_parameters = ChannelCreationParameters()
+        creation_parameters.build_output_queue_parameters(to_actors)
         channel_size = conf.get(Config.CHANNEL_SIZE,
                                 Config.CHANNEL_SIZE_DEFAULT)
         py_msg_ids = [0 for _ in range(len(output_channels))]
         config_bytes = _to_native_conf(conf)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.writer = _streaming.DataWriter.create(
-            py_output_channels, initial_parameters.get_parameters_list(), channel_size, py_msg_ids,
+            py_output_channels, creation_parameters.get_parameters(), channel_size, py_msg_ids,
             config_bytes, is_mock)
 
         logger.info("create DataWriter succeed")
@@ -294,8 +290,8 @@ class DataReader:
         py_input_channels = [
             channel_id_str_to_bytes(qid_str) for qid_str in input_channels
         ]
-        initial_parameters = ChannelCreationParameters()
-        initial_parameters.build_input_queue_parameters(from_actors)
+        creation_parameters = ChannelCreationParameters()
+        creation_parameters.build_input_queue_parameters(from_actors)
         py_seq_ids = [0 for _ in range(len(input_channels))]
         py_msg_ids = [0 for _ in range(len(input_channels))]
         timer_interval = int(conf.get(Config.TIMER_INTERVAL_MS, -1))
@@ -304,7 +300,7 @@ class DataReader:
         self.__queue = Queue(10000)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.reader = _streaming.DataReader.create(
-            py_input_channels, initial_parameters.get_parameters_list(), py_seq_ids, py_msg_ids,
+            py_input_channels, creation_parameters.get_parameters(), py_seq_ids, py_msg_ids,
             timer_interval, is_recreate, config_bytes, is_mock)
         logger.info("create DataReader succeed")
 
