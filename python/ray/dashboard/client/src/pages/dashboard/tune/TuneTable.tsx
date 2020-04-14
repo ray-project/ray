@@ -183,14 +183,11 @@ class TuneTable extends React.Component<
     const { tuneInfo } = this.props;
     const { sortedColumn, ascending, metricParamColumn } = this.state;
 
-    if (
-      tuneInfo === null ||
-      Object.keys(tuneInfo["trial_records"]).length === 0
-    ) {
+    if (tuneInfo === null || Object.keys(tuneInfo.trial_records).length === 0) {
       return null;
     }
 
-    const trialDetails = Object.values(tuneInfo["trial_records"]);
+    const trialDetails = Object.values(tuneInfo.trial_records);
 
     if (!sortedColumn) {
       return trialDetails;
@@ -313,8 +310,8 @@ class TuneTable extends React.Component<
       return null;
     }
 
-    const firstTrial = Object.keys(tuneInfo["trial_records"])[0];
-    const paramsDict = tuneInfo["trial_records"][firstTrial]["params"];
+    const firstTrial = Object.keys(tuneInfo.trial_records)[0];
+    const paramsDict = tuneInfo.trial_records[firstTrial]["params"];
     const paramNames = Object.keys(paramsDict).filter((k) => k !== "args");
 
     let viewableParams = paramNames;
@@ -329,7 +326,7 @@ class TuneTable extends React.Component<
     }
 
     const metricNames = Object.keys(
-      tuneInfo["trial_records"][firstTrial]["metrics"],
+      tuneInfo.trial_records[firstTrial]["metrics"],
     );
 
     let viewableMetrics = metricNames;
@@ -429,7 +426,7 @@ class TuneTable extends React.Component<
           <DialogWithTitle handleClose={this.handleClose} title="Error Log">
             {open && (
               <NumberedLines
-                lines={tuneInfo["trial_records"][errorTrial]["error"]
+                lines={tuneInfo.trial_records[errorTrial]["error"]
                   .trim()
                   .split("\n")}
               />
