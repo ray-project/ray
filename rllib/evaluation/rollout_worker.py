@@ -1,3 +1,4 @@
+import copy
 import random
 import numpy as np
 import gym
@@ -26,7 +27,6 @@ from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
@@ -808,18 +808,18 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         """Returns the args used to create this worker."""
         return self._original_kwargs
 
-    def _build_policy_map(self, policy_dict, policy_config):
+    def _build_policy_map(self, policy_dict, trainer_config):
         policy_map = {}
         preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            merged_conf = merge_dicts(policy_config, conf)
-            merged_conf["num_workers"] = self.num_workers
-            merged_conf["worker_index"] = self.worker_index
+            policy_config = copy.deepcopy(conf)
+            policy_config["num_workers"] = self.num_workers
+            policy_config["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf.get("model"))
+                    obs_space, policy_config.get("model"))
                 preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
@@ -833,7 +833,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             if tf and tf.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
-                    if policy_config["eager_tracing"]:
+                    if trainer_config["eager_tracing"]:
                         cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy
@@ -842,9 +842,9 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                                      "execution: {}".format(cls))
             if tf:
                 with tf.variable_scope(name):
-                    policy_map[name] = cls(obs_space, act_space, merged_conf)
+                    policy_map[name] = cls(obs_space, act_space, policy_config)
             else:
-                policy_map[name] = cls(obs_space, act_space, merged_conf)
+                policy_map[name] = cls(obs_space, act_space, policy_config)
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))

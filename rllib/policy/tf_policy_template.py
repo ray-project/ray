@@ -1,3 +1,5 @@
+from ray.rllib.utils import merge_dicts
+
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
@@ -111,7 +113,7 @@ def build_tf_policy(name,
                      existing_model=None,
                      existing_inputs=None):
             if get_default_config:
-                config = dict(get_default_config(), **config)
+                config = merge_dicts(get_default_config(), config)
 
             if before_init:
                 before_init(self, obs_space, action_space, config)

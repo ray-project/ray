@@ -1,3 +1,5 @@
+from ray.rllib.utils import merge_dicts
+
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
@@ -75,7 +77,7 @@ def build_torch_policy(name,
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
             if get_default_config:
-                config = dict(get_default_config(), **config)
+                config = merge_dicts(get_default_config(), config)
             self.config = config
 
             if before_init:

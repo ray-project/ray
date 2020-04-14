@@ -1378,6 +1378,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/multi_agent_two_trainers_a3c",
+    tags = ["examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_two_trainers_a3c.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
     name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
