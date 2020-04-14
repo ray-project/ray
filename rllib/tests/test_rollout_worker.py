@@ -1,6 +1,7 @@
 from collections import Counter
 import gym
 import numpy as np
+import os
 import random
 import time
 import unittest
@@ -487,6 +488,20 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
+
+    def test_extra_python_envs(self):
+        extra_envs = {"env_key_1": "env_value_1", "env_key_2": "env_value_2"}
+        self.assertFalse("env_key_1" in os.environ)
+        self.assertFalse("env_key_2" in os.environ)
+        ev = RolloutWorker(
+            env_creator=lambda _: MockEnv(10),
+            policy=MockPolicy)
+        self.assertTrue("env_key_1" in os.environ)
+        self.assertTrue("env_key_2" in os.environ)
+
+        del ev
+        self.assertFalse("env_key_1" in os.environ)
+        self.assertFalse("env_key_2" in os.environ)
 
 
 if __name__ == "__main__":
