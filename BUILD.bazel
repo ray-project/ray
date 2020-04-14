@@ -272,6 +272,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@msgpack",
         "@plasma//:plasma_client",
@@ -543,6 +544,16 @@ cc_test(
 )
 
 cc_test(
+    name = "object_recovery_manager_test",
+    srcs = ["src/ray/core_worker/test/object_recovery_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -628,6 +639,17 @@ cc_test(
 )
 
 cc_test(
+    name = "util_test",
+    srcs = ["src/ray/util/util_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
@@ -663,17 +685,6 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "url_test",
-    srcs = ["src/ray/util/url_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )

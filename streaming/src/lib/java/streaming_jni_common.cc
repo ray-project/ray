@@ -49,7 +49,7 @@ jint throwChannelInitException(JNIEnv *env, const char *message,
   }
 
   jclass ex_class =
-      env->FindClass("org/ray/streaming/runtime/transfer/ChannelInitException");
+      env->FindClass("io/ray/streaming/runtime/transfer/ChannelInitException");
   jmethodID ex_constructor =
       env->GetMethodID(ex_class, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
   jstring message_jstr = env->NewStringUTF(message);
@@ -60,7 +60,7 @@ jint throwChannelInitException(JNIEnv *env, const char *message,
 
 jint throwChannelInterruptException(JNIEnv *env, const char *message) {
   jclass ex_class =
-      env->FindClass("org/ray/streaming/runtime/transfer/ChannelInterruptException");
+      env->FindClass("io/ray/streaming/runtime/transfer/ChannelInterruptException");
   return env->ThrowNew(ex_class, message);
 }
 
@@ -117,14 +117,14 @@ void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
 std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
     JNIEnv *env, jobject functionDescriptor) {
   jclass java_language_class =
-      LoadClass(env, "org/ray/runtime/generated/Common$Language");
+      LoadClass(env, "io/ray/runtime/generated/Common$Language");
   jclass java_function_descriptor_class =
-      LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
+      LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   jmethodID java_language_get_number =
       env->GetMethodID(java_language_class, "getNumber", "()I");
   jmethodID java_function_descriptor_get_language =
       env->GetMethodID(java_function_descriptor_class, "getLanguage",
-                       "()Lorg/ray/runtime/generated/Common$Language;");
+                       "()Lio/ray/runtime/generated/Common$Language;");
   jobject java_language =
       env->CallObjectMethod(functionDescriptor, java_function_descriptor_get_language);
   auto language = static_cast<::Language>(
@@ -146,7 +146,7 @@ void ParseChannelInitParameters(
     std::vector<ray::streaming::ChannelInitialParameter> &parameter_vec) {
   jclass java_streaming_queue_initial_parameters_class =
       LoadClass(env,
-                "org/ray/streaming/runtime/transfer/"
+                "io/ray/streaming/runtime/transfer/"
                 "ChannelInitialParameters");
   jmethodID java_streaming_queue_initial_parameters_getParameters_method =
       env->GetMethodID(java_streaming_queue_initial_parameters_class, "getParameters",
@@ -155,18 +155,18 @@ void ParseChannelInitParameters(
                   nullptr);
   jclass java_streaming_queue_initial_parameters_parameter_class =
       LoadClass(env,
-                "org/ray/streaming/runtime/transfer/"
+                "io/ray/streaming/runtime/transfer/"
                 "ChannelInitialParameters$Parameter");
   jmethodID java_getActorIdBytes_method = env->GetMethodID(
       java_streaming_queue_initial_parameters_parameter_class, "getActorIdBytes", "()[B");
   jmethodID java_getAsyncFunctionDescriptor_method =
       env->GetMethodID(java_streaming_queue_initial_parameters_parameter_class,
                        "getAsyncFunctionDescriptor",
-                       "()Lorg/ray/runtime/functionmanager/FunctionDescriptor;");
+                       "()Lio/ray/runtime/functionmanager/FunctionDescriptor;");
   jmethodID java_getSyncFunctionDescriptor_method =
       env->GetMethodID(java_streaming_queue_initial_parameters_parameter_class,
                        "getSyncFunctionDescriptor",
-                       "()Lorg/ray/runtime/functionmanager/FunctionDescriptor;");
+                       "()Lio/ray/runtime/functionmanager/FunctionDescriptor;");
   // Call getParameters method
   jobject parameter_list = env->CallObjectMethod(
       param_obj, java_streaming_queue_initial_parameters_getParameters_method);
