@@ -1938,7 +1938,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID id = ObjectID::FromRandom();
   ClientID node_id = ClientID::FromRandom();
-  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
   ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
@@ -1952,7 +1952,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_TRUE(deleted->count(id) > 0);
   deleted->clear();
 
-  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);

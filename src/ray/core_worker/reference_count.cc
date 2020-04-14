@@ -444,7 +444,7 @@ bool ReferenceCounter::SetDeleteCallback(
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
-  } else if (it->second.OutOfScope() &&
+  } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
              !it->second.ShouldDelete(lineage_pinning_enabled_)) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
@@ -485,7 +485,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
-    if (!it->second.OutOfScope()) {
+    if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       it->second.pinned_at_raylet_id = raylet_id;
     }
   }

@@ -1514,7 +1514,8 @@ Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
                                        /*inner_ids=*/{}, GetCallerId(), rpc_address_,
-                                       CurrentCallSite(), -1);
+                                       CurrentCallSite(), -1,
+                                       /*is_reconstructable=*/false);
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
