@@ -17,7 +17,7 @@ struct StreamingQueueInfo {
   uint64_t consumed_seq_id = 0;
 };
 
-struct ChannelInitialParameter {
+struct ChannelCreationParameter {
   ActorID actor_id;
   std::shared_ptr<ray::RayFunction> async_function;
   std::shared_ptr<ray::RayFunction> sync_function;
@@ -34,7 +34,7 @@ struct ProducerChannelInfo {
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
   int64_t message_pass_by_ts;
-  ChannelInitialParameter parameter;
+  ChannelCreationParameter parameter;
 
   /// The following parameters are used for event driven to record different
   /// input events.
@@ -61,7 +61,7 @@ struct ConsumerChannelInfo {
   uint64_t last_queue_item_latency = 0;
   uint64_t last_queue_target_diff = 0;
   uint64_t get_queue_item_times = 0;
-  ChannelInitialParameter parameter;
+  ChannelCreationParameter parameter;
   // Total count of notify request.
   uint64_t notify_cnt = 0;
 };

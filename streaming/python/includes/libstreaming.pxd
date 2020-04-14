@@ -98,8 +98,8 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
                                         c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
 cdef extern from "channel.h" namespace "ray::streaming" nogil:
-    cdef struct CChannelInitialParameter "ray::streaming::ChannelInitialParameter":
-        CChannelInitialParameter()
+    cdef struct CChannelCreationParameter "ray::streaming::ChannelCreationParameter":
+        CChannelCreationParameter()
         CActorID actor_id;
         shared_ptr[CRayFunction] async_function;
         shared_ptr[CRayFunction] sync_function;
@@ -127,7 +127,7 @@ cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CDataReader "ray::streaming::DataReader"(CStreamingCommon):
         CDataReader(shared_ptr[CRuntimeContext] &runtime_context)
         void Init(const c_vector[CObjectID] &input_ids,
-                  const c_vector[CChannelInitialParameter] &init_params,
+                  const c_vector[CChannelCreationParameter] &init_params,
                   const c_vector[uint64_t] &seq_ids,
                   const c_vector[uint64_t] &msg_ids,
                   int64_t timer_interval);
@@ -140,7 +140,7 @@ cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
     cdef cppclass CDataWriter "ray::streaming::DataWriter"(CStreamingCommon):
         CDataWriter(shared_ptr[CRuntimeContext] &runtime_context)
         CStreamingStatus Init(const c_vector[CObjectID] &channel_ids,
-                              const c_vector[CChannelInitialParameter] &init_params,
+                              const c_vector[CChannelCreationParameter] &init_params,
                               const c_vector[uint64_t] &message_ids,
                               const c_vector[uint64_t] &queue_size_vec);
         long WriteMessageToBufferRing(

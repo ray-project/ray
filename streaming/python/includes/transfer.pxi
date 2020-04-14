@@ -37,7 +37,7 @@ from ray.streaming.includes.libstreaming cimport (
     CReaderClient,
     CWriterClient,
     CLocalMemoryBuffer,
-    CChannelInitialParameter,
+    CChannelCreationParameter,
 )
 from ray._raylet import JavaFunctionDescriptor
 
@@ -46,15 +46,15 @@ import logging
 
 channel_logger = logging.getLogger(__name__)
 
-cdef class ChannelInitialParameter:
+cdef class ChannelCreationParameter:
     cdef:
-        CChannelInitialParameter parameter
+        CChannelCreationParameter parameter
     
     def __cinit__(self, ActorID actor_id, FunctionDescriptor async_func, FunctionDescriptor sync_func):
         cdef:
             shared_ptr[CRayFunction] async_func_ptr
             shared_ptr[CRayFunction] sync_func_ptr
-        self.parameter = CChannelInitialParameter()
+        self.parameter = CChannelCreationParameter()
         self.parameter.actor_id = (<ActorID>actor_id).data
         if isinstance(async_func, JavaFunctionDescriptor):
             self.parameter.async_function = make_shared[CRayFunction](LANGUAGE_JAVA, async_func.descriptor)
@@ -65,7 +65,7 @@ cdef class ChannelInitialParameter:
         else:
             self.parameter.sync_function = make_shared[CRayFunction](LANGUAGE_PYTHON, sync_func.descriptor)
 
-    cdef CChannelInitialParameter get_parameter(self):
+    cdef CChannelCreationParameter get_parameter(self):
         return self.parameter
 
 cdef class ReaderClient:
@@ -137,17 +137,17 @@ cdef class DataWriter:
 
     @staticmethod
     def create(list py_output_channels,
-               list output_initial_parameters: list[ChannelInitialParameter],
+               list output_initial_parameters: list[ChannelCreationParameter],
                uint64_t queue_size,
                list py_msg_ids,
                bytes config_bytes,
                c_bool is_mock):
         cdef:
             c_vector[CObjectID] channel_ids = bytes_list_to_qid_vec(py_output_channels)
-            c_vector[CChannelInitialParameter] initial_parameters
+            c_vector[CChannelCreationParameter] initial_parameters
             c_vector[uint64_t] msg_ids
             CDataWriter *c_writer
-            ChannelInitialParameter parameter
+            ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
         for param in output_initial_parameters:
             parameter = param
@@ -217,7 +217,7 @@ cdef class DataReader:
 
     @staticmethod
     def create(list py_input_queues,
-               list output_initial_parameters: list[ChannelInitialParameter],
+               list output_initial_parameters: list[ChannelCreationParameter],
                list py_seq_ids,
                list py_msg_ids,
                int64_t timer_interval,
@@ -226,11 +226,11 @@ cdef class DataReader:
                c_bool is_mock):
         cdef:
             c_vector[CObjectID] queue_id_vec = bytes_list_to_qid_vec(py_input_queues)
-            c_vector[CChannelInitialParameter] initial_parameters
+            c_vector[CChannelCreationParameter] initial_parameters
             c_vector[uint64_t] seq_ids
             c_vector[uint64_t] msg_ids
             CDataReader *c_reader
-            ChannelInitialParameter parameter
+            ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
         for param in output_initial_parameters:
             parameter = param

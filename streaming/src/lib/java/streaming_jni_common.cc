@@ -116,8 +116,7 @@ void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
 
 std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
     JNIEnv *env, jobject functionDescriptor) {
-  jclass java_language_class =
-      LoadClass(env, "io/ray/runtime/generated/Common$Language");
+  jclass java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   jclass java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   jmethodID java_language_get_number =
@@ -143,11 +142,11 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
 
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
-    std::vector<ray::streaming::ChannelInitialParameter> &parameter_vec) {
+    std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec) {
   jclass java_streaming_queue_initial_parameters_class =
       LoadClass(env,
                 "io/ray/streaming/runtime/transfer/"
-                "ChannelInitialParameters");
+                "ChannelCreationParameters");
   jmethodID java_streaming_queue_initial_parameters_getParameters_method =
       env->GetMethodID(java_streaming_queue_initial_parameters_class, "getParameters",
                        "()Ljava/util/List;");
@@ -156,7 +155,7 @@ void ParseChannelInitParameters(
   jclass java_streaming_queue_initial_parameters_parameter_class =
       LoadClass(env,
                 "io/ray/streaming/runtime/transfer/"
-                "ChannelInitialParameters$Parameter");
+                "ChannelCreationParameters$Parameter");
   jmethodID java_getActorIdBytes_method = env->GetMethodID(
       java_streaming_queue_initial_parameters_parameter_class, "getActorIdBytes", "()[B");
   jmethodID java_getAsyncFunctionDescriptor_method =
@@ -171,11 +170,11 @@ void ParseChannelInitParameters(
   jobject parameter_list = env->CallObjectMethod(
       param_obj, java_streaming_queue_initial_parameters_getParameters_method);
 
-  JavaListToNativeVector<ray::streaming::ChannelInitialParameter>(
+  JavaListToNativeVector<ray::streaming::ChannelCreationParameter>(
       env, parameter_list, &parameter_vec,
       [java_getActorIdBytes_method, java_getAsyncFunctionDescriptor_method,
        java_getSyncFunctionDescriptor_method](JNIEnv *env, jobject jobject_parameter) {
-        ray::streaming::ChannelInitialParameter native_parameter;
+        ray::streaming::ChannelCreationParameter native_parameter;
         jbyteArray jobject_actor_id_bytes = (jbyteArray)env->CallObjectMethod(
             jobject_parameter, java_getActorIdBytes_method);
         native_parameter.actor_id =

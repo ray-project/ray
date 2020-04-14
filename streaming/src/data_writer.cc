@@ -103,7 +103,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
 }
 
 StreamingStatus DataWriter::InitChannel(const ObjectID &q_id,
-                                        const ChannelInitialParameter &param,
+                                        const ChannelCreationParameter &param,
                                         uint64_t channel_message_id,
                                         uint64_t queue_size) {
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
@@ -130,7 +130,7 @@ StreamingStatus DataWriter::InitChannel(const ObjectID &q_id,
 }
 
 StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
-                                 const std::vector<ChannelInitialParameter> &init_params,
+                                 const std::vector<ChannelCreationParameter> &init_params,
                                  const std::vector<uint64_t> &channel_message_id_vec,
                                  const std::vector<uint64_t> &queue_size_vec) {
   STREAMING_CHECK(!queue_id_vec.empty() && !channel_message_id_vec.empty());

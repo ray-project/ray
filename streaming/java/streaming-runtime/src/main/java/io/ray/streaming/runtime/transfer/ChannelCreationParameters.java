@@ -5,7 +5,6 @@ import io.ray.api.BaseActor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
 import io.ray.runtime.actor.LocalModeRayActor;
 import io.ray.runtime.actor.NativeRayJavaActor;
@@ -18,7 +17,7 @@ import io.ray.streaming.runtime.worker.JobWorker;
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
  */
-public class ChannelInitialParameters {
+public class ChannelCreationParameters {
 
   public class Parameter {
 
@@ -90,7 +89,7 @@ public class ChannelInitialParameters {
       "streaming.runtime.worker",
       "JobWorker", "on_writer_message_sync");
 
-  public ChannelInitialParameters() {
+  public ChannelCreationParameters() {
   }
 
   public static void setJavaReaderFunctionDesc(JavaFunctionDescriptor asyncFunc,
@@ -105,19 +104,19 @@ public class ChannelInitialParameters {
     javaWriterSyncFuncDesc = syncFunc;
   }
 
-  public ChannelInitialParameters buildInputQueueParameters(List<String> queues,
+  public ChannelCreationParameters buildInputQueueParameters(List<String> queues,
       Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
         pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
-  public ChannelInitialParameters buildOutputQueueParameters(List<String> queues,
+  public ChannelCreationParameters buildOutputQueueParameters(List<String> queues,
       Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
         pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
-  private ChannelInitialParameters buildParameters(List<String> queues,
+  private ChannelCreationParameters buildParameters(List<String> queues,
       Map<String, BaseActor> actors,
       JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
       PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc

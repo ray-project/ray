@@ -2,7 +2,6 @@ package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
 import io.ray.streaming.runtime.util.Platform;
 import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
@@ -29,8 +28,8 @@ public class DataReader {
                     Map<String, String> conf) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
-    ChannelInitialParameters initialParameters =
-        new ChannelInitialParameters().buildInputQueueParameters(inputChannels, fromActors);
+    ChannelCreationParameters initialParameters =
+        new ChannelCreationParameters().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
@@ -156,7 +155,7 @@ public class DataReader {
   }
 
   private static native long createDataReaderNative(
-      ChannelInitialParameters initialParameters,
+      ChannelCreationParameters initialParameters,
       byte[][] inputChannels,
       long[] seqIds,
       long[] msgIds,

@@ -103,5 +103,5 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
     JNIEnv *env, jobject functionDescriptor);
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
-    std::vector<ray::streaming::ChannelInitialParameter> &parameter_vec);
+    std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
 #endif  // RAY_STREAMING_JNI_COMMON_H

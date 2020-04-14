@@ -17,7 +17,7 @@ namespace streaming {
 const uint32_t DataReader::kReadItemTimeout = 1000;
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
-                      const std::vector<ChannelInitialParameter> &init_params,
+                      const std::vector<ChannelCreationParameter> &init_params,
                       const std::vector<uint64_t> &queue_seq_ids,
                       const std::vector<uint64_t> &streaming_msg_ids,
                       int64_t timer_interval) {
@@ -30,7 +30,7 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
 }
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
-                      const std::vector<ChannelInitialParameter> &init_params,
+                      const std::vector<ChannelCreationParameter> &init_params,
                       int64_t timer_interval) {
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 

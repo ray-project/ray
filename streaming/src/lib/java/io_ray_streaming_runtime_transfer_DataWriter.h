@@ -10,34 +10,38 @@ extern "C" {
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
  * Method:    createWriterNative
- * Signature: (Lio/ray/streaming/runtime/transfer/ChannelInitialParameters;[[B[JJ[BZ)J
+ * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParameters;[[B[JJ[BZ)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative
-  (JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
+    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
  * Method:    writeMessageNative
  * Signature: (JJJI)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative
-  (JNIEnv *, jobject, jlong, jlong, jlong, jint);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(JNIEnv *, jobject,
+                                                                     jlong, jlong, jlong,
+                                                                     jint);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
  * Method:    stopWriterNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(
+    JNIEnv *, jobject, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
  * Method:    closeWriterNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *, jobject,
+                                                                    jlong);
 
 #ifdef __cplusplus
 }

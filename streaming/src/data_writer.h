@@ -41,7 +41,7 @@ class DataWriter {
   /// \param channel_message_id_vec channel seq id is related with message checkpoint
   /// \param queue_size queue size (memory size not length)
   StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
-                       const std::vector<ChannelInitialParameter> &init_params,
+                       const std::vector<ChannelCreationParameter> &init_params,
                        const std::vector<uint64_t> &channel_message_id_vec,
                        const std::vector<uint64_t> &queue_size_vec);
 
@@ -92,7 +92,7 @@ class DataWriter {
   StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
                                       bool *is_empty_message);
 
-  StreamingStatus InitChannel(const ObjectID &q_id, const ChannelInitialParameter &param,
+  StreamingStatus InitChannel(const ObjectID &q_id, const ChannelCreationParameter &param,
                               uint64_t channel_message_id, uint64_t queue_size);
 
   /// Write all messages to channel util ringbuffer is empty.

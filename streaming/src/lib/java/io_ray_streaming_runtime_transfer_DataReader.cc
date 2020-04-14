@@ -14,7 +14,7 @@ Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
     jlong timer_interval, jboolean isRecreate, jbyteArray config_bytes,
     jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: create DataReader.";
-  std::vector<ray::streaming::ChannelInitialParameter> parameter_vec;
+  std::vector<ray::streaming::ChannelCreationParameter> parameter_vec;
   ParseChannelInitParameters(env, streaming_queue_initial_parameters, parameter_vec);
   std::vector<ray::ObjectID> input_channels_ids =
       jarray_to_object_id_vec(env, input_channels);
@@ -74,17 +74,15 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBund
   std::memcpy(meta + kMessageBundleHeaderSize, bundle->from.Data(), kUniqueIDSize);
 }
 
-JNIEXPORT void JNICALL
-Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(JNIEnv *env,
-                                                                    jobject thisObj,
-                                                                    jlong ptr) {
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(
+    JNIEnv *env, jobject thisObj, jlong ptr) {
   auto reader = reinterpret_cast<DataReader *>(ptr);
   reader->Stop();
 }
 
 JNIEXPORT void JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
-                                                                     jobject thisObj,
-                                                                     jlong ptr) {
+                                                                    jobject thisObj,
+                                                                    jlong ptr) {
   delete reinterpret_cast<DataReader *>(ptr);
 }
