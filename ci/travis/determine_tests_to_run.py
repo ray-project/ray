@@ -8,7 +8,6 @@ import os
 import re
 import subprocess
 import sys
-from functools import partial
 from pprint import pformat
 
 
