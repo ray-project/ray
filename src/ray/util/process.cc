@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -54,7 +55,15 @@ class ProcessFD {
     intptr_t fd;
     pid_t pid;
 #ifdef _WIN32
-    fd = _spawnvp(P_NOWAIT, argv[0], argv);
+    std::vector<std::string> args;
+    for (size_t i = 0; argv[i]; ++i) {
+      args.push_back(argv[i]);
+    }
+    // Calling CreateCommandLine() here wouldn't make sense here if the
+    // Microsoft C runtime properly quoted each command-argument argument.
+    // However, it doesn't quote at all. It just joins arguments with a space.
+    // So we have to do the quoting manually and pass everything as a single argument.
+    fd = _spawnlp(P_NOWAIT, args[0].c_str(), CreateCommandLine(args).c_str(), NULL);
     if (fd != -1) {
       pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
       if (pid == 0) {

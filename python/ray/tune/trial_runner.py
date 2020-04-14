@@ -740,6 +740,9 @@ class TrialRunner:
 
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
+    def cleanup_trials(self):
+        self.trial_executor.cleanup()
+
     def __getstate__(self):
         """Gets state for trial.
 

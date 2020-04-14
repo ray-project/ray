@@ -108,6 +108,8 @@ message GetActorCheckpointIDReply {
 
 // Service for actor info access.
 service ActorInfoGcsService {
+  // Create actor via gcs service
+  rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Register an actor to GCS Service.
@@ -365,4 +367,12 @@ service WorkerInfoGcsService {
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
   // Register a worker to GCS Service.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+}
+
+message CreateActorRequest {
+  TaskSpec task_spec = 1;
+}
+
+message CreateActorReply {
+  GcsStatus status = 1;
 }

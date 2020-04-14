@@ -15,7 +15,7 @@
 /src/ray/gcs/format/*_generated.h
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
-/java/runtime/src/main/java/org/ray/runtime/generated/*
+/java/runtime/src/main/java/io/ray/runtime/generated/*
 
 # Redis temporary files
 *dump.rdb
@@ -153,7 +153,7 @@ java/runtime/native_dependencies/
 
 # streaming/python
 streaming/python/generated/
-streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/
+streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/
 streaming/build/java
 .clwb
 streaming/**/.settings

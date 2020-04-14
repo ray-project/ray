@@ -16,18 +16,24 @@ torch_version="$TORCH_VERSION"
 if [[ torch_version == "" ]]; then torch_version="1.4"; fi
 echo "torch_version is $torch_version"
 
-platform="unknown"
-unamestr="$(uname)"
-if [[ "$unamestr" == "Linux" ]]; then
-  echo "Platform is linux."
-  platform="linux"
-elif [[ "$unamestr" == "Darwin" ]]; then
-  echo "Platform is macosx."
-  platform="macosx"
-else
+platform=""
+case "${OSTYPE}" in
+  linux*)
+    platform="linux"
+    ;;
+  darwin*)
+    platform="macosx"
+    ;;
+  msys*)
+    platform="win32"
+    ;;
+esac
+if [ -z "$platform" ]; then
   echo "Unrecognized platform."
   exit 1
 fi
+
+echo "Platform is $platform."
 
 # Upgrade pip and other packages to avoid incompatibility ERRORS.
 pip install --upgrade pip # setuptools cloudpickle urllib3

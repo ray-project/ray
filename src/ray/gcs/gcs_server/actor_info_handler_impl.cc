@@ -18,6 +18,21 @@
 namespace ray {
 namespace rpc {
 
+void DefaultActorInfoHandler::HandleCreateActor(
+    const ray::rpc::CreateActorRequest &request, ray::rpc::CreateActorReply *reply,
+    ray::rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
+  auto actor_id =
+      ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+
+  RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
+  gcs_actor_manager_.RegisterActor(request, [reply, send_reply_callback, actor_id](
+                                                std::shared_ptr<gcs::GcsActor> actor) {
+    RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  });
+}
+
 void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {

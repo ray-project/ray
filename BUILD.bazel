@@ -272,6 +272,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@msgpack",
         "@plasma//:plasma_client",
@@ -324,6 +325,9 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        ":node_manager_rpc",
+        ":raylet_lib",
+        ":worker_rpc",
     ],
 )
 
@@ -543,6 +547,16 @@ cc_test(
 )
 
 cc_test(
+    name = "object_recovery_manager_test",
+    srcs = ["src/ray/core_worker/test/object_recovery_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -628,6 +642,17 @@ cc_test(
 )
 
 cc_test(
+    name = "util_test",
+    srcs = ["src/ray/util/util_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
@@ -668,17 +693,6 @@ cc_test(
 )
 
 cc_test(
-    name = "url_test",
-    srcs = ["src/ray/util/url_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@boost//:asio",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "sequencer_test",
     srcs = ["src/ray/util/sequencer_test.cc"],
     copts = COPTS,
@@ -714,6 +728,45 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gcs_node_manager_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_actor_scheduler_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_actor_manager_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
@@ -728,7 +781,8 @@ cc_library(
     ),
     copts = COPTS,
     deps = [
-        ":gcs_server_lib",
+        ":gcs",
+        ":gcs_service_rpc",
     ],
 )
 
@@ -743,6 +797,7 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
+        ":gcs_server_lib",
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -969,6 +1024,24 @@ cc_test(
         ":redis_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gcs_pubsub",
+    srcs = [
+        "src/ray/gcs/pubsub/redis_message_publisher.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/pubsub/message_publisher.h",
+        "src/ray/gcs/pubsub/redis_message_publisher.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+        ":redis_client",
     ],
 )
 
