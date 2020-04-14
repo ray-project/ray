@@ -164,6 +164,12 @@ parser.add_argument('--tta', type=int, default=0, metavar='N',
                     help='Test/inference time augmentation (oversampling) factor. 0=None (default: 0)')
 parser.add_argument("--local_rank", default=0, type=int)
 
+# ray
+parser.add_argument('--ray-address', default='auto', metavar='ADDR',
+                    help='Ray cluster address. [default=auto]')
+parser.add_argument('-n', '--ray-num-workers', type=int, default=1, metavar='N',
+                    help='Number of Ray replicas to use. [default=1]')
+
 
 def parse_args():
     # Do we have a config file to parse?
@@ -179,4 +185,19 @@ def parse_args():
 
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
+
+    # Arguments pre-processing from the original train.py
+    args.prefetcher = not args.no_prefetcher
+    args.distributed = False # ray SGD handles this (DistributedSampler)
+    args.device = 'cuda:0'
+    args.world_size = 1 # todo: set these properly? do they affect anything?
+    args.rank = 0
+
+    if args.num_gpu == 0 and args.prefetcher:
+        print(
+            "Prefetcher needs CUDA currently "
+            "(might be a bug in timm). "
+            "Disabling it.")
+        args.prefetcher = False
+
     return args, args_text

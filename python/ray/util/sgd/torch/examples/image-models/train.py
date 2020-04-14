@@ -9,11 +9,16 @@
 
 from os.path import join
 
+from tqdm import trange
+
 import torch.nn as nn
 
-from timm.data import Dataset, create_loader, resolve_data_config
+from timm.data import Dataset, create_loader, resolve_data_config, FastCollateMixup
 from timm.models import create_model
 from timm.optim import create_optimizer
+
+import ray
+from ray.util.sgd.utils import BATCH_SIZE
 
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
@@ -45,7 +50,7 @@ def model_creator(config):
     args = config["args"]
 
     return create_model(
-        'resnet101' || args.model,
+        "resnet101", # args.model,
         pretrained=args.pretrained,
         num_classes=args.num_classes,
         drop_rate=args.drop,
@@ -61,41 +66,47 @@ def model_creator(config):
 def data_creator(config):
     args = config["args"]
 
-    data_config = resolve_data_config(args)
+    data_config = resolve_data_config(vars(args))
 
-    dataset_train = Dataset(join(args.data, 'train'))
-    dataset_eval = Dataset(join(args.data, 'val'))
+    dataset_train = Dataset(join(args.data, "train"))
+    dataset_eval = Dataset(join(args.data, "val"))
 
-    common_params = {
-        input_size=data_config['input_size'],
+    num_aug_splits = 0 # todo: support aug splits
+
+    collate_fn = None
+    if args.prefetcher and args.mixup > 0:
+        assert not num_aug_splits  # collate conflict (need to support deinterleaving in collate mixup)
+        collate_fn = FastCollateMixup(args.mixup, args.smoothing, args.num_classes)
+
+    common_params = dict(
+        input_size=data_config["input_size"],
         use_prefetcher=args.prefetcher,
-        color_jitter=args.color_jitter,
-        auto_augment=args.aa,
-        num_aug_splits=num_aug_splits,
-        interpolation=args.train_interpolation,
-        mean=data_config['mean'],
-        std=data_config['std'],
+        mean=data_config["mean"],
+        std=data_config["std"],
         num_workers=args.workers,
         distributed=args.distributed,
-        collate_fn=collate_fn,
-        pin_memory=args.pin_mem
-    }
+        pin_memory=args.pin_mem)
 
     train_loader = create_loader(
         dataset_train,
         is_training=True,
-        batch_size=args.batch_size,
+        batch_size=config[BATCH_SIZE],
         re_prob=args.reprob,
         re_mode=args.remode,
         re_count=args.recount,
         re_split=args.resplit,
+        collate_fn=collate_fn,
+        color_jitter=args.color_jitter,
+        auto_augment=args.aa,
+        interpolation=args.train_interpolation,
+        num_aug_splits=num_aug_splits,
         **common_params)
     eval_loader = create_loader(
         dataset_eval,
         is_training=False,
-        batch_size=args.validation_batch_size_multiplier * args.batch_size,
-        interpolation=data_config['interpolation'],
-        crop_pct=data_config['crop_pct'],
+        batch_size=args.validation_batch_size_multiplier * config[BATCH_SIZE],
+        interpolation=data_config["interpolation"],
+        crop_pct=data_config["crop_pct"],
         **common_params)
 
     return train_loader, eval_loader
@@ -112,18 +123,28 @@ def loss_creator(config):
 def main():
     args, args_text = parse_args()
 
+    ray.init(address=args.ray_address)
+
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=loss_creator,
         use_tqdm=True,
-        config=dict(args: args))
+        config={
+            "args": args,
+            BATCH_SIZE: args.batch_size
+        },
+        num_workers=args.ray_num_workers)
 
-    a = trainer.train()
-    print(a)
+    pbar = trange(args.epochs, unit="epoch")
+    for i in pbar:
+        trainer.train()
+
+        val_stats = trainer1.validate()
+        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

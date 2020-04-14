@@ -76,12 +76,17 @@ setup_commands:
 
     # Install timm and get data
     - pip install timm
-    - ls data || (curl https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz -O && mkdir data && tar zxvf imagenette2.tgz -C data)
+    - ls data || (curl https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz -O && tar zxvf imagenette2.tgz && mv imagenette2 data)
 
 
 file_mounts: {
+    ~/args.py: args.py,
+
     # This should point to ray/python/ray/util/sgd.
-    # ~/sgd: ../../../sgd,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_runner.py: ../../torch_runner.py,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/distributed_torch_runner.py: ../../distributed_torch_runner.py,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_trainer.py: ../../torch_trainer.py,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/training_operator.py: ../../training_operator.py,
 }
 
 # Custom commands that will be run on the head node after common setup.
