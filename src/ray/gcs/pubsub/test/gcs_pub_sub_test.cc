@@ -14,9 +14,9 @@
 
 #include <memory>
 
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 
