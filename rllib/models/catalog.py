@@ -156,16 +156,13 @@ class ModelCatalog:
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical
-        # Tuple Space -> MultiAction.
+        # Tuple/Dict Spaces -> MultiAction.
         elif dist_type is MultiActionDistribution or \
-                isinstance(action_space, gym.spaces.Tuple):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Tuple action spaces not supported for Pytorch.")
+                isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+            flattened_action_space = flatten_space(action_space)
             child_dist = []
             input_lens = []
-            for action in action_space.spaces:
+            for action in flattened_action_space:
                 dist, action_size = ModelCatalog.get_action_dist(
                     action, config)
                 child_dist.append(dist)
@@ -188,12 +185,6 @@ class ModelCatalog:
                 TorchMultiCategorical
             return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
-        # Dict -> TODO(sven)
-        elif isinstance(action_space, gym.spaces.Dict):
-            # TODO(sven): implement
-            raise NotImplementedError(
-                "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead")
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
@@ -219,7 +210,7 @@ class ModelCatalog:
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             return (tf.as_dtype(action_space.dtype),
                     (None, ) + action_space.shape)
-        elif isinstance(action_space, gym.spaces.Tuple):
+        elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
             all_discrete = True
@@ -231,13 +222,9 @@ class ModelCatalog:
                     size += np.product(flat_action_space[i].shape)
             size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
-        elif isinstance(action_space, gym.spaces.Dict):
-            raise NotImplementedError(
-                "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead")
         else:
-            raise NotImplementedError("action space {}"
-                                      " not supported".format(action_space))
+            raise NotImplementedError(
+                "action space {} not supported".format(action_space))
 
     @staticmethod
     @DeveloperAPI
@@ -251,9 +238,8 @@ class ModelCatalog:
         """
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
-
         return tf.placeholder(dtype, shape=shape, name=(name or "action"))
-
+    
     @staticmethod
     @DeveloperAPI
     def get_model_v2(obs_space,

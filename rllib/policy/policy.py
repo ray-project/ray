@@ -6,7 +6,8 @@ import logging
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.space_utils import flatten_space
+from ray.rllib.utils.space_utils import flatten_space, \
+    get_base_struct_from_space
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.flattened_action_space = flatten_space(action_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
         # The global timestep, broadcast down from time to time from the
         # driver.
@@ -168,7 +170,7 @@ class Policy(metaclass=ABCMeta):
             timestep=timestep)
 
         if clip_actions:
-            flat_action = clip_flat_actions(
+            flat_action = clip_action(
                 flat_action, self.flattened_action_space)
 
         # Return action, internal state(s), infos.
@@ -398,30 +400,23 @@ class Policy(metaclass=ABCMeta):
         return exploration
 
 
-def clip_flat_actions(flat_actions, flat_space):
-    """
-    Called to clip actions to the specified range of this policy.
+def clip_action(flat_actions, flat_space):
+    """Clips all actions in `flat_actions` according to the given Spaces.
 
     Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
+        flat_actions (List[np.ndarray]): The (flattened) list of single action
+            components. List will have len=1 for "primitive" action Spaces.
+        flat_space (List[Space]): The (flattened) list of single action Space
+            objects. Has to be of same length as `flat_actions`.
 
     Returns:
-        Clipped batch of actions.
+        List[np.ndarray]: Flattened list of single clipped "primitive" actions.
     """
-    def map_(a, s):
-        if isinstance(s, gym.spaces.Box):
-            return np.clip(a, s.low, s.high)
-        #elif isinstance(space, gym.spaces.Tuple):
-        #    if type(action) not in (tuple, list):
-        #        raise ValueError("Expected tuple space for actions {}: {}".format(
-        #            action, space))
-        #    out = tree.map_structure(lambda data, sp: np.clip(data, space.low, space.high), action, tree.flatten(space))
-        #    #out = []
-        #    #for a, s in zip(action, space.spaces):
-        #    #    out.append(clip_action(a, s))
-        #    #return out
-        else:
-            return a
-
-    return tree.map_structure(map_, flat_actions, flat_space)
+    assert len(flat_actions) == len(flat_space), (flat_actions, flat_space)
+    clipped = []
+    for component, space in zip(flat_actions, flat_space):
+        a = component
+        if isinstance(space, gym.spaces.Box):
+            a = np.clip(a, space.low, space.high)
+        clipped.append(a)
+    return clipped

@@ -13,13 +13,24 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 def flatten_space(space):
+    """Flattens a gym.Space into its primitive components.
 
+    Primitive components are any non Tuple/Dict spaces. 
+
+    Args:
+        space(gym.Space): The gym.Space to flatten. This may be any
+            supported type (including nested Tuples and Dicts).
+    
+    Returns:
+        List[gym.Space]: The flattened list of primitive Spaces. This list
+            does not contain Tuples or Dicts anymore.
+    """
     def _helper_flatten(space_, l_):
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, l_)
-        elif isinstance(space, Dict):
-            for k in sorted(space_.keys()):
+        elif isinstance(space_, Dict):
+            for k in space_.spaces:
                 _helper_flatten(space_[k], l_)
         else:
             l_.append(space_)
@@ -27,3 +38,16 @@ def flatten_space(space):
     l = []
     _helper_flatten(space, l)
     return l
+
+
+def get_base_struct_from_space(space):
+
+    def _helper_struct(space_):
+        if isinstance(space_, Tuple):
+            return [_helper_struct(s) for s in space_]
+        elif isinstance(space_, Dict):
+            return {k: _helper_struct(space_[k]) for k in space_.spaces}
+        else:
+            return space_
+
+    return _helper_struct(space)
