@@ -440,7 +440,7 @@ class Trainable:
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
 
         for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
+            path = os.path.join(checkpoint_path, relpath_name)
 
             # This may be a subdirectory, hence not just using tmpdir
             os.makedirs(os.path.dirname(path), exist_ok=True)

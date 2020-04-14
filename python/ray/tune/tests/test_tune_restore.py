@@ -1,5 +1,6 @@
 # coding: utf-8
 import os
+import pickle
 import shutil
 import tempfile
 import unittest
@@ -111,6 +112,30 @@ class TuneExampleTest(unittest.TestCase):
         from ray.tune.examples.async_hyperband_example import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
+
+    def testCheckpointWithNoop(self):
+        """Tests that passing the checkpoint_dir right back works."""
+        class MockTrainable(tune.Trainable):
+            def _setup(self, config):
+                pass
+
+            def _train(self):
+                return {"score": 1}
+
+            def _save(self, checkpoint_dir):
+                with open(os.path.join(checkpoint_dir, "test.txt"), "wb") as f:
+                    pickle.dump("test", f)
+                return checkpoint_dir
+
+            def _restore(self, checkpoint_dir):
+                with open(os.path.join(checkpoint_dir, "test.txt"), "rb") as f:
+                    x = pickle.load(f)
+
+                assert x == "test"
+                return checkpoint_dir
+
+        validate_save_restore(MockTrainable)
+        validate_save_restore(MockTrainable, use_object_store=True)
 
 
 class AutoInitTest(unittest.TestCase):
