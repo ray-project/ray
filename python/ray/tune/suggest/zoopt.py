@@ -1,19 +1,64 @@
 import copy
 import logging
 import pickle
-
-try:  # Python 3 only -- needed for lint test.
-    from zoopt import Dimension2, Parameter
-    from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
-except ImportError:
-    zoopt = None
-
+from zoopt import Dimension2, Parameter
+from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 logger = logging.getLogger(__name__)
 
 
 class ZOOptSearch(SuggestionAlgorithm):
+    """A wrapper around ZOOpt to provide trial suggestions.
+
+    Requires zoopt package (>=0.4.0) to be installed. You can install it with the
+    command: ``pip install -U zoopt``.
+
+    Parameters:
+        algo (str): To specify an algorithm in zoopt you want to use. Only support ASRacos currently.
+        budget (int): Number of samples.
+        dim_dict (dict): Dimension dictionary. For continuous dimensions: (continuous, search_range, precision);
+            for discrete dimensions: (discrete, search_range, has_order). More details can be found in zoopt package.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults to 10.
+        metric (str): The training result objective value attribute. Defaults to "episode_reward_mean".
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute. Defaults to "min".
+
+    .. code-block:: python
+
+    from ray.tune import run
+    from ray.tune.suggest.zoopt import ZOOptSearch
+    from zoopt import ValueType
+
+    dim_dict = {
+        "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
+        "width": (ValueType.DISCRETE, [-10, 10], False)
+    }
+
+    config = {
+        "num_samples": 200,
+        "config": {
+            "iterations": 10,  # evaluation times
+        },
+        "stop": {
+            "timesteps_total": 10  # cumstom stop rules
+        }
+    }
+
+    zoopt_search = ZOOptSearch(
+        algo="Asracos",  # only support Asracos currently
+        budget=config["num_samples"],
+        dim_dict=dim_dict,
+        max_concurrent=4,
+        metric="mean_loss",
+        mode="min")
+
+    run(my_objective,
+        search_alg=zoopt_search,
+        name="zoopt_search",
+        **config)
+
+    """
 
     optimizer = None
 

@@ -17,6 +17,8 @@ from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.suggest.zoopt import ZOOptSearch
+from zoopt import ValueType
 from ray.tune.utils import validate_save_restore
 
 
@@ -286,6 +288,28 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             return
 
         super().testWarmStart()
+
+
+class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+
+    def set_basic_conf(self):
+        dim_dict = {
+            "height": (ValueType.CONTINUOUS, [-100, 100], 1e-2),
+            "width": (ValueType.DISCRETE, [0, 20], False)
+        }
+
+        def cost(dim_dict, reporter):
+            reporter(loss=(dim_dict["height"] - 14)**2 - abs(dim_dict["width"] - 3))
+
+        search_alg = ZOOptSearch(
+            algo="Asracos",  # only support ASRacos currently
+            budget=200,
+            dim_dict=dim_dict,
+            max_concurrent=1,
+            metric="loss",
+            mode="min")
+
+        return search_alg, cost
 
 
 if __name__ == "__main__":
