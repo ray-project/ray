@@ -1,11 +1,11 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: sgd-pytorch
+cluster_name: sgd-pytorch-imagenet
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 2
-initial_workers: 2
-max_workers: 2
+min_workers: 1
+initial_workers: 1
+max_workers: 1
 
 target_utilization_fraction: 0.9
 
@@ -74,9 +74,9 @@ setup_commands:
     - rm -rf apex || true
     - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
-    - curl https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz -O
-    - mkdir data
-    - tar zxvf imagenette2.tgz -C data
+    # Install timm and get data
+    - pip install timm
+    - ls data || (curl https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz -O && mkdir data && tar zxvf imagenette2.tgz -C data)
 
 
 file_mounts: {
