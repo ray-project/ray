@@ -4,20 +4,25 @@ import numpy as np
 import queue
 import threading
 import time
+try:
+    import tree
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
+    raise e
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import clip_action
+from ray.rllib.policy.policy import clip_flat_actions
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.space_utils import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
@@ -653,8 +658,8 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             if clip_actions:
-                actions_to_send[env_id][agent_id] = clip_action(
-                    action, policy.action_space)
+                actions_to_send[env_id][agent_id] = clip_flat_actions(
+                    action, policy.flattened_action_space)
             else:
                 actions_to_send[env_id][agent_id] = action
             episode = active_episodes[env_id]
@@ -691,13 +696,24 @@ def _fetch_atari_metrics(base_env):
 
 
 def _unbatch_tuple_actions(action_batch):
-    # convert list of batches -> batch of lists
+    # Converts action_batch:
+    # From a single list of batches:
+    # e.g. [[int batch 1, 2, 3], [float batch 1.0, 2.0, 3.0],
+    #       [float batch [5.0, 6.0], [6.0, 7.0], [7.0, 8.0]]]
+    # To a batch of lists (each of these lists representing a single action):
+    # e.g. [
+    #   [1, 1.0, 5.0, 6.0],  <- action 1
+    #   [2, 2.0, 6.0, 7.0],  <- action 2
+    #   [3, 3.0, 7.0, 8.0],  <- action 3
+    # ]
     if isinstance(action_batch, TupleActions):
+        flattened_action_batch = tree.flatten(action_batch)
         out = []
-        for j in range(len(action_batch.batches[0])):
+        # Loop through the length of the batches.
+        for batch_item in range(len(flattened_action_batch[0])):
             out.append([
-                action_batch.batches[i][j]
-                for i in range(len(action_batch.batches))
+                flattened_action_batch[batch][batch_item]
+                for batch in range(len(flattened_action_batch))
             ])
         return out
     return action_batch

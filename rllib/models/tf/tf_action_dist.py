@@ -1,11 +1,12 @@
+from math import log
 import numpy as np
 import functools
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf, try_import_tfp, SMALL_NUMBER, \
-    MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.space_utils import TupleActions
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -326,6 +327,51 @@ class SquashedGaussian(TFActionDistribution):
                              (self.high - self.low) * 2.0 - 1.0)
 
 
+class Beta(TFActionDistribution):
+    """
+    A Beta distribution is defined on the interval [0, 1] and parameterized by
+    shape parameters alpha and beta (also called concentration parameters).
+
+    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+        and Gamma(n) = (n - 1)!
+    """
+
+    def __init__(self, inputs, model, low=0.0, high=1.0):
+        # Stabilize input parameters (possibly coming from a linear layer).
+        inputs = tf.clip_by_value(
+            inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
+        inputs = tf.math.log(tf.math.exp(inputs) + 1.0) + 1.0
+        self.low = low
+        self.high = high
+        alpha, beta = tf.split(inputs, 2, axis=-1)
+        # Note: concentration0==beta, concentration1=alpha (!)
+        self.dist = tfp.distributions.Beta(
+            concentration1=alpha, concentration0=beta)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        mean = self.dist.mean()
+        return self._squash(mean)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self._squash(self.dist.sample())
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        return tf.math.reduce_sum(
+            self.dist.log_prob(unsquashed_values), axis=-1)
+
+    def _squash(self, raw_values):
+        return raw_values * (self.high - self.low) + self.low
+
+    def _unsquash(self, values):
+        return (values - self.low) / (self.high - self.low)
+
+
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
@@ -352,7 +398,7 @@ class Deterministic(TFActionDistribution):
 
 
 class MultiActionDistribution(TFActionDistribution):
-    """Action distribution that operates for list of actions.
+    """Action distribution that operates for list of (flattened) actions.
 
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.

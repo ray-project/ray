@@ -1,10 +1,20 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
+import logging
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.space_utils import flatten_space
+
+logger = logging.getLogger(__name__)
+
+try:
+    import tree
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
+    raise e
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -47,6 +57,7 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space = observation_space
         self.action_space = action_space
+        self.flattened_action_space = flatten_space(action_space)
         self.config = config
         # The global timestep, broadcast down from time to time from the
         # driver.
@@ -146,7 +157,7 @@ class Policy(metaclass=ABCMeta):
         if state is not None:
             state_batch = [[s] for s in state]
 
-        [action], state_out, info = self.compute_actions(
+        [flat_action], state_out, info = self.compute_actions(
             [obs],
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -157,9 +168,11 @@ class Policy(metaclass=ABCMeta):
             timestep=timestep)
 
         if clip_actions:
-            action = clip_action(action, self.action_space)
+            flat_action = clip_flat_actions(
+                flat_action, self.flattened_action_space)
 
         # Return action, internal state(s), infos.
+        action = tree.unflatten_as(flat_action, self.action_space)
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
@@ -385,7 +398,7 @@ class Policy(metaclass=ABCMeta):
         return exploration
 
 
-def clip_action(action, space):
+def clip_flat_actions(flat_actions, flat_space):
     """
     Called to clip actions to the specified range of this policy.
 
@@ -396,16 +409,19 @@ def clip_action(action, space):
     Returns:
         Clipped batch of actions.
     """
+    def map_(a, s):
+        if isinstance(s, gym.spaces.Box):
+            return np.clip(a, s.low, s.high)
+        #elif isinstance(space, gym.spaces.Tuple):
+        #    if type(action) not in (tuple, list):
+        #        raise ValueError("Expected tuple space for actions {}: {}".format(
+        #            action, space))
+        #    out = tree.map_structure(lambda data, sp: np.clip(data, space.low, space.high), action, tree.flatten(space))
+        #    #out = []
+        #    #for a, s in zip(action, space.spaces):
+        #    #    out.append(clip_action(a, s))
+        #    #return out
+        else:
+            return a
 
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
+    return tree.map_structure(map_, flat_actions, flat_space)

@@ -24,6 +24,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
 
@@ -219,14 +220,15 @@ class ModelCatalog:
             return (tf.as_dtype(action_space.dtype),
                     (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.Tuple):
+            flat_action_space = flatten_space(action_space)
             size = 0
             all_discrete = True
-            for i in range(len(action_space.spaces)):
-                if isinstance(action_space.spaces[i], gym.spaces.Discrete):
+            for i in range(len(flat_action_space)):
+                if isinstance(flat_action_space[i], gym.spaces.Discrete):
                     size += 1
                 else:
                     all_discrete = False
-                    size += np.product(action_space.spaces[i].shape)
+                    size += np.product(flat_action_space[i].shape)
             size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
         elif isinstance(action_space, gym.spaces.Dict):

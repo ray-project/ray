@@ -1,8 +1,12 @@
+import functools
+from math import log
 import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
+from ray.rllib.utils.space_utils import TupleActions
 
 torch, nn = try_import_torch()
 
@@ -159,6 +163,62 @@ class TorchDiagGaussian(TorchDistributionWrapper):
         return np.prod(action_space.shape) * 2
 
 
+class TorchBeta(TorchDistributionWrapper):
+    """
+    A Beta distribution is defined on the interval [0, 1] and parameterized by
+    shape parameters alpha and beta (also called concentration parameters).
+
+    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+        and Gamma(n) = (n - 1)!
+    """
+
+    def __init__(self, inputs, model, low=0.0, high=1.0):
+        super().__init__(inputs, model)
+        # Stabilize input parameters (possibly coming from a linear layer).
+        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER),
+                                  -log(SMALL_NUMBER))
+        self.inputs = torch.log(torch.exp(self.inputs) + 1.0) + 1.0
+        self.low = low
+        self.high = high
+        alpha, beta = torch.chunk(self.inputs, 2, dim=-1)
+        # Note: concentration0==beta, concentration1=alpha (!)
+        self.dist = torch.distributions.Beta(
+            concentration1=alpha, concentration0=beta)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        self.last_sample = self._squash(self.dist.mean)
+        return self.last_sample
+
+    @override(TorchDistributionWrapper)
+    def sample(self):
+        normal_sample = self.dist.sample()
+        self.last_sample = self._squash(normal_sample)
+        return self.last_sample
+
+    def rsample(self):
+        """Reparameterization-trick version of `sample`.
+
+        Use this if you need the sampling step to be differentiable (e.g.
+        through some loss function).
+        """
+        normal_sample = self.dist.rsample()
+        self.last_sample = self._squash(normal_sample)
+        return self.last_sample
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        return torch.sum(self.dist.log_prob(unsquashed_values), dim=-1)
+
+    def _squash(self, raw_values):
+        return raw_values * (self.high - self.low) + self.low
+
+    def _unsquash(self, values):
+        return (values - self.low) / (self.high - self.low)
+
+
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
@@ -182,3 +242,73 @@ class TorchDeterministic(TorchDistributionWrapper):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return np.prod(action_space.shape)
+
+
+class TorchMultiActionDistribution(TorchDistributionWrapper):
+    """Action distribution that operates for list of (flattened) actions.
+
+    Args:
+        inputs (Tensor list): A list of tensors from which to compute samples.
+    """
+
+    def __init__(self, inputs, model, action_space, child_distributions,
+                 input_lens):
+        for i, input_ in enumerate(inputs):
+            if not isinstance(input_, torch.Tensor):
+                inputs[i] = torch.Tensor(input_)
+        super().__init__(inputs, model)
+        self.input_lens = input_lens
+        split_inputs = torch.split(self.inputs, self.input_lens, dim=1)
+        child_list = []
+        for i, distribution in enumerate(child_distributions):
+            child_list.append(distribution(split_inputs[i], model))
+        self.child_distributions = child_list
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        split_indices = []
+        for dist in self.child_distributions:
+            if isinstance(dist, TorchCategorical):
+                split_indices.append(1)
+            else:
+                split_indices.append(dist.sample().size()[1])
+        split_list = list(torch.split(x, split_indices, dim=1))
+        for i, distribution in enumerate(self.child_distributions):
+            # Remove extra categorical dimension
+            if isinstance(distribution, TorchCategorical):
+                split_list[i] = torch.squeeze(split_list[i], dim=-1).int()
+        log_list = [
+            distribution.logp(split_x) for distribution, split_x in zip(
+                self.child_distributions, split_list)
+        ]
+        return functools.reduce(lambda a, b: a + b, log_list)
+
+    @override(ActionDistribution)
+    def kl(self, other):
+        kl_list = [
+            distribution.kl(other_distribution)
+            for distribution, other_distribution in zip(
+                self.child_distributions, other.child_distributions)
+        ]
+        return functools.reduce(lambda a, b: a + b, kl_list)
+
+    @override(ActionDistribution)
+    def entropy(self):
+        entropy_list = [s.entropy() for s in self.child_distributions]
+        return functools.reduce(lambda a, b: a + b, entropy_list)
+
+    @override(ActionDistribution)
+    def sample(self):
+        return TupleActions([s.sample() for s in self.child_distributions])
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return TupleActions(
+            [s.deterministic_sample() for s in self.child_distributions])
+
+    @override(TorchDistributionWrapper)
+    def sampled_action_logp(self):
+        p = self.child_distributions[0].sampled_action_logp()
+        for c in self.child_distributions[1:]:
+            p += c.sampled_action_logp()
+        return p
