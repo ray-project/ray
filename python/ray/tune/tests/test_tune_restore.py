@@ -115,6 +115,7 @@ class TuneExampleTest(unittest.TestCase):
 
     def testCheckpointWithNoop(self):
         """Tests that passing the checkpoint_dir right back works."""
+
         class MockTrainable(tune.Trainable):
             def _setup(self, config):
                 pass
