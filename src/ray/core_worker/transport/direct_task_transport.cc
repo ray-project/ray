@@ -15,7 +15,6 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
 
@@ -23,6 +22,30 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+    if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
+      // If gcs actor management is enabled, the actor creation task will be sent to gcs
+      // server directly after the in-memory dependent objects are resolved.
+      // For more details please see the protocol of actor management based on gcs.
+      // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
+      auto actor_id = task_spec.ActorCreationId();
+      auto task_id = task_spec.TaskId();
+      RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
+      auto status =
+          actor_create_callback_(task_spec, [this, actor_id, task_id](Status status) {
+            // If GCS is failed, GcsRpcClient may receive IOError status but it will not
+            // trigger this callback, because GcsRpcClient has retry logic at the
+            // bottom. So if this callback is invoked with an error there must be
+            // something wrong with the protocol of gcs-based actor management.
+            // So just check `status.ok()` here.
+            RAY_CHECK_OK(status);
+            RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
+            task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                                rpc::Address());
+          });
+      RAY_CHECK_OK(status);
+      return;
+    }
+
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.

@@ -24,7 +24,7 @@ namespace rpc {
 
 GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
     : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
-  cqs_.reserve(num_threads_);
+  cqs_.resize(num_threads_);
 }
 
 void GrpcServer::Run() {
@@ -52,7 +52,7 @@ void GrpcServer::Run() {
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   for (int i = 0; i < num_threads_; i++) {
-    cqs_.push_back(builder.AddCompletionQueue());
+    cqs_[i] = builder.AddCompletionQueue();
   }
   // Build and start server.
   server_ = builder.BuildAndStart();

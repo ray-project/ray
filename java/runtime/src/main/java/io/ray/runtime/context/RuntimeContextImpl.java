@@ -40,7 +40,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       return false;
     }
 
-    return runtime.getGcsClient().actorExists(getCurrentActorId());
+    return runtime.getGcsClient().wasCurrentActorReconstructed(getCurrentActorId());
   }
 
   @Override

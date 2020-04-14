@@ -325,6 +325,9 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        ":node_manager_rpc",
+        ":raylet_lib",
+        ":worker_rpc",
     ],
 )
 
@@ -725,6 +728,45 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gcs_node_manager_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_actor_scheduler_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_actor_manager_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
@@ -739,7 +781,8 @@ cc_library(
     ),
     copts = COPTS,
     deps = [
-        ":gcs_server_lib",
+        ":gcs",
+        ":gcs_service_rpc",
     ],
 )
 
@@ -754,6 +797,7 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
+        ":gcs_server_lib",
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -980,6 +1024,24 @@ cc_test(
         ":redis_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gcs_pubsub",
+    srcs = [
+        "src/ray/gcs/pubsub/redis_message_publisher.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/pubsub/message_publisher.h",
+        "src/ray/gcs/pubsub/redis_message_publisher.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+        ":redis_client",
     ],
 )
 
