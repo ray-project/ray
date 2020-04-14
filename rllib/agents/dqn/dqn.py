@@ -8,9 +8,11 @@ from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, LocalReplay
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 logger = logging.getLogger(__name__)
 

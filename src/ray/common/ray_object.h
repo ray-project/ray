@@ -15,6 +15,7 @@
 #ifndef RAY_COMMON_RAY_OBJECT_H
 #define RAY_COMMON_RAY_OBJECT_H
 
+#include "absl/types/optional.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/gcs.pb.h"

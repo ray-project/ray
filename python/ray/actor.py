@@ -407,6 +407,7 @@ class ActorClass:
                 resources=None,
                 is_direct_call=None,
                 max_concurrency=None,
+                max_reconstructions=None,
                 name=None,
                 detached=False):
         """Create an actor.
@@ -545,7 +546,7 @@ class ActorClass:
             meta.language,
             meta.actor_creation_function_descriptor,
             creation_args,
-            meta.max_reconstructions,
+            max_reconstructions or meta.max_reconstructions,
             resources,
             actor_placement_resources,
             max_concurrency,

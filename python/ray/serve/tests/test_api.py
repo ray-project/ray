@@ -10,7 +10,7 @@ from ray.serve.handle import RayServeHandle
 
 
 def test_e2e(serve_instance):
-    serve.init()  # so we have access to global state
+    serve.init()
     serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
 
     retry_count = 5
@@ -181,19 +181,19 @@ def test_killing_replicas(serve_instance):
     serve.create_endpoint("simple", "/simple")
     b_config = BackendConfig(num_replicas=3, num_cpus=2)
     serve.create_backend(Simple, "simple:v1", backend_config=b_config)
-    global_state = serve.api._get_global_state()
-    old_replica_tag_list = global_state.backend_table.list_replicas(
-        "simple:v1")
+    master_actor = serve.api._get_master_actor()
+    old_replica_tag_list = ray.get(
+        master_actor._list_replicas.remote("simple:v1"))
 
     bnew_config = serve.get_backend_config("simple:v1")
     # change the config
     bnew_config.num_cpus = 1
     # set the config
     serve.set_backend_config("simple:v1", bnew_config)
-    new_replica_tag_list = global_state.backend_table.list_replicas(
-        "simple:v1")
+    new_replica_tag_list = ray.get(
+        master_actor._list_replicas.remote("simple:v1"))
     new_all_tag_list = list(
-        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
+        ray.get(master_actor.get_all_worker_handles.remote()).keys())
 
     # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
@@ -215,19 +215,19 @@ def test_not_killing_replicas(serve_instance):
     serve.create_endpoint("bsimple", "/bsimple")
     b_config = BackendConfig(num_replicas=3, max_batch_size=2)
     serve.create_backend(BatchSimple, "bsimple:v1", backend_config=b_config)
-    global_state = serve.api._get_global_state()
-    old_replica_tag_list = global_state.backend_table.list_replicas(
-        "bsimple:v1")
+    master_actor = serve.api._get_master_actor()
+    old_replica_tag_list = ray.get(
+        master_actor._list_replicas.remote("bsimple:v1"))
 
     bnew_config = serve.get_backend_config("bsimple:v1")
     # change the config
     bnew_config.max_batch_size = 5
     # set the config
     serve.set_backend_config("bsimple:v1", bnew_config)
-    new_replica_tag_list = global_state.backend_table.list_replicas(
-        "bsimple:v1")
+    new_replica_tag_list = ray.get(
+        master_actor._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = list(
-        ray.get(global_state.master_actor.get_all_handles.remote()).keys())
+        ray.get(master_actor.get_all_worker_handles.remote()).keys())
 
     # the old and new replica tag list should be identical
     # and should be subset of all_tag_list
