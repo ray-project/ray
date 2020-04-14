@@ -157,10 +157,10 @@ def run(args, parser):
 
     verbose = 1
     for exp in experiments.values():
-
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
-        if exp["config"].get("input") and \
+        # NOTE: Some of our yaml files don't have a `config` section.
+        if exp.get("config", {}).get("input") and \
                 not os.path.exists(exp["config"]["input"]):
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent

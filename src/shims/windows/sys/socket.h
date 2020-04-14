@@ -29,18 +29,8 @@ typedef unsigned short sa_family_t;
 #define msg_flags dwFlags
 
 int dumb_socketpair(SOCKET socks[2]);
-ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags);
-ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
-int socketpair(int domain, int type, int protocol, int sv[2]);
-
-#ifdef __cplusplus
-namespace {
-inline int send(SOCKET s, const void *buf, int len, int flags) {
-  // Call the const char* overload version
-  int (*psend)(SOCKET s, const char *buf, int len, int flags) = ::send;
-  return (*psend)(s, (const char *)buf, len, flags);
-}
-}  // namespace
-#endif
+ssize_t sendmsg(SOCKET sockfd, struct msghdr *msg, int flags);
+ssize_t recvmsg(SOCKET sockfd, struct msghdr *msg, int flags);
+int socketpair(int domain, int type, int protocol, SOCKET sv[2]);
 
 #endif /* SOCKET_H */

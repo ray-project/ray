@@ -65,7 +65,12 @@ int main(int argc, char *argv[]) {
   // // instead of returning immediately.
   // auto handler = [&io_service](const boost::system::error_code &error,
   //                              int signal_number) { io_service.stop(); };
-  // boost::asio::signal_set signals(io_service, SIGTERM);
+  // boost::asio::signal_set signals(io_service);
+  // #ifdef _WIN32
+  //   signals.add(SIGBREAK);
+  // #else
+  //   signals.add(SIGTERM);
+  // #endif
   // signals.async_wait(handler);
 
   // Initialize the monitor.

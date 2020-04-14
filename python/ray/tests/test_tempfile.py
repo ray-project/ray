@@ -72,6 +72,12 @@ def test_tempdir_commandline():
         ignore_errors=True)
 
 
+def test_tempdir_long_path():
+    temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * 108)
+    with pytest.raises(OSError):
+        ray.init(temp_dir=temp_dir)  # path should be too long
+
+
 def test_raylet_socket_name(shutdown_only):
     ray.init(
         raylet_socket_name=os.path.join(ray.utils.get_user_temp_dir(),
@@ -145,7 +151,7 @@ def test_raylet_tempfiles(shutdown_only):
         "raylet.err"
     }
 
-    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+    if ray_constants.GCS_SERVICE_ENABLED:
         log_files_expected.update({"gcs_server.out", "gcs_server.err"})
     else:
         log_files_expected.update({"raylet_monitor.out", "raylet_monitor.err"})

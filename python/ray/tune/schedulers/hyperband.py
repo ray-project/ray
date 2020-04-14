@@ -175,6 +175,11 @@ class HyperBandScheduler(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         action = self._process_bracket(trial_runner, bracket)
+        logger.info("{action} for {trial} on {metric}={metric_val}".format(
+            action=action,
+            trial=trial,
+            metric=self._time_attr,
+            metric_val=result.get(self._time_attr)))
         return action
 
     def _process_bracket(self, trial_runner, bracket):
@@ -379,7 +384,7 @@ class Bracket:
 
         delta = self._get_result_time(result) - \
             self._get_result_time(self._live_trials[trial])
-        assert delta >= 0
+        assert delta >= 0, (result, self._live_trials[trial])
         self._completed_progress += delta
         self._live_trials[trial] = result
 

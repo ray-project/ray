@@ -101,11 +101,21 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
+  ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+    num_leases_canceled += 1;
+    cancel_callbacks.push_back(callback);
+    return Status::OK();
+  }
+
   // Trigger reply to RequestWorkerLease.
   bool GrantWorkerLease(const std::string &address, int port,
-                        const ClientID &retry_at_raylet_id) {
+                        const ClientID &retry_at_raylet_id, bool cancel = false) {
     rpc::RequestWorkerLeaseReply reply;
-    if (!retry_at_raylet_id.IsNil()) {
+    if (cancel) {
+      reply.set_canceled(true);
+    } else if (!retry_at_raylet_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
       reply.mutable_retry_at_raylet_address()->set_raylet_id(retry_at_raylet_id.Binary());
@@ -124,12 +134,27 @@ class MockRayletClient : public WorkerLeaseInterface {
     }
   }
 
+  bool ReplyCancelWorkerLease(bool success = true) {
+    rpc::CancelWorkerLeaseReply reply;
+    reply.set_success(success);
+    if (cancel_callbacks.size() == 0) {
+      return false;
+    } else {
+      auto callback = cancel_callbacks.front();
+      callback(Status::OK(), reply);
+      cancel_callbacks.pop_front();
+      return true;
+    }
+  }
+
   ~MockRayletClient() {}
 
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
+  int num_leases_canceled = 0;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
+  std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
@@ -139,7 +164,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(*data, obj1).ok());
+  ASSERT_TRUE(mem->Put(*data, obj1));
 
   // Test getting an already existing object.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
@@ -148,7 +173,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_TRUE(mem->Put(*data, obj2).ok());
+  ASSERT_FALSE(mem->Put(*data, obj2));
   ASSERT_TRUE(num_plasma_puts == 1);
 
   // The next time you get it, it's already there so no need to promote.
@@ -176,7 +201,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-  ASSERT_TRUE(store->Put(data, obj1).ok());
+  ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   bool ok = false;
@@ -196,8 +221,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
@@ -227,8 +252,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -256,8 +281,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -310,6 +335,8 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -335,6 +362,8 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -381,6 +410,8 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -408,16 +439,20 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // Task 1 finishes, Task 2 is scheduled on the same worker.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // Task 2 finishes, Task 3 is scheduled on the same worker.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Task 3 finishes, the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -430,6 +465,111 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+}
+
+TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  // Task 1 finishes, Task 2 is scheduled on the same worker.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // Task 2 finishes, Task 3 is scheduled on the same worker.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // Task 3 finishes, the worker is returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // Simulate the lease cancellation request failing because it arrives at the
+  // raylet before the last worker lease request has been received.
+  int i = 1;
+  for (; i <= 3; i++) {
+    ASSERT_EQ(raylet_client->num_leases_canceled, i);
+    ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease(false));
+  }
+
+  // Simulate the lease cancellation request succeeding.
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, i);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, i);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, ClientID::Nil(), /*cancel=*/true));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  // The canceled lease is not returned.
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+}
+
+TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  // Task 1 finishes, Task 2 is scheduled on the same worker.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+
+  // Task 2's lease request gets canceled.
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Task 2 finishes, the worker is returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // Another task is submitted while task 2's lease request is being canceled.
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Task 2's lease request is canceled, a new worker is requested for task 3.
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, ClientID::Nil(), /*cancel=*/true));
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+
+  // Task 3 finishes, all workers returned.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -469,6 +609,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
@@ -498,6 +640,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -548,6 +692,12 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  for (const auto &remote_client : remote_lease_clients) {
+    ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
+    ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
+  }
 }
 
 TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
@@ -604,6 +754,12 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  for (const auto &remote_client : remote_lease_clients) {
+    ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
+    ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
+  }
 }
 
 // Helper to run a test that checks that 'same1' and 'same2' are treated as the same
@@ -681,16 +837,16 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, direct1).ok());
-  ASSERT_TRUE(store->Put(*data, direct2).ok());
+  ASSERT_TRUE(store->Put(*data, direct1));
+  ASSERT_TRUE(store->Put(*data, direct2));
 
   // Force plasma objects to be promoted.
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-  ASSERT_TRUE(store->Put(plasma_data, plasma1).ok());
-  ASSERT_TRUE(store->Put(plasma_data, plasma2).ok());
+  ASSERT_TRUE(store->Put(plasma_data, plasma1));
+  ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
   same_deps_1.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
@@ -758,6 +914,8 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 }  // namespace ray

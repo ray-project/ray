@@ -1,10 +1,12 @@
 import collections
 import errno
+import io
 import json
 import logging
 import multiprocessing
 import os
 import random
+import signal
 import socket
 import subprocess
 import sys
@@ -74,6 +76,32 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
     "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
+
+
+class ConsolePopen(subprocess.Popen):
+    if sys.platform == "win32":
+
+        def terminate(self):
+            if isinstance(self.stdin, io.IOBase):
+                self.stdin.close()
+            if self._use_signals:
+                self.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                super(ConsolePopen, self).terminate()
+
+        def __init__(self, *args, **kwargs):
+            # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
+            # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
+            new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
+            flags = 0
+            if ray.utils.detect_fate_sharing_support():
+                # If we don't have kernel-mode fate-sharing, then don't do this
+                # because our children need to be in out process group for
+                # the process reaper to properly terminate them.
+                flags = new_pgroup
+            kwargs.setdefault("creationflags", flags)
+            self._use_signals = (kwargs["creationflags"] & new_pgroup)
+            super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
 def address(ip_address, port):
@@ -464,7 +492,7 @@ def start_ray_process(command,
         if fate_share and sys.platform.startswith("linux"):
             ray.utils.set_kill_on_parent_death_linux()
 
-    process = subprocess.Popen(
+    process = ConsolePopen(
         command,
         env=modified_env,
         cwd=cwd,
@@ -605,9 +633,10 @@ def start_reaper(fate_share=None):
     # up other ray processes without killing the process group of the
     # process that started us.
     try:
-        os.setpgrp()
-    except (AttributeError, OSError) as e:
-        errcode = e.errno if isinstance(e, OSError) else None
+        if sys.platform != "win32":
+            os.setpgrp()
+    except OSError as e:
+        errcode = e.errno
         if errcode == errno.EPERM and os.getpgrp() == os.getpid():
             # Nothing to do; we're already a session leader.
             pass
@@ -910,7 +939,9 @@ def _start_redis_instance(executable,
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
                            "Check log files: {} {}".format(
-                               stdout_file.name, stderr_file.name))
+                               stdout_file.name if stdout_file is not None else
+                               "<stdout>", stderr_file.name
+                               if stdout_file is not None else "<stderr>"))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(
@@ -1083,13 +1114,9 @@ def start_dashboard(require_webui,
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        "--host={}".format(host),
-        "--port={}".format(port),
-        "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir),
+        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
+        "--port={}".format(port), "--redis-address={}".format(redis_address),
+        "--temp-dir={}".format(temp_dir)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1121,6 +1148,7 @@ def start_dashboard(require_webui,
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
+
         return dashboard_url, process_info
     else:
         return None, None
@@ -1394,7 +1422,7 @@ def build_java_worker_command(
     command += options
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
-    command += ["org.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command
 

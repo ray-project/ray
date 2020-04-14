@@ -110,6 +110,16 @@ TEST(NilTest, TestIsNil) {
   ASSERT_TRUE(ObjectID::Nil().IsNil());
 }
 
+TEST(HashTest, TestNilHash) {
+  // Manually trigger the hash calculation of the static global nil ID.
+  auto nil_hash = ObjectID::Nil().Hash();
+  ObjectID id1 = ObjectID::FromRandom();
+  ASSERT_NE(nil_hash, id1.Hash());
+  ObjectID id2 = ObjectID::FromBinary(ObjectID::FromRandom().Binary());
+  ASSERT_NE(nil_hash, id2.Hash());
+  ASSERT_NE(id1.Hash(), id2.Hash());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

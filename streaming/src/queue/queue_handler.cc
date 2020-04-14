@@ -85,8 +85,8 @@ std::shared_ptr<Transport> QueueMessageHandler::GetOutTransport(
 void QueueMessageHandler::SetPeerActorID(const ObjectID &queue_id,
                                          const ActorID &actor_id) {
   actors_.emplace(queue_id, actor_id);
-  out_transports_.emplace(
-      queue_id, std::make_shared<ray::streaming::Transport>(core_worker_, actor_id));
+  out_transports_.emplace(queue_id,
+                          std::make_shared<ray::streaming::Transport>(actor_id));
 }
 
 ActorID QueueMessageHandler::GetPeerActorID(const ObjectID &queue_id) {
@@ -113,10 +113,9 @@ void QueueMessageHandler::Stop() {
 }
 
 std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::CreateService(
-    CoreWorker *core_worker, const ActorID &actor_id) {
+    const ActorID &actor_id) {
   if (nullptr == upstream_handler_) {
-    upstream_handler_ =
-        std::make_shared<UpstreamQueueMessageHandler>(core_worker, actor_id);
+    upstream_handler_ = std::make_shared<UpstreamQueueMessageHandler>(actor_id);
   }
   return upstream_handler_;
 }
@@ -247,11 +246,9 @@ void UpstreamQueueMessageHandler::ReleaseAllUpQueues() {
 }
 
 std::shared_ptr<DownstreamQueueMessageHandler>
-DownstreamQueueMessageHandler::CreateService(CoreWorker *core_worker,
-                                             const ActorID &actor_id) {
+DownstreamQueueMessageHandler::CreateService(const ActorID &actor_id) {
   if (nullptr == downstream_handler_) {
-    downstream_handler_ =
-        std::make_shared<DownstreamQueueMessageHandler>(core_worker, actor_id);
+    downstream_handler_ = std::make_shared<DownstreamQueueMessageHandler>(actor_id);
   }
   return downstream_handler_;
 }

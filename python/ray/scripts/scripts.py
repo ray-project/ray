@@ -394,7 +394,7 @@ def start(node_ip_address, redis_address, address, redis_port,
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
         if redis_address is None:
-            raise Exception("If --head is not passed in, --redis-address must "
+            raise Exception("If --head is not passed in, --address must "
                             "be provided.")
         if num_redis_shards is not None:
             raise Exception("If --head is not passed in, --num-redis-shards "
@@ -485,7 +485,7 @@ def stop(force, verbose):
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker.
-        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
@@ -753,9 +753,14 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @click.argument("script", required=True, type=str)
-@click.option("--args", required=False, type=str, help="Script args.")
+@click.option(
+    "--args",
+    required=False,
+    type=str,
+    help="(deprecated) Use '-- --arg1 --arg2' for script args.")
+@click.argument("script_args", nargs=-1)
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, args):
+           cluster_name, port_forward, script, args, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -763,9 +768,16 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         os.path.join("~", os.path.basename(script))
 
     Example:
-        >>> ray submit [CLUSTER.YAML] experiment.py --args="--smoke-test"
+        >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+    assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
+
+    if args:
+        logger.warning(
+            "ray submit [yaml] [script.py] --args=... is deprecated and "
+            "will be removed in a future version of Ray. Use "
+            "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
 
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
@@ -775,7 +787,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     command_parts = ["python", target]
-    if args is not None:
+    if script_args:
+        command_parts += list(script_args)
+    elif args is not None:
         command_parts += [args]
 
     port_forward = [(port, port) for port in list(port_forward)]

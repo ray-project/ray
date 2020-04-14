@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include <sys/wait.h>
-
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
@@ -32,7 +30,7 @@ namespace {
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+    const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -68,7 +66,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifndef _WIN32
+#ifdef _WIN32
+  // If worker processes fail to initialize, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
+  // If worker processes crash, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
+#else
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -183,7 +186,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
+        auto options = ParseCommandLine(dynamic_options[dynamic_option_index]);
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
         ++dynamic_option_index;
@@ -314,7 +317,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
@@ -325,7 +328,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {

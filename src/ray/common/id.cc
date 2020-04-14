@@ -335,7 +335,7 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
                                     ObjectIDFlagsType flags,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
-  ObjectID ret = ObjectID::Nil();
+  ObjectID ret;
   std::memcpy(ret.id_, task_id_binary.c_str(), TaskID::kLength);
   std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));
   std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &object_index,

@@ -25,6 +25,10 @@
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/util/util.h"
 
+#ifdef _WIN32
+#include <win32fd.h>
+#endif
+
 namespace ray {
 
 ObjectStoreNotificationManager::ObjectStoreNotificationManager(
@@ -38,10 +42,11 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       exit_on_error_(exit_on_error) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
-  int c_socket;  // TODO(mehrdadn): This should be type SOCKET for Windows
-  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket));
+  int fd;
+  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&fd));
   boost::system::error_code ec;
 #ifdef _WIN32
+  boost::asio::detail::socket_type c_socket = fh_release(fd);
   WSAPROTOCOL_INFO pi;
   size_t n = sizeof(pi);
   char *p = reinterpret_cast<char *>(&pi);
@@ -51,10 +56,10 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       boost::asio::detail::socket_error_retval) {
     switch (pi.iAddressFamily) {
     case AF_INET:
-      socket_.assign(local_stream_protocol::v4(), c_socket, ec);
+      socket_.assign(boost::asio::ip::tcp::v4(), c_socket, ec);
       break;
     case AF_INET6:
-      socket_.assign(local_stream_protocol::v6(), c_socket, ec);
+      socket_.assign(boost::asio::ip::tcp::v6(), c_socket, ec);
       break;
     default:
       ec = boost::system::errc::make_error_code(
@@ -63,7 +68,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
     }
   }
 #else
-  socket_.assign(local_stream_protocol(), c_socket, ec);
+  socket_.assign(boost::asio::local::stream_protocol(), fd, ec);
 #endif
   RAY_CHECK(!ec);
   NotificationWait();

@@ -1,47 +1,73 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import {
+  Checkbox,
+  createStyles,
+  FormControl,
+  FormControlLabel,
+  FormGroup,
+  FormLabel,
+  Grid,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  Theme,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
+import { TuneTrial } from "../../../api";
+import DialogWithTitle from "../../../common/DialogWithTitle";
+import NumberedLines from "../../../common/NumberedLines";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
-import TableSortLabel from "@material-ui/core/TableSortLabel";
-import { TuneTrial } from "../../../api";
 
 const styles = (theme: Theme) =>
   createStyles({
     root: {
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(2)
-      }
+        marginTop: theme.spacing(2),
+      },
     },
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
+      height: "700px",
+      overflowY: "auto",
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "right",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
+    checkboxRoot: {
+      height: "500px",
+      overflowY: "auto",
+      overflowX: "auto",
+    },
+    paramChecklist: {
+      marginBottom: theme.spacing(2),
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tuneInfo: state.dashboard.tuneInfo
+  tuneInfo: state.dashboard.tuneInfo,
 });
 
-interface State {
+type State = {
   metricParamColumn: string;
   ascending: boolean;
   sortedColumn: keyof TuneTrial | undefined;
-}
+  metricColumns: string[];
+  paramColumns: string[];
+  errorTrial: string;
+  open: boolean;
+};
 
 const mapDispatchToProps = dashboardActions;
 
@@ -56,7 +82,11 @@ class TuneTable extends React.Component<
   state: State = {
     sortedColumn: undefined,
     ascending: true,
-    metricParamColumn: ""
+    metricParamColumn: "",
+    metricColumns: [],
+    paramColumns: [],
+    errorTrial: "",
+    open: false,
   };
 
   onColumnClick = (column: keyof TuneTrial, metricParamColumn?: string) => {
@@ -68,12 +98,12 @@ class TuneTable extends React.Component<
     }
     this.setState({
       sortedColumn: column,
-      ascending: ascending
+      ascending: ascending,
     });
 
     if (metricParamColumn) {
       this.setState({
-        metricParamColumn: metricParamColumn
+        metricParamColumn: metricParamColumn,
       });
     }
   };
@@ -82,16 +112,33 @@ class TuneTable extends React.Component<
    * Replaces all underscores with spaces and capitalizes all words
    * in str
    */
-  humanize = (str: string) => {
-    var i,
-      frags = str.split("_");
-    for (i = 0; i < frags.length; i++) {
-      frags[i] = frags[i].charAt(0).toUpperCase() + frags[i].slice(1);
+  humanize = (str: string) =>
+    str
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  handleOpen = (key: string | number) => {
+    if (typeof key === "number") {
+      key = key.toString();
     }
-    return frags.join(" ");
+    this.setState({
+      open: true,
+      errorTrial: key,
+    });
   };
 
-  sortedCell = (name: keyof TuneTrial, chosenMetricParam?: string) => {
+  handleClose = () => {
+    this.setState({
+      open: false,
+    });
+  };
+
+  sortedCell = (
+    name: keyof TuneTrial,
+    chosenMetricParam?: string,
+    index?: number,
+  ) => {
     const { tuneInfo, classes } = this.props;
     const { sortedColumn, ascending, metricParamColumn } = this.state;
     let label: "desc" | "asc" = "asc";
@@ -109,10 +156,14 @@ class TuneTable extends React.Component<
       onClick = () => this.onColumnClick(name, chosenMetricParam);
     }
 
+    if (!index) {
+      index = 0;
+    }
+
     let active = false;
-    let key: string = name;
+    let key: string = name + index.toString();
     if (chosenMetricParam) {
-      key = chosenMetricParam;
+      key = chosenMetricParam + index.toString();
       active = chosenMetricParam === metricParamColumn && sortedColumn === name;
     } else {
       active = name === sortedColumn;
@@ -154,11 +205,11 @@ class TuneTable extends React.Component<
     if (sortedColumn) {
       if (ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) > getAttribute(b) ? 1 : -1
+          getAttribute(a) > getAttribute(b) ? 1 : -1,
         );
       } else if (!ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) < getAttribute(b) ? 1 : -1
+          getAttribute(a) < getAttribute(b) ? 1 : -1,
         );
       }
     }
@@ -166,8 +217,94 @@ class TuneTable extends React.Component<
     return trialDetails;
   };
 
+  handleMetricChoiceChange = (name: string) => (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    let { metricColumns } = this.state;
+    if (event.target.checked) {
+      metricColumns.push(name);
+      this.setState({
+        metricColumns: metricColumns,
+      });
+    } else {
+      metricColumns = metricColumns.filter((value) => value !== name);
+      this.setState({
+        metricColumns: metricColumns,
+      });
+    }
+  };
+
+  metricChoices = (metricNames: string[]) => {
+    const { metricColumns } = this.state;
+
+    return (
+      <FormControl>
+        <FormLabel component="legend">Select Metrics </FormLabel>
+        <FormGroup>
+          {metricNames.map((value) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={metricColumns.includes(value)}
+                  onChange={this.handleMetricChoiceChange(value)}
+                  value={value}
+                  color="primary"
+                />
+              }
+              label={value}
+            />
+          ))}
+        </FormGroup>
+      </FormControl>
+    );
+  };
+
+  handleParamChoiceChange = (name: string) => (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    let { paramColumns } = this.state;
+    if (event.target.checked) {
+      paramColumns.push(name);
+      this.setState({
+        paramColumns: paramColumns,
+      });
+    } else {
+      paramColumns = paramColumns.filter((value) => value !== name);
+      this.setState({
+        paramColumns: paramColumns,
+      });
+    }
+  };
+
+  paramChoices = (paramNames: string[]) => {
+    const { classes } = this.props;
+    const { paramColumns } = this.state;
+    return (
+      <FormControl className={classes.paramChecklist}>
+        <FormLabel component="legend">Select Parameters </FormLabel>
+        <FormGroup>
+          {paramNames.map((value) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={paramColumns.includes(value)}
+                  onChange={this.handleParamChoiceChange(value)}
+                  value={value}
+                  color="primary"
+                />
+              }
+              label={value}
+            />
+          ))}
+        </FormGroup>
+      </FormControl>
+    );
+  };
+
   render() {
     const { classes, tuneInfo } = this.props;
+
+    const { metricColumns, paramColumns, open, errorTrial } = this.state;
 
     if (
       tuneInfo === null ||
@@ -178,58 +315,127 @@ class TuneTable extends React.Component<
 
     const firstTrial = Object.keys(tuneInfo["trial_records"])[0];
     const paramsDict = tuneInfo["trial_records"][firstTrial]["params"];
-    const paramNames = Object.keys(paramsDict).filter(k => k !== "args");
+    const paramNames = Object.keys(paramsDict).filter((k) => k !== "args");
+
+    let viewableParams = paramNames;
+    const paramOptions = paramNames.length > 3;
+    if (paramOptions) {
+      if (paramColumns.length === 0) {
+        this.setState({
+          paramColumns: paramNames.slice(0, 3),
+        });
+      }
+      viewableParams = paramColumns;
+    }
 
     const metricNames = Object.keys(
-      tuneInfo["trial_records"][firstTrial]["metrics"]
+      tuneInfo["trial_records"][firstTrial]["metrics"],
     );
+
+    let viewableMetrics = metricNames;
+    const metricOptions = metricNames.length > 3;
+    if (metricOptions) {
+      if (metricColumns.length === 0) {
+        this.setState({
+          metricColumns: metricNames.slice(0, 3),
+        });
+      }
+      viewableMetrics = metricColumns;
+    }
 
     const trialDetails = this.sortedTrialRecords();
 
     return (
       <div className={classes.root}>
-        <Table className={classes.table}>
-          <TableHead>
-            <TableRow>
-              {this.sortedCell("trial_id")}
-              {this.sortedCell("job_id")}
-              {this.sortedCell("start_time")}
-              {paramNames.map(value => this.sortedCell("params", value))}
-              {this.sortedCell("status")}
-              {metricNames.map(value => this.sortedCell("metrics", value))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {trialDetails !== null &&
-              trialDetails.map((trial, index) => (
-                <TableRow key={index}>
-                  <TableCell className={classes.cell}>
-                    {trial["trial_id"]}
+        <Grid container spacing={0}>
+          {(paramOptions || metricOptions) && (
+            <Grid item xs={2} className={classes.checkboxRoot}>
+              {paramOptions && this.paramChoices(paramNames)}
+              {metricOptions && this.metricChoices(metricNames)}
+            </Grid>
+          )}
+          <Grid
+            item
+            xs={paramOptions || metricOptions ? 10 : 12}
+            className={classes.table}
+          >
+            <Table stickyHeader>
+              <TableHead>
+                <TableRow>
+                  {this.sortedCell("trial_id")}
+                  {this.sortedCell("job_id")}
+                  {this.sortedCell("start_time")}
+                  {viewableParams.map((value, index) =>
+                    this.sortedCell("params", value, index),
+                  )}
+                  {this.sortedCell("status")}
+                  {viewableMetrics.map((value, index) =>
+                    this.sortedCell("metrics", value, index),
+                  )}
+                  <TableCell className={classes.cell} key="error">
+                    Error
                   </TableCell>
-                  <TableCell className={classes.cell}>
-                    {trial["job_id"]}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {trial["start_time"]}
-                  </TableCell>
-                  {paramNames.map(value => (
-                    <TableCell className={classes.cell} key={value}>
-                      {trial["params"][value]}
-                    </TableCell>
-                  ))}
-                  <TableCell className={classes.cell}>
-                    {trial["status"]}
-                  </TableCell>
-                  {trial["metrics"] &&
-                    metricNames.map(value => (
-                      <TableCell className={classes.cell} key={value}>
-                        {trial["metrics"][value]}
-                      </TableCell>
-                    ))}
                 </TableRow>
-              ))}
-          </TableBody>
-        </Table>
+              </TableHead>
+              <TableBody>
+                {trialDetails !== null &&
+                  trialDetails.map((trial, index) => (
+                    <TableRow key={index}>
+                      <TableCell className={classes.cell}>
+                        {trial["trial_id"]}
+                      </TableCell>
+                      <TableCell className={classes.cell}>
+                        {trial["job_id"]}
+                      </TableCell>
+                      <TableCell className={classes.cell}>
+                        {trial["start_time"]}
+                      </TableCell>
+                      {viewableParams.map((value, index) => (
+                        <TableCell className={classes.cell} key={index}>
+                          {trial["params"][value]}
+                        </TableCell>
+                      ))}
+                      <TableCell className={classes.cell}>
+                        {trial["status"]}
+                      </TableCell>
+                      {trial["metrics"] &&
+                        viewableMetrics.map((value, index) => (
+                          <TableCell className={classes.cell} key={index}>
+                            {trial["metrics"][value]}
+                          </TableCell>
+                        ))}
+                      <TableCell className={classes.cell}>
+                        {trial["error"] === "No Error" ? (
+                          "No Error"
+                        ) : (
+                          <Link
+                            component="button"
+                            variant="body2"
+                            onClick={() => {
+                              this.handleOpen(trial["trial_id"]);
+                            }}
+                          >
+                            Show Error
+                          </Link>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </Grid>
+        </Grid>
+        {open && (
+          <DialogWithTitle handleClose={this.handleClose} title="Error Log">
+            {open && (
+              <NumberedLines
+                lines={tuneInfo["trial_records"][errorTrial]["error"]
+                  .trim()
+                  .split("\n")}
+              />
+            )}
+          </DialogWithTitle>
+        )}
       </div>
     );
   }
@@ -237,5 +443,5 @@ class TuneTable extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneTable));

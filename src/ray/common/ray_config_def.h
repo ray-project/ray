@@ -101,6 +101,8 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
+RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
@@ -261,6 +263,10 @@ RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
 /// The interval at which the gcs server will check if redis has gone down.
 /// When this happens, gcs server will kill itself.
 RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
+/// Duration to wait between retries for leasing worker in gcs server.
+RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
+/// Duration to wait between retries for creating actor in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -271,3 +277,12 @@ RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+
+/// Whether to enable gcs service.
+/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
+/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
+/// otherwise gcs service is enabled.
+/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
+RAY_CONFIG(bool, gcs_service_enabled,
+           getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
+               getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))
