@@ -207,6 +207,8 @@ class _SquashedGaussianBase(TFActionDistribution):
         # Clip `scale` values (coming from NN) to reasonable values.
         self.log_std = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
                                         MAX_LOG_NN_OUTPUT)
+        # Clip loc too, for numerical stability reasons.
+        loc = tf.clip_by_value(loc, -3, 3)
         scale = tf.exp(self.log_std)
         self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
         assert len(self.distr.loc.shape) == 1
