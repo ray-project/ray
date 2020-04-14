@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -38,17 +39,36 @@ def try_import_tf(error=False):
     Returns:
         The tf module (either from tf2.0.compat.v1 OR as tf1.x.
     """
-    # TODO(sven): Make sure, these are reset after each test case
-    # that uses them.
+    # Make sure, these are reset after each test case
+    # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
         return None
 
+    if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+    # Try to reuse already imported tf module. This will avoid going through
+    # the initial import steps below and thereby switching off v2_behavior
+    # (switching off v2 behavior twice breaks all-framework tests for eager).
+    if "tensorflow" in sys.modules:
+        tf_module = sys.modules["tensorflow"]
+        # Try "reducing" tf to tf.compat.v1.
+        try:
+            tf_module = tf_module.compat.v1
+        # No compat.v1 -> return tf as is.
+        except AttributeError:
+            pass
+        return tf_module
+
+    # Just in case. We should not go through the below twice.
+    assert "tensorflow" not in sys.modules
+
     try:
-        if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
-            os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+        # Try "reducing" tf to tf.compat.v1.
         import tensorflow.compat.v1 as tf
         tf.logging.set_verbosity(tf.logging.ERROR)
+        # Disable v2 eager mode.
         tf.disable_v2_behavior()
         return tf
     except ImportError:
