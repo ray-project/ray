@@ -1,4 +1,13 @@
+# Modified by Maksim Smolin in 2020
+#
+# Original work by Ross Wightman as part of the timm package
+# (see LICENSE_THIRDPARTY)
+
+# Note: other authors MUST include themselves in the above copyright notice
+#       in order to abide by the terms of the Apache license
+
 import argparse
+import yaml
 
 config_parser = parser = argparse.ArgumentParser(description='Training Config', add_help=False)
 parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
@@ -156,7 +165,7 @@ parser.add_argument('--tta', type=int, default=0, metavar='N',
 parser.add_argument("--local_rank", default=0, type=int)
 
 
-def _parse_args():
+def parse_args():
     # Do we have a config file to parse?
     args_config, remaining = config_parser.parse_known_args()
     if args_config.config:
