@@ -804,9 +804,9 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
+        ":gcs_server_lib",
         ":gcs_table_storage_lib",
         ":store_client_test_lib",
-        ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
