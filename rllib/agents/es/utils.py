@@ -4,8 +4,6 @@
 import numpy as np
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
-
 
 def compute_ranks(x):
     """Returns ranks in [0, len(x))
@@ -24,14 +22,6 @@ def compute_centered_ranks(x):
     y /= (x.size - 1)
     y -= 0.5
     return y
-
-
-def make_session(single_threaded):
-    if not single_threaded:
-        return tf.Session()
-    return tf.Session(
-        config=tf.ConfigProto(
-            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
 
 
 def itergroups(items, group_size):

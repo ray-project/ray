@@ -30,7 +30,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac = policy.compute(observation, add_noise=add_noise)[0]
+        ac = policy.compute_actions(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
         rews.append(rew)
         t += 1
@@ -40,15 +40,30 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     return rews, t
 
 
-class GenericPolicy:
-    def __init__(self, sess, action_space, obs_space, preprocessor,
-                 observation_filter, model_options, action_noise_std):
-        self.sess = sess
+def make_session(single_threaded):
+    if not single_threaded:
+        return tf.Session()
+    return tf.Session(
+        config=tf.ConfigProto(
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
+
+
+class ESTFPolicy:
+    def __init__(self,
+                 action_space,
+                 obs_space,
+                 preprocessor,
+                 observation_filter,
+                 model_options,
+                 *,
+                 action_noise_std,
+                 single_threaded=False):
         self.action_space = action_space
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
         self.observation_filter = get_filter(observation_filter,
                                              self.preprocessor.shape)
+        self.sess = make_session(single_threaded=single_threaded)
         self.inputs = tf.placeholder(tf.float32,
                                      [None] + list(self.preprocessor.shape))
 
@@ -69,7 +84,7 @@ class GenericPolicy:
             for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute(self, observation, add_noise=False, update=True):
+    def compute_actions(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
@@ -85,8 +100,8 @@ class GenericPolicy:
     def get_weights(self):
         return self.variables.get_flat()
 
-    def get_filter(self):
-        return self.observation_filter
+    #def get_filter(self):
+    #    return self.observation_filter
 
-    def set_filter(self, observation_filter):
-        self.observation_filter = observation_filter
+    #def set_filter(self, observation_filter):
+    #    self.observation_filter = observation_filter

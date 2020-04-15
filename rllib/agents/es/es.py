@@ -8,7 +8,8 @@ import time
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
-from ray.rllib.agents.es import optimizers, policies, utils
+from ray.rllib.agents.es import optimizers, utils
+from ray.rllib.agents.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
@@ -81,15 +82,16 @@ class Worker:
         self.preprocessor = models.ModelCatalog.get_preprocessor(
             self.env, config["model"])
 
-        self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.env.observation_space,
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(
+            self.env.action_space, self.env.observation_space,
             self.preprocessor, config["observation_filter"], config["model"],
+            single_threaded=True,
             **policy_params)
 
     @property
     def filters(self):
-        return {DEFAULT_POLICY_ID: self.policy.get_filter()}
+        return {DEFAULT_POLICY_ID: self.policy.observation_filter}
 
     def sync_filters(self, new_filters):
         for k in self.filters:
@@ -104,7 +106,7 @@ class Worker:
         return return_filters
 
     def rollout(self, timestep_limit, add_noise=True):
-        rollout_rewards, rollout_fragment_length = policies.rollout(
+        rollout_rewards, rollout_fragment_length = rollout(
             self.policy,
             self.env,
             timestep_limit=timestep_limit,
@@ -160,6 +162,15 @@ class Worker:
             eval_lengths=eval_lengths)
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.es.es_torch_policy import ESTorchPolicy
+        policy_cls = ESTorchPolicy
+    else:
+        policy_cls = ESTFPolicy
+    return policy_cls
+
+
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
@@ -168,21 +179,15 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        # PyTorch check.
-        if config["use_pytorch"]:
-            raise ValueError(
-                "ES does not support PyTorch yet! Use tf instead.")
-
         policy_params = {"action_noise_std": 0.01}
-
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
-        self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, env.observation_space, preprocessor,
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(
+            env.action_space, env.observation_space, preprocessor,
             config["observation_filter"], config["model"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
         self.report_length = config["report_length"]
@@ -271,7 +276,7 @@ class ESTrainer(Trainer):
 
         # Now sync the filters
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self._workers)
 
         info = {
@@ -326,14 +331,14 @@ class ESTrainer(Trainer):
     def __getstate__(self):
         return {
             "weights": self.policy.get_weights(),
-            "filter": self.policy.get_filter(),
+            "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
         self.policy.set_weights(state["weights"])
-        self.policy.set_filter(state["filter"])
+        self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self._workers)
