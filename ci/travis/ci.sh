@@ -13,7 +13,7 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 # Usage: should_run_job [VAR_NAME]...
 should_run_job() {
   local skip=0
-  if [ -n "$1" ]; then  # were any triggers provided? (if not, then the job will always run)
+  if [ -n "${1-}" ]; then  # were any triggers provided? (if not, then the job will always run)
     local envvar active_triggers=()
     for envvar in "$@"; do
       if [ "${!envvar}" = 1 ]; then
@@ -59,11 +59,11 @@ reload_env() {
 init() {
   local job_names="${1-}"
 
-  local definitions
-  definitions="$(python "${ROOT_DIR}"/determine_tests_to_run.py)"
-  { declare ${definitions}; } 2> /dev/null
+  local variable_definitions
+  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  { declare "${variable_definitions[@]}"; } > /dev/null 2> /dev/null
 
-  if ! should_run_job ${job_names//,/ }; then
+  if ! (set +x && should_run_job ${job_names//,/ }); then
     exit 0
   fi
 
@@ -92,7 +92,9 @@ build() {
     "${ROOT_DIR}"/install-cython-examples.sh
   fi
 
-  eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
+  if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
+    eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
+  fi
 
   if [ "${LINUX_WHEELS-}" = 1 ]; then
     # Mount bazel cache dir to the docker container.
