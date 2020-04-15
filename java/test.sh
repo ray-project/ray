@@ -8,11 +8,12 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 run_testng() {
-    # The command `$@` will exited immediately once `set -e`.
-    set +e
-    $@
-    set -e
-    local exit_code=$?
+    local exit_code
+    if "$@"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
         exit $exit_code
