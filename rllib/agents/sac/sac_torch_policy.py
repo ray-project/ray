@@ -113,12 +113,12 @@ def actor_critic_loss(policy, model, _, train_batch):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.rsample() if not deterministic else \
+        policy_t = action_dist_t.sample() if not deterministic else \
             action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.rsample() if not deterministic else \
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else \
             action_dist_tp1.deterministic_sample()
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.logp(policy_tp1), -1)
 

@@ -197,16 +197,8 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sample(self):
-        normal_sample = self.dist.rsample()
-        self.last_sample = self._squash(normal_sample)
-        return self.last_sample
-
-    def rsample(self):
-        """Reparameterization-trick version of `sample`.
-
-        Use this if you need the sampling step to be differentiable (e.g.
-        through some loss function).
-        """
+        # Use the reparameterization version of `dist.sample` to allow for
+        # the results to be backprop'able e.g. in a loss term.
         normal_sample = self.dist.rsample()
         self.last_sample = self._squash(normal_sample)
         return self.last_sample
@@ -263,16 +255,8 @@ class TorchBeta(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sample(self):
-        normal_sample = self.dist.sample()
-        self.last_sample = self._squash(normal_sample)
-        return self.last_sample
-
-    def rsample(self):
-        """Reparameterization-trick version of `sample`.
-
-        Use this if you need the sampling step to be differentiable (e.g.
-        through some loss function).
-        """
+        # Use the reparameterization version of `dist.sample` to allow for
+        # the results to be backprop'able e.g. in a loss term.
         normal_sample = self.dist.rsample()
         self.last_sample = self._squash(normal_sample)
         return self.last_sample

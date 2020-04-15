@@ -270,6 +270,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
 
     # save for stats function
+    policy.policy_t = policy_t
     policy.q_t = q_t
     policy.td_error = td_error
     policy.actor_loss = actor_loss
@@ -370,7 +371,9 @@ def apply_gradients(policy, optimizer, grads_and_vars):
 
 def stats(policy, train_batch):
     return {
-        "td_error": tf.reduce_mean(policy.td_error),
+        # "policy_t": policy.policy_t,
+        # "td_error": policy.td_error,
+        "mean_td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
         "critic_loss": tf.reduce_mean(policy.critic_loss),
         "alpha_loss": tf.reduce_mean(policy.alpha_loss),

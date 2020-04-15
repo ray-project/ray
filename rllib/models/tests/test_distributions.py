@@ -152,7 +152,7 @@ class TestDistributions(unittest.TestCase):
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
-            check(sampled_action_logp, log_prob, rtol=0.15)
+            check(np.sum(sampled_action_logp), np.sum(log_prob), rtol=0.05)
 
             # NN output.
             means = np.array([[0.1, 0.2, 0.3, 0.4, 50.0],
@@ -224,7 +224,10 @@ class TestDistributions(unittest.TestCase):
             values = plain_beta_value_space.sample()
             values_scaled = values * (high - low) + low
             out = beta_distribution.logp(torch.Tensor(values_scaled))
-            check(out, np.log(beta.pdf(values, alpha, beta_)), decimals=4)
+            check(
+                out,
+                np.sum(np.log(beta.pdf(values, alpha, beta_)), -1),
+                rtol=0.001)
 
             # TODO(sven): Test entropy outputs (against scipy).
 

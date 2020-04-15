@@ -119,7 +119,8 @@ class AlphaZeroPolicy(TorchPolicy):
         self._optimizers[0].zero_grad()
         loss_out.backward()
 
-        grad_process_info = self.extra_grad_process()
+        grad_process_info = self.extra_grad_process(self._optimizers[0],
+                                                    loss_out)
         self._optimizers[0].step()
 
         grad_info = self.extra_grad_info(train_batch)
