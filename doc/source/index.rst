@@ -24,7 +24,7 @@ Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <ht
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 .. _`RaySGD`: raysgd/raysgd.html
-.. _`RayServe`: serve/quickstart.html
+.. _`RayServe`: rayserve/overview.html
 
 .. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
@@ -287,7 +287,7 @@ Getting Involved
    :maxdepth: -1
    :caption: RayServe
 
-   serve/quickstart.rst
+   rayserve/overview.rst
 
 .. toctree::
    :maxdepth: -1
