@@ -14,11 +14,8 @@ class Transport {
  public:
   /// Construct a Transport object.
   /// \param[in] peer_actor_id actor id of peer actor.
-  Transport(const ActorID &peer_actor_id,
-            RayFunction &async_func, RayFunction &sync_func)
-      : peer_actor_id_(peer_actor_id),
-        async_func_(async_func),
-        sync_func_(sync_func) {
+  Transport(const ActorID &peer_actor_id, RayFunction &async_func, RayFunction &sync_func)
+      : peer_actor_id_(peer_actor_id), async_func_(async_func), sync_func_(sync_func) {
     STREAMING_LOG(INFO) << "Transport constructor:";
     STREAMING_LOG(INFO) << "async_func lang: " << async_func_.GetLanguage();
     STREAMING_LOG(INFO) << "async_func: "

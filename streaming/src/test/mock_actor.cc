@@ -94,8 +94,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     for (auto &queue_id : queue_ids_) {
       STREAMING_LOG(INFO) << "queue_id: " << queue_id;
     }
-    std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
-    STREAMING_LOG(INFO) << "writer actor_ids size: " << actor_ids.size()
+    ChannelCreationParameter param{peer_actor_id_,
+                                         std::make_shared<RayFunction>(
+                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})),
+                                         std::make_shared<RayFunction>(
+                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""}))};
+    std::vector<ChannelCreationParameter> params(queue_ids_.size(), param);
+    STREAMING_LOG(INFO) << "writer actor_ids size: " << params.size()
                         << " actor_id: " << peer_actor_id_;
 
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
@@ -104,7 +109,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<DataWriter> streaming_writer_client(new DataWriter(runtime_context));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
-    streaming_writer_client->Init(queue_ids_, actor_ids, channel_seq_id_vec,
+    streaming_writer_client->Init(queue_ids_, params, channel_seq_id_vec,
                                   std::vector<uint64_t>(queue_ids_.size(), queue_size));
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
@@ -214,14 +219,19 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
   }
 
   void StreamingReaderStrategyTest(StreamingConfig &config) {
-    std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
-    STREAMING_LOG(INFO) << "reader actor_ids size: " << actor_ids.size()
+    ChannelCreationParameter param{peer_actor_id_,
+                                         std::make_shared<RayFunction>(
+                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})),
+                                         std::make_shared<RayFunction>(
+                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""}))};
+    std::vector<ChannelCreationParameter> params(queue_ids_.size(), param);
+    STREAMING_LOG(INFO) << "reader actor_ids size: " << params.size()
                         << " actor_id: " << peer_actor_id_;
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
     std::shared_ptr<DataReader> reader(new DataReader(runtime_context));
 
-    reader->Init(queue_ids_, actor_ids, -1);
+    reader->Init(queue_ids_, params, -1);
     ReaderLoopForward(reader, nullptr, queue_ids_);
 
     STREAMING_LOG(INFO) << "Reader exit";
@@ -298,23 +308,8 @@ class StreamingWorker {
     };
     CoreWorkerProcess::Initialize(options);
 
-    RayFunction reader_async_call_func{ray::Language::PYTHON,
-                                       ray::FunctionDescriptorBuilder::BuildPython(
-                                           "reader_async_call_func", "", "", "")};
-    RayFunction reader_sync_call_func{
-        ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::BuildPython("reader_sync_call_func", "", "", "")};
-    RayFunction writer_async_call_func{ray::Language::PYTHON,
-                                       ray::FunctionDescriptorBuilder::BuildPython(
-                                           "writer_async_call_func", "", "", "")};
-    RayFunction writer_sync_call_func{
-        ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::BuildPython("writer_sync_call_func", "", "", "")};
-
-    reader_client_ =
-        std::make_shared<ReaderClient>(reader_async_call_func, reader_sync_call_func);
-    writer_client_ =
-        std::make_shared<WriterClient>(writer_async_call_func, writer_sync_call_func);
+    reader_client_ = std::make_shared<ReaderClient>();
+    writer_client_ = std::make_shared<WriterClient>();
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
@@ -338,9 +333,9 @@ class StreamingWorker {
               ray::FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
     STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask "
-                        << typed_descriptor->ModuleName();
+                        << typed_descriptor->ToString();
 
-    std::string func_name = typed_descriptor->ModuleName();
+    std::string func_name = typed_descriptor->FunctionName();
     if (func_name == "init") {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[0]->GetData()->Data(),
