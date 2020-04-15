@@ -83,10 +83,6 @@ class Random(Exploration):
         return action, logp
 
     def get_torch_exploration_action(self, action_dist, explore):
-        #if type(self.action_space) in [Discrete, MultiDiscrete]:
-        #    tensor_fn = torch.LongTensor
-        #else:
-        #    tensor_fn = torch.FloatTensor
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
