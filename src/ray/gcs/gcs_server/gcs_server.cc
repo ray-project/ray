@@ -151,7 +151,8 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::tcp::socket socket(io_service);
   boost::system::error_code error_code;
   socket.connect(boost::asio::ip::tcp::endpoint(
-                     boost::asio::ip::address::from_string("8.8.8.8"), 53),
+                     boost::asio::ip::address::from_string(kPublicDNSServerIp),
+                     kPublicDNSServerPort),
                  error_code);
   std::string address;
   if (!error_code) {
