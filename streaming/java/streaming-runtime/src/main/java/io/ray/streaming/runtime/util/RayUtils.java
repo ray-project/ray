@@ -1,11 +1,11 @@
-package org.ray.streaming.runtime.util;
+package io.ray.streaming.runtime.util;
 
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.ray.api.Ray;
-import org.ray.api.id.UniqueId;
-import org.ray.api.runtimecontext.NodeInfo;
+import io.ray.api.Ray;
+import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.NodeInfo;
 
 /**
  * RayUtils is the utility class to access ray runtime api.

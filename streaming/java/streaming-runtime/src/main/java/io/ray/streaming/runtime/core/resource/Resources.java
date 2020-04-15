@@ -3,11 +3,11 @@ package io.ray.streaming.runtime.core.resource;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.id.UniqueId;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.ray.api.id.UniqueId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

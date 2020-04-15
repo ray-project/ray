@@ -1,15 +1,15 @@
 package io.ray.streaming.runtime.core.resource;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Preconditions;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.id.UniqueId;
-import org.ray.api.runtimecontext.NodeInfo;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +47,7 @@ public class Container implements Serializable {
   private Map<String, Double> availableResources = new HashMap<>();
 
   /**
-   * List of {@link org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex} ids
+   * List of {@link io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex} ids
    * belong to the container.
    */
   private List<Integer> executionVertexIds = new ArrayList<>();

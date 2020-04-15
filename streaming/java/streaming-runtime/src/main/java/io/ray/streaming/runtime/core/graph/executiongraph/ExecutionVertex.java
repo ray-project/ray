@@ -7,23 +7,14 @@ import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
+import io.ray.streaming.runtime.core.resource.ContainerID;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.core.resource.Slot;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.RayActor;
-import org.ray.api.id.ActorId;
-import org.ray.streaming.api.Language;
-import org.ray.streaming.jobgraph.VertexType;
-import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.core.resource.ContainerID;
-import org.ray.streaming.runtime.core.resource.ResourceType;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical vertex, correspond to {@link ExecutionJobVertex}.

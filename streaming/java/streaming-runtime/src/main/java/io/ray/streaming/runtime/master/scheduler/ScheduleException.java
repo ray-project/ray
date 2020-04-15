@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.master.scheduler;
+package io.ray.streaming.runtime.master.scheduler;
 
 public class ScheduleException extends RuntimeException {
 

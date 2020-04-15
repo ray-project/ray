@@ -1,9 +1,9 @@
-package org.ray.streaming.runtime.master.resourcemanager;
+package io.ray.streaming.runtime.master.resourcemanager;
 
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.ContainerID;
 import java.util.List;
 import java.util.Map;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.ContainerID;
 
 import static java.util.stream.Collectors.*;
 

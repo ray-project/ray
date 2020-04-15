@@ -1,18 +1,18 @@
-package org.ray.streaming.runtime.master.resourcemanager.strategy.impl;
+package io.ray.streaming.runtime.master.resourcemanager.strategy.impl;
 
+import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.ResourceType;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceAssignmentView;
+import io.ray.streaming.runtime.master.resourcemanager.ViewBuilder;
+import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
+import io.ray.streaming.runtime.master.scheduler.ScheduleException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.ResourceType;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceAssignmentView;
-import org.ray.streaming.runtime.master.resourcemanager.ViewBuilder;
-import org.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
-import org.ray.streaming.runtime.master.scheduler.ScheduleException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

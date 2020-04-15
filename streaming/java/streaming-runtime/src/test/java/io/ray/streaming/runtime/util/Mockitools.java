@@ -1,16 +1,14 @@
-package org.ray.streaming.runtime.util;
+package io.ray.streaming.runtime.util;
 
+import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.streaming.runtime.core.resource.ResourceType;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-
 import org.powermock.api.mockito.PowerMockito;
-import org.ray.api.id.UniqueId;
-import org.ray.api.runtimecontext.NodeInfo;
-import org.ray.streaming.runtime.core.resource.ResourceType;
 
 /**
  * Mockitools is a tool based on powermock and mokito to mock external service api

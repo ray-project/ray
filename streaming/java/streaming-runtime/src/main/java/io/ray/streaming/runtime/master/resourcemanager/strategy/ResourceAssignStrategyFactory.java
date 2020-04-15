@@ -1,7 +1,7 @@
-package org.ray.streaming.runtime.master.resourcemanager.strategy;
+package io.ray.streaming.runtime.master.resourcemanager.strategy;
 
-import org.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
-import org.ray.streaming.runtime.master.resourcemanager.strategy.impl.PipelineFirstStrategy;
+import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
+import io.ray.streaming.runtime.master.resourcemanager.strategy.impl.PipelineFirstStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
