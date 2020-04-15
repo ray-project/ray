@@ -66,6 +66,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           it =
               task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
         }
+        it->second.push_back(task_spec);
+        RequestNewWorkerIfNeeded(scheduling_key);
+        return;
       }
     }
     task_finisher_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED,
