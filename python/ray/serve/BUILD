@@ -18,11 +18,27 @@ py_test(
     deps = [":serve_lib"],
 )
 
-# Make sure the example showing in doc is tested
 py_test(
     name = "echo_full",
     size = "small",
     srcs = glob(["examples/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+# Make sure the example showing in doc is tested
+py_test(
+    name = "quickstart_class",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "quickstart_function",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
 )
