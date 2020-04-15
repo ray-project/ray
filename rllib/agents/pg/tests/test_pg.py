@@ -91,14 +91,24 @@ class TestPG(unittest.TestCase):
                                train_batch=train_batch)
 
             # Calculate expected results.
-            expected_logits = fc(
-                fc(train_batch[SampleBatch.CUR_OBS],
-                   vars[0],
-                   vars[1],
-                   framework=fw),
-                vars[2],
-                vars[3],
-                framework=fw)
+            if fw != "torch":
+                expected_logits = fc(
+                    fc(train_batch[SampleBatch.CUR_OBS],
+                       vars[0],
+                       vars[1],
+                       framework=fw),
+                    vars[2],
+                    vars[3],
+                    framework=fw)
+            else:
+                expected_logits = fc(
+                    fc(train_batch[SampleBatch.CUR_OBS],
+                       vars[2],
+                       vars[3],
+                       framework=fw),
+                    vars[0],
+                    vars[1],
+                    framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
                 train_batch[SampleBatch.ACTIONS])
             if sess:
