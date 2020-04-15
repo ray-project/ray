@@ -173,8 +173,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     #  torch/tf. Clean up these results/info dicts across
                     #  policies (note: fixing this in torch_policy.py will
                     #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info["learner_stats"].get("td_error"))
+                    td_error = info.get("td_error",
+                                        info["learner_stats"].get("td_error"))
                     new_priorities = (
                         np.abs(td_error) + self.prioritized_replay_eps)
                     replay_buffer.update_priorities(

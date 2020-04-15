@@ -256,9 +256,7 @@ class TorchPolicy(Policy):
         self._optimizer.step()
 
         info.update(self.extra_grad_info(train_batch))
-        return {
-            LEARNER_STATS_KEY: info
-        }
+        return {LEARNER_STATS_KEY: info}
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):

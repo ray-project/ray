@@ -18,10 +18,8 @@ from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
-
 TS_PATH = "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
 UCB_PATH = "ray.rllib.contrib.bandits.exploration.UCB"
-
 
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default.

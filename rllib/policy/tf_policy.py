@@ -222,8 +222,10 @@ class TFPolicy(Policy):
             self._loss = loss
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(
-            self._optimizer, self._loss) if g is not None]
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            if g is not None
+        ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
         # TODO(sven/ekl): Deprecate support for v1 models.

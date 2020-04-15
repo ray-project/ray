@@ -493,7 +493,7 @@ class TestRolloutWorker(unittest.TestCase):
         extra_envs = {"env_key_1": "env_value_1", "env_key_2": "env_value_2"}
         self.assertFalse("env_key_1" in os.environ)
         self.assertFalse("env_key_2" in os.environ)
-        ev = RolloutWorker(
+        RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy=MockPolicy,
             extra_python_environs=extra_envs)

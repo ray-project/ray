@@ -235,9 +235,11 @@ class WorkerSet:
             policy = tmp
 
         if worker_index == 0:
-            extra_python_environs = config.get("extra_python_environs_for_driver", None)
+            extra_python_environs = config.get(
+                "extra_python_environs_for_driver", None)
         else:
-            extra_python_environs = config.get("extra_python_environs_for_worker", None)
+            extra_python_environs = config.get(
+                "extra_python_environs_for_worker", None)
 
         worker = cls(
             env_creator,
