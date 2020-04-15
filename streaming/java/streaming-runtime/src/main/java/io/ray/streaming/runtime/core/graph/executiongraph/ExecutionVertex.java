@@ -184,7 +184,10 @@ public class ExecutionVertex implements Serializable {
 
   @Override
   public boolean equals(Object obj) {
-    return this.id == ((ExecutionVertex)obj).getId();
+    if (obj instanceof ExecutionVertex) {
+      return this.id == ((ExecutionVertex)obj).getId();
+    }
+    return false;
   }
 
   @Override

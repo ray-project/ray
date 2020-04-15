@@ -118,7 +118,6 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   /**
    * Update container capacity. eg: we have 89 actors and 8 containers, capacity will be 11 when
    * initialing, and will be increased to 12 when allocating actor#89, just for load balancing.
-   * @param containers
    */
   private void updateContainerCapacity(List<Container> containers, int capacity) {
     containers.forEach(c -> c.updateCapacity(capacity));

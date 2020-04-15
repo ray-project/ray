@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Cluster resource allocation view, used to statically view cluster resource information.
+ */
 public class ResourceAssignmentView extends HashMap<ContainerID, List<Integer>> {
 
   public static ResourceAssignmentView of(Map<ContainerID, List<Integer>> assignmentView) {

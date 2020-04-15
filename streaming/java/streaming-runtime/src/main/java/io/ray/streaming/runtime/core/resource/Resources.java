@@ -11,8 +11,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static java.util.stream.Collectors.toMap;
-
 /**
  * Resource description of ResourceManager.
  */
@@ -28,6 +26,10 @@ public class Resources implements Serializable {
   public Resources() {
   }
 
+  /**
+   * Get registered containers, the container list is read-only.
+   * @return container list.
+   */
   public ImmutableList<Container> getRegisteredContainers() {
     return ImmutableList.copyOf(registerContainers);
   }
@@ -49,7 +51,8 @@ public class Resources implements Serializable {
   }
 
   public ImmutableMap<UniqueId, Container> getRegisteredContainerMap() {
-    return ImmutableMap.copyOf(registerContainers.stream().collect(toMap(Container::getNodeId, c -> c)));
+    return ImmutableMap.copyOf(registerContainers.stream()
+        .collect(java.util.stream.Collectors.toMap(Container::getNodeId, c -> c)));
   }
 
   @Override

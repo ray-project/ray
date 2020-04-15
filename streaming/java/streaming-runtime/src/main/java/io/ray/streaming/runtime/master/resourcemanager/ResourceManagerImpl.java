@@ -2,12 +2,6 @@ package io.ray.streaming.runtime.master.resourcemanager;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import io.ray.api.Ray;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
@@ -21,6 +15,12 @@ import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategyFactory;
 import io.ray.streaming.runtime.util.RayUtils;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,8 +59,8 @@ public class ResourceManagerImpl implements ResourceManager {
   /**
    * Timing resource updating thread
    */
-  private final ScheduledExecutorService resourceUpdater =
-    new ScheduledThreadPoolExecutor(1, new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
+  private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
+      new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
 
   public ResourceManagerImpl(JobRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
@@ -72,9 +72,10 @@ public class ResourceManagerImpl implements ResourceManager {
         resourceConfig, resources);
 
     // Init custom resource configurations
-    this.actorNumPerContainer = resourceConfig.customActorNumPerContainer();
+    this.actorNumPerContainer = resourceConfig.actorNumPerContainer();
 
-    ResourceAssignStrategyType resourceAssignStrategyType = ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
+    ResourceAssignStrategyType resourceAssignStrategyType =
+        ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
     this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
       resourceAssignStrategyType);
     LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
@@ -89,7 +90,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
   @Override
   public ResourceAssignmentView assignResource(List<Container> containers,
-    ExecutionGraph executionGraph) {
+      ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
 
@@ -104,7 +105,6 @@ public class ResourceManagerImpl implements ResourceManager {
     return resources.getRegisteredContainers();
   }
 
-
   /**
    * Check the status of ray cluster node and update the internal resource information of
    * streaming system.
@@ -114,7 +114,7 @@ public class ResourceManagerImpl implements ResourceManager {
     Map<UniqueId, NodeInfo> latestNodeInfos = RayUtils.getAliveNodeInfoMap();
 
     List<UniqueId> addNodes = latestNodeInfos.keySet().stream()
-      .filter(this::isAddedNode).collect(Collectors.toList());
+        .filter(this::isAddedNode).collect(Collectors.toList());
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
         .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
@@ -130,10 +130,10 @@ public class ResourceManagerImpl implements ResourceManager {
       unregisterDeletedContainer(deleteNodes);
 
       // register containers
-      registerNewContainers(addNodes.stream().map(latestNodeInfos::get).collect(Collectors.toList()));
+      registerNewContainers(addNodes.stream().map(latestNodeInfos::get)
+          .collect(Collectors.toList()));
     }
   }
-
 
   private void registerNewContainers(List<NodeInfo> nodeInfos) {
     LOG.info("Start to register containers. new add node infos are: {}.", nodeInfos);
@@ -186,7 +186,7 @@ public class ResourceManagerImpl implements ResourceManager {
   private void checkAndUpdateResourcePeriodically() {
     long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
     this.resourceUpdater.scheduleAtFixedRate(
-      Ray.wrapRunnable(this::checkAndUpdateResource), 0, intervalSecond, TimeUnit.SECONDS);
+        Ray.wrapRunnable(this::checkAndUpdateResource), 0, intervalSecond, TimeUnit.SECONDS);
   }
 
   private boolean isAddedNode(UniqueId uniqueId) {

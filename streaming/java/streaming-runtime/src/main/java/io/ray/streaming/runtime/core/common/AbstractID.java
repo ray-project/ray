@@ -1,13 +1,13 @@
 package io.ray.streaming.runtime.core.common;
 
 import com.google.common.base.MoreObjects;
+import io.ray.streaming.runtime.core.resource.ContainerID;
 import java.io.Serializable;
 import java.util.UUID;
-import org.ray.streaming.runtime.core.resource.ContainerID;
 
 /**
  * Streaming system unique identity base class.
- * For example, ${@link io.ray.streaming.runtime.core.resource.ContainerID }
+ * For example, ${@link ContainerID }
  */
 public class AbstractID implements Serializable {
   private UUID id;

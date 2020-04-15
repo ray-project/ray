@@ -47,7 +47,7 @@ public class Container implements Serializable {
   private Map<String, Double> availableResources = new HashMap<>();
 
   /**
-   * List of {@link io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex} ids
+   * List of {@link ExecutionVertex} ids
    * belong to the container.
    */
   private List<Integer> executionVertexIds = new ArrayList<>();

@@ -10,7 +10,7 @@ import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignSt
 public interface ResourceManager extends ResourceAssignStrategy {
 
   /**
-   * Get registered containers
+   * Get registered containers, the container list is read-only.
    *
    * @return the registered container list
    */
