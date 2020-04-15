@@ -17,10 +17,19 @@ class RayConnectionError(RayError):
 
 
 class RayCancellationError(RayError):
-    """Raised when this task or a dependency is cancelled"""
+    """Raised when this task or a dependency is cancelled
+    Attributes:
+        task_id (TaskID): The TaskID of the function that was directly
+            cancelled.
+    """
+
+    def __init__(self, task_id=None):
+        self.task_id = task_id
 
     def __str__(self):
-        return "This task was cancelled"
+        if self.task_id is None:
+            return "This task or its dependency was cancelled by"
+        return "Task: " + str(self.task_id) + " was cancelled"
 
 
 class RayTaskError(RayError):
