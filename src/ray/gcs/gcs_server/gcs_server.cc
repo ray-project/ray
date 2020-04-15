@@ -19,7 +19,6 @@
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "stats_handler_impl.h"
