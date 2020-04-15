@@ -156,7 +156,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 high_m_low = torch.from_numpy(
                     self.action_space.high - self.action_space.low). \
                     to(self.device)
-                noise = scale * self.ou_base_scale * self.ou_state * high_low
+                noise = scale * self.ou_base_scale * self.ou_state * high_m_low
                 action = torch.clamp(det_actions + noise,
                                      self.action_space.low[0],
                                      self.action_space.high[0])
