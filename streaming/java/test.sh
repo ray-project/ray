@@ -36,7 +36,7 @@ cd "$ROOT_DIR"/../../java
 echo "build ray maven deps"
 bazel build gen_maven_deps
 echo "maven install ray"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
 cd "$ROOT_DIR"
 echo "maven install ray streaming"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
