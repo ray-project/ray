@@ -1,9 +1,11 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
+import numpy as np
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.space_utils import TupleActions
@@ -81,15 +83,19 @@ class Random(Exploration):
         return action, logp
 
     def get_torch_exploration_action(self, action_dist, explore):
-        tensor_fn = torch.LongTensor if \
-            type(self.action_space) in [Discrete, MultiDiscrete] else \
-            torch.FloatTensor
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
             a = self.action_space.sample()
-            action = tensor_fn([a] if isinstance(a, int) else a)
+            req = force_tuple(
+                action_dist.required_model_output_shape(
+                    self.action_space, self.model.model_config))
+            # Add a batch dimension.
+            if len(action_dist.inputs.shape) == len(req) + 1:
+                a = np.expand_dims(a, 0)
+            action = torch.from_numpy(a).to(self.device)
         else:
-            action = tensor_fn(action_dist.deterministic_sample())
-        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
+            action = action_dist.deterministic_sample()
+        logp = torch.zeros(
+            (action.size()[0], ), dtype=torch.float32, device=self.device)
         return action, logp
