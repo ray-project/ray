@@ -1,8 +1,12 @@
-Ray Serve: Scalable and Programmable Serving
+RayServe: Scalable and Programmable Serving
 ============================================
 
 .. image:: logo.svg
     :align: center
+
+.. note::
+	If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_
+	and discuss in ``#serve`` channel.
 
 There are generally two ways of serving machine learning applications at scale.
 The first is wrapping your application in a traditional web server. This approach
