@@ -276,10 +276,11 @@ COMMON_CONFIG = {
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
     "seed": None,
-    # The extra python environments need to set for trainer process.
-    "extra_python_environs_for_driver": None,
+    # Any extra python env vars to set in the trainer process, e.g.,
+    # {"OMP_NUM_THREADS": "16"}
+    "extra_python_environs_for_driver": {},
     # The extra python environments need to set for worker processes.
-    "extra_python_environs_for_worker": None,
+    "extra_python_environs_for_worker": {},
 
     # === Advanced Resource Settings ===
     # Number of CPUs to allocate per worker.
