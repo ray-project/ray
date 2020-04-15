@@ -289,15 +289,9 @@ Take a look at `an example here <https://github.com/ray-project/ray/blob/master/
 ZOOpt Search
 ------------
 
-The ``ZOOptSearch`` is a list of derivative-free optimization algorithms that are backed by
-`ZOOpt <https://github.com/polixir/ZOOpt>`__ package to perform sequential model-based hyperparameter
-optimization. Currently, Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos) algorithm
-is implemented in Tune. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``,
-so you will not be able to use Tune’s default variant generation/search space declaration
-when using ZOOptSearch.
+The ``ZOOptSearch`` is a list of derivative-free optimization algorithms that are backed by `ZOOpt <https://github.com/polixir/ZOOpt>`__ package to perform sequential model-based hyperparameter optimization. Currently, Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos) algorithm is implemented in Tune. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune’s default variant generation/search space declaration when using ZOOptSearch.
 
-In order to use this search algorithm, you will need to install the ZOOpt package **(>=0.4.0)** via
-the following command:
+In order to use this search algorithm, you will need to install the ZOOpt package **(>=0.4.0)** via the following command:
 
 .. code-block:: bash
 

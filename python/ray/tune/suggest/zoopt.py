@@ -1,6 +1,6 @@
 import copy
 import logging
-import pickle
+import dill as pickle
 from zoopt import Dimension2, Parameter
 from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
@@ -32,37 +32,37 @@ class ZOOptSearch(SuggestionAlgorithm):
 
     .. code-block:: python
 
-    from ray.tune import run
-    from ray.tune.suggest.zoopt import ZOOptSearch
-    from zoopt import ValueType
+        from ray.tune import run
+        from ray.tune.suggest.zoopt import ZOOptSearch
+        from zoopt import ValueType
 
-    dim_dict = {
-        "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
-        "width": (ValueType.DISCRETE, [-10, 10], False)
-    }
-
-    config = {
-        "num_samples": 200,
-        "config": {
-            "iterations": 10,  # evaluation times
-        },
-        "stop": {
-            "timesteps_total": 10  # cumstom stop rules
+        dim_dict = {
+            "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
+            "width": (ValueType.DISCRETE, [-10, 10], False)
         }
-    }
 
-    zoopt_search = ZOOptSearch(
-        algo="Asracos",  # only support Asracos currently
-        budget=config["num_samples"],
-        dim_dict=dim_dict,
-        max_concurrent=4,
-        metric="mean_loss",
-        mode="min")
+        config = {
+            "num_samples": 200,
+            "config": {
+                "iterations": 10,  # evaluation times
+            },
+            "stop": {
+                "timesteps_total": 10  # cumstom stop rules
+            }
+        }
 
-    run(my_objective,
-        search_alg=zoopt_search,
-        name="zoopt_search",
-        **config)
+        zoopt_search = ZOOptSearch(
+            algo="Asracos",  # only support Asracos currently
+            budget=config["num_samples"],
+            dim_dict=dim_dict,
+            max_concurrent=4,
+            metric="mean_loss",
+            mode="min")
+
+        run(my_objective,
+            search_alg=zoopt_search,
+            name="zoopt_search",
+            **config)
 
     """
 
