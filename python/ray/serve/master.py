@@ -1,5 +1,7 @@
 import asyncio
 from collections import defaultdict
+from functools import wraps
+import inspect
 
 import ray
 from ray.serve.backend_config import BackendConfig
@@ -13,6 +15,39 @@ from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import expand, get_random_letters, logger
 
 import numpy as np
+
+
+def async_retryable(cls):
+    """Make all actor method invocations on the class retryable.
+
+    Note: This will retry actor_handle.method_name.remote(), but it must
+    be invoked in an async context.
+
+    Usage:
+        @ray.remote(max_reconstructions=10000)
+        @retryable
+        class A:
+            pass
+    """
+    for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+
+        def decorate_with_retry(f):
+            @wraps(f)
+            async def retry_method(*args, **kwargs):
+                while True:
+                    result = await f(*args, **kwargs)
+                    if isinstance(result, ray.exceptions.RayActorError):
+                        logger.warning(
+                            "Actor method '{}' failed, retrying after 100ms.".
+                            format(name))
+                        await asyncio.sleep(0.1)
+                    else:
+                        return result
+
+            return retry_method
+
+        method.__ray_invocation_decorator__ = decorate_with_retry
+    return cls
 
 
 @ray.remote
@@ -37,22 +72,12 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_monitor = None
 
-    async def _retry_actor_failures(self, call_actor_method, name):
-        while True:
-            try:
-                return await call_actor_method()
-            except ray.RayActorError:
-                logger.warning(
-                    "Actor method '{}' failed, retrying after 100ms.".format(
-                        name))
-                await asyncio.sleep(0.1)
-
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
 
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
-        self.router = router_class.options(
+        self.router = async_retryable(router_class).options(
             max_concurrency=ASYNC_CONCURRENCY,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
         ).remote(**init_kwargs)
@@ -70,7 +95,7 @@ class ServeMaster:
         assert self.http_proxy is None, "HTTP proxy already started."
         assert self.router is not None, (
             "Router must be started before HTTP proxy.")
-        self.http_proxy = HTTPProxyActor.options(
+        self.http_proxy = async_retryable(HTTPProxyActor).options(
             max_concurrency=ASYNC_CONCURRENCY,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
         ).remote(host, port)
@@ -156,17 +181,10 @@ class ServeMaster:
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Wait for the worker to start up.
-        async def worker_ready():
-            await worker_handle.ready.remote()
-
-        await self._retry_actor_failures(worker_ready, "worker.ready")
+        await worker_handle.ready.remote()
 
         [router] = self.get_router()
-
-        async def add_worker():
-            await router.add_new_worker.remote(backend_tag, worker_handle)
-
-        await self._retry_actor_failures(add_worker, "router.add_new_worker")
+        await router.add_new_worker.remote(backend_tag, worker_handle)
 
         # Register the worker with the metric monitor.
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
@@ -192,11 +210,7 @@ class ServeMaster:
         # Remove the replica from router.
         # This will also destroy the actor handle.
         [router] = self.get_router()
-
-        async def remove_worker():
-            await router.remove_worker.remote(backend_tag, replica_handle)
-
-        await self._retry_actor_failures(remove_worker, "router.remove_worker")
+        await router.remove_worker.remote(backend_tag, replica_handle)
 
     def get_all_worker_handles(self):
         return self.workers
@@ -224,24 +238,17 @@ class ServeMaster:
                                                   traffic_policy_dictionary)
         [router] = self.get_router()
 
-        async def set_traffic():
-            await router.set_traffic.remote(endpoint_name,
-                                            traffic_policy_dictionary)
-
-        await self._retry_actor_failures(set_traffic, "router.set_traffic")
+        await router.set_traffic.remote(endpoint_name,
+                                        traffic_policy_dictionary)
 
     async def create_endpoint(self, route, endpoint_name, methods):
         self.route_table.register_service(
             route, endpoint_name, methods=methods)
         [http_proxy] = self.get_http_proxy()
 
-        async def set_route_table():
-            await http_proxy.set_route_table.remote(
-                self.route_table.list_service(
-                    include_methods=True, include_headless=False))
-
-        await self._retry_actor_failures(set_route_table,
-                                         "http_proxy.set_route_table")
+        await http_proxy.set_route_table.remote(
+            self.route_table.list_service(
+                include_methods=True, include_headless=False))
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
@@ -260,13 +267,9 @@ class ServeMaster:
         # Set the backend config inside the router
         # (particularly for max-batch-size).
         [router] = self.get_router()
+        await router.set_backend_config.remote(backend_tag,
+                                               backend_config_dict)
 
-        async def set_backend_config():
-            await router.set_backend_config.remote(backend_tag,
-                                                   backend_config_dict)
-
-        await self._retry_actor_failures(set_backend_config,
-                                         "router.set_backend_config")
         await self.scale_replicas(backend_tag,
                                   backend_config_dict["num_replicas"])
 
@@ -288,13 +291,8 @@ class ServeMaster:
         # Inform the router about change in configuration
         # (particularly for setting max_batch_size).
         [router] = self.get_router()
-
-        async def set_backend_config():
-            await router.set_backend_config.remote(backend_tag,
-                                                   backend_config_dict)
-
-        await self._retry_actor_failures(set_backend_config,
-                                         "router.set_backend_config")
+        await router.set_backend_config.remote(backend_tag,
+                                               backend_config_dict)
 
         # Restart replicas if there is a change in the backend config related
         # to restart_configs.

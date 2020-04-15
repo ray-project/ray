@@ -150,6 +150,9 @@ class Router:
         # batching polcies.
         self.flush_lock = asyncio.Lock()
 
+        # Fetch the worker handles from the master actor. We use a "pull-based"
+        # approach instead of pushing them from the master so that the router
+        # can transparently recover from failure.
         ray.serve.init()
         master_actor = ray.serve.api._get_master_actor()
         backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
