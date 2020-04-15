@@ -36,8 +36,8 @@ class VisionNetwork(TFModelV2):
                 data_format="channels_last",
                 name="conv{}".format(i))(last_layer)
         out_size, kernel, stride = filters[-1]
-        # If num_outputs provided, the last layer is adjusted to be of
-        # size num_outputs.
+
+        # No final linear: Last layer is a Conv2D and uses num_outputs.
         if no_final_linear:
             last_layer = tf.keras.layers.Conv2D(
                 num_outputs,
@@ -49,8 +49,7 @@ class VisionNetwork(TFModelV2):
                 name="conv_out")(last_layer)
             conv_out = last_layer
         # Finish network normally (w/o overriding last layer size with
-        # `num_outputs`), then add - iff num_outputs > 0 - another linear one
-        # of size `num_outputs`.
+        # `num_outputs`), then add another linear one of size `num_outputs`.
         else:
             last_layer = tf.keras.layers.Conv2D(
                 out_size,

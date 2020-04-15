@@ -23,10 +23,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
         filters = model_config.get("conv_filters")
         if not filters:
             filters = _get_filter_config(obs_space.shape)
-        # TODO(sven): Implement for torch.
-        if model_config.get("no_final_linear") or \
-                not model_config.get("vf_share_layers"):
-            raise NotImplementedError
+        # no_final_linear = model_config.get("no_final_linear")
+        # vf_share_layers = model_config.get("vf_share_layers")
 
         layers = []
         (w, h, in_channels) = obs_space.shape
