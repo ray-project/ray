@@ -51,8 +51,8 @@ def sequence_mask(lengths, maxlen, dtype=None):
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = ~(torch.ones((len(lengths), maxlen)).cumsum(dim=1).t() > lengths). \
-        t()
+    mask = ~(torch.ones((len(lengths), maxlen)).to(
+        lengths.device).cumsum(dim=1).t() > lengths).t()
     mask.type(dtype or torch.bool)
 
     return mask
@@ -104,3 +104,7 @@ def convert_to_torch_tensor(stats, device=None):
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, stats)
+
+
+def atanh(x):
+    return 0.5 * torch.log((1 + x) / (1 - x))

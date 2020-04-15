@@ -306,6 +306,42 @@ cc_binary(
 )
 
 cc_library(
+    name = "gcs_pub_sub_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/pubsub/gcs_pub_sub.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":ray_common",
+        ":redis_client",
+    ],
+)
+
+cc_test(
+    name = "gcs_pub_sub_test",
+    srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs_pub_sub_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gcs_server_lib",
     srcs = glob(
         [
@@ -714,7 +750,10 @@ cc_test(
 
 cc_test(
     name = "gcs_server_rpc_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc"],
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
@@ -732,7 +771,7 @@ cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
@@ -745,7 +784,7 @@ cc_test(
     name = "gcs_actor_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
@@ -758,11 +797,52 @@ cc_test(
     name = "gcs_actor_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gcs_table_storage_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_server/gcs_table_storage.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_server/gcs_table_storage.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":ray_common",
+        ":redis_store_client",
+    ],
+)
+
+cc_test(
+    name = "redis_gcs_table_storage_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_table_storage_lib",
+        ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -783,12 +863,16 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        ":redis_store_client",
     ],
 )
 
 cc_test(
     name = "gcs_server_test",
-    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    srcs = [
+        "src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
@@ -1024,24 +1108,6 @@ cc_test(
         ":redis_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "gcs_pubsub",
-    srcs = [
-        "src/ray/gcs/pubsub/redis_message_publisher.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/pubsub/message_publisher.h",
-        "src/ray/gcs/pubsub/redis_message_publisher.h",
-    ],
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-        ":ray_util",
-        ":redis_client",
     ],
 )
 
@@ -1454,7 +1520,6 @@ genrule(
     ],
     outs = ["ray_pkg.out"],
     cmd = """
-        set -x &&
         WORK_DIR="$$(pwd)" &&
         RAYDIR="$$WORK_DIR/python/ray"
         RAYLET="$(location python/ray/_raylet.so)"

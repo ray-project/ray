@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class RayBackend(MultiprocessingBackend):
     """Ray backend uses ray, a system for scalable distributed computing.
-    More info about Ray is available here: https://ray.readthedocs.io.
+    More info about Ray is available here: https://docs.ray.io.
     """
 
     def configure(self,

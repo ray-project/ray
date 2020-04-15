@@ -1,16 +1,15 @@
 from gym.spaces import Discrete
 import numpy as np
 
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import try_import_tf
+from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
-tf = try_import_tf()
-
-SCALE_DIAG_MIN_MAX = (-20, 2)
+torch, nn = try_import_torch()
 
 
-class SACModel(TFModelV2):
-    """Extension of standard TFModel for SAC.
+class SACTorchModel(TorchModelV2):
+    """Extension of standard TorchModelV2 for SAC.
 
     Data flow:
         obs -> forward() -> model_out
@@ -32,7 +31,8 @@ class SACModel(TFModelV2):
                  critic_hidden_activation="relu",
                  critic_hiddens=(256, 256),
                  twin_q=False,
-                 initial_alpha=1.0):
+                 initial_alpha=1.0,
+                 target_entropy=None):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -43,83 +43,103 @@ class SACModel(TFModelV2):
             twin_q (bool): build twin Q networks.
             initial_alpha (float): The initial value for the to-be-optimized
                 alpha parameter (default: 1.0).
+            target_entropy (Optional[float]): An optional fixed value for the
+                SAC alpha loss term. None or "auto" for automatic calculation
+                of this value according to [1] (cont. actions) or [2]
+                (discrete actions).
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-        super(SACModel, self).__init__(obs_space, action_space, num_outputs,
-                                       model_config, name)
-        self.discrete = False
+        super(SACTorchModel, self).__init__(obs_space, action_space,
+                                            num_outputs, model_config, name)
+
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
-            action_outs = q_outs = self.action_dim
+            self.action_outs = q_outs = self.action_dim
+            self.action_ins = None  # No action inputs for the discrete case.
         else:
             self.action_dim = np.product(action_space.shape)
-            action_outs = 2 * self.action_dim
+            self.discrete = False
+            self.action_outs = 2 * self.action_dim
+            self.action_ins = self.action_dim
             q_outs = 1
 
-        self.model_out = tf.keras.layers.Input(
-            shape=(num_outputs, ), name="model_out")
-        self.action_model = tf.keras.Sequential([
-            tf.keras.layers.Dense(
-                units=hidden,
-                activation=getattr(tf.nn, actor_hidden_activation, None),
-                name="action_{}".format(i + 1))
-            for i, hidden in enumerate(actor_hiddens)
-        ] + [
-            tf.keras.layers.Dense(
-                units=action_outs, activation=None, name="action_out")
-        ])
-        self.shift_and_log_scale_diag = self.action_model(self.model_out)
+        # Build the policy network.
+        self.action_model = nn.Sequential()
+        ins = self.num_outputs
+        self.obs_ins = ins
+        activation = get_activation_fn(
+            actor_hidden_activation, framework="torch")
+        for i, n in enumerate(actor_hiddens):
+            self.action_model.add_module(
+                "action_{}".format(i),
+                SlimFC(
+                    ins,
+                    n,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=activation))
+            ins = n
+        self.action_model.add_module(
+            "action_out",
+            SlimFC(
+                ins,
+                self.action_outs,
+                initializer=torch.nn.init.xavier_uniform_,
+                activation_fn=None))
 
-        self.register_variables(self.action_model.variables)
-
-        self.actions_input = None
-        if not self.discrete:
-            self.actions_input = tf.keras.layers.Input(
-                shape=(self.action_dim, ), name="actions")
-
-        def build_q_net(name, observations, actions):
+        # Build the Q-net(s), including target Q-net(s).
+        def build_q_net(name_):
+            activation = get_activation_fn(
+                critic_hidden_activation, framework="torch")
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
-            q_net = tf.keras.Sequential(([
-                tf.keras.layers.Concatenate(axis=1),
-            ] if not self.discrete else []) + [
-                tf.keras.layers.Dense(
-                    units=units,
-                    activation=getattr(tf.nn, critic_hidden_activation, None),
-                    name="{}_hidden_{}".format(name, i))
-                for i, units in enumerate(critic_hiddens)
-            ] + [
-                tf.keras.layers.Dense(
-                    units=q_outs, activation=None, name="{}_out".format(name))
-            ])
+            q_net = nn.Sequential()
+            ins = self.obs_ins + (0 if self.discrete else self.action_ins)
+            for i, n in enumerate(critic_hiddens):
+                q_net.add_module(
+                    "{}_hidden_{}".format(name_, i),
+                    SlimFC(
+                        ins,
+                        n,
+                        initializer=torch.nn.init.xavier_uniform_,
+                        activation_fn=activation))
+                ins = n
 
-            # TODO(hartikainen): Remove the unnecessary Model calls here
-            if self.discrete:
-                q_net = tf.keras.Model(observations, q_net(observations))
-            else:
-                q_net = tf.keras.Model([observations, actions],
-                                       q_net([observations, actions]))
+            q_net.add_module(
+                "{}_out".format(name_),
+                SlimFC(
+                    ins,
+                    q_outs,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=None))
             return q_net
 
-        self.q_net = build_q_net("q", self.model_out, self.actions_input)
-        self.register_variables(self.q_net.variables)
-
+        self.q_net = build_q_net("q")
         if twin_q:
-            self.twin_q_net = build_q_net("twin_q", self.model_out,
-                                          self.actions_input)
-            self.register_variables(self.twin_q_net.variables)
+            self.twin_q_net = build_q_net("twin_q")
         else:
             self.twin_q_net = None
 
-        self.log_alpha = tf.Variable(
-            np.log(initial_alpha), dtype=tf.float32, name="log_alpha")
-        self.alpha = tf.exp(self.log_alpha)
+        self.log_alpha = torch.tensor(
+            data=[np.log(initial_alpha)],
+            dtype=torch.float32,
+            requires_grad=True)
 
-        self.register_variables([self.log_alpha])
+        # Auto-calculate the target entropy.
+        if target_entropy is None or target_entropy == "auto":
+            # See hyperparams in [2] (README.md).
+            if self.discrete:
+                target_entropy = 0.98 * np.array(
+                    -np.log(1.0 / action_space.n), dtype=np.float32)
+            # See [1] (README.md).
+            else:
+                target_entropy = -np.prod(action_space.shape)
+
+        self.target_entropy = torch.tensor(
+            data=[target_entropy], dtype=torch.float32, requires_grad=False)
 
     def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.
@@ -137,7 +157,7 @@ class SACModel(TFModelV2):
             tensor of shape [BATCH_SIZE].
         """
         if actions is not None:
-            return self.q_net([model_out, actions])
+            return self.q_net(torch.cat([model_out, actions], -1))
         else:
             return self.q_net(model_out)
 
@@ -157,7 +177,7 @@ class SACModel(TFModelV2):
             tensor of shape [BATCH_SIZE].
         """
         if actions is not None:
-            return self.twin_q_net([model_out, actions])
+            return self.twin_q_net(torch.cat([model_out, actions], -1))
         else:
             return self.twin_q_net(model_out)
 
@@ -179,10 +199,10 @@ class SACModel(TFModelV2):
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
-        return list(self.action_model.variables)
+        return list(self.action_model.parameters())
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
 
-        return self.q_net.variables + (self.twin_q_net.variables
-                                       if self.twin_q_net else [])
+        return list(self.q_net.parameters()) + \
+            (list(self.twin_q_net.parameters()) if self.twin_q_net else [])

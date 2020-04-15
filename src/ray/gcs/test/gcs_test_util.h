@@ -15,13 +15,13 @@
 #ifndef RAY_GCS_TEST_UTIL_H
 #define RAY_GCS_TEST_UTIL_H
 
-#include <ray/common/task/task.h>
-#include <ray/common/task/task_util.h>
-#include <ray/common/test_util.h>
-#include <ray/gcs/gcs_server/gcs_actor_manager.h>
-#include <ray/gcs/gcs_server/gcs_actor_scheduler.h>
-#include <ray/gcs/gcs_server/gcs_node_manager.h>
-#include <ray/util/asio_util.h>
+#include "src/ray/common/task/task.h"
+#include "src/ray/common/task/task_util.h"
+#include "src/ray/common/test_util.h"
+#include "src/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "src/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "src/ray/util/asio_util.h"
 
 #include <memory>
 #include <utility>
@@ -57,6 +57,67 @@ struct Mocker {
     node->set_node_manager_port(port);
     node->set_node_manager_address("127.0.0.1");
     return node;
+  }
+
+  static std::shared_ptr<rpc::JobTableData> GenJobTableData(JobID job_id) {
+    auto job_table_data = std::make_shared<rpc::JobTableData>();
+    job_table_data->set_job_id(job_id.Binary());
+    job_table_data->set_is_dead(false);
+    job_table_data->set_timestamp(std::time(nullptr));
+    job_table_data->set_driver_ip_address("127.0.0.1");
+    job_table_data->set_driver_pid(5667L);
+    return job_table_data;
+  }
+
+  static std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID &job_id) {
+    auto actor_table_data = std::make_shared<rpc::ActorTableData>();
+    ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+    actor_table_data->set_actor_id(actor_id.Binary());
+    actor_table_data->set_job_id(job_id.Binary());
+    actor_table_data->set_state(
+        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+    actor_table_data->set_max_reconstructions(1);
+    actor_table_data->set_remaining_reconstructions(1);
+    return actor_table_data;
+  }
+
+  static std::shared_ptr<rpc::TaskTableData> GenTaskTableData(
+      const std::string &job_id, const std::string &task_id) {
+    auto task_table_data = std::make_shared<rpc::TaskTableData>();
+    rpc::Task task;
+    rpc::TaskSpec task_spec;
+    task_spec.set_job_id(job_id);
+    task_spec.set_task_id(task_id);
+    task.mutable_task_spec()->CopyFrom(task_spec);
+    task_table_data->mutable_task()->CopyFrom(task);
+    return task_table_data;
+  }
+
+  static std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(
+      const std::string &task_id, const std::string &node_id) {
+    auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
+    task_lease_data->set_task_id(task_id);
+    task_lease_data->set_node_manager_id(node_id);
+    return task_lease_data;
+  }
+
+  static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
+      const ClientID &node_id) {
+    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
+    profile_table_data->set_component_id(node_id.Binary());
+    return profile_table_data;
+  }
+
+  static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
+    auto error_table_data = std::make_shared<rpc::ErrorTableData>();
+    error_table_data->set_job_id(job_id.Binary());
+    return error_table_data;
+  }
+
+  static std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
+    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
+    worker_failure_data->set_timestamp(std::time(nullptr));
+    return worker_failure_data;
   }
 
   class MockWorkerClient : public rpc::CoreWorkerClientInterface {
