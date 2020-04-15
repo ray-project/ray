@@ -252,9 +252,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         # set extra environs first
         if extra_python_environs:
-            self._environs_need_reset = {}
             for key, value in extra_python_environs.items():
-                self._environs_need_reset[key] = os.environ.get(key, None)
                 os.environ[key] = str(value)
 
         def gen_rollouts():
@@ -891,13 +889,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
-
-        if hasattr(self, "_environs_need_reset"):
-            for key, value in self._environs_need_reset.items():
-                if value is None:
-                    del os.environ[key]
-                else:
-                    os.environ[key] = value
 
 
 def _validate_and_canonicalize(policy, env):

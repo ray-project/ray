@@ -495,13 +495,14 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertFalse("env_key_2" in os.environ)
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy)
+            policy=MockPolicy,
+            extra_python_environs=extra_envs)
         self.assertTrue("env_key_1" in os.environ)
         self.assertTrue("env_key_2" in os.environ)
 
-        del ev
-        self.assertFalse("env_key_1" in os.environ)
-        self.assertFalse("env_key_2" in os.environ)
+        # reset to original
+        del os.environ["env_key_1"]
+        del os.environ["env_key_2"]
 
 
 if __name__ == "__main__":
