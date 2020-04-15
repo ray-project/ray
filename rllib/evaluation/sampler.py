@@ -642,6 +642,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
 
         actions = eval_results[policy_id][0]
+
         # Force flatten all actions for further easy processing.
         # TODO(sven): See, whether TupleActions can be retired.
         if isinstance(actions, TupleActions):
@@ -666,7 +667,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             flat_actions = clip_action(
                 flat_actions, policy.flattened_action_space)
         # Split action-component batches into single action rows.
-        flat_actions = _unbatch_actions(flat_actions)
+        flat_actions = unbatch_actions(flat_actions)
         for i, flat_action in enumerate(flat_actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
@@ -707,39 +708,45 @@ def _fetch_atari_metrics(base_env):
     return atari_out
 
 
-def _unbatch_actions(action_batches):
-    # Converts action_batch:
-    # From a single list of batches:
-    # e.g. [[int batch: 1, 2, 3], [float batch: 1.0, 2.0, 3.0],
-    #       [float batch [5.0, 6.0], [6.0, 7.0], [7.0, 8.0]]]
-    # To a batch of lists (each of these lists representing a single action):
-    # e.g. [
-    #   [1, 1.0, 5.0, 6.0],  <- action 1
-    #   [2, 2.0, 6.0, 7.0],  <- action 2
-    #   [3, 3.0, 7.0, 8.0],  <- action 3
-    # ]
+def unbatch_actions(action_batches):
+    """Converts action_batches from list of batches to batch of lists.
 
-    #if isinstance(action_batch, TupleActions):
+    Input: Single list of batches:
+    e.g. [[int batch: 1, 2, 3], [float batch: 1.0, 2.0, 3.0],
+          [float batch [5.0, 6.0], [6.0, 7.0], [7.0, 8.0]]]
+    Output: Batch of lists (each of these lists representing a single action):
+    e.g. [
+      [1, 1.0, 5.0, 6.0],  <- action 1
+      [2, 2.0, 6.0, 7.0],  <- action 2
+      [3, 3.0, 7.0, 8.0],  <- action 3
+    ]
+
+    Args:
+        action_batches (any): The list of action-component batches. Each item
+            in this list represents the batch for a single action component
+            (in case action is Tuple/Dict), meaning the list is already
+            flattened.
+            Alternatively, `action_batches` may also simply be a batch of
+            primitive actions (non Tuple/Dict).
+
+    Returns:
+        List[List[action-components]]: The list of action rows. Each item
+            in the returned list represents a single (maybe complex) action.
+    """
+    # True if a single action (no TupleAction, no flattened action) has been
+    # passed in. In this case
+    single_mode = False
+    if not isinstance(action_batches, (list, tuple)):
+        single_mode = True
+        action_batches = force_list(action_batches)
+
     out = []
-    for batch_pos in range(len(action_batches[0])):  #range(len(action_batch.batches[0])):
+    for batch_pos in range(len(action_batches[0])):
         out.append([
             action_batches[i][batch_pos]
             for i in range(len(action_batches))
         ])
-    return out
-    #return action_batch
-
-    #if isinstance(action_batch, TupleActions):
-    #    flattened_action_batch = tree.flatten(action_batch)
-    #    out = []
-    #    # Loop through the length of the batches.
-    #    for batch_item in range(len(flattened_action_batch[0])):
-    #        out.append([
-    #            flattened_action_batch[batch][batch_item]
-    #            for batch in range(len(flattened_action_batch))
-    #        ])
-    #    return out
-    #return action_batch
+    return out[0] if single_mode else out
 
 
 def _to_column_format(rnn_state_rows):

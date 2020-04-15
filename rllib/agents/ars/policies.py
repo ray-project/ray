@@ -6,10 +6,10 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
-from ray.rllib.utils.filter import get_filter
+from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -41,8 +41,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or 999999):
-        ac = policy.compute(observation, add_noise=add_noise, update=True)[0]
-        observation, rew, done, _ = env.step(ac)
+        env_action = policy.compute(
+            observation, add_noise=add_noise, update=True)[0]
+        observation, rew, done, _ = env.step(env_action)
         rew -= np.abs(offset)
         rews.append(rew)
         t += 1
@@ -91,12 +92,13 @@ class GenericPolicy:
     def compute(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
-        action = self.sess.run(
+        actions = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        action = _unbatch_tuple_actions(action)
+        actions = unbatch_actions(actions)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
-            action += np.random.randn(*action.shape) * self.action_noise_std
-        return action
+            actions += np.random.randn(*actions.shape) * \
+                self.action_noise_std
+        return actions
 
     def set_weights(self, x):
         self.variables.set_flat(x)
