@@ -979,6 +979,7 @@ TaskID CoreWorker::GetCallerId() const {
   if (!actor_id.IsNil()) {
     caller_id = TaskID::ForActorCreationTask(actor_id);
   } else {
+    absl::MutexLock lock(&mutex_);
     caller_id = main_thread_task_id_;
   }
   return caller_id;
@@ -1125,11 +1126,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
-  auto task_id = object_id.TaskId();
-  if (task_manager_->IsTaskPending(task_id)) {
-    auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-    if (!task_spec.IsActorCreationTask())
-      RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec, force_kill));
+  auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+  if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
+    RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec.value(), force_kill));
   }
   return Status::OK();
 }
@@ -1326,8 +1325,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;
-    // Try to force kill if Cancellation RPC arrived before execution started.
-    TryForceKillTask();
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -1664,11 +1661,24 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                                             owner_address, ref_removed_callback);
 }
 
-void CoreWorker::TryForceKillTask() {
-  if (task_to_kill_.IsNil()) {
-    return;
+void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
+                                rpc::KillTaskReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
+  TaskID task_id = TaskID::FromBinary(request.intended_task_id());
+  bool success = main_thread_task_id_ == task_id;
+
+  // Try non-force kill
+  if (success && !request.force_kill()) {
+    RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
+    success = options_.kill_main();
   }
-  if (main_thread_task_id_ == task_to_kill_) {
+
+  reply->set_attempt_succeeded(success);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  // Do force kill after reply callback sent
+  if (success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     if (options_.log_dir != "") {
@@ -1676,25 +1686,6 @@ void CoreWorker::TryForceKillTask() {
     }
     exit(1);
   }
-}
-
-void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
-                                rpc::KillTaskReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) {
-  TaskID task_id = TaskID::FromBinary(request.intended_task_id());
-  // Try to kill the task immediately, if it fails, it will try again twice. This it to
-  // avoid the situation where a cancellation RPC is processed before the execute RPC.
-
-  absl::MutexLock lock(&mutex_);
-  if (!request.force_kill()) {
-    if (main_thread_task_id_ == task_id) {
-      RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
-      options_.kill_main();
-    }
-    return;
-  }
-  task_to_kill_ = task_id;
-  TryForceKillTask();
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

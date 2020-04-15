@@ -202,24 +202,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-void TaskManager::MarkTaskCancelled(const TaskID &task_id) {
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    if (it == submissible_tasks_.end()) {
-      return;
-    }
-    it->second.num_retries_left = 0;
-    it->second.cancelled = true;
-  }
-  MarkPendingTaskFailed(task_id, GetTaskSpec(task_id), rpc::ErrorType::TASK_CANCELLED);
-}
-
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                     Status *status) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+  RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
   int num_retries_left = 0;
   TaskSpecification spec;
@@ -232,11 +219,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     RAY_CHECK(it->second.pending)
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
+    num_retries_left =
+        error_type == rpc::ErrorType::TASK_CANCELLED ? 0 : it->second.num_retries_left;
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
-      error_type = it->second.cancelled ? rpc::ErrorType::TASK_CANCELLED : error_type;
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;
@@ -394,10 +381,12 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   }
 }
 
-TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
+absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end());
+  if (it == submissible_tasks_.end()) {
+    return absl::optional<TaskSpecification>();
+  }
   return it->second.spec;
 }
 

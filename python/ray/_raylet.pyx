@@ -455,6 +455,8 @@ cdef execute_task(
                 actor_title = "{}({}, {})".format(
                     class_name, repr(args), repr(kwargs))
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+            # Ensure no previous signals are still around
+            check_signals()
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
@@ -466,6 +468,8 @@ cdef execute_task(
                         raise RayCancellationError("")
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
+                # Ensure no signals are still around
+            check_signals()
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -480,8 +484,6 @@ cdef execute_task(
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause_cls, proctitle=title)
-            elif isinstance(error, RayCancellationError):
-                failure_object = RayCancellationError("")
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.__class__, proctitle=title)
@@ -559,13 +561,12 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
-cdef void kill_main_task() nogil:
+cdef c_bool kill_main_task() nogil:
     with gil:
-        # This prevents this interrupt from being called to early. It may still
-        # be called later, but will not cancel another task because this is
-        # called with a C++ mutex lock.
         if setproctitle.getproctitle() != "ray::IDLE":
             _thread.interrupt_main()
+            return True
+        return False
 
 
 cdef CRayStatus check_signals() nogil:

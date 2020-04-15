@@ -73,7 +73,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Either remove a pending task or send an RPC to kill a running task
   ///
   /// \param[in] task_spec The task to kill.
-  Status KillTask(TaskSpecification task_spec, bool force_kill);
+  Status KillTask(TaskSpecification task_spec, bool force_kill, int num_tries=3);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -175,7 +175,7 @@ class CoreWorkerDirectTaskSubmitter {
       GUARDED_BY(mu_);
 
   // Tasks that were cancelled while being resolved.
-  absl::flat_hash_set<TaskID> cancelled_resolving_tasks_ GUARDED_BY(mu_);
+  absl::flat_hash_set<TaskID> cancelled_tasks_ GUARDED_BY(mu_);
 
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> sent_tasks_ GUARDED_BY(mu_);

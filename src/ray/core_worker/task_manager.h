@@ -35,8 +35,6 @@ class TaskFinisherInterface {
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
-  virtual void MarkTaskCancelled(const TaskID &task_id) = 0;
-
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
@@ -110,13 +108,8 @@ class TaskManager : public TaskFinisherInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
-  /// Cancels a task by treating it as failed and removes any remaining retries
-  ///
-  /// \param[in] task_id The TaskId that is being cancelled
-  void MarkTaskCancelled(const TaskID &task_id);
-
   /// Return the spec for a pending task.
-  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -178,8 +171,6 @@ class TaskManager : public TaskFinisherInterface {
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
-
-    bool cancelled = false;
   };
 
   /// Remove a lineage reference to this object ID. This should be called

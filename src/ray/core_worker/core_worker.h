@@ -104,7 +104,7 @@ struct CoreWorkerOptions {
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
-  std::function<void()> kill_main;
+  std::function<bool()> kill_main;
   /// Whether to enable object ref counting.
   bool ref_counting_enabled;
   /// Is local mode being used.
@@ -500,7 +500,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// For actors, this is the current actor ID. To make sure that all caller
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
-  TaskID GetCallerId() const;
+  TaskID GetCallerId() const LOCKS_EXCLUDED(mutex_);
 
   /// Push an error to the relevant driver.
   ///
@@ -879,9 +879,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Try to kill a task multiple times.
-  void TryForceKillTask() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -904,11 +901,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
-  TaskID main_thread_task_id_;
-
-  /// Task to kill (this handles the situation where the cancellation rpc
-  // reaches the remort worker before the task begins executing)
-  TaskID task_to_kill_ GUARDED_BY(mutex_) = TaskID::Nil();
+  TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   // Flag indicating whether this worker has been shut down.
   bool shutdown_ = false;

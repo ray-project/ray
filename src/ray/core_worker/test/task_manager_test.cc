@@ -187,6 +187,30 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(TaskManagerTest, TestTaskKill) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  auto error = rpc::ErrorType::TASK_CANCELLED;
+  manager_.PendingTaskFailed(spec.TaskId(), error);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, error);
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {

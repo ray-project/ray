@@ -23,24 +23,32 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    absl::MutexLock lock(&mu_);
-    if (cancelled_resolving_tasks_.find(task_spec.TaskId()) !=
-        cancelled_resolving_tasks_.end()) {
-      cancelled_resolving_tasks_.erase(task_spec.TaskId());
-
-      return;
+    {
+      absl::MutexLock lock(&mu_);
+      bool keep_executing = true;
+      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_spec.TaskId());
+        keep_executing = false;
+      }
+      // Note that the dependencies in the task spec are mutated to only contain
+      // plasma dependencies after ResolveDependencies finishes.
+      if (keep_executing) {
+        const SchedulingKey scheduling_key(
+            task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+            task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
+                                            : ActorID::Nil());
+        auto it = task_queues_.find(scheduling_key);
+        if (it == task_queues_.end()) {
+          it =
+              task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
+        }
+        it->second.push_back(task_spec);
+        RequestNewWorkerIfNeeded(scheduling_key);
+        return;
+      }
     }
-    // Note that the dependencies in the task spec are mutated to only contain
-    // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(
-        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
-        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
-    auto it = task_queues_.find(scheduling_key);
-    if (it == task_queues_.end()) {
-      it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
-    }
-    it->second.push_back(task_spec);
-    RequestNewWorkerIfNeeded(scheduling_key);
+    task_finisher_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED,
+                                      nullptr);
   });
   return Status::OK();
 }
@@ -196,9 +204,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        bool cancelled = false;
         {
           absl::MutexLock lock(&mu_);
           sent_tasks_.erase(task_id);
+          cancelled = !cancelled_tasks_.extract(task_id).empty();
         }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return
@@ -215,11 +225,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // TODO: It'd be nice to differentiate here between process vs node
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
+          rpc::ErrorType error_type =
+              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED;
+          error_type = cancelled ? rpc::ErrorType::TASK_CANCELLED : error_type;
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(
-              task_id,
-              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status);
+          task_finisher_->PendingTaskFailed(task_id, error_type, &status);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
@@ -237,55 +247,59 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 }
 
 Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
-                                               bool force_kill) {
+                                               bool force_kill, int num_tries) {
+  RAY_LOG(ERROR) << "Killing task " << task_spec.TaskId() << " for the " << num_tries
+                 << " time";
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
-  bool is_pending = false;
   {
     absl::MutexLock lock(&mu_);
     auto scheduled_tasks = task_queues_.find(scheduling_key);
-
     // See if task has not been shipped yet
     if (scheduled_tasks != task_queues_.end()) {
       for (auto spec = scheduled_tasks->second.begin();
            spec != scheduled_tasks->second.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks->second.erase(spec);
-          is_pending = true;
 
           if (scheduled_tasks->second.empty()) {
             task_queues_.erase(scheduling_key);
           }
-          break;
+          // Try to cancel lease requests
+          task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                            rpc::ErrorType::TASK_CANCELLED);
+          return Status::OK();
         }
       }
-    } else {
-      auto rpc_client = sent_tasks_.find(task_spec.TaskId());
-      // No RPC handle for worker
-      if (rpc_client == sent_tasks_.end() ||
-          client_cache_.find(rpc_client->second) == client_cache_.end()) {
-        // Task has dependencies being resolved
-        cancelled_resolving_tasks_.emplace(task_spec.TaskId());
-      } else {
-        client = client_cache_.find(rpc_client->second)->second;
-      }
     }
-  }
-  task_finisher_->MarkTaskCancelled(task_spec.TaskId());
-  if (is_pending) {
-    task_finisher_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+
+    cancelled_tasks_.emplace(task_spec.TaskId());
+    auto rpc_client = sent_tasks_.find(task_spec.TaskId());
+    // Checks for RPC handle for worker
+    if (rpc_client != sent_tasks_.end() &&
+        client_cache_.find(rpc_client->second) != client_cache_.end()) {
+      client = client_cache_.find(rpc_client->second)->second;
+    }
   }
 
   if (client == nullptr) {
     return Status::OK();
   }
 
+  RAY_LOG(ERROR) << "Killing an active task";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
-  return client->KillTask(request, nullptr);
-}
-
+  RAY_UNUSED(client->KillTask(
+      request, [this, task_spec, force_kill, num_tries](const Status &status,
+                                                        const rpc::KillTaskReply &reply) {
+        if (status.ok() && !reply.attempt_succeeded() && num_tries > 0) {
+          usleep(RayConfig::instance().cancellation_retry_ms() * 1000);
+          RAY_UNUSED(KillTask(task_spec, force_kill, num_tries - 1));
+        }
+      }));
+  return Status::OK();
+}  // namespace ray
 };  // namespace ray

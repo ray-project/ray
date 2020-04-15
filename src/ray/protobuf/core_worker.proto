@@ -185,14 +185,15 @@ message KillActorReply {
 }
 
 message KillTaskRequest {
-  // ID of Task that should be killed.
+  // ID of task that should be killed.
   bytes intended_task_id = 1; 
   // Whether to kill the worker.
   bool force_kill = 2; 
 }
 
 message KillTaskReply {
-
+  // Whether the requested task is the currently running task. 
+  bool attempt_succeeded = 1;
 }
 
 message GetCoreWorkerStatsRequest {

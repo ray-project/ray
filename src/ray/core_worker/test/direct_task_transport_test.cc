@@ -777,6 +777,69 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
+TEST(DirectTaskTransportTest, TestKillExecutingTask) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
+
+  // Try force kill, exiting the worker
+  ASSERT_TRUE(submitter.KillTask(task, true).ok());
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+
+  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
+
+  // Try non-force kill, worker returns normally
+  ASSERT_TRUE(submitter.KillTask(task2, false).ok());
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
+TEST(DirectTaskTransportTest, TestKillPendingTask) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.KillTask(task, true).ok());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

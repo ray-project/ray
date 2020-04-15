@@ -1,12 +1,14 @@
 import pytest
 import ray
+import random
 import sys
 import time
 from ray.exceptions import RayCancellationError, RayTimeoutError
 from ray.test_utils import SignalActor
 
 
-def kill_chain(use_force):
+@pytest.mark.parametrize("use_force", [True, False])
+def test_kill_chain(ray_start_regular, use_force):
     """A helper method for chain of events tests"""
     signaler = SignalActor.remote()
 
@@ -44,7 +46,8 @@ def kill_chain(use_force):
     ray.get(obj1, timeout=.1)
 
 
-def kill_multiple_dependents(use_force):
+@pytest.mark.parametrize("use_force", [True, False])
+def test_kill_multiple_dependents(ray_start_regular, use_force):
     """A helper method for multiple waiters on events tests"""
     signaler = SignalActor.remote()
 
@@ -80,7 +83,8 @@ def kill_multiple_dependents(use_force):
     ray.get(head2, timeout=1)
 
 
-def single_cpu_kill(use_force):
+@pytest.mark.parametrize("use_force", [True, False])
+def test_single_cpu_kill(shutdown_only, use_force):
     ray.init(num_cpus=1)
     signaler = SignalActor.remote()
 
@@ -106,30 +110,6 @@ def single_cpu_kill(use_force):
 
     signaler.send.remote()
     ray.get(indep)
-
-
-def test_kill_chain_force(ray_start_regular):
-    kill_chain(True)
-
-
-def test_kill_chain_no_force(ray_start_regular):
-    kill_chain(False)
-
-
-def test_kill_mutiple_dependents_force(ray_start_regular):
-    kill_multiple_dependents(True)
-
-
-def test_kill_mutiple_dependents_no_force(ray_start_regular):
-    kill_multiple_dependents(False)
-
-
-def test_single_cpu_force(shutdown_only):
-    single_cpu_kill(True)
-
-
-def test_single_cpu_no_force(shutdown_only):
-    single_cpu_kill(False)
 
 
 def test_kill_dependency_waiting(ray_start_regular):
@@ -187,6 +167,45 @@ def test_comprehensive(ray_start_regular):
 
     with pytest.raises(RayCancellationError):
         ray.get(combo, 10)
+
+
+@pytest.mark.parametrize("use_force", [True, False])
+def test_stress(shutdown_only, use_force):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def infinite_sleep(y):
+        if y:
+            while True:
+                time.sleep(1 / 10)
+
+    first = infinite_sleep.remote(True)
+
+    sleep_or_no = [random.randint(0, 1) for _ in range(100)]
+    tasks = [infinite_sleep.remote(i) for i in sleep_or_no]
+    killed = set()
+    for t in tasks:
+        if random.random() > 0.5:
+            ray.kill(t, use_force)
+            killed.add(t)
+
+    ray.kill(first, use_force)
+    killed.add(first)
+
+    for done in killed:
+        with pytest.raises(RayCancellationError):
+            ray.get(done, 10)
+
+    for indx in range(len(tasks)):
+        t = tasks[indx]
+        if sleep_or_no[indx]:
+            ray.kill(t, use_force)
+            killed.add(t)
+        if t in killed:
+            with pytest.raises(RayCancellationError):
+                ray.get(t, 10)
+        else:
+            ray.get(t)
 
 
 if __name__ == "__main__":
