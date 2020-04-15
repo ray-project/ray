@@ -1338,23 +1338,15 @@ genrule(
             mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
-            set -e
-            tmpdir="redis.tmp"
-            path=$(location @com_github_antirez_redis//:file)
-            cp -p -L -R -- "$${path%/*}" "$${tmpdir}"
-            sed -i.bak 's/echo "\\(Hint:.*\\)*"//'                             "$${tmpdir}/src/Makefile"               # suppress hint to test the build
-            sed -i.bak 's/^\t@printf .*//'                                     "$${tmpdir}/deps/Makefile"              # suppress progress
-            sed -i.bak 's/--enable-cc-silence/--silent/'                       "$${tmpdir}/deps/Makefile"              # suppress progress
-            sed -i.bak 's/ -Wall / -Wall -Wno-unused-variable -Wno-pragmas /g' "$${tmpdir}/deps/Makefile"              # suppress some warnings
-            sed -i.bak 's/^LUA_CFLAGS+=/LUA_CFLAGS+=-DLUA_USE_MKSTEMP /'       "$${tmpdir}/deps/Makefile"              # use mkstemp()
-            sed -i.bak 's/^ARFLAGS=rcu/ARFLAGS=rc/'                            "$${tmpdir}/deps/Makefile"              # suppress "ar: `u' modifier ignored"
-            sed -i.bak "s/^ARFLAGS='crus'/ARFLAGS='crs'/"                      "$${tmpdir}/deps/jemalloc/configure"    # suppress "ar: `u' modifier ignored"
-            sed -i.bak 's/echo "cp $$< $$<";//'                                "$${tmpdir}/deps/jemalloc/Makefile.in"  # suppress progress
-            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" CFLAGS="$${CFLAGS-} -w" V=0
-            mv "$${tmpdir}"/src/redis-server $(location redis-server)
-            chmod +x $(location redis-server)
-            mv "$${tmpdir}"/src/redis-cli $(location redis-cli)
-            chmod +x $(location redis-cli)
+            set -x &&
+            tmpdir="redis.tmp" &&
+            path=$(location @com_github_antirez_redis//:file) &&
+            cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
+            chmod +x $(location redis-server) &&
+            mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli) &&
             rm -r -f -- "$${tmpdir}"
         """,
     }),
