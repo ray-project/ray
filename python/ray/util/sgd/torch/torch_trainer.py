@@ -131,6 +131,10 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        serialize_data_creation: A filelock will be used
+            to ensure no race conditions in data downloading among
+            different workers on the same node (using the local file system).
+            Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         add_dist_sampler (bool): Whether to automatically add a
@@ -171,6 +175,7 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
+            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
@@ -237,6 +242,7 @@ class TorchTrainer:
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.serialize_data_creation = serialize_data_creation
         self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
@@ -298,6 +304,7 @@ class TorchTrainer:
             scheduler_creator=self.scheduler_creator,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
+            serialize_data_creation=self.serialize_data_creation,
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,

@@ -25,23 +25,7 @@ except ImportError:
 
 
 class TorchRunner:
-    """Manages a PyTorch model for training.
-
-    Args:
-        model_creator (dict -> Model(s)): see torch_trainer.py
-        data_creator (dict -> Iterable(s)): see torch_trainer.py.
-        optimizer_creator ((models, dict) -> optimizers): see torch_trainer.py.
-        loss_creator (torch.nn.*Loss class | dict -> loss):
-            see torch_trainer.py.
-        scheduler_creator ((optimizers, dict) -> scheduler): see
-            torch_trainer.py.
-        training_operator_cls: see torch_trainer.py
-        config (dict): see torch_trainer.py.
-        use_gpu (bool): see torch_trainer.py.
-        use_fp16 (bool): see torch_trainer.py.
-        apex_args (dict|None): see torch_trainer.py.
-        scheduler_step_freq (str): see torch_trainer.py.
-    """
+    """Manages a PyTorch model for training."""
 
     def __init__(self,
                  model_creator,
@@ -52,6 +36,7 @@ class TorchRunner:
                  training_operator_cls=None,
                  config=None,
                  use_gpu=False,
+                 serialize_data_creation=True,
                  use_fp16=False,
                  use_tqdm=False,
                  apex_args=None,
@@ -73,6 +58,7 @@ class TorchRunner:
         self.train_loader = None
         self.validation_loader = None
         self.training_operator = None
+        self.serialize_data_creation = serialize_data_creation
         self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
@@ -98,17 +84,15 @@ class TorchRunner:
 
     def _initialize_dataloaders(self):
         logger.debug("Instantiating dataloaders.")
-        # When creating loaders, a filelock will be used to ensure no
-        # race conditions in data downloading among different workers.
-        with FileLock(os.path.join(tempfile.gettempdir(), ".ray_data.lock")):
+        loaders = None
+        if self.serialize_data_creation:
+            logger.debug("Serializing the dataloading process.")
+            with FileLock(
+                    os.path.join(tempfile.gettempdir(), ".raydata.lock")):
+                loaders = self.data_creator(self.config)
+        else:
             loaders = self.data_creator(self.config)
-            train_loader, val_loader = self._validate_loaders(loaders)
-            if not isinstance(train_loader, torch.utils.data.DataLoader):
-                logger.warning(
-                    "TorchTrainer data_creator return values are no longer "
-                    "wrapped as DataLoaders. Users must return DataLoader(s) "
-                    "in data_creator. This warning will be removed in "
-                    "a future version of Ray.")
+        train_loader, val_loader = self._validate_loaders(loaders)
 
         self.train_loader, self.validation_loader = train_loader, val_loader
 
