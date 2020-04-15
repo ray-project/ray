@@ -20,8 +20,7 @@ namespace gcs {
 
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
@@ -78,9 +77,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : subscribe_id_(ClientID::FromRandom()),
-      client_impl_(client_impl),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -294,8 +291,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
@@ -547,10 +543,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     rpc::ResourceChange resource_change;
     resource_change.ParseFromString(data);
     std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resource_map;
-    auto it = resource_change.data().items().begin();
-    while (it != resource_change.data().items().end()) {
-      resource_map[it->first] = std::make_shared<rpc::ResourceTableData>(it->second);
-      ++it;
+    for (auto &item : resource_change.data().items()) {
+      resource_map[item.first] = std::make_shared<rpc::ResourceTableData>(item.second);
     }
     gcs::ResourceChangeNotification notification(resource_change.change_mode(),
                                                  resource_map);
@@ -663,9 +657,7 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
@@ -823,9 +815,7 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 
 ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
     const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
@@ -985,8 +975,7 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      gcs_sub_(client_impl->GetRedisGcsClient().GetRedisClient()) {}
+    : client_impl_(client_impl), gcs_sub_(client_impl->GetRedisClient()) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,

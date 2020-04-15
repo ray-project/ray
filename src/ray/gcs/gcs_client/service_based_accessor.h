@@ -46,6 +46,8 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
+
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string job_channel_ = TablePubsub_Name(TablePubsub::JOB_PUBSUB);
 };
@@ -95,12 +97,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
- protected:
-  ClientID subscribe_id_;
-
  private:
   ServiceBasedGcsClient *client_impl_;
 
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string actor_channel_ = TablePubsub_Name(TablePubsub::ACTOR_PUBSUB);
 
@@ -185,6 +185,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   ServiceBasedGcsClient *client_impl_;
 
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string node_channel_ = TablePubsub_Name(TablePubsub::CLIENT_PUBSUB);
   const std::string node_resource_channel_ =
@@ -248,8 +249,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_;
-
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string task_channel_ = TablePubsub_Name(TablePubsub::TASK_PUBSUB);
   const std::string task_lease_channel_ =
@@ -286,8 +286,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_;
-
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string object_channel_ = TablePubsub_Name(TablePubsub::OBJECT_PUBSUB);
   Sequencer<ObjectID> sequencer_;
@@ -349,6 +348,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
+  /// Subscribe to GCS table information.
   GcsPubSub gcs_sub_;
   const std::string worker_failure_channel_ =
       TablePubsub_Name(TablePubsub::WORKER_FAILURE_PUBSUB);

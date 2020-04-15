@@ -250,9 +250,9 @@ void DefaultNodeInfoHandler::UnregisterNode(
       RAY_LOG(ERROR) << "Failed to unregister node info: " << status.ToString()
                      << ", node id = " << node_id;
     } else {
-      RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
       RAY_CHECK_OK(gcs_pub_.Publish(node_channel_, node_id.Binary(),
                                     node_info.SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

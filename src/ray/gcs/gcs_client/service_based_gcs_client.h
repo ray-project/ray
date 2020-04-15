@@ -23,15 +23,15 @@ namespace gcs {
 
 class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
-  ServiceBasedGcsClient(const GcsClientOptions &options);
-
-  ServiceBasedGcsClient(RedisGcsClient *redis_gcs_client);
+  explicit ServiceBasedGcsClient(const GcsClientOptions &options);
 
   Status Connect(boost::asio::io_service &io_service) override;
 
   void Disconnect() override;
 
-  RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
+  std::shared_ptr<RedisClient> GetRedisClient() {
+    return redis_gcs_client_->GetRedisClient();
+  }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
