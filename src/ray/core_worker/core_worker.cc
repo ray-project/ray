@@ -733,7 +733,8 @@ Status CoreWorker::Put(const RayObject &object,
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_, CurrentCallSite(), object.GetSize(),
-                                     /*is_reconstructable=*/false);
+                                     /*is_reconstructable=*/false,
+                                     ClientID::FromBinary(rpc_address_.raylet_id()));
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -784,10 +785,10 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
-    reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                       rpc_address_, CurrentCallSite(),
-                                       data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false);
+    reference_counter_->AddOwnedObject(
+        *object_id, contained_object_ids, GetCallerId(), rpc_address_, CurrentCallSite(),
+        data_size + metadata->Size(),
+        /*is_reconstructable=*/false, ClientID::FromBinary(rpc_address_.raylet_id()));
   }
   return Status::OK();
 }

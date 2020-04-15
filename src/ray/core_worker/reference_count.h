@@ -145,10 +145,11 @@ class ReferenceCounter {
   /// \param[in] object_size Object size if known, otherwise -1;
   /// \param[in] is_reconstructable Whether the object can be reconstructed
   /// through lineage re-execution.
-  void AddOwnedObject(const ObjectID &object_id,
-                      const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
-                      const rpc::Address &owner_address, const std::string &call_site,
-                      const int64_t object_size, bool is_reconstructable)
+  void AddOwnedObject(
+      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
+      const TaskID &owner_id, const rpc::Address &owner_address,
+      const std::string &call_site, const int64_t object_size, bool is_reconstructable,
+      const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
       LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
@@ -330,12 +331,14 @@ class ReferenceCounter {
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address,
-              std::string call_site, const int64_t object_size, bool is_reconstructable)
+              std::string call_site, const int64_t object_size, bool is_reconstructable,
+              const absl::optional<ClientID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
           owner({owner_id, owner_address}),
-          is_reconstructable(is_reconstructable) {}
+          is_reconstructable(is_reconstructable),
+          pinned_at_raylet_id(pinned_at_raylet_id) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.

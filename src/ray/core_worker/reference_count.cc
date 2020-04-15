@@ -148,7 +148,8 @@ void ReferenceCounter::AddObjectRefStats(
 void ReferenceCounter::AddOwnedObject(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
     const TaskID &owner_id, const rpc::Address &owner_address,
-    const std::string &call_site, const int64_t object_size, bool is_reconstructable) {
+    const std::string &call_site, const int64_t object_size, bool is_reconstructable,
+    const absl::optional<ClientID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -156,8 +157,9 @@ void ReferenceCounter::AddOwnedObject(
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address, call_site,
-                                               object_size, is_reconstructable));
+  object_id_refs_.emplace(object_id,
+                          Reference(owner_id, owner_address, call_site, object_size,
+                                    is_reconstructable, pinned_at_raylet_id));
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
