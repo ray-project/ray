@@ -4,7 +4,6 @@ import ray
 import ray.streaming._streaming as _streaming
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.runtime.processor as processor
-from ray._raylet import PythonFunctionDescriptor
 from ray.streaming.config import Config
 from ray.streaming.runtime.graph import ExecutionGraph
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
