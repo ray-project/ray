@@ -4,14 +4,29 @@ Ray Serve: Scalable and Programmable Serving
 .. image:: logo.svg
     :align: center
 
+There are generally two ways of serving machine learning applications at scale.
+The first is wrapping your application in a traditional web server. This approach
+is easy but hard to scale each component, and easily leading to high memory usage
+as well as concurrency issue. The other approach is to use a cloud-hosted solution
+like SageMaker or TFServing. These solutions have high learning costs and lead to
+vendor lock-in.
+
 Serve is a serving library built on top of ray. It is easy-to-use and flexible.
 
-- Serve allows you to write *stateless* logic in serve functions and *stateful* logic in serve actors.
-- Serve has *Flask-inspired API*. You directly work with a Flask request object on each request.
-- Serve grows as your project grows, it can *scale to a cluster* without changing any lines of code.
-- *Everything is in Python*. Instead of writing configuration YAML, the language to configure the serving system is the same as the language to write the application logic.
-- *Batching* and *SLO aware scheduling* are built-in features. Serve can automatically batch queries and reorder them to meet SLO target.
-- Deploy to any cloud (or Kubernetes) with Ray Autoscaler.
+- Serve is **framework agnostics** and extensible. You can serve your scikit-learn,
+  PyTorch, and TensorFlow models in the same framework.
+- Serve gives you end-to-end control over your API. Your input is just a **Flask
+  request** instead of arrays.
+- Serve scales to many machines. With a single API call, you can run scale your
+  models to hundreds of GPUs.
+- Serve decouples routing and handling so you can update or **A/B test** your models
+  with zero downtime.
+- Serve uses **Python as the configuration language**. Tired of writing repetitive YAMLs
+  or JSON to configure your services? Serve can be configured directly using the
+  Python API.
+- Serve has built-in **batching and SLO awareness**. This means Serve will maximally
+  utilize the hardware and reorder queries to meet your latency objective.
+- With Ray Autoscaler, you can deploy Serve to **any cloud** (or Kubernetes).
 
 
 Quick start

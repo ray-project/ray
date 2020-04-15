@@ -17,14 +17,14 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD`_: Distributed Training Wrappers
-- `Ray.Serve`_: Scalable and Programmable Serving
+- `RayServe`_: Scalable and Programmable Serving
 
 
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 .. _`RaySGD`: raysgd/raysgd.html
-.. _`Ray.Serve`: serve/quickstart.html
+.. _`RayServe`: serve/quickstart.html
 
 .. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
@@ -285,7 +285,7 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Serve
+   :caption: RayServe
 
    serve/quickstart.rst
 
