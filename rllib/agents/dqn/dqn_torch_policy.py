@@ -135,13 +135,13 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(policy,
-                                      q_model,
+                                      model,
                                       obs_batch,
                                       *,
                                       explore=True,
                                       is_training=False,
                                       **kwargs):
-    q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
+    q_vals = compute_q_values(policy, model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals

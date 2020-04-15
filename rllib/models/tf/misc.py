@@ -13,12 +13,6 @@ def normc_initializer(std=1.0):
     return _initializer
 
 
-def get_activation_fn(name):
-    if name == "linear":
-        return None
-    return getattr(tf.nn, name)
-
-
 def conv2d(x,
            num_filters,
            name,

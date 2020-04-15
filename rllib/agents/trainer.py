@@ -678,13 +678,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-        if not self.config["evaluation_config"]:
-            raise ValueError(
-                "No evaluation_config specified. It doesn't make sense "
-                "to enable evaluation without specifying any config "
-                "overrides, since the results will be the "
-                "same as reported during normal policy evaluation.")
-
         self._before_evaluate()
 
         # Broadcast the new policy weights to all evaluation workers.
