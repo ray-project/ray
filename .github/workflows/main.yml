@@ -21,10 +21,10 @@ jobs:
       PYTHON: 3.6
     steps:
     - name: Pre-checkout system configuration
-      # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
       # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
       shell: bash -e -o pipefail -l {0}
       run: |
+        # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
         if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
           echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
         fi
@@ -41,7 +41,7 @@ jobs:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        . ./ci/travis/ci.sh prepare
+        . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
     - name: Run Clang Include-What-You-Use
       continue-on-error: true

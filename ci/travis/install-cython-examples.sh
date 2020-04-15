@@ -10,7 +10,6 @@ install_cython_examples() {
     pip install scipy
     python setup.py install --user
   )
-  eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
 }
 
 install_cython_examples "$@"

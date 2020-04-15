@@ -7,7 +7,7 @@ set -euxo pipefail
 ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
-pkg_install() {
+pkg_install_helper() {
   case "${OSTYPE}" in
     darwin*) brew install "$@";;
     linux*) sudo apt-get install -qq -o=Dpkg::Use-Pty=0 "$@" | grep --line-buffered -v "^\(Preparing to unpack\|Unpacking\|Processing triggers for\) ";;
@@ -19,9 +19,9 @@ install_base() {
   case "${OSTYPE}" in
     linux*)
       sudo apt-get update -qq
-      pkg_install build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
+      pkg_install_helper build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
       if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install docker
+        pkg_install_helper docker
         sudo usermod -a -G docker travis
       fi
       if [ -n "${PYTHON-}" ]; then
@@ -62,21 +62,24 @@ install_miniconda() {
 }
 
 install_nvm() {
+  local NVM_HOME="${HOME}/.nvm"
   if [ "${OSTYPE}" = msys ]; then
-      local version="1.1.7" NVM_HOME="${HOME}/.nvm"
-      if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
-        mkdir -p -- "${NVM_HOME}"
-        export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
-        (
-          cd "${NVM_HOME}"
-          local target="./nvm-${version}.zip"
-          curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
-          unzip -q -- "${target}"
-          rm -f -- "${target}"
-          printf "%s\r\n" "root: $(cygpath -w -- "${NVM_HOME}")" "path: ${NVM_SYMLINK}" > settings.txt
-        )
-        printf "%s\n" "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" 'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' > "${NVM_HOME}/nvm.sh"
-      fi
+    local version="1.1.7"
+    if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
+      mkdir -p -- "${NVM_HOME}"
+      export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
+      (
+        cd "${NVM_HOME}"
+        local target="./nvm-${version}.zip"
+        curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
+        unzip -q -- "${target}"
+        rm -f -- "${target}"
+        printf "%s\r\n" "root: $(cygpath -w -- "${NVM_HOME}")" "path: ${NVM_SYMLINK}" > settings.txt
+      )
+      printf "%s\n" "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" 'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' > "${NVM_HOME}/nvm.sh"
+    fi
+  else
+    test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
   fi
 }
 
@@ -157,7 +160,7 @@ install_dependencies() {
   fi
 
   # Additional streaming dependencies.
-  if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED-}" = 1 ]; then
+  if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
     pip install msgpack>=0.6.2
   fi
 

@@ -148,7 +148,7 @@ if __name__ == "__main__":
         RAY_CI_ONLY_RLLIB_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
-    print("{{ export {}; }} 2> /dev/null".format(" ".join([
+    print(" ".join([
         "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
         "RAY_CI_ONLY_RLLIB_AFFECTED={}".format(RAY_CI_ONLY_RLLIB_AFFECTED),
         "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
@@ -164,4 +164,4 @@ if __name__ == "__main__":
             RAY_CI_STREAMING_PYTHON_AFFECTED),
         "RAY_CI_STREAMING_JAVA_AFFECTED={}".format(
             RAY_CI_STREAMING_JAVA_AFFECTED),
-    ])))
+    ]))

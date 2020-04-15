@@ -9,11 +9,13 @@ set -eo pipefail && if [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi  # some opt
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
+# If provided the names of one or more environment variables, returns success if any of them is triggered.
+# Usage: should_run_job [VAR_NAME]...
 should_run_job() {
-  local skip=0 envvar
+  local skip=0
   if [ -n "$1" ]; then  # were any triggers provided? (if not, then the job will always run)
-    local active_triggers=()
-    for envvar in ${1//,/ }; do
+    local envvar active_triggers=()
+    for envvar in "$@"; do
       if [ "${!envvar}" = 1 ]; then
         active_triggers+="${envvar}=${!envvar}"  # success! we found at least one of the given triggers is occurring
       fi
@@ -45,13 +47,24 @@ reload_env() {
   export PATH PYTHON3_BIN_PATH
 }
 
-prepare() {
-  local test_env_var_names="${1-}"  # optional comma-separated list of names of environment variables that trigger us
-  local script
-  script="$(python "${ROOT_DIR}"/determine_tests_to_run.py)"
-  eval "${script}"
-  if ! should_run_job "${test_env_var_names}"; then
-    exit 0  # we use 'exit' instead of 'return' so that when this script is sourced, the entire script exits
+# Initializes the environment for the current job. Performs the following tasks:
+# - Calls 'exit 0' to quickly exit if provided a list of job names and none of them has been triggered.
+# - Sets variables to indicate the job names that have been triggered.
+#   Note: Please avoid exporting these variables. Instead, source any callees that need to use them.
+#   This helps reduce implicit coupling of callees to their parents, as they will be unable to run when not sourced, (especially with set -u).
+# - Installs dependencies for the current job.
+# - Exports any environment variables necessary to run the build.
+# Usage: init [JOB_NAMES]
+# - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
+init() {
+  local job_names="${1-}"
+
+  local definitions
+  definitions="$(python "${ROOT_DIR}"/determine_tests_to_run.py)"
+  { declare ${definitions}; } 2> /dev/null
+
+  if ! should_run_job ${job_names//,/ }; then
+    exit 0
   fi
 
   if [ "${OSTYPE}" = msys ]; then
@@ -78,6 +91,8 @@ build() {
   if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
     "${ROOT_DIR}"/install-cython-examples.sh
   fi
+
+  eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
 
   if [ "${LINUX_WHEELS-}" = 1 ]; then
     # Mount bazel cache dir to the docker container.
