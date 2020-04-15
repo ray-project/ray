@@ -465,7 +465,8 @@ cdef execute_task(
                         outputs = function_executor(*args, **kwargs)
                         task_exception = False
                     except KeyboardInterrupt as e:
-                        raise RayCancellationError(core_worker.get_current_task_id())
+                        raise RayCancellationError(
+                                core_worker.get_current_task_id())
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
                 # Ensure no signals are still around
