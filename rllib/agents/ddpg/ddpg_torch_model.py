@@ -1,7 +1,8 @@
 import numpy as np
 
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_torch, get_activation_fn
 
 torch, nn = try_import_torch()
 
@@ -51,53 +52,65 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         self.action_dim = np.product(action_space.shape)
 
         # Build the policy network.
-        self.action_model = nn.Sequential()
+        self.policy_model = nn.Sequential()
         ins = obs_space.shape[-1]
         self.obs_ins = ins
+        activation = get_activation_fn(
+            actor_hidden_activation, framework="torch")
         for i, n in enumerate(actor_hiddens):
-            self.action_model.add_module("action_{}".format(i),
-                                         nn.Linear(ins, n))
-            # Add activations if necessary.
-            if actor_hidden_activation == "relu":
-                self.action_model.add_module("action_activation_{}".format(i),
-                                             nn.ReLU())
-            elif actor_hidden_activation == "tanh":
-                self.action_model.add_module("action_activation_{}".format(i),
-                                             nn.Tanh())
+            self.policy_model.add_module(
+                "action_{}".format(i),
+                SlimFC(
+                    ins,
+                    n,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=activation))
             # Add LayerNorm after each Dense.
             if add_layer_norm:
-                self.action_model.add_module("LayerNorm_A_{}".format(i),
+                self.policy_model.add_module("LayerNorm_A_{}".format(i),
                                              nn.LayerNorm(n))
             ins = n
-        self.action_model.add_module("action_out",
-                                     nn.Linear(ins, self.action_dim))
+
+        self.policy_model.add_module(
+            "action_out",
+            SlimFC(
+                ins,
+                self.action_dim,
+                initializer=torch.nn.init.xavier_uniform_,
+                activation_fn=None))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
+            activation = get_activation_fn(
+                critic_hidden_activation, framework="torch")
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
             ins = self.obs_ins + self.action_dim
             for i, n in enumerate(critic_hiddens):
-                q_net.add_module("{}_hidden_{}".format(name_, i),
-                                 nn.Linear(ins, n))
-                # Add activations if necessary.
-                if critic_hidden_activation == "relu":
-                    q_net.add_module("{}_activation_{}".format(name_, i),
-                                     nn.ReLU())
-                elif critic_hidden_activation == "tanh":
-                    q_net.add_module("{}_activation_{}".format(name_, i),
-                                     nn.Tanh())
+                q_net.add_module(
+                    "{}_hidden_{}".format(name_, i),
+                    SlimFC(
+                        ins,
+                        n,
+                        initializer=torch.nn.init.xavier_uniform_,
+                        activation_fn=activation))
                 ins = n
 
-            q_net.add_module("{}_out".format(name_), nn.Linear(ins, 1))
+            q_net.add_module(
+                "{}_out".format(name_),
+                SlimFC(
+                    ins,
+                    1,
+                    initializer=torch.nn.init.xavier_uniform_,
+                    activation_fn=None))
             return q_net
 
-        self.q_net = build_q_net("q")
+        self.q_model = build_q_net("q")
         if twin_q:
-            self.twin_q_net = build_q_net("twin_q")
+            self.twin_q_model = build_q_net("twin_q")
         else:
-            self.twin_q_net = None
+            self.twin_q_model = None
 
     def get_q_values(self, model_out, actions):
         """Return the Q estimates for the most recent forward pass.
@@ -113,7 +126,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.q_net(torch.cat([model_out, actions], -1))
+        return self.q_model(torch.cat([model_out, actions], -1))
 
     def get_twin_q_values(self, model_out, actions):
         """Same as get_q_values but using the twin Q net.
@@ -129,7 +142,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.twin_q_net(torch.cat([model_out, actions], -1))
+        return self.twin_q_model(torch.cat([model_out, actions], -1))
 
     def get_policy_output(self, model_out):
         """Return the action output for the most recent forward pass.
@@ -144,20 +157,20 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         Returns:
             tensor of shape [BATCH_SIZE, action_out_size]
         """
-        return self.action_model(model_out)
+        return self.policy_model(model_out)
 
     def policy_variables(self, as_dict=False):
         """Return the list of variables for the policy net."""
         if as_dict:
-            return self.action_model.state_dict()
-        return list(self.action_model.parameters())
+            return self.policy_model.state_dict()
+        return list(self.policy_model.parameters())
 
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
             return {
-                **self.q_net.state_dict(),
-                **(self.twin_q_net.state_dict() if self.twin_q_net else {})
+                **self.q_model.state_dict(),
+                **(self.twin_q_model.state_dict() if self.twin_q_model else {})
             }
-        return list(self.q_net.parameters()) + \
-            (list(self.twin_q_net.parameters()) if self.twin_q_net else [])
+        return list(self.q_model.parameters()) + \
+            (list(self.twin_q_model.parameters()) if self.twin_q_model else [])

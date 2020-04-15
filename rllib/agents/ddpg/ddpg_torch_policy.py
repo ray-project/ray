@@ -146,10 +146,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
         input_dict[SampleBatch.DONES] = train_batch[SampleBatch.DONES]
         input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
-        actor_loss = model.action_model.custom_loss(actor_loss, input_dict)
-        critic_loss = model.q_net.custom_loss(critic_loss, input_dict)
-        if model.twin_q_model:
-            critic_loss = model.twin_q_net.custom_loss(critic_loss, input_dict)
+        [actor_loss, critic_loss] = model.custom_loss(
+            [actor_loss, critic_loss], input_dict)
 
     # Store values for stats function.
     policy.actor_loss = actor_loss

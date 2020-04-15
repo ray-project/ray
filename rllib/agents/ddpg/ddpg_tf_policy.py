@@ -4,6 +4,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
+from ray.util.debug import log_once
 from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
@@ -244,10 +245,19 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
         input_dict[SampleBatch.DONES] = train_batch[SampleBatch.DONES]
         input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
-        actor_loss = model.action_model.custom_loss(actor_loss, input_dict)
-        critic_loss = model.q_net.custom_loss(critic_loss, input_dict)
-        if model.twin_q_model:
-            critic_loss = model.twin_q_net.custom_loss(critic_loss, input_dict)
+        if log_once("ddpg_custom_loss"):
+            logger.warning(
+                "You are using a state-preprocessor with DDPG and "
+                "therefore, `custom_loss` will be called on your Model! "
+                "Please be aware that DDPG now uses the ModelV2 API, which "
+                "merges all previously separate sub-models (policy_model, "
+                "q_model, and twin_q_model) into one ModelV2, on which "
+                "`custom_loss` is called, passing it "
+                "[actor_loss, critic_loss] as 1st argument. "
+                "You may have to change your custom loss function to handle "
+                "this.")
+        [actor_loss, critic_loss] = model.custom_loss(
+            [actor_loss, critic_loss], input_dict)
 
     # Store values for stats function.
     policy.actor_loss = actor_loss
