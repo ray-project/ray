@@ -57,7 +57,7 @@ public class JobWorker implements Serializable {
     LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
 
     String channelType = (String) this.config.getOrDefault(
-      Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+        Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
     if (channelType.equals(Config.NATIVE_CHANNEL)) {
       transferHandler = new TransferHandler();
     }

@@ -2,11 +2,6 @@ package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActor;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import io.ray.api.id.ActorId;
 import io.ray.runtime.actor.LocalModeRayActor;
 import io.ray.runtime.actor.NativeRayJavaActor;
@@ -15,6 +10,10 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.streaming.runtime.worker.JobWorker;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
@@ -32,18 +31,18 @@ public class ChannelCreationParametersBuilder {
     }
 
     public void setAsyncFunctionDescriptor(
-      FunctionDescriptor asyncFunctionDescriptor) {
+        FunctionDescriptor asyncFunctionDescriptor) {
       this.asyncFunctionDescriptor = asyncFunctionDescriptor;
     }
 
     public void setSyncFunctionDescriptor(
-      FunctionDescriptor syncFunctionDescriptor) {
+        FunctionDescriptor syncFunctionDescriptor) {
       this.syncFunctionDescriptor = syncFunctionDescriptor;
     }
 
     public String toString() {
       String language =
-        asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
+          asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
       return "Language: " + language + " Desc: " + asyncFunctionDescriptor.toList() + " "
         + syncFunctionDescriptor.toList();
     }
@@ -68,30 +67,30 @@ public class ChannelCreationParametersBuilder {
 
   // function descriptors of direct call entry point for Java workers
   private static JavaFunctionDescriptor javaReaderAsyncFuncDesc = new JavaFunctionDescriptor(
-    JobWorker.class.getName(),
-    "onReaderMessage", "([B)V");
+      JobWorker.class.getName(),
+      "onReaderMessage", "([B)V");
   private static JavaFunctionDescriptor javaReaderSyncFuncDesc = new JavaFunctionDescriptor(
-    JobWorker.class.getName(),
-    "onReaderMessageSync", "([B)[B");
+      JobWorker.class.getName(),
+      "onReaderMessageSync", "([B)[B");
   private static JavaFunctionDescriptor javaWriterAsyncFuncDesc = new JavaFunctionDescriptor(
-    JobWorker.class.getName(),
-    "onWriterMessage", "([B)V");
+      JobWorker.class.getName(),
+      "onWriterMessage", "([B)V");
   private static JavaFunctionDescriptor javaWriterSyncFuncDesc = new JavaFunctionDescriptor(
-    JobWorker.class.getName(),
-    "onWriterMessageSync", "([B)[B");
+      JobWorker.class.getName(),
+      "onWriterMessageSync", "([B)[B");
   // function descriptors of direct call entry point for Python workers
   private static PyFunctionDescriptor pyReaderAsyncFunctionDesc = new PyFunctionDescriptor(
-    "ray.streaming.runtime.worker",
-    "JobWorker", "on_reader_message");
+      "ray.streaming.runtime.worker",
+      "JobWorker", "on_reader_message");
   private static PyFunctionDescriptor pyReaderSyncFunctionDesc = new PyFunctionDescriptor(
-    "ray.streaming.runtime.worker",
-    "JobWorker", "on_reader_message_sync");
+      "ray.streaming.runtime.worker",
+      "JobWorker", "on_reader_message_sync");
   private static PyFunctionDescriptor pyWriterAsyncFunctionDesc = new PyFunctionDescriptor(
-    "ray.streaming.runtime.worker",
-    "JobWorker", "on_writer_message");
+      "ray.streaming.runtime.worker",
+      "JobWorker", "on_writer_message");
   private static PyFunctionDescriptor pyWriterSyncFunctionDesc = new PyFunctionDescriptor(
-    "ray.streaming.runtime.worker",
-    "JobWorker", "on_writer_message_sync");
+      "ray.streaming.runtime.worker",
+      "JobWorker", "on_writer_message_sync");
 
   public ChannelCreationParametersBuilder() {
   }
@@ -115,15 +114,15 @@ public class ChannelCreationParametersBuilder {
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
-                                                                     Map<String, BaseActor> actors) {
+      Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
       pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
   private ChannelCreationParametersBuilder buildParameters(List<String> queues,
-                                                           Map<String, BaseActor> actors,
-                                                           JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
-                                                           PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
+      Map<String, BaseActor> actors,
+      JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
+      PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
     for (String queue : queues) {

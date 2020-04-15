@@ -50,11 +50,11 @@ public abstract class StreamTask implements Runnable {
     Map<String, String> queueConf = new HashMap<>();
     worker.getConfig().forEach((k, v) -> queueConf.put(k, String.valueOf(v)));
     String queueSize = (String) worker.getConfig()
-      .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
+        .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
     queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
     String channelType = (String) worker.getConfig()
-      .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+        .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
@@ -67,7 +67,7 @@ public abstract class StreamTask implements Runnable {
     for (ExecutionEdge edge : outputEdges) {
       Map<String, BaseActor> outputActors = new HashMap<>();
       Map<Integer, BaseActor> taskId2Worker = executionGraph
-        .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
+          .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
         outputActors.put(queueName, targetActor);
@@ -91,7 +91,7 @@ public abstract class StreamTask implements Runnable {
     Map<String, BaseActor> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       Map<Integer, BaseActor> taskId2Worker = executionGraph
-        .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
+          .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
         String queueName = ChannelID.genIdStr(srcTaskId, taskId, executionGraph.getBuildTime());
         inputActors.put(queueName, srcActor);
@@ -107,7 +107,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     RuntimeContext runtimeContext = new RayRuntimeContext(
-      worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
+        worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
 
     processor.open(collectors, runtimeContext);
 
