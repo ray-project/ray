@@ -125,9 +125,10 @@ public class ChannelCreationParametersBuilder {
     for (String queue : queues) {
       Parameter parameter = new Parameter();
       BaseActor actor = actors.get(queue);
-      Preconditions.checkArgument(actor != null && !(actor instanceof LocalModeRayActor));
+      Preconditions.checkArgument(actor != null);
       parameter.setActorId(actor.getId());
-      if (actor instanceof NativeRayJavaActor) {
+      /// LocalModeRayActor used in single-process mode.
+      if (actor instanceof NativeRayJavaActor || actor instanceof LocalModeRayActor) {
         parameter.setAsyncFunctionDescriptor(javaAsyncFunctionDesc);
         parameter.setSyncFunctionDescriptor(javaSyncFunctionDesc);
       } else if (actor instanceof NativeRayPyActor) {
