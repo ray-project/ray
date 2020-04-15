@@ -330,8 +330,8 @@ class Beta(TFActionDistribution):
 
     def __init__(self, inputs, model, low=0.0, high=1.0):
         # Stabilize input parameters (possibly coming from a linear layer).
-        inputs = tf.clip_by_value(
-            inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
+        inputs = tf.clip_by_value(inputs, log(SMALL_NUMBER),
+                                  -log(SMALL_NUMBER))
         inputs = tf.math.log(tf.math.exp(inputs) + 1.0) + 1.0
         self.low = low
         self.high = high

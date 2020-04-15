@@ -170,8 +170,7 @@ class Policy(metaclass=ABCMeta):
             timestep=timestep)
 
         if clip_actions:
-            flat_action = clip_action(
-                flat_action, self.flattened_action_space)
+            flat_action = clip_action(flat_action, self.flattened_action_space)
 
         # Return action, internal state(s), infos.
         action = tree.unflatten_as(flat_action, self.action_space)

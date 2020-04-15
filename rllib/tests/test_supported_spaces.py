@@ -34,7 +34,9 @@ ACTION_SPACES_TO_TEST = {
     "dict": Dict({
         "action_choice": Discrete(3),
         "parameters": Box(-1.0, 1.0, (1, ), dtype=np.float32),
-        "crazy": Dict({"a": Tuple([Discrete(2), Discrete(3)])})
+        "crazy": Dict({
+            "a": Tuple([Discrete(2), Discrete(3)])
+        })
     }),
 }
 

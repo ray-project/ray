@@ -237,7 +237,7 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
         return tf.placeholder(dtype, shape=shape, name=(name or "action"))
-    
+
     @staticmethod
     @DeveloperAPI
     def get_model_v2(obs_space,

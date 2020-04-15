@@ -1,7 +1,6 @@
 from collections import Counter
 import gym
 import numpy as np
-import random
 import time
 import unittest
 
@@ -11,45 +10,10 @@ from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.policy.tests.test_policy import TestPolicy
+from ray.rllib.policy.tests.mock_policy import MockPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
-
-
-class MockPolicy(TestPolicy):
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        episodes=None,
-                        explore=None,
-                        timestep=None,
-                        **kwargs):
-        return [random.choice([0, 1])] * len(obs_batch), [], {}
-
-    def postprocess_trajectory(self,
-                               batch,
-                               other_agent_batches=None,
-                               episode=None):
-        assert episode is not None
-        return compute_advantages(
-            batch, 100.0, 0.9, use_gae=False, use_critic=False)
-
-
-class BadPolicy(MockPolicy):
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        episodes=None,
-                        explore=None,
-                        timestep=None,
-                        **kwargs):
-        raise Exception("intentional error")
 
 
 class FailOnStepEnv(gym.Env):

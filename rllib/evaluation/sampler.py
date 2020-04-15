@@ -664,16 +664,16 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         policy = _get_or_raise(policies, policy_id)
         # Clip if necessary (while action components are still batched).
         if clip_actions:
-            flat_actions = clip_action(
-                flat_actions, policy.flattened_action_space)
+            flat_actions = clip_action(flat_actions,
+                                       policy.flattened_action_space)
         # Split action-component batches into single action rows.
         flat_actions = unbatch_actions(flat_actions)
         for i, flat_action in enumerate(flat_actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             # Unflatten action.
-            env_action = tree.unflatten_as(
-                policy.action_space_struct, flat_action)
+            env_action = tree.unflatten_as(policy.action_space_struct,
+                                           flat_action)
             actions_to_send[env_id][agent_id] = env_action
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
@@ -742,10 +742,8 @@ def unbatch_actions(action_batches):
 
     out = []
     for batch_pos in range(len(action_batches[0])):
-        out.append([
-            action_batches[i][batch_pos]
-            for i in range(len(action_batches))
-        ])
+        out.append(
+            [action_batches[i][batch_pos] for i in range(len(action_batches))])
     return out[0] if single_mode else out
 
 
