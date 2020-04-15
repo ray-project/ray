@@ -303,6 +303,13 @@ message WorkerFailureData {
   bool intentional_disconnect = 4;
 }
 
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
+
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
 // This enum type is used as object's metadata to indicate the object's creating
 // task has failed because of a certain error.
 // TODO(hchen): We may want to make these errors more specific. E.g., we may want
