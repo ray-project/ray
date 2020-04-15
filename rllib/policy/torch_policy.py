@@ -204,10 +204,11 @@ class TorchPolicy(Policy):
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    explore=False)
+                    policy=self,
+                    model=self.model,
+                    obs_batch=input_dict[SampleBatch.CUR_OBS],
+                    explore=False,
+                    is_training=False)
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -228,14 +229,17 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
         for i, opt in enumerate(self._optimizers):
+            # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
-            loss_out[i].backward()
+            # Recompute gradients of loss over all variables.
+            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
 
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
@@ -263,6 +267,7 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
+            # Step the optimizer.
             opt.step()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
@@ -272,7 +277,8 @@ class TorchPolicy(Policy):
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
 
         grad_process_info = {}

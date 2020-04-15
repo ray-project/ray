@@ -310,6 +310,12 @@ message ResourceMap {
 message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
+
+message PubSubMessage {
+  bytes id = 1;
+  bytes data = 2;
+}
+
 // This enum type is used as object's metadata to indicate the object's creating
 // task has failed because of a certain error.
 // TODO(hchen): We may want to make these errors more specific. E.g., we may want

@@ -1,21 +1,20 @@
+from gym.spaces import Box, Discrete
 import logging
 
-import numpy as np
 import ray
 import ray.experimental.tf_utils
-from gym.spaces import Box, Discrete
-from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
-from ray.rllib.agents.sac.sac_model import SACModel
+from ray.rllib.agents.sac.sac_tf_model import SACTFModel
+from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
                                                 DiagGaussian)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf = try_import_tf()
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_sac_model(policy, obs_space, action_space, config):
-    if config["model"]["custom_model"]:
+    if config["model"].get("custom_model"):
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
             "was specified.")
@@ -40,45 +39,49 @@ def build_sac_model(policy, obs_space, action_space, config):
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 
+    # 2 cases:
+    # 1) with separate state-preprocessor (before obs+action concat).
+    # 2) no separate state-preprocessor: concat obs+actions right away.
     if config["use_state_preprocessor"]:
-        default_model = None  # catalog decides
-        num_outputs = 256  # arbitrary
-        config["model"]["no_final_linear"] = True
+        num_outputs = 256  # Flatten last Conv2D to this many nodes.
     else:
-        default_model = NoopModel
-        num_outputs = int(np.product(obs_space.shape))
+        config["model"]["fcnet_hiddens"] = []
+        num_outputs = 0
 
+    # Force-ignore any additionally provided hidden layer sizes.
+    # Everything should be configured using SAC's "Q_model" and "policy_model"
+    # settings.
     policy.model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        model_interface=SACModel,
-        default_model=default_model,
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
 
     policy.target_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        model_interface=SACModel,
-        default_model=default_model,
+        obs_space=obs_space,
+        action_space=action_space,
+        num_outputs=num_outputs,
+        model_config=config["model"],
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         name="target_sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
-        initial_alpha=config["initial_alpha"])
+        initial_alpha=config["initial_alpha"],
+        target_entropy=config["target_entropy"])
 
     return policy.model
 
@@ -91,6 +94,9 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
+    assert config["_use_beta_distribution"] is False, \
+        "Beta-distr. not supported for tf!"
+
     if isinstance(action_space, Discrete):
         action_dist_class = Categorical
     else:
@@ -117,6 +123,9 @@ def get_distribution_inputs_and_class(policy,
 
 
 def sac_actor_critic_loss(policy, model, _, train_batch):
+    # Should be True only for debugging purposes (e.g. test cases)!
+    deterministic = policy.config["_deterministic_loss"]
+
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
@@ -168,12 +177,14 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.sample()
-        log_pis_t = tf.expand_dims(action_dist_t.sampled_action_logp(), -1)
+        policy_t = action_dist_t.sample() if not deterministic else \
+            action_dist_t.deterministic_sample()
+        log_pis_t = tf.expand_dims(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.sample()
-        log_pis_tp1 = tf.expand_dims(action_dist_tp1.sampled_action_logp(), -1)
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else \
+            action_dist_tp1.deterministic_sample()
+        log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
         q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
@@ -195,11 +206,12 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
+            # Take min over both twin-NNs.
+            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if policy.config["twin_q"]:
             twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
         q_tp1 -= model.alpha * log_pis_tp1
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
@@ -232,15 +244,6 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
                 predictions=twin_q_t_selected,
                 weights=0.5))
 
-    # Auto-calculate the target entropy.
-    if policy.config["target_entropy"] == "auto":
-        if model.discrete:
-            target_entropy = np.array(-policy.action_space.n, dtype=np.float32)
-        else:
-            target_entropy = -np.prod(policy.action_space.shape)
-    else:
-        target_entropy = policy.config["target_entropy"]
-
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
@@ -250,7 +253,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
             tf.reduce_sum(
                 tf.multiply(
                     tf.stop_gradient(policy_t), -model.log_alpha *
-                    tf.stop_gradient(log_pis_t + target_entropy)),
+                    tf.stop_gradient(log_pis_t + model.target_entropy)),
                 axis=-1))
         actor_loss = tf.reduce_mean(
             tf.reduce_sum(
@@ -262,17 +265,19 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
                 axis=-1))
     else:
         alpha_loss = -tf.reduce_mean(
-            model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy))
+            model.log_alpha *
+            tf.stop_gradient(log_pis_t + model.target_entropy))
         actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
 
     # save for stats function
+    policy.policy_t = policy_t
     policy.q_t = q_t
     policy.td_error = td_error
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
     policy.alpha_value = model.alpha
-    policy.target_entropy = target_entropy
+    policy.target_entropy = model.target_entropy
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now
@@ -280,12 +285,12 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 
 
 def gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"]:
+    if policy.config["grad_clip"]:
         actor_grads_and_vars = minimize_and_clip(
             optimizer,  # isn't optimizer not well defined here (which one)?
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
         if policy.config["twin_q"]:
             q_variables = policy.model.q_variables()
             half_cutoff = len(q_variables) // 2
@@ -294,23 +299,23 @@ def gradients(policy, optimizer, loss):
                 optimizer,
                 policy.critic_loss[0],
                 var_list=q_variables[:half_cutoff],
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
             critic_grads_and_vars += minimize_and_clip(
                 optimizer,
                 policy.critic_loss[1],
                 var_list=q_variables[half_cutoff:],
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
         else:
             critic_grads_and_vars = minimize_and_clip(
                 optimizer,
                 policy.critic_loss[0],
                 var_list=policy.model.q_variables(),
-                clip_val=policy.config["grad_norm_clipping"])
+                clip_val=policy.config["grad_clip"])
         alpha_grads_and_vars = minimize_and_clip(
             optimizer,
             policy.alpha_loss,
             var_list=[policy.model.log_alpha],
-            clip_val=policy.config["grad_norm_clipping"])
+            clip_val=policy.config["grad_clip"])
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
@@ -366,7 +371,9 @@ def apply_gradients(policy, optimizer, grads_and_vars):
 
 def stats(policy, train_batch):
     return {
-        "td_error": tf.reduce_mean(policy.td_error),
+        # "policy_t": policy.policy_t,
+        # "td_error": policy.td_error,
+        "mean_td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
         "critic_loss": tf.reduce_mean(policy.critic_loss),
         "alpha_loss": tf.reduce_mean(policy.alpha_loss),
