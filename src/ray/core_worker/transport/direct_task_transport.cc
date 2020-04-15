@@ -46,7 +46,6 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       return;
     }
 
-    absl::MutexLock lock(&mu_);
     {
       absl::MutexLock lock(&mu_);
       bool keep_executing = true;
