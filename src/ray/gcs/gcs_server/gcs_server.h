@@ -104,8 +104,6 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  bool Ping(const std::string &ip, int port);
-
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The grpc server
