@@ -939,7 +939,9 @@ def _start_redis_instance(executable,
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
                            "Check log files: {} {}".format(
-                               stdout_file.name, stderr_file.name))
+                               stdout_file.name if stdout_file is not None else
+                               "<stdout>", stderr_file.name
+                               if stdout_file is not None else "<stderr>"))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(
@@ -1420,7 +1422,7 @@ def build_java_worker_command(
     command += options
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
-    command += ["org.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command
 

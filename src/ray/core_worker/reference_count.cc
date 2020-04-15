@@ -234,6 +234,16 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
                                 deleted);
 }
 
+void ReferenceCounter::UpdateResubmittedTaskReferences(
+    const std::vector<ObjectID> &argument_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &argument_id : argument_ids) {
+    auto it = object_id_refs_.find(argument_id);
+    RAY_CHECK(it != object_id_refs_.end());
+    it->second.submitted_task_ref_count++;
+  }
+}
+
 void ReferenceCounter::UpdateFinishedTaskReferences(
     const std::vector<ObjectID> &argument_ids, bool release_lineage,
     const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
@@ -323,8 +333,12 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id, TaskID *owner_id,
   }
 
   if (it->second.owner.has_value()) {
-    *owner_id = it->second.owner.value().first;
-    *owner_address = it->second.owner.value().second;
+    if (owner_id) {
+      *owner_id = it->second.owner.value().first;
+    }
+    if (owner_address) {
+      *owner_address = it->second.owner.value().second;
+    }
     return true;
   } else {
     return false;
@@ -404,6 +418,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
       it->second.on_delete(id);
       it->second.on_delete = nullptr;
+      it->second.pinned_at_raylet_id.reset();
     }
     if (deleted) {
       deleted->push_back(id);
@@ -430,10 +445,64 @@ bool ReferenceCounter::SetDeleteCallback(
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
+  } else if (it->second.OutOfScope() &&
+             !it->second.ShouldDelete(lineage_pinning_enabled_)) {
+    // The object has already gone out of scope but cannot be deleted yet. Do
+    // not set the deletion callback because it may never get called.
+    return false;
   }
+
   RAY_CHECK(!it->second.on_delete) << object_id;
   it->second.on_delete = callback;
   return true;
+}
+
+std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
+    const ClientID &raylet_id) {
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> lost_objects;
+  for (auto &it : object_id_refs_) {
+    const auto &object_id = it.first;
+    auto &ref = it.second;
+    if (ref.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
+      lost_objects.push_back(object_id);
+      ref.pinned_at_raylet_id.reset();
+      if (ref.on_delete) {
+        ref.on_delete(object_id);
+        ref.on_delete = nullptr;
+      }
+    }
+  }
+  return lost_objects;
+}
+
+void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
+                                                  const ClientID &raylet_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    // The object is still in scope. Track the raylet location until the object
+    // has gone out of scope or the raylet fails, whichever happens first.
+    RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
+    // Only the owner tracks the location.
+    RAY_CHECK(it->second.owned_by_us);
+    if (!it->second.OutOfScope()) {
+      it->second.pinned_at_raylet_id = raylet_id;
+    }
+  }
+}
+
+bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
+                                            bool *pinned) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    if (it->second.owned_by_us) {
+      *pinned = it->second.pinned_at_raylet_id.has_value();
+      return true;
+    }
+  }
+  return false;
 }
 
 bool ReferenceCounter::HasReference(const ObjectID &object_id) const {

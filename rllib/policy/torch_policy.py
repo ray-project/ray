@@ -4,6 +4,7 @@ import time
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -79,7 +80,7 @@ class TorchPolicy(Policy):
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
-        self._optimizer = self.optimizer()
+        self._optimizers = force_list(self.optimizer())
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -203,10 +204,11 @@ class TorchPolicy(Policy):
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    explore=False)
+                    policy=self,
+                    model=self.model,
+                    obs_batch=input_dict[SampleBatch.CUR_OBS],
+                    explore=False,
+                    is_training=False)
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -227,57 +229,73 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        loss_out.backward()
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
+        assert len(loss_out) == len(self._optimizers)
 
-        info = {}
-        info.update(self.extra_grad_process())
+        # Loop through all optimizers.
+        grad_info = {"allreduce_latency": 0.0}
+        for i, opt in enumerate(self._optimizers):
+            # Erase gradients in all vars of this optimizer.
+            opt.zero_grad()
+            # Recompute gradients of loss over all variables.
+            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
 
-        if self.distributed_world_size:
-            grads = []
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    grads.append(p.grad)
-            start = time.time()
-            if torch.cuda.is_available():
-                # Sadly, allreduce_coalesced does not work with CUDA yet.
-                for g in grads:
-                    torch.distributed.all_reduce(
-                        g, op=torch.distributed.ReduceOp.SUM)
-            else:
-                torch.distributed.all_reduce_coalesced(
-                    grads, op=torch.distributed.ReduceOp.SUM)
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    p.grad /= self.distributed_world_size
-            info["allreduce_latency"] = time.time() - start
+            grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
-        self._optimizer.step()
+            if self.distributed_world_size:
+                grads = []
+                for param_group in opt.param_groups:
+                    for p in param_group["params"]:
+                        if p.grad is not None:
+                            grads.append(p.grad)
 
-        info.update(self.extra_grad_info(train_batch))
-        return {
-            LEARNER_STATS_KEY: info
-        }
+                start = time.time()
+                if torch.cuda.is_available():
+                    # Sadly, allreduce_coalesced does not work with CUDA yet.
+                    for g in grads:
+                        torch.distributed.all_reduce(
+                            g, op=torch.distributed.ReduceOp.SUM)
+                else:
+                    torch.distributed.all_reduce_coalesced(
+                        grads, op=torch.distributed.ReduceOp.SUM)
+
+                for param_group in opt.param_groups:
+                    for p in param_group["params"]:
+                        if p.grad is not None:
+                            p.grad /= self.distributed_world_size
+
+                grad_info["allreduce_latency"] += time.time() - start
+
+            # Step the optimizer.
+            opt.step()
+
+        grad_info["allreduce_latency"] /= len(self._optimizers)
+        grad_info.update(self.extra_grad_info(train_batch))
+        return {LEARNER_STATS_KEY: grad_info}
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
+        assert len(loss_out) == len(self._optimizers)
 
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        loss_out.backward()
-
-        grad_process_info = self.extra_grad_process()
-
-        # Note that return values are just references;
-        # calling zero_grad will modify the values
+        grad_process_info = {}
         grads = []
-        for p in self.model.parameters():
-            if p.grad is not None:
-                grads.append(p.grad.data.cpu().numpy())
-            else:
-                grads.append(None)
+        for i, opt in enumerate(self._optimizers):
+            opt.zero_grad()
+            loss_out[i].backward()
+            grad_process_info = self.extra_grad_process(opt, loss_out[i])
+
+            # Note that return values are just references;
+            # calling zero_grad will modify the values
+            for param_group in opt.param_groups:
+                for p in param_group["params"]:
+                    if p.grad is not None:
+                        grads.append(p.grad.data.cpu().numpy())
+                    else:
+                        grads.append(None)
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)
@@ -285,10 +303,13 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def apply_gradients(self, gradients):
+        # TODO(sven): Not supported for multiple optimizers yet.
+        assert len(self._optimizers) == 1
         for g, p in zip(gradients, self.model.parameters()):
             if g is not None:
                 p.grad = torch.from_numpy(g).to(self.device)
-        self._optimizer.step()
+
+        self._optimizers[0].step()
 
     @override(Policy)
     def get_weights(self):
@@ -314,9 +335,20 @@ class TorchPolicy(Policy):
     def get_initial_state(self):
         return [s.numpy() for s in self.model.get_initial_state()]
 
-    def extra_grad_process(self):
-        """Allow subclass to do extra processing on gradients and
-           return processing info."""
+    def extra_grad_process(self, optimizer, loss):
+        """Called after each optimizer.zero_grad() + loss.backward() call.
+
+        Called for each self._optimizers/loss-value pair.
+        Allows for gradient processing before optimizer.step() is called.
+        E.g. for gradient clipping.
+
+        Args:
+            optimizer (torch.optim.Optimizer): A torch optimizer object.
+            loss (torch.Tensor): The loss tensor associated with the optimizer.
+
+        Returns:
+            dict: An info dict.
+        """
         return {}
 
     def extra_action_out(self, input_dict, state_batches, model, action_dist):
@@ -394,9 +426,10 @@ class LearningRateSchedule:
 
     @override(TorchPolicy)
     def optimizer(self):
-        for p in self._optimizer.param_groups:
-            p["lr"] = self.cur_lr
-        return self._optimizer
+        for opt in self._optimizers:
+            for p in opt.param_groups:
+                p["lr"] = self.cur_lr
+        return self._optimizers
 
 
 @DeveloperAPI

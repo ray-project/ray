@@ -8,9 +8,11 @@ from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, LocalReplay
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +159,7 @@ def make_policy_optimizer(workers, config):
         **kwargs)
 
 
-def validate_config_and_setup_param_noise(config):
+def validate_config(config):
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -339,7 +341,7 @@ GenericOffPolicyTrainer = build_trainer(
     default_policy=None,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config_and_setup_param_noise,
+    validate_config=validate_config,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,
