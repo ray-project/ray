@@ -51,26 +51,32 @@ def valid_padding(in_size, filter_size, stride_size):
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel,
-                 stride,
-                 padding,
-                 initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU,
-                 bias_init=0):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel,
+            stride,
+            padding,
+            # Defaulting these to nn.[..] will break soft torch import.
+            initializer="default",
+            activation_fn="default",
+            bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
             layers.append(nn.ZeroPad2d(padding))
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
+            if initializer == "default":
+                initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:
+            if activation_fn == "default":
+                activation_fn = nn.ReLU
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 
