@@ -258,7 +258,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                                     Status *status) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
+  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
   int num_retries_left = 0;
   TaskSpecification spec;
@@ -416,8 +416,8 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
-  RAY_LOG(INFO) << "Treat task as failed. task_id: " << task_id
-                << ", error_type: " << ErrorType_Name(error_type);
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(

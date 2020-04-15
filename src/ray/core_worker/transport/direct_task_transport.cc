@@ -74,7 +74,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                       nullptr);
   });
   return Status::OK();
-}  // namespace ray
+}
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
@@ -297,8 +297,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
                                                bool force_kill, int num_tries) {
-  RAY_LOG(ERROR) << "Killing task " << task_spec.TaskId() << " for the " << num_tries
-                 << " time";
+  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId()
+                << ". Attempts left: " << num_tries;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
@@ -337,7 +337,6 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
     return Status::OK();
   }
 
-  RAY_LOG(ERROR) << "Killing an active task";
   auto request = rpc::KillTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
@@ -350,5 +349,5 @@ Status CoreWorkerDirectTaskSubmitter::KillTask(TaskSpecification task_spec,
         }
       }));
   return Status::OK();
-}  // namespace ray
+}
 };  // namespace ray

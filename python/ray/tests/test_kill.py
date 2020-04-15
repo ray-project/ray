@@ -42,6 +42,9 @@ def test_kill_chain(ray_start_regular, use_force):
     with pytest.raises(RayTimeoutError):
         ray.get(obj1, timeout=.1)
 
+    with pytest.raises(RayTimeoutError):
+        ray.get(obj2, timeout=.1)
+
     signaler2.send.remote()
     ray.get(obj1, timeout=.1)
 
@@ -112,31 +115,8 @@ def test_single_cpu_kill(shutdown_only, use_force):
     ray.get(indep)
 
 
-def test_kill_dependency_waiting(ray_start_regular):
-    @ray.remote
-    def slp(t):
-        time.sleep(t)
-        return t
-
-    a1 = slp.remote(1000)
-    a2 = slp.remote(a1)
-    a3 = slp.remote(a2)
-
-    ray.kill(a3, True)
-
-    # with pytest.raises((RayTaskError, RayCancellationError)):
-    #     ray.get(a3, 10)
-
-    ray.kill(a1, True)
-
-    with pytest.raises((RayTaskError, RayCancellationError)):
-        ray.get(a1, 10)
-
-    with pytest.raises((RayTaskError, RayCancellationError)):
-        ray.get(a2, 10)
-
-
-def test_comprehensive(ray_start_regular):
+@pytest.mark.parametrize("use_force", [True, False])
+def test_comprehensive(ray_start_regular, use_force):
     signaler = SignalActor.remote()
 
     @ray.remote
@@ -155,7 +135,7 @@ def test_comprehensive(ray_start_regular):
 
     assert len(ray.wait([a, b, a2, combo], timeout=1)[0]) == 0
 
-    ray.kill(a, False)
+    ray.kill(a, use_force)
     with pytest.raises((RayTaskError, RayCancellationError)):
         ray.get(a, 1)
 
@@ -163,7 +143,6 @@ def test_comprehensive(ray_start_regular):
         ray.get(a2, 1)
 
     signaler.send.remote()
-    # ray.get(b)
 
     with pytest.raises((RayTaskError, RayCancellationError)):
         ray.get(combo, 10)
