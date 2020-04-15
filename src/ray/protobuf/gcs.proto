@@ -311,18 +311,9 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
-message PubSubMessage {
-  bytes id = 1;
-  bytes data = 2;
-}
-
 message ObjectChange {
   GcsChangeMode change_mode = 1;
   ObjectTableData data = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message ResourceChange {
@@ -330,7 +321,7 @@ message ResourceChange {
   ResourceMap data = 2;
 }
 
-message GcsMessage {
+message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
 }

@@ -67,11 +67,8 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  template <typename ID, typename Data>
-  Status SubscribeAll(const TablePubsub &channel, const Callback<ID, Data> &subscribe,
-                      const StatusCallback &done) {
-    return SubscribeInternal(channel, subscribe, done);
-  }
+  Status SubscribeAll(const std::string &channel, const Callback &subscribe,
+                      const StatusCallback &done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
