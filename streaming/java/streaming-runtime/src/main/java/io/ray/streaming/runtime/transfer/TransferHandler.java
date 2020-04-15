@@ -1,8 +1,6 @@
 package io.ray.streaming.runtime.transfer;
 
 import io.ray.runtime.RayNativeRuntime;
-import io.ray.runtime.functionmanager.FunctionDescriptor;
-import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.util.JniUtils;
 
 /**

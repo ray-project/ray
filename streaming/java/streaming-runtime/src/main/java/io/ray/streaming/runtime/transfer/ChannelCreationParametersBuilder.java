@@ -2,9 +2,11 @@ package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActor;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import io.ray.api.id.ActorId;
 import io.ray.runtime.actor.LocalModeRayActor;
 import io.ray.runtime.actor.NativeRayJavaActor;
@@ -30,30 +32,32 @@ public class ChannelCreationParametersBuilder {
     }
 
     public void setAsyncFunctionDescriptor(
-        FunctionDescriptor asyncFunctionDescriptor) {
+      FunctionDescriptor asyncFunctionDescriptor) {
       this.asyncFunctionDescriptor = asyncFunctionDescriptor;
     }
 
     public void setSyncFunctionDescriptor(
-        FunctionDescriptor syncFunctionDescriptor) {
+      FunctionDescriptor syncFunctionDescriptor) {
       this.syncFunctionDescriptor = syncFunctionDescriptor;
     }
 
     public String toString() {
       String language =
-          asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
+        asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
       return "Language: " + language + " Desc: " + asyncFunctionDescriptor.toList() + " "
-          + syncFunctionDescriptor.toList();
+        + syncFunctionDescriptor.toList();
     }
 
     // Get actor id in bytes, called from jni.
     public byte[] getActorIdBytes() {
       return actorId.getBytes();
     }
+
     // Get async function descriptor, called from jni.
     public FunctionDescriptor getAsyncFunctionDescriptor() {
       return asyncFunctionDescriptor;
     }
+
     // Get sync function descriptor, called from jni.
     public FunctionDescriptor getSyncFunctionDescriptor() {
       return syncFunctionDescriptor;
@@ -64,62 +68,62 @@ public class ChannelCreationParametersBuilder {
 
   // function descriptors of direct call entry point for Java workers
   private static JavaFunctionDescriptor javaReaderAsyncFuncDesc = new JavaFunctionDescriptor(
-      JobWorker.class.getName(),
-      "onReaderMessage", "([B)V");
+    JobWorker.class.getName(),
+    "onReaderMessage", "([B)V");
   private static JavaFunctionDescriptor javaReaderSyncFuncDesc = new JavaFunctionDescriptor(
-      JobWorker.class.getName(),
-      "onReaderMessageSync", "([B)[B");
+    JobWorker.class.getName(),
+    "onReaderMessageSync", "([B)[B");
   private static JavaFunctionDescriptor javaWriterAsyncFuncDesc = new JavaFunctionDescriptor(
-      JobWorker.class.getName(),
-      "onWriterMessage", "([B)V");
+    JobWorker.class.getName(),
+    "onWriterMessage", "([B)V");
   private static JavaFunctionDescriptor javaWriterSyncFuncDesc = new JavaFunctionDescriptor(
-      JobWorker.class.getName(),
-      "onWriterMessageSync", "([B)[B");
+    JobWorker.class.getName(),
+    "onWriterMessageSync", "([B)[B");
   // function descriptors of direct call entry point for Python workers
   private static PyFunctionDescriptor pyReaderAsyncFunctionDesc = new PyFunctionDescriptor(
-      "ray.streaming.runtime.worker",
-      "JobWorker", "on_reader_message");
+    "ray.streaming.runtime.worker",
+    "JobWorker", "on_reader_message");
   private static PyFunctionDescriptor pyReaderSyncFunctionDesc = new PyFunctionDescriptor(
-      "ray.streaming.runtime.worker",
-      "JobWorker", "on_reader_message_sync");
+    "ray.streaming.runtime.worker",
+    "JobWorker", "on_reader_message_sync");
   private static PyFunctionDescriptor pyWriterAsyncFunctionDesc = new PyFunctionDescriptor(
-      "ray.streaming.runtime.worker",
-      "JobWorker", "on_writer_message");
+    "ray.streaming.runtime.worker",
+    "JobWorker", "on_writer_message");
   private static PyFunctionDescriptor pyWriterSyncFunctionDesc = new PyFunctionDescriptor(
-      "ray.streaming.runtime.worker",
-      "JobWorker", "on_writer_message_sync");
+    "ray.streaming.runtime.worker",
+    "JobWorker", "on_writer_message_sync");
 
   public ChannelCreationParametersBuilder() {
   }
 
   public static void setJavaReaderFunctionDesc(JavaFunctionDescriptor asyncFunc,
-      JavaFunctionDescriptor syncFunc) {
+                                               JavaFunctionDescriptor syncFunc) {
     javaReaderAsyncFuncDesc = asyncFunc;
     javaReaderSyncFuncDesc = syncFunc;
   }
 
   public static void setJavaWriterFunctionDesc(JavaFunctionDescriptor asyncFunc,
-      JavaFunctionDescriptor syncFunc) {
+                                               JavaFunctionDescriptor syncFunc) {
     javaWriterAsyncFuncDesc = asyncFunc;
     javaWriterSyncFuncDesc = syncFunc;
   }
 
   public ChannelCreationParametersBuilder buildInputQueueParameters(List<String> queues,
-      Map<String, BaseActor> actors) {
+                                                                    Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
-        pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
+      pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
-      Map<String, BaseActor> actors) {
+                                                                     Map<String, BaseActor> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
-        pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
+      pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
   private ChannelCreationParametersBuilder buildParameters(List<String> queues,
-      Map<String, BaseActor> actors,
-      JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
-      PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
+                                                           Map<String, BaseActor> actors,
+                                                           JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
+                                                           PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
     for (String queue : queues) {

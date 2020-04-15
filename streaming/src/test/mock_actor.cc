@@ -94,11 +94,16 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     for (auto &queue_id : queue_ids_) {
       STREAMING_LOG(INFO) << "queue_id: " << queue_id;
     }
-    ChannelCreationParameter param{peer_actor_id_,
-                                         std::make_shared<RayFunction>(
-                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})),
-                                         std::make_shared<RayFunction>(
-                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""}))};
+    ChannelCreationParameter param{
+        peer_actor_id_,
+        std::make_shared<RayFunction>(
+            ray::Language::PYTHON,
+            ray::FunctionDescriptorBuilder::FromVector(
+                ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})),
+        std::make_shared<RayFunction>(
+            ray::Language::PYTHON,
+            ray::FunctionDescriptorBuilder::FromVector(
+                ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""}))};
     std::vector<ChannelCreationParameter> params(queue_ids_.size(), param);
     STREAMING_LOG(INFO) << "writer actor_ids size: " << params.size()
                         << " actor_id: " << peer_actor_id_;
@@ -219,11 +224,16 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
   }
 
   void StreamingReaderStrategyTest(StreamingConfig &config) {
-    ChannelCreationParameter param{peer_actor_id_,
-                                         std::make_shared<RayFunction>(
-                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})),
-                                         std::make_shared<RayFunction>(
-                                             ray::Language::PYTHON, ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""}))};
+    ChannelCreationParameter param{
+        peer_actor_id_,
+        std::make_shared<RayFunction>(
+            ray::Language::PYTHON,
+            ray::FunctionDescriptorBuilder::FromVector(
+                ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})),
+        std::make_shared<RayFunction>(
+            ray::Language::PYTHON,
+            ray::FunctionDescriptorBuilder::FromVector(
+                ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""}))};
     std::vector<ChannelCreationParameter> params(queue_ids_.size(), param);
     STREAMING_LOG(INFO) << "reader actor_ids size: " << params.size()
                         << " actor_id: " << peer_actor_id_;
