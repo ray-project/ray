@@ -19,4 +19,4 @@ Please provide a script that can be run to reproduce the issue. The script shoul
 If we cannot run your script, we cannot fix your issue.
 
 - [ ] I have verified my script runs in a clean environment and reproduces the issue.
-- [ ] I have verified the issue also occurs with the [latest wheels](https://ray.readthedocs.io/en/latest/installation.html).
+- [ ] I have verified the issue also occurs with the [latest wheels](https://docs.ray.io/en/latest/installation.html).

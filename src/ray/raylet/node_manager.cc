@@ -805,21 +805,25 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    // Only process the state transition if it is to a later state than ours.
-    if (actor_registration.GetState() > it->second.GetState() &&
-        actor_registration.GetRemainingReconstructions() ==
-            it->second.GetRemainingReconstructions()) {
-      // The new state is later than ours if it is about the same lifetime, but
-      // a greater state.
-      it->second = actor_registration;
-    } else if (actor_registration.GetRemainingReconstructions() <
-               it->second.GetRemainingReconstructions()) {
-      // The new state is also later than ours it is about a later lifetime of
-      // the actor.
+    if (RayConfig::instance().gcs_service_enabled()) {
       it->second = actor_registration;
     } else {
-      // Our state is already at or past the update, so skip the update.
-      return;
+      // Only process the state transition if it is to a later state than ours.
+      if (actor_registration.GetState() > it->second.GetState() &&
+          actor_registration.GetRemainingReconstructions() ==
+              it->second.GetRemainingReconstructions()) {
+        // The new state is later than ours if it is about the same lifetime, but
+        // a greater state.
+        it->second = actor_registration;
+      } else if (actor_registration.GetRemainingReconstructions() <
+                 it->second.GetRemainingReconstructions()) {
+        // The new state is also later than ours it is about a later lifetime of
+        // the actor.
+        it->second = actor_registration;
+      } else {
+        // Our state is already at or past the update, so skip the update.
+        return;
+      }
     }
   }
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
@@ -868,13 +872,14 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
-  } else {
-    RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);
+  } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    // The actor is dead and needs reconstruction. Attempting to reconstruct its
-    // creation task.
-    reconstruction_policy_.ListenAndMaybeReconstruct(
-        actor_registration.GetActorCreationDependency());
+    if (!RayConfig::instance().gcs_service_enabled()) {
+      // The actor is dead and needs reconstruction. Attempting to reconstruct its
+      // creation task.
+      reconstruction_policy_.ListenAndMaybeReconstruct(
+          actor_registration.GetActorCreationDependency());
+    }
 
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
@@ -884,6 +889,9 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       SubmitTask(task, Lineage());
     }
+  } else {
+    RAY_CHECK(actor_registration.GetState() == ActorTableData::PENDING);
+    // Do nothing.
   }
 }
 
@@ -1119,6 +1127,11 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                           bool intentional_disconnect) {
+  if (RayConfig::instance().gcs_service_enabled()) {
+    // If gcs actor management is enabled, the gcs will take over the status change of all
+    // actors.
+    return;
+  }
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
@@ -1224,6 +1237,9 @@ void NodeManager::ProcessDisconnectClientMessage(
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
     if (is_worker && worker->IsDead()) {
+      // If the worker was killed by us because the driver exited,
+      // treat it as intentionally disconnected.
+      intentional_disconnect = true;
       // Don't need to unblock the client if it's a worker and is already dead.
       // Because in this case, its task is already cleaned up.
       RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -1245,19 +1261,12 @@ void NodeManager::ProcessDisconnectClientMessage(
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
         self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
-        worker->Port());
+        worker->Port(), time(nullptr), intentional_disconnect);
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
   }
 
   if (is_worker) {
-    // The client is a worker.
-    if (worker->IsDead()) {
-      // If the worker was killed by us because the driver exited,
-      // treat it as intentionally disconnected.
-      intentional_disconnect = true;
-    }
-
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
       // If the worker was an actor, update actor state, reconstruct the actor if needed,
@@ -1569,6 +1578,8 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     }
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
+      // The actor belongs to this worker now.
+      worker->AssignActorId(spec.ActorCreationId());
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
       worker->SetAllocatedInstances(allocated_instances);
@@ -1647,7 +1658,7 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   } else {
     tasks_to_dispatch_.push_back(work);
   }
-};
+}
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
@@ -2665,6 +2676,15 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 
     if (task_spec.IsDetachedActor()) {
       worker.MarkDetachedActor();
+    }
+
+    if (RayConfig::instance().gcs_service_enabled()) {
+      // Gcs server is responsible for notifying other nodes of the changes of actor
+      // status, and thus raylet doesn't need to handle this anymore.
+      // And if `new_scheduler_enabled_` is true, this function `FinishAssignedActorTask`
+      // will not be called because raylet is not aware of the actual task when receiving
+      // a worker lease request.
+      return;
     }
 
     // Lookup the parent actor id.
