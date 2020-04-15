@@ -104,3 +104,7 @@ def convert_to_torch_tensor(stats, device=None):
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, stats)
+
+
+def atanh(x):
+    return 0.5 * torch.log((1 + x) / (1 - x))
