@@ -7,8 +7,8 @@ import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
+import io.ray.streaming.runtime.core.resource.ContainerID;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.core.resource.Slot;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ public class ExecutionVertex implements Serializable {
   private int vertexIndex;
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
-  private Slot slot;
+  private ContainerID containerId;
   private RayActor<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
@@ -157,17 +157,17 @@ public class ExecutionVertex implements Serializable {
     return resources;
   }
 
-  public Slot getSlot() {
-    return slot;
+  public ContainerID getContainerId() {
+    return containerId;
   }
 
-  public void setSlot(Slot slot) {
-    this.slot = slot;
+  public void setContainerId(ContainerID containerId) {
+    this.containerId = containerId;
   }
 
-  public void setSlotIfNotExist(Slot slot) {
-    if (null == this.slot) {
-      this.slot = slot;
+  public void setContainerIfNotExist(ContainerID containerId) {
+    if (null == this.containerId) {
+      this.containerId = containerId;
     }
   }
 
@@ -183,13 +183,21 @@ public class ExecutionVertex implements Serializable {
   }
 
   @Override
+  public boolean equals(Object obj) {
+    if (obj instanceof ExecutionVertex) {
+      return this.id == ((ExecutionVertex)obj).getId();
+    }
+    return false;
+  }
+
+  @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
         .add("id", id)
         .add("name", getVertexName())
         .add("resources", resources)
         .add("state", state)
-        .add("slot", slot)
+        .add("containerId", containerId)
         .add("workerActor", workerActor)
         .toString();
   }

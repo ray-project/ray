@@ -60,9 +60,12 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
     return StreamingStatus::OK;
   }
 
-  upstream_handler->SetPeerActorID(channel_info_.channel_id, channel_info_.actor_id);
-  queue_ = upstream_handler->CreateUpstreamQueue(
-      channel_info_.channel_id, channel_info_.actor_id, channel_info_.queue_size);
+  upstream_handler->SetPeerActorID(
+      channel_info_.channel_id, channel_info_.parameter.actor_id,
+      *channel_info_.parameter.async_function, *channel_info_.parameter.sync_function);
+  queue_ = upstream_handler->CreateUpstreamQueue(channel_info_.channel_id,
+                                                 channel_info_.parameter.actor_id,
+                                                 channel_info_.queue_size);
   STREAMING_CHECK(queue_ != nullptr);
 
   std::vector<ObjectID> queue_ids, failed_queues;
@@ -154,11 +157,13 @@ StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
     return StreamingStatus::OK;
   }
 
-  downstream_handler->SetPeerActorID(channel_info_.channel_id, channel_info_.actor_id);
+  downstream_handler->SetPeerActorID(
+      channel_info_.channel_id, channel_info_.parameter.actor_id,
+      *channel_info_.parameter.async_function, *channel_info_.parameter.sync_function);
   STREAMING_LOG(INFO) << "Create ReaderQueue " << channel_info_.channel_id
                       << " pull from start_seq_id: " << channel_info_.current_seq_id + 1;
   queue_ = downstream_handler->CreateDownstreamQueue(channel_info_.channel_id,
-                                                     channel_info_.actor_id);
+                                                     channel_info_.parameter.actor_id);
 
   return StreamingStatus::OK;
 }

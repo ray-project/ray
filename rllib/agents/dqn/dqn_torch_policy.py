@@ -156,7 +156,7 @@ def build_q_losses(policy, model, _, train_batch):
         policy.q_model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
-        is_training=False)
+        is_training=True)
 
     # target q network evalution
     q_tp1 = compute_q_values(
@@ -164,7 +164,7 @@ def build_q_losses(policy, model, _, train_batch):
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
-        is_training=False)
+        is_training=True)
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
@@ -178,7 +178,7 @@ def build_q_losses(policy, model, _, train_batch):
             policy.q_model,
             train_batch[SampleBatch.NEXT_OBS],
             explore=False,
-            is_training=False)
+            is_training=True)
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
                                                  policy.action_space.n)
