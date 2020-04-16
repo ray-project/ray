@@ -28,20 +28,6 @@ from ray.util.sgd import TorchTrainer
 from args import parse_args
 
 
-class Namespace(dict):
-    def __init__(self):
-        pass
-
-    def __getattr__(self, attr):
-        if attr not in self:
-            raise AttributeError(attr)
-
-        return self[attr]
-
-    def __setattr__(self, attr, value):
-        self[attr] = value
-
-
 def model_creator(config):
     args = config["args"]
 
