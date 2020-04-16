@@ -1520,7 +1520,6 @@ genrule(
     ],
     outs = ["ray_pkg.out"],
     cmd = """
-        set -x &&
         WORK_DIR="$$(pwd)" &&
         RAYDIR="$$WORK_DIR/python/ray"
         RAYLET="$(location python/ray/_raylet.so)"
