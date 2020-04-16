@@ -44,7 +44,7 @@ class MetricMonitor:
 
         curr_time = time.time()
         result = [
-            handle._serve_metric.remote()
+            handle.get_metrics.remote()
             for handle in self.actor_handles.values()
         ]
         # TODO(simon): handle the possibility that an actor_handle is removed

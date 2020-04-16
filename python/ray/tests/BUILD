@@ -204,6 +204,14 @@ py_test(
 )
 
 py_test(
+    name = "test_reconstruction",
+    size = "medium",
+    srcs = ["test_reconstruction.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_reference_counting",
     size = "medium",
     srcs = ["test_reference_counting.py"],

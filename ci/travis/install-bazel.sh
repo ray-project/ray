@@ -50,50 +50,28 @@ else
   target="./install.sh"
   curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  "${target}" --user
+  if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    sudo "${target}" > /dev/null  # system-wide install for CI
+    command -V bazel 1>&2
+  else
+    "${target}" --user > /dev/null
+  fi
   rm -f "${target}"
 fi
 
-add_missing_lines() {
-  local file="$1"
-  shift
-  local line
-  for line in "$@"; do
-    grep -q -F -x -- "${line}" "${file}" || printf "%s\n" "${line}" >> "${file}"
-  done
-}
-
-add_missing_lines "${HOME}/.bashrc" 'export PATH="${HOME}/bin:${PATH}"'
-
 if [ "${TRAVIS-}" = true ]; then
   # Use bazel disk cache if this script is running in Travis.
-  mkdir -p "${HOME}/ray-bazel-cache"
   cat <<EOF >> "${HOME}/.bazelrc"
-build --disk_cache="${HOME}/ray-bazel-cache"
 build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
+# If we are in Travis, most of the compilation result will be cached.
+# This means we are I/O bounded. By default, Bazel set the number of concurrent
+# jobs to the the number cores on the machine, which are not efficient for
+# network bounded cache downloading workload. Therefore we increase the number
+# of jobs to 50
+build --jobs=50
 EOF
 fi
 if [ -n "${GITHUB_WORKFLOW-}" ]; then
-  cat <<"EOF" >> "${HOME}/.profile"
-# Set up environment variables the CI user needs on login to run Bazel on each platform.
-if [ "${OSTYPE}" = "msys" ]; then
-  export USE_CLANG_CL=1
-  export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
-  latest_python_bin=""  # Detect the system Python from the registry
-  for latest_python_bin in /proc/registry/HKEY_LOCAL_MACHINE/Software/Python/PythonCore/*/InstallPath/@; do
-    if [ -f "${latest_python_bin}" ]; then
-      read -r latest_python_bin < "${latest_python_bin}"
-      latest_python_bin="${latest_python_bin}\\"
-    else
-      latest_python_bin=""
-    fi
-  done
-  latest_python_bin="${latest_python_bin}python.exe"
-  if [ -f "${latest_python_bin}" ]; then
-    export PYTHON2_BIN_PATH="${latest_python_bin}" PYTHON3_BIN_PATH="${latest_python_bin}"
-  fi
-fi
-EOF
   cat <<EOF >> "${HOME}/.bazelrc"
 --output_base=".bazel-out"  # On GitHub Actions, staying on the same volume seems to be faster
 EOF
@@ -103,6 +81,7 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
 # CI output doesn't scroll, so don't use curses
 build --color=yes
 build --curses=no
+build --disk_cache="$(test "${OSTYPE}" = msys || echo ~/ray-bazel-cache)"
 build --progress_report_interval=60
 # Use ray google cloud cache
 build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"

@@ -943,6 +943,13 @@ py_test(
     srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
+py_test(
+    name = "test_parameter_noise",
+    tags = ["utils"],
+    size = "small",
+    srcs = ["utils/exploration/tests/test_parameter_noise.py"]
+)
+
 # Schedules
 py_test(
     name = "test_schedules",
@@ -1067,6 +1074,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_I"],
     size = "medium",
     srcs = ["tests/test_io.py"]
+)
+
+py_test(
+    name = "tests/test_execution",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
 )
 
 py_test(

@@ -8,7 +8,7 @@
     <modelVersion>4.0.0</modelVersion>
     <packaging>pom</packaging>
 
-    <groupId>org.ray</groupId>
+    <groupId>io.ray</groupId>
     <artifactId>ray-streaming</artifactId>
     <version>0.1-SNAPSHOT</version>
     <name>ray streaming</name>

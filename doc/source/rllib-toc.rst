@@ -87,7 +87,7 @@ Algorithms
 
 *  High-throughput architectures
 
-   -  |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
+   -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
    -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
@@ -103,7 +103,7 @@ Algorithms
 
    -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
-   -  |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+   -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 

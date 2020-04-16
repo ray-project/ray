@@ -203,7 +203,8 @@ if __name__ == "__main__":
         })
 
     training_start = time.time()
-    for i in range(3):
+    num_epochs = 1 if args.smoke_test else 3
+    for i in range(num_epochs):
         # Trains num epochs
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())

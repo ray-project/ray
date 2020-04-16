@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -63,6 +64,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
+
   Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
 
@@ -97,7 +101,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
 
