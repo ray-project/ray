@@ -53,16 +53,33 @@ preload() {
   local variable_definitions
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    export "${variable_definitions[@]}"
+    local expression
+    expression="$(printf "%q " "${variable_definitions[@]}")"
+    eval "${expression}"
+    printf "%s\n" "${expression}" >> ~/.bashrc
   fi
 
   if ! (set +x && should_run_job ${job_names//,/ }); then
+    if [ -n "${GITHUB_WORKFLOW-}" ]; then
+      # If this job is to be skipped, emit an 'exit' command into .bashrc to quickly exit all following steps.
+      # This isn't needed for Travis (since everything runs in a single shell), but it is needed for GitHub Actions.
+      cat <<EOF1 >> ~/.bashrc
+      cat <<EOF2 1>&2
+Exiting shell as no triggers were active for this job:
+  ${job_names//,/}
+The active triggers during job initialization were the following:
+  ${variable_definitions[*]}
+EOF2
+      exit 0
+EOF1
+    fi
     exit 0
   fi
 }
 
 # Initializes the environment for the current job. Performs the following tasks:
-# - Calls 'exit 0' to quickly exit if provided a list of job names and none of them has been triggered.
+# - Calls 'exit 0' in this job step and all subsequent steps to quickly exit if provided a list of job names and
+#   none of them has been triggered.
 # - Sets variables to indicate the job names that have been triggered.
 #   Note: Please avoid exporting these variables. Instead, source any callees that need to use them.
 #   This helps reduce implicit coupling of callees to their parents, as they will be unable to run when not sourced, (especially with set -u).
