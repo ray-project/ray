@@ -89,6 +89,8 @@ def test_counting_resources(start_connected_cluster):
         runner.add_trial(t)
 
     runner.step()  # run 1
+    runner.step()  # assert Actor is alive and placed
+    assert ray.available_resources().get("CPU", 0) == 0
     nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 2
@@ -303,7 +305,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         runner.step()
 
 
-@pytest.mark.skip(reason="Not very consistent.")
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     """Removing a node in full cluster causes Trial to be requeued."""
