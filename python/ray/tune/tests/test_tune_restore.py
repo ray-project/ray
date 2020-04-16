@@ -7,6 +7,7 @@ import skopt
 import numpy as np
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
+from zoopt import ValueType
 
 import ray
 from ray import tune
@@ -18,7 +19,6 @@ from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
-from zoopt import ValueType
 from ray.tune.utils import validate_save_restore
 
 

@@ -3,6 +3,7 @@ import logging
 import dill as pickle
 from zoopt import Dimension2, Parameter
 from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
+
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 logger = logging.getLogger(__name__)
