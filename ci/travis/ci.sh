@@ -17,7 +17,7 @@ should_run_job() {
     local envvar active_triggers=()
     for envvar in "$@"; do
       if [ "${!envvar}" = 1 ]; then
-        active_triggers+="${envvar}=${!envvar}"  # success! we found at least one of the given triggers is occurring
+        active_triggers+=("${envvar}=${!envvar}")  # success! we found at least one of the given triggers is occurring
       fi
     done
     if [ 0 -eq "${#active_triggers[@]}" ]; then
