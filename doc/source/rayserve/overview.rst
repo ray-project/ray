@@ -56,7 +56,7 @@ RayServe should be used when you need to deploy at least one model, preferrably 
 RayServe (and Ray) allow for trivial model scaling and routing. 
 Unlike traditional web servers, a running RayServe cluster can be modified and updated throughout it's lifetime. 
 New routes, backends, and policies can be added and removed. 
-Models are be dynamically scaled up and down without shutting down the services.
+Models can be dynamically scaled up and down without shutting down the services.
 
 RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
 
