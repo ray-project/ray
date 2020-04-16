@@ -6,6 +6,7 @@
 # Note: other authors MUST include themselves in the above copyright notice
 #       in order to abide by the terms of the Apache license
 
+import logging
 import argparse
 import yaml
 
@@ -189,15 +190,24 @@ def parse_args():
     # Arguments pre-processing from the original train.py
     args.prefetcher = not args.no_prefetcher
     args.distributed = False # ray SGD handles this (DistributedSampler)
-    args.device = 'cuda:0'
-    args.world_size = 1 # todo: set these properly? do they affect anything?
-    args.rank = 0
+    args.device = 'cuda' # ray should handle this
 
     if args.num_gpu == 0 and args.prefetcher:
-        print(
+        logging.warning(
             "Prefetcher needs CUDA currently "
             "(might be a bug in timm). "
             "Disabling it.")
         args.prefetcher = False
+
+    if args.num_gpu > 1:
+        logging.warning(
+            "We do not support using more than one GPU per process "
+            "(use Ray instead).")
+        args.num_gpu = 1
+
+    assert args.aug_splits == 0 or args.aug_splits > 1, (
+        "Split must be 0 or 2+")
+
+    args.num_aug_splits = args.aug_splits
 
     return args, args_text

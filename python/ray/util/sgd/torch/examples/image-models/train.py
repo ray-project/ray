@@ -14,8 +14,9 @@ from tqdm import trange
 import torch.nn as nn
 
 from timm.data import Dataset, create_loader, resolve_data_config, FastCollateMixup
-from timm.models import create_model
+from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
+from timm.utils import setup_default_logging
 
 import ray
 from ray.util.sgd.utils import BATCH_SIZE
@@ -38,18 +39,10 @@ class Namespace(dict):
     def __setattr__(self, attr, value):
         self[attr] = value
 
-# class TrainOp(TrainingOperator):
-#     def setup(self, config):
-#         pass
-
-#     @override(TrainingOperator)
-#     def train_batch(self, batch, batch_info):
-#         pass
-
 def model_creator(config):
     args = config["args"]
 
-    return create_model(
+    model = create_model(
         "resnet101", # args.model,
         pretrained=args.pretrained,
         num_classes=args.num_classes,
@@ -63,19 +56,26 @@ def model_creator(config):
         bn_eps=args.bn_eps,
         checkpoint_path=args.initial_checkpoint)
 
+    if args.split_bn:
+        assert args.num_aug_splits > 1 or args.resplit
+        model = convert_splitbn_model(model, max(args.num_aug_splits, 2))
+
+    return model
+
 def data_creator(config):
+    # torch.manual_seed(args.seed + torch.distributed.get_rank())
+
     args = config["args"]
 
-    data_config = resolve_data_config(vars(args))
+    # todo: verbose should depend on rank
+    data_config = resolve_data_config(vars(args), verbose=True)
 
     dataset_train = Dataset(join(args.data, "train"))
     dataset_eval = Dataset(join(args.data, "val"))
 
-    num_aug_splits = 0 # todo: support aug splits
-
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
-        assert not num_aug_splits  # collate conflict (need to support deinterleaving in collate mixup)
+        assert args.num_aug_splits == 0  # collate conflict (need to support deinterleaving in collate mixup)
         collate_fn = FastCollateMixup(args.mixup, args.smoothing, args.num_classes)
 
     common_params = dict(
@@ -99,7 +99,7 @@ def data_creator(config):
         color_jitter=args.color_jitter,
         auto_augment=args.aa,
         interpolation=args.train_interpolation,
-        num_aug_splits=num_aug_splits,
+        num_aug_splits=args.num_aug_splits,
         **common_params)
     eval_loader = create_loader(
         dataset_eval,
@@ -121,6 +121,8 @@ def loss_creator(config):
     return nn.CrossEntropyLoss()
 
 def main():
+    setup_default_logging()
+
     args, args_text = parse_args()
 
     ray.init(address=args.ray_address)
@@ -131,6 +133,8 @@ def main():
         optimizer_creator=optimizer_creator,
         loss_creator=loss_creator,
         use_tqdm=True,
+        use_fp16=args.amp,
+        apex_args={"opt_level": 'O1'},
         config={
             "args": args,
             BATCH_SIZE: args.batch_size
@@ -141,7 +145,7 @@ def main():
     for i in pbar:
         trainer.train()
 
-        val_stats = trainer1.validate()
+        val_stats = trainer.validate()
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()
