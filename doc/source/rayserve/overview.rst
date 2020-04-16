@@ -11,14 +11,17 @@ Overview
 
 RayServe is a scalable model-serving library built on Ray Core.
 
-RayServe allows you to:
+For users RayServe is:
 
 - **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models 
   built with frameworks like PyTorch or TensorFlow to scikit-learn models or arbitrary business logic.
-- **Simplify MLOps**: Configure your model serving with pure Python code - no more YAMLs or 
+- **Python First**: Configure your model serving with pure Python code - no more YAMLs or 
   JSON configs.
+
+But also enables: 
+
 -  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
-- Leverage built-in **batching** and **SLO awareness** to help you meet your latency objectives.
+- **Batching** built-in to help you meet your performance objectives.
 
 Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
 and allows you to leverage all of the other Ray frameworks so you can deploy and scale on any cloud.
@@ -30,18 +33,18 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 Why RayServe?
 ~~~~~~~~~~~~~
 
-There are generally two ways of serving machine learning applications at scale:
+There are generally two ways of serving machine learning applications, both with serious limitations:
 
-1. The first is wrapping your application in a traditional web server. This approach
-is easy but hard to scale each component, and easily leading to high memory usage
-as well as concurrency issue.
+1. You can build using a traditional webserver.
 
+or 
 
-2. The other approach is to use a cloud-hosted solution like SageMaker or TFServing. 
-These solutions have high learning costs and lead to
-vendor lock-in.
+2. You can use a cloud hosted solution.
 
-
+The first approach is easy to get started with, but it's hard to scale each component. Unlike traditional web servers, a running RayServe cluster can be modified and updated throughout it's lifetime. 
+New routes, backends, and policies can be added and removed. The second approach
+requires vendor lock-in (SageMaker), framework specific tooling (TFServing), and a general
+lack of flexibility.
 
 RayServe solves these problems by giving a user the ability to leverage the simplicity
 of deployment of a simple webserver but handles the complex routing, scaling, and testing logic
@@ -50,14 +53,9 @@ necessary for production deployments.
 For more on the motivation behind RayServe, check out these `meetup slides <https://tinyurl.com/serve-meetup>`_.
 
 When should I use Ray Serve?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+++++++++++++++++++++++++++++
 
-RayServe should be used when you need to deploy at least one model, preferrably many models. 
-RayServe (and Ray) allow for trivial model scaling and routing. 
-Unlike traditional web servers, a running RayServe cluster can be modified and updated throughout it's lifetime. 
-New routes, backends, and policies can be added and removed. 
-Models can be dynamically scaled up and down without shutting down the services.
-
+RayServe should be used when you need to deploy at least one model, preferrably many models.  
 RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
 
 Key Concepts
@@ -138,11 +136,10 @@ Configuring Backends
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better response performance. To do all of this,
 you will create a ``BackendConfig``, a configuration object that you'll use to set 
-the properties of a particular backend. That will allow you to do things like scale out,
-split traffic, and batch requests for better performance.
+the properties of a particular backend.
 
 Scaling Out
-~~~~~~~~~~~
++++++++++++
 
 To scale out a backend to multiple workers, simplify configure the number of replicas.
 
@@ -154,7 +151,7 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 This will scale out the number of workers that can accept requests.
 
 Splitting Traffic
-~~~~~~~~~~~~~~~~~
++++++++++++++++++
 
 It's trivial to also split traffic, simply specify the endpoint and the backends that you want to split.
 
@@ -167,7 +164,7 @@ It's trivial to also split traffic, simply specify the endpoint and the backends
 
 
 Batching
-~~~~~~~~
+++++++++
 
 You can also have RayServe batch requests for performance. You'll configure this in the backend config.
 
