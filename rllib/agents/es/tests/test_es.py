@@ -10,14 +10,12 @@ tf = try_import_tf()
 
 class TestES(unittest.TestCase):
     def test_es_compilation(self):
-        """Test whether a ESTrainer can be built on all frameworks."""
+        """Test whether an ESTrainer can be built on all frameworks."""
         ray.init()
         config = es.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
-        for _ in framework_iterator(config):
-            # double-dueling DQN.
+        for _ in framework_iterator(config, ("tf", )):
             plain_config = config.copy()
             trainer = es.ESTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):

@@ -3,11 +3,12 @@ import gym
 import numpy as np
 import logging
 
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.space_utils import flatten_space, \
-    get_base_struct_from_space
+    get_base_struct_from_space, TupleActions
 
 logger = logging.getLogger(__name__)
 
@@ -169,12 +170,17 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
+        if isinstance(flat_action, TupleActions):
+            flat_action = flat_action.batches
+        flat_action = force_list(flat_action)
+
         if clip_actions:
             flat_action = clip_action(flat_action, self.flattened_action_space)
 
+        env_action = tree.unflatten_as(self.action_space_struct, flat_action)
+
         # Return action, internal state(s), infos.
-        action = tree.unflatten_as(flat_action, self.action_space)
-        return action, [s[0] for s in state_out], \
+        return env_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
