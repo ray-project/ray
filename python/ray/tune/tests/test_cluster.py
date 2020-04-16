@@ -348,6 +348,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save
 
+    running_trials = _get_running_trials(runner)
+    assert len(running_trials) == 1
+    assert _check_trial_running(running_trials[0])
     cluster.remove_node(node)
     cluster.wait_for_nodes()
     runner.step()  # Process result, dispatch save
