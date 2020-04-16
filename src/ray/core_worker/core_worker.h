@@ -84,6 +84,8 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
+  /// IP address of the raylet.
+  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// The stdout file of this process.

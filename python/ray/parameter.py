@@ -33,6 +33,8 @@ class RayParams:
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         node_ip_address (str): The IP address of the node that we are on.
+        raylet_ip_address (str): The IP address of the raylet that this node
+            connects to.
         min_worker_port (int): The lowest port number that workers will bind
             on. If not set or set to 0, random ports will be chosen.
         max_worker_port (int): The highest port number that workers will bind
@@ -99,6 +101,7 @@ class RayParams:
                  object_manager_port=None,
                  node_manager_port=None,
                  node_ip_address=None,
+                 raylet_ip_address=None,
                  min_worker_port=None,
                  max_worker_port=None,
                  object_id_seed=None,
@@ -137,6 +140,7 @@ class RayParams:
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
+        self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
         self.driver_mode = driver_mode

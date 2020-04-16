@@ -13,8 +13,11 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_RayNativeRuntime.h"
+
 #include <jni.h>
+
 #include <sstream>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
@@ -111,6 +114,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       false,                                         // install_failure_signal_handler
       JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
       static_cast<int>(nodeManagerPort),             // node_manager_port
+      JavaStringToNativeString(env, nodeIpAddress),  // raylet_ip_address
       JavaStringToNativeString(env, driverName),     // driver_name
       "",                                            // stdout_file
       "",                                            // stderr_file

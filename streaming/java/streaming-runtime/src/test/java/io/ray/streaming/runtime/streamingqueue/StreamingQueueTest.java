@@ -36,7 +36,6 @@ import org.testng.annotations.Test;
 public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
-
   static {
     EnvUtil.loadNativeLibraries();
   }
@@ -62,7 +61,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
   @BeforeMethod
   void beforeMethod() {
-
     LOGGER.info("beforeTest");
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
@@ -144,6 +142,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
   @Test(timeOut = 60000)
   public void testWordCount() {
+    LOGGER.info("testWordCount");
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
         System.getProperty("ray.run-mode"));
     String resultFile = "/tmp/io.ray.streaming.runtime.streamingqueue.testWordCount.txt";
