@@ -13,7 +13,8 @@ from tqdm import trange
 
 import torch.nn as nn
 
-from timm.data import Dataset, create_loader, resolve_data_config, FastCollateMixup
+from timm.data import Dataset, create_loader
+from timm.data import resolve_data_config, FastCollateMixup
 from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
 from timm.utils import setup_default_logging
@@ -22,9 +23,10 @@ import ray
 from ray.util.sgd.utils import BATCH_SIZE
 
 from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch import TrainingOperator
+# from ray.util.sgd.torch import TrainingOperator
 
 from args import parse_args
+
 
 class Namespace(dict):
     def __init__(self):
@@ -39,11 +41,12 @@ class Namespace(dict):
     def __setattr__(self, attr, value):
         self[attr] = value
 
+
 def model_creator(config):
     args = config["args"]
 
     model = create_model(
-        "resnet101", # args.model,
+        "resnet101",  # args.model,
         pretrained=args.pretrained,
         num_classes=args.num_classes,
         drop_rate=args.drop,
@@ -62,6 +65,7 @@ def model_creator(config):
 
     return model
 
+
 def data_creator(config):
     # torch.manual_seed(args.seed + torch.distributed.get_rank())
 
@@ -75,8 +79,10 @@ def data_creator(config):
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
-        assert args.num_aug_splits == 0  # collate conflict (need to support deinterleaving in collate mixup)
-        collate_fn = FastCollateMixup(args.mixup, args.smoothing, args.num_classes)
+        # collate conflict (need to support deinterleaving in collate mixup)
+        assert args.num_aug_splits == 0
+        collate_fn = FastCollateMixup(args.mixup, args.smoothing,
+                                      args.num_classes)
 
     common_params = dict(
         input_size=data_config["input_size"],
@@ -111,14 +117,17 @@ def data_creator(config):
 
     return train_loader, eval_loader
 
+
 def optimizer_creator(model, config):
     args = config["args"]
     return create_optimizer(args, model)
+
 
 def loss_creator(config):
     # there should be more complicated logic here, but we don't support
     # separate train and eval losses yet
     return nn.CrossEntropyLoss()
+
 
 def main():
     setup_default_logging()
@@ -134,7 +143,7 @@ def main():
         loss_creator=loss_creator,
         use_tqdm=True,
         use_fp16=args.amp,
-        apex_args={"opt_level": 'O1'},
+        apex_args={"opt_level": "O1"},
         config={
             "args": args,
             BATCH_SIZE: args.batch_size
@@ -149,6 +158,7 @@ def main():
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()
+
 
 if __name__ == "__main__":
     main()
