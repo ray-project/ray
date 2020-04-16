@@ -1,4 +1,3 @@
-import collections
 from filelock import FileLock
 import logging
 import inspect
@@ -16,6 +15,11 @@ from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
 amp = None
+
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 try:
     from apex import amp
@@ -133,7 +137,7 @@ class TorchRunner:
         self.schedulers = self.scheduler_creator(self.given_optimizers,
                                                  self.config)
 
-        if not isinstance(self.schedulers, collections.Iterable):
+        if not isinstance(self.schedulers, Iterable):
             self.schedulers = [self.schedulers]
 
     def _try_setup_apex(self):
@@ -153,7 +157,7 @@ class TorchRunner:
         self._initialize_dataloaders()
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
-        if not isinstance(self.models, collections.Iterable):
+        if not isinstance(self.models, Iterable):
             self.models = [self.models]
         assert all(isinstance(model, nn.Module) for model in self.models), (
             "All models must be PyTorch models: {}.".format(self.models))
@@ -163,7 +167,7 @@ class TorchRunner:
         logger.debug("Creating optimizer.")
         self.optimizers = self.optimizer_creator(self.given_models,
                                                  self.config)
-        if not isinstance(self.optimizers, collections.Iterable):
+        if not isinstance(self.optimizers, Iterable):
             self.optimizers = [self.optimizers]
 
         self._create_schedulers_if_available()
