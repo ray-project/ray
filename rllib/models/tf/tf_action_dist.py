@@ -298,7 +298,7 @@ class _SquashedGaussianBase(TFActionDistribution):
         assert len(x.shape) >= 2, "First dim batch, second dim variable"
         unsquashed_values = self._unsquash(x)
         log_prob = self.distr.log_prob(value=unsquashed_values)
-        return tf.reduce_sum(log_prob - self._log_squash_grad(unsquashed_values), axis=-1)
+        return tf.reduce_sum(log_prob - self._log_squash_grad(unsquashed_values), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -351,17 +351,6 @@ class SquashedGaussian(_SquashedGaussianBase):
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
 
-    @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        unsquashed_values = self._unsquash(self.sample_op)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(unsquashed_values), axis=-1)
-        unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        log_prob -= tf.math.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            axis=-1)
-        return log_prob
-
     def _log_squash_grad(self, unsquashed_values):
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
         return tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER)
@@ -401,9 +390,9 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         other_mean = other.distr.loc
         other_std = other.distr.scale
 
-        return (other.log_std - self.log_std +
-                (tf.square(std) + tf.square(mean - other_mean)) /
-                (2.0 * tf.square(other_std)) - 0.5)
+        return tf.reduce_sum((other.log_std - self.log_std +
+                             (tf.square(std) + tf.square(mean - other_mean)) /
+                             (2.0 * tf.square(other_std)) - 0.5), axis=1)
 
     def entropy(self):
         # Entropy is:
@@ -413,10 +402,10 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         mean = self.distr.loc
         std = self.distr.scale
 
-        return (tf.log(self.high - self.low) -
-                (tf.log(self._SCALE) - self.log_std +
-                 (tf.square(std) + tf.square(mean)) /
-                 (2.0 * tf.square(self._SCALE)) - 0.5))
+        return tf.reduce_sum(tf.log(self.high - self.low) -
+                             (tf.log(self._SCALE) - self.log_std +
+                              (tf.square(std) + tf.square(mean)) /
+                              (2.0 * tf.square(self._SCALE)) - 0.5), axis=1)
 
     def _log_squash_grad(self, unsquashed_values):
         squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
