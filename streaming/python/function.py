@@ -5,7 +5,7 @@ import sys
 import typing
 from abc import ABC, abstractmethod
 
-import cloudpickle
+from ray import cloudpickle
 from ray.streaming.runtime import gateway_client
 
 
@@ -287,7 +287,7 @@ def load_function(descriptor_func_bytes: bytes):
     Deserialize `descriptor_func_bytes` to get function info, then
     get or load streaming function.
     Note that this function must be kept in sync with
-     `org.ray.streaming.runtime.python.GraphPbBuilder.serializeFunction`
+     `io.ray.streaming.runtime.python.GraphPbBuilder.serializeFunction`
 
     Args:
         descriptor_func_bytes: serialized function info

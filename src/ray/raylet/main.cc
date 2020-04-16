@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <iostream>
 
 #include "gflags/gflags.h"
@@ -99,6 +113,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
+  node_manager_config.raylet_config = raylet_config;
   node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
@@ -109,11 +124,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
+        make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
+        make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -162,8 +177,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
-  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+  if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
@@ -187,7 +201,12 @@ int main(int argc, char *argv[]) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };
-  boost::asio::signal_set signals(main_service, SIGTERM);
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
   signals.async_wait(handler);
 
   main_service.run();

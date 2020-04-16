@@ -1,4 +1,3 @@
-import six
 import collections
 import numpy as np
 
@@ -28,6 +27,11 @@ class SampleBatch:
     DONES = "dones"
     INFOS = "infos"
 
+    # Extra action fetches keys.
+    ACTION_DIST_INPUTS = "action_dist_inputs"
+    ACTION_PROB = "action_prob"
+    ACTION_LOGP = "action_logp"
+
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
 
@@ -49,7 +53,7 @@ class SampleBatch:
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert isinstance(k, six.string_types), self
+            assert isinstance(k, str), self
             lengths.append(len(v))
             self.data[k] = np.array(v, copy=False)
         if not lengths:

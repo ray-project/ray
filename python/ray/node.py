@@ -2,19 +2,19 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink
 
@@ -66,8 +66,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
-        self.kernel_fate_share = (spawn_reaper
-                                  and ray.utils.detect_fate_sharing_support())
+        self.kernel_fate_share = bool(
+            spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -83,16 +83,16 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir="/tmp/ray",
+            temp_dir=ray.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
         self._resource_spec = None
+        self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None
@@ -185,7 +185,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -315,7 +315,7 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
@@ -328,6 +328,8 @@ class Node:
                 the same name, the returned name will look like
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
+        if directory_name is None:
+            directory_name = ray.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -347,25 +349,21 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def new_log_files(self, name, redirect_output=True):
+    def new_log_files(self, name):
         """Generate partially randomized filenames for log files.
 
         Args:
             name (str): descriptive string for this log file.
-            redirect_output (bool): True if files should be generated for
-                logging stdout and stderr and false if stdout and stderr
-                should not be redirected.
-                If it is None, it will use the "redirect_output" Ray parameter.
 
         Returns:
-            If redirect_output is true, this will return a tuple of two
-                file handles. The first is for redirecting stdout and the
-                second is for redirecting stderr.
-                If redirect_output is false, this will return a tuple
-                of two None objects.
+            A tuple of two file handles for redirecting (stdout, stderr).
         """
+        redirect_output = self._ray_params.redirect_output
+
         if redirect_output is None:
-            redirect_output = self._ray_params.redirect_output
+            # Make the default behavior match that of glog.
+            redirect_output = os.getenv("GLOG_logtostderr") != "1"
+
         if not redirect_output:
             return None, None
 
@@ -395,14 +393,28 @@ class Node:
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if socket_path is not None:
-            if os.path.exists(socket_path):
-                raise Exception("Socket file {} exists!".format(socket_path))
-            socket_dir = os.path.dirname(socket_path)
-            try_to_create_directory(socket_dir)
-            return socket_path
-        return self._make_inc_temp(
-            prefix=default_prefix, directory_name=self._sockets_dir)
+        result = socket_path
+        is_mac = sys.platform.startswith("darwin")
+        if sys.platform == "win32":
+            if socket_path is None:
+                result = "tcp://{}:{}".format(self._localhost,
+                                              self._get_unused_port())
+        else:
+            if socket_path is None:
+                result = self._make_inc_temp(
+                    prefix=default_prefix, directory_name=self._sockets_dir)
+            else:
+                if os.path.exists(socket_path):
+                    raise RuntimeError(
+                        "Socket file {} exists!".format(socket_path))
+                try_to_create_directory(os.path.dirname(socket_path))
+
+            # Check socket path length to make sure it's short enough
+            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
+            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
+                raise OSError("AF_UNIX path length cannot exceed "
+                              "{} bytes: {!r}".format(maxlen, result))
+        return result
 
     def start_reaper_process(self):
         """
@@ -462,7 +474,7 @@ class Node:
 
     def start_reporter(self):
         """Start the reporter."""
-        stdout_file, stderr_file = self.new_log_files("reporter", True)
+        stdout_file, stderr_file = self.new_log_files("reporter")
         process_info = ray.services.start_reporter(
             self.redis_address,
             stdout_file=stdout_file,
@@ -483,7 +495,7 @@ class Node:
                 fail to start the webui. Otherwise it will print a warning if
                 we fail to start the webui.
         """
-        stdout_file, stderr_file = self.new_log_files("dashboard", True)
+        stdout_file, stderr_file = self.new_log_files("dashboard")
         self._webui_url, process_info = ray.services.start_dashboard(
             require_webui,
             self._ray_params.webui_host,
@@ -571,8 +583,8 @@ class Node:
 
     def new_worker_redirected_log_file(self, worker_id):
         """Create new logging files for workers to redirect its output."""
-        worker_stdout_file, worker_stderr_file = (self.new_log_files(
-            "worker-" + ray.utils.binary_to_hex(worker_id), True))
+        worker_stdout_file, worker_stderr_file = (
+            self.new_log_files("worker-" + ray.utils.binary_to_hex(worker_id)))
         return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
@@ -617,11 +629,13 @@ class Node:
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
 
-        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        if ray_constants.GCS_SERVICE_ENABLED:
             self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
 
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:
@@ -677,9 +691,10 @@ class Node:
             # Handle the case where the process has already exited.
             if process.poll() is not None:
                 if check_alive:
-                    raise Exception("Attempting to kill a process of type "
-                                    "'{}', but this process is already dead."
-                                    .format(process_type))
+                    raise RuntimeError(
+                        "Attempting to kill a process of type "
+                        "'{}', but this process is already dead."
+                        .format(process_type))
                 else:
                     continue
 
@@ -696,7 +711,7 @@ class Node:
                     if process_info.stderr_file is not None:
                         with open(process_info.stderr_file, "r") as f:
                             message += "\nPROCESS STDERR:\n" + f.read()
-                    raise Exception(message)
+                    raise RuntimeError(message)
                 continue
 
             if process_info.use_valgrind_profiler:
@@ -706,25 +721,21 @@ class Node:
                 time.sleep(0.1)
 
             if allow_graceful:
-                # Allow the process one second to exit gracefully.
                 process.terminate()
-                timer = threading.Timer(1, lambda process: process.kill(),
-                                        [process])
+                # Allow the process one second to exit gracefully.
+                timeout_seconds = 1
                 try:
-                    timer.start()
+                    process.wait(timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
+
+            # If the process did not exit, force kill it.
+            if process.poll() is None:
+                process.kill()
+                # The reason we usually don't call process.wait() here is that
+                # there's some chance we'd end up waiting a really long time.
+                if wait:
                     process.wait()
-                finally:
-                    timer.cancel()
-
-                if process.poll() is not None:
-                    continue
-
-            # If the process did not exit within one second, force kill it.
-            process.kill()
-            # The reason we usually don't call process.wait() here is that
-            # there's some chance we'd end up waiting a really long time.
-            if wait:
-                process.wait()
 
         del self.all_processes[process_type]
 
@@ -913,16 +924,3 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
-
-
-class LocalNode:
-    """Imitate the node that manages the processes in local mode."""
-
-    def kill_all_processes(self, *args, **kwargs):
-        """Kill all of the processes."""
-        pass  # Keep this function empty because it will be used in worker.py
-
-    @property
-    def address_info(self):
-        """Get a dictionary of addresses."""
-        return {}  # Return a null dict.

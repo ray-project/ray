@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
@@ -29,15 +43,21 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-typedef
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::stream_protocol
-#else
-    boost::asio::ip::tcp
-#endif
-        local_stream_protocol;
-
 namespace ray {
+
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
+typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
+
+/// Interface for pinning objects. Abstract for testing.
+class PinObjectsInterface {
+ public:
+  /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
+  virtual ray::Status PinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+
+  virtual ~PinObjectsInterface(){};
+};
 
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
@@ -57,7 +77,26 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
 
+  virtual ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+
   virtual ~WorkerLeaseInterface(){};
+};
+
+/// Interface for waiting dependencies. Abstract for testing.
+class DependencyWaiterInterface {
+ public:
+  /// Wait for the given objects, asynchronously. The core worker is notified when
+  /// the wait completes.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \return ray::Status.
+  virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+                                                 int64_t tag) = 0;
+
+  virtual ~DependencyWaiterInterface(){};
 };
 
 namespace raylet {
@@ -94,14 +133,16 @@ class RayletConnection {
 
  private:
   /// The Unix domain socket that connects to raylet.
-  local_stream_protocol::socket conn_;
+  local_stream_socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
 };
 
-class RayletClient : public WorkerLeaseInterface {
+class RayletClient : public PinObjectsInterface,
+                     public WorkerLeaseInterface,
+                     public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -191,7 +232,7 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                         int64_t tag);
+                                         int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
@@ -253,9 +294,13 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
 
+  ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

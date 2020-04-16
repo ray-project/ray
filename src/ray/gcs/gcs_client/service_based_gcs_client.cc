@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include <unistd.h>
 #include "ray/common/ray_config.h"
@@ -63,7 +77,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   redisReply *reply = nullptr;
   while (num_attempts < RayConfig::instance().gcs_service_connect_retries()) {
     reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
-    if (reply->type != REDIS_REPLY_NIL) {
+    if (reply && reply->type != REDIS_REPLY_NIL) {
       break;
     }
 
@@ -74,6 +88,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   }
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
       << "No entry found for GcsServerAddress";
+  RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
   RAY_CHECK(reply->type == REDIS_REPLY_STRING)
       << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
   std::string result(reply->str);

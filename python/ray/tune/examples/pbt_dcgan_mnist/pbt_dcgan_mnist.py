@@ -26,7 +26,7 @@ from torch.nn import functional as F
 from scipy.stats import entropy
 
 # Training parameters
-dataroot = "/tmp/"
+dataroot = ray.utils.get_user_temp_dir() + os.sep
 workers = 2
 batch_size = 64
 image_size = 32

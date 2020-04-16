@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RAYLET_NODE_MANAGER_H
 #define RAY_RAYLET_NODE_MANAGER_H
 
@@ -70,6 +84,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -87,7 +103,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client to process.
   /// \return Void.
-  void ProcessNewClient(LocalClientConnection &client);
+  void ProcessNewClient(ClientConnection &client);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -97,7 +113,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_type The message type (e.g., a flatbuffer enum).
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
+  void ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                             int64_t message_type, const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
@@ -339,7 +355,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param mark_worker_blocked Whether to mark the worker as blocked. This
   ///                            should be False for direct calls.
   /// \return Void.
-  void AsyncResolveObjects(const std::shared_ptr<LocalClientConnection> &client,
+  void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
                            const std::vector<ObjectID> &required_object_ids,
                            const TaskID &current_task_id, bool ray_get,
                            bool mark_worker_blocked);
@@ -355,7 +371,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker_was_blocked Whether we previously marked the worker as
   ///                           blocked in AsyncResolveObjects().
   /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<LocalClientConnection> &client,
+  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
                                  const TaskID &current_task_id, bool was_blocked);
 
   /// Handle a direct call task that is blocked. Note that this callback may
@@ -435,13 +451,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
   /// \param client The connection for the worker.
   /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle the case that a worker is available.
   ///
@@ -457,24 +473,23 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param intentional_disconnect Whether the client was intentionally disconnected.
   /// \return Void.
-  void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client,
-      bool intentional_disconnect = false);
+  void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
+                                      bool intentional_disconnect = false);
 
   /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessFetchOrReconstructMessage(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
+                                        const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
+  void ProcessWaitRequestMessage(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
 
   /// Process client message of WaitForDirectActorCallArgsRequest
@@ -483,7 +498,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessWaitForDirectActorCallArgsRequestMessage(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
   ///
@@ -496,7 +511,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   void ProcessPrepareActorCheckpointRequest(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of NotifyActorResumedFromCheckpoint.
   ///
@@ -514,7 +529,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessSetResourceRequest(const std::shared_ptr<LocalClientConnection> &client,
+  void ProcessSetResourceRequest(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
@@ -543,7 +558,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return void.
-  void ProcessSubscribePlasmaReady(const std::shared_ptr<LocalClientConnection> &client,
+  void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
 
   /// Setup callback with Object Manager.
@@ -560,6 +575,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ReturnWorker` request.
+  void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                               rpc::CancelWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -580,6 +600,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `FormatGlobalMemoryInfo`` request.
+  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+                                    rpc::FormatGlobalMemoryInfoReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
@@ -596,8 +621,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  /// Whether a task is an direct actor creation task.
-  bool IsDirectActorCreationTask(const TaskID &task_id);
+  /// Whether a task is an actor creation task.
+  bool IsActorCreationTask(const TaskID &task_id);
 
   /// ID of this node.
   ClientID self_node_id_;
@@ -699,9 +724,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-  /// Map of leased workers to their current resource usage.
-  /// TODO(ion): Check whether we can track these resources in the worker.
-  std::unordered_map<WorkerID, ResourceSet> leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
                              std::string address, int port)>
@@ -712,6 +734,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
+  /// Queue tasks waiting for arguments to be transferred locally.
+  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this

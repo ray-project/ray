@@ -8,7 +8,7 @@ import gym
 
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-        BEHAVIOUR_LOGITS, clip_gradients, validate_config, choose_optimizer
+    clip_gradients, validate_config, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -244,7 +244,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
-    behaviour_logits = train_batch[BEHAVIOUR_LOGITS]
+    behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
     old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
@@ -397,8 +397,8 @@ def postprocess_trajectory(policy,
     return batch
 
 
-def add_values_and_logits(policy):
-    out = {BEHAVIOUR_LOGITS: policy.model.last_output()}
+def add_values(policy):
+    out = {}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.model.value_function()
     return out
@@ -446,7 +446,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_values_and_logits,
+    extra_action_fetches_fn=add_values,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
@@ -454,4 +454,4 @@ AsyncPPOTFPolicy = build_tf_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])
+    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

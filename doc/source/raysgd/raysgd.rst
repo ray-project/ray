@@ -11,10 +11,7 @@ The main features are:
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
-.. note::
-
-  This API is new and may be revised in future Ray releases. If you encounter
-  any bugs, please file an `issue on GitHub`_.
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Getting Started
@@ -24,17 +21,16 @@ You can start a ``TorchTrainer`` with the following:
 
 .. code-block:: python
 
-    import numpy as np
-    import torch
-    import torch.nn as nn
-    from torch import distributed
-
+    import ray
     from ray.util.sgd import TorchTrainer
-    from ray.util.sgd.examples.train_example import LinearDataset
+    from ray.util.sgd.torch.examples.train_example import LinearDataset
+
+    import torch
+    from torch.utils.data import DataLoader
 
 
     def model_creator(config):
-        return nn.Linear(1, 1)
+        return torch.nn.Linear(1, 1)
 
 
     def optimizer_creator(model, config):
@@ -42,21 +38,21 @@ You can start a ``TorchTrainer`` with the following:
         return torch.optim.SGD(model.parameters(), lr=1e-2)
 
 
-    def data_creator(batch_size, config):
-        """Returns training dataloader, validation dataloader."""
-        return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
+    def data_creator(config):
+        train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+        val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+        return train_loader, val_loader
 
     ray.init()
 
     trainer1 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        loss_creator=nn.MSELoss,
-        num_replicas=2,
-        use_gpu=True,
-        batch_size=512,
-        backend="nccl")
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=torch.nn.MSELoss,
+        num_workers=2,
+        use_gpu=False,
+        config={"batch_size": 64})
 
     stats = trainer1.train()
     print(stats)

@@ -94,15 +94,6 @@ def wait_for_num_actors(num_actors, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-def wait_for_num_tasks(num_tasks, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.tasks()) >= num_tasks:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
-
-
 def wait_for_num_objects(num_objects, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -124,9 +115,6 @@ def test_global_state_api(shutdown_only):
         ray.actors()
 
     with pytest.raises(Exception, match=error_message):
-        ray.tasks()
-
-    with pytest.raises(Exception, match=error_message):
         ray.nodes()
 
     with pytest.raises(Exception, match=error_message):
@@ -142,22 +130,6 @@ def test_global_state_api(shutdown_only):
 
     job_id = ray.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
-    driver_task_id = ray.worker.global_worker.current_task_id.hex()
-
-    # One task is put in the task table which corresponds to this driver.
-    wait_for_num_tasks(1)
-    task_table = ray.tasks()
-    assert len(task_table) == 1
-    assert driver_task_id == list(task_table.keys())[0]
-    task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_actor_id_hex = ray.ActorID.nil().hex()
-
-    assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == []
-    assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionDescriptor"]["type"] == "EmptyFunctionDescriptor"
-    assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
     node_ip_address = ray.worker.global_worker.node_ip_address
@@ -299,12 +271,12 @@ def test_specific_job_id():
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
-    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
+    assert dummy_driver_id == ray.worker.global_worker.current_job_id
 
     # in worker
     @ray.remote
     def f():
-        return ray._get_runtime_context().current_driver_id
+        return ray.worker.global_worker.current_job_id
 
     assert dummy_driver_id == ray.get(f.remote())
 
@@ -465,7 +437,8 @@ def test_pandas_parquet_serialization():
 
 def test_socket_dir_not_existing(shutdown_only):
     random_name = ray.ObjectID.from_random().hex()
-    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                          "tests", random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
@@ -686,6 +659,34 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()
+
+
+def test_lease_request_leak(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
+    assert len(ray.objects()) == 0
+
+    @ray.remote
+    def f(x):
+        time.sleep(0.1)
+        return
+
+    # Submit pairs of tasks. Tasks in a pair can reuse the same worker leased
+    # from the raylet.
+    tasks = []
+    for _ in range(10):
+        oid = ray.put(1)
+        for _ in range(2):
+            tasks.append(f.remote(oid))
+        del oid
+    ray.get(tasks)
+
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
 
 
 if __name__ == "__main__":

@@ -58,4 +58,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     })
 
 TD3Trainer = DDPGTrainer.with_updates(
-    name="TD3", default_config=TD3_DEFAULT_CONFIG)
+    name="TD3",
+    default_config=TD3_DEFAULT_CONFIG,
+    get_policy_class=None,
+)

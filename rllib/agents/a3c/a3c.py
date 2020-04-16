@@ -3,9 +3,10 @@ import logging
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import AsyncGradients
+from ray.rllib.execution.train_ops import ApplyGradients
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.experimental_dsl import (AsyncGradients, ApplyGradients,
-                                              StandardMetricsReporting)
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ DEFAULT_CONFIG = with_common_config({
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
     # Size of rollout batch
-    "sample_batch_size": 10,
+    "rollout_fragment_length": 10,
     # GAE(gamma) parameter
     "lambda": 1.0,
     # Max global norm for each gradient calculated by worker
@@ -35,8 +36,10 @@ DEFAULT_CONFIG = with_common_config({
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
-    # sample_batch_size by up to 5x due to async buffering of batches.
+    # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
+    # Use the execution plan API instead of policy optimizers.
+    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -65,8 +68,8 @@ def make_async_optimizer(workers, config):
     return AsyncGradientsOptimizer(workers, **config["optimizer"])
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
 
@@ -84,4 +87,4 @@ A3CTrainer = build_trainer(
     get_policy_class=get_policy_class,
     validate_config=validate_config,
     make_policy_optimizer=make_async_optimizer,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)

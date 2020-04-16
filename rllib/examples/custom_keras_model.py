@@ -7,7 +7,8 @@ from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.agents.dqn.distributional_q_tf_model import \
+    DistributionalQTFModel
 from ray.rllib.utils import try_import_tf
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as MyVisionNetwork
 
@@ -54,8 +55,11 @@ class MyKerasModel(TFModelV2):
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
 
+    def metrics(self):
+        return {"foo": tf.constant(42.0)}
 
-class MyKerasQModel(DistributionalQModel):
+
+class MyKerasQModel(DistributionalQTFModel):
     """Custom model for DQN."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -85,6 +89,9 @@ class MyKerasQModel(DistributionalQModel):
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
 
+    def metrics(self):
+        return {"foo": tf.constant(42.0)}
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -95,15 +102,33 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model(
         "keras_q_model", MyVisionNetwork
         if args.use_vision_network else MyKerasQModel)
+
+    # Tests https://github.com/ray-project/ray/issues/7293
+    def check_has_custom_metric(result):
+        r = result["result"]["info"]["learner"]
+        if "default_policy" in r:
+            r = r["default_policy"]
+        assert r["model"]["foo"] == 42, result
+
+    if args.run == "DQN":
+        extra_config = {"learning_starts": 0}
+    else:
+        extra_config = {}
+
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
-        config={
-            "env": "BreakoutNoFrameskip-v4"
-            if args.use_vision_network else "CartPole-v0",
-            "num_gpus": 0,
-            "model": {
-                "custom_model": "keras_q_model"
-                if args.run == "DQN" else "keras_model"
-            },
-        })
+        config=dict(
+            extra_config, **{
+                "log_level": "INFO",
+                "env": "BreakoutNoFrameskip-v4"
+                if args.use_vision_network else "CartPole-v0",
+                "num_gpus": 0,
+                "callbacks": {
+                    "on_train_result": check_has_custom_metric,
+                },
+                "model": {
+                    "custom_model": "keras_q_model"
+                    if args.run == "DQN" else "keras_model"
+                },
+            }))

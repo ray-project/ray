@@ -5,15 +5,16 @@ from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
 from ray.rllib.optimizers import SyncSamplesOptimizer, MicrobatchOptimizer
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
+    ApplyGradients, TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, ConcatBatches, ComputeGradients, AverageGradients,
-    ApplyGradients, TrainOneStep, StandardMetricsReporting)
 
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
-        "sample_batch_size": 20,
+        "rollout_fragment_length": 20,
         "min_iter_time_s": 10,
         "sample_async": False,
 
@@ -37,8 +38,8 @@ def choose_policy_optimizer(workers, config):
             workers, train_batch_size=config["train_batch_size"])
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:
@@ -72,4 +73,4 @@ A2CTrainer = build_trainer(
     get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)

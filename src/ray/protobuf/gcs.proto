@@ -1,10 +1,24 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
@@ -85,13 +99,15 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
+    // Actor is pending.
+    PENDING = 0;
     // Actor is alive.
-    ALIVE = 0;
+    ALIVE = 1;
     // Actor is dead, now being reconstructed.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 1;
+    RECONSTRUCTING = 2;
     // Actor is already dead and won't be reconstructed.
-    DEAD = 2;
+    DEAD = 3;
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
@@ -113,12 +129,12 @@ message ActorTableData {
   Address address = 9;
   // The address of the the actor's owner (parent).
   Address owner_address = 10;
-  // Whether direct actor call is used.
-  bool is_direct_call = 11;
   // Whether the actor is persistent.
-  bool is_detached = 12;
+  bool is_detached = 11;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 13;
+  double timestamp = 12;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 13;
 }
 
 message ErrorTableData {
@@ -283,6 +299,21 @@ message WorkerFailureData {
   Address worker_address = 1;
   // The UNIX timestamp at which the worker failed.
   int64 timestamp = 3;
+  // Is intentional disconnect
+  bool intentional_disconnect = 4;
+}
+
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
+
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
+
+message PubSubMessage {
+  bytes id = 1;
+  bytes data = 2;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating

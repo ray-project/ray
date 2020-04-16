@@ -51,7 +51,7 @@ def test_project_root():
     project_definition = ray.projects.ProjectDefinition(path2)
     assert os.path.normpath(project_definition.root) == os.path.normpath(path)
 
-    path3 = "/tmp/"
+    path3 = ray.utils.get_user_temp_dir() + os.sep
     with pytest.raises(ValueError):
         project_definition = ray.projects.ProjectDefinition(path3)
 

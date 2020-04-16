@@ -72,7 +72,7 @@ class DataStream(Stream):
     """
     Represents a stream of data which applies a transformation executed by
     python. It's also a wrapper of java
-    `org.ray.streaming.python.stream.PythonDataStream`
+    `io.ray.streaming.python.stream.PythonDataStream`
     """
 
     def __init__(self, input_stream, j_stream, streaming_context=None):
@@ -329,7 +329,7 @@ class JavaDataStream(Stream):
 
 class KeyDataStream(DataStream):
     """Represents a DataStream returned by a key-by operation.
-     Wrapper of java org.ray.streaming.python.stream.PythonKeyDataStream
+     Wrapper of java io.ray.streaming.python.stream.PythonKeyDataStream
     """
 
     def __init__(self, input_stream, j_stream):
@@ -400,7 +400,7 @@ class JavaKeyDataStream(JavaDataStream):
 
 class StreamSource(DataStream):
     """Represents a source of the DataStream.
-     Wrapper of java org.ray.streaming.python.stream.PythonStreamSource
+     Wrapper of java io.ray.streaming.python.stream.PythonStreamSource
     """
 
     def __init__(self, j_stream, streaming_context, source_func):
@@ -454,7 +454,7 @@ class JavaStreamSource(JavaDataStream):
 
 class StreamSink(Stream):
     """Represents a sink of the DataStream.
-     Wrapper of java org.ray.streaming.python.stream.PythonStreamSink
+     Wrapper of java io.ray.streaming.python.stream.PythonStreamSink
     """
 
     def __init__(self, input_stream, j_stream, func):

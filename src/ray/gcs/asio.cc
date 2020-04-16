@@ -1,10 +1,24 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "asio.h"
 
-#include "ray/util/logging.h"
-
 #ifdef _WIN32
-#include <io.h>
+#include <win32fd.h>
 #endif
+
+#include "ray/util/logging.h"
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
@@ -23,7 +37,7 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
 #ifdef _WIN32
   SOCKET sock = SOCKET_ERROR;
   WSAPROTOCOL_INFO pi;
-  if (WSADuplicateSocket(_get_osfhandle(c->fd), GetCurrentProcessId(), &pi) == 0) {
+  if (WSADuplicateSocket(fh_get(c->fd), GetCurrentProcessId(), &pi) == 0) {
     DWORD flag = WSA_FLAG_OVERLAPPED;
     sock = WSASocket(pi.iAddressFamily, pi.iSocketType, pi.iProtocol, &pi, 0, flag);
   }
@@ -64,7 +78,8 @@ void RedisAsioClient::operate() {
 }
 
 void RedisAsioClient::handle_read(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset);
   read_in_progress_ = false;
   redis_async_context_.RedisAsyncHandleRead();
 
@@ -74,7 +89,8 @@ void RedisAsioClient::handle_read(boost::system::error_code error_code) {
 }
 
 void RedisAsioClient::handle_write(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset);
   write_in_progress_ = false;
   redis_async_context_.RedisAsyncHandleWrite();
 

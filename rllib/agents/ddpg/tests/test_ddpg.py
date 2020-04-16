@@ -3,7 +3,7 @@ import unittest
 
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -14,14 +14,11 @@ class TestDDPG(unittest.TestCase):
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
 
+        num_iterations = 2
+
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
+        for _ in framework_iterator(config, "tf"):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
-            num_iterations = 2
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
@@ -33,12 +30,7 @@ class TestDDPG(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
-
+        for _ in framework_iterator(config, "tf"):
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.
@@ -83,5 +75,6 @@ class TestDDPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import unittest
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

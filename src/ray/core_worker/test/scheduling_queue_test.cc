@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <thread>
 #include "gtest/gtest.h"
 
@@ -23,7 +37,7 @@ class MockWaiter : public DependencyWaiter {
 TEST(SchedulingQueueTest, TestInOrder) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
@@ -44,7 +58,7 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj3 = ObjectID::FromRandom();
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
@@ -70,7 +84,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
@@ -88,7 +102,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 TEST(SchedulingQueueTest, TestOutOfOrder) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
@@ -106,7 +120,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
@@ -129,7 +143,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, JobID::Nil());
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   SchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;

@@ -233,7 +233,7 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             sgd_batch_size=config["sgd_minibatch_size"],
             num_sgd_iter=config["num_sgd_iter"],
             num_gpus=config["num_gpus"],
-            sample_batch_size=config["sample_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             num_envs_per_worker=config["num_envs_per_worker"],
             train_batch_size=config["train_batch_size"],
             standardize_fields=["advantages"],
@@ -275,7 +275,7 @@ Now let's take a look at the ``update_kl`` function. This is used to adaptively 
             # multi-agent
             trainer.workers.local_worker().foreach_trainable_policy(update)
 
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
 
 .. code-block:: python
 

@@ -5,7 +5,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <parent>
         <artifactId>ray-streaming</artifactId>
-        <groupId>org.ray</groupId>
+        <groupId>io.ray</groupId>
         <version>0.1-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -18,7 +18,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.ray</groupId>
+            <groupId>io.ray</groupId>
             <artifactId>ray-api</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -36,6 +36,26 @@
   <groupId>org.apache.commons</groupId>
   <artifactId>commons-lang3</artifactId>
   <version>3.4</version>
+</dependency>
+<dependency>
+  <groupId>org.mockito</groupId>
+  <artifactId>mockito-all</artifactId>
+  <version>1.10.19</version>
+</dependency>
+<dependency>
+  <groupId>org.powermock</groupId>
+  <artifactId>powermock-api-mockito</artifactId>
+  <version>1.6.6</version>
+</dependency>
+<dependency>
+  <groupId>org.powermock</groupId>
+  <artifactId>powermock-module-testng</artifactId>
+  <version>1.6.6</version>
+</dependency>
+<dependency>
+  <groupId>org.projectlombok</groupId>
+  <artifactId>lombok</artifactId>
+  <version>1.16.20</version>
 </dependency>
 <dependency>
   <groupId>org.slf4j</groupId>

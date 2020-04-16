@@ -31,6 +31,7 @@ class Logger:
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
+        trial (Trial): Trial object for the logger to access.
     """
 
     def __init__(self, config, logdir, trial=None):
@@ -97,6 +98,13 @@ class MLFLowLogger(Logger):
 
 
 class JsonLogger(Logger):
+    """Logs trial results in json format.
+
+    Also writes to a results file and param.json file when results or
+    configurations are updated. Experiments must be executed with the
+    JsonLogger to be compatible with the ExperimentAnalysis tool.
+    """
+
     def _init(self):
         self.update_config(self.config)
         local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
@@ -203,11 +211,11 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if type(value) in VALID_SUMMARY_TYPES:
+            if type(value) in VALID_SUMMARY_TYPES and not np.isnan(value):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif type(value) is list and len(value) > 0:
+            elif type(value) in [list, np.ndarray] and len(value) > 0:
                 valid_result[full_attr] = value
                 try:
                     self._file_writer.add_histogram(
@@ -231,9 +239,10 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
+                flat_result = flatten_dict(self.last_result, delimiter="/")
                 scrubbed_result = {
                     k: value
-                    for k, value in self.last_result.items()
+                    for k, value in flat_result.items()
                     if type(value) in VALID_SUMMARY_TYPES
                 }
                 self._try_log_hparams(scrubbed_result)
@@ -241,9 +250,10 @@ class TBXLogger(Logger):
 
     def _try_log_hparams(self, result):
         # TBX currently errors if the hparams value is None.
+        flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in self.trial.evaluated_params.items() if v is not None
+            for k, v in flat_params.items() if v is not None
         }
         from tensorboardX.summary import hparams
         experiment_tag, session_start_tag, session_end_tag = hparams(
@@ -278,6 +288,11 @@ class UnifiedLogger(Logger):
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
             self._logger_cls_list = loggers
+        if JsonLogger not in self._logger_cls_list:
+            if log_once("JsonLogger"):
+                logger.warning(
+                    "JsonLogger not provided. The ExperimentAnalysis tool is "
+                    "disabled.")
         self._sync_function = sync_function
         self._log_syncer = None
 

@@ -8,7 +8,12 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 run_testng() {
-    $@ || exit_code=$?
+    local exit_code
+    if "$@"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
         exit $exit_code
@@ -33,9 +38,6 @@ echo "Running tests under cluster mode."
 # bazel test //java:all_tests --action_env=ENABLE_MULTI_LANGUAGE_TESTS=1 --test_output="errors" || cluster_exit_code=$?
 ENABLE_MULTI_LANGUAGE_TESTS=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
 
-echo "Running tests under cluster mode with direct actor call turned on."
-ENABLE_MULTI_LANGUAGE_TESTS=1 DEFAULT_USE_DIRECT_CALL=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
-
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
 run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
@@ -44,5 +46,5 @@ popd
 
 pushd $ROOT_DIR
 echo "Testing maven install."
-mvn clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
 popd
