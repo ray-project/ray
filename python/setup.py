@@ -23,7 +23,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/gcs/gcs_server",
     "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
     "ray/streaming/_streaming.so",
 ]
 
@@ -42,10 +41,14 @@ optional_ray_files = []
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
+    "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/azure/azure-vm-template.json",
+    "ray/autoscaler/azure/azure-config-template.json",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/ray-schema.json"
 ]
 
 ray_project_files = [
@@ -73,18 +76,22 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "debug": [],
-    "dashboard": [],
+    "dashboard": ["requests"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"],
+    "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "pyyaml",
+    "atari_py",
+    "dm_tree",
     "gym[atari]",
-    "opencv-python-headless",
     "lz4",
+    "opencv-python-headless",
+    "pyyaml",
     "scipy",
 ]
+
+extras["streaming"] = ["msgpack >= 0.6.2"]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
@@ -165,26 +172,19 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.16",
-    "filelock",
-    "jsonschema",
-    "funcsigs",
+    "aiohttp",
     "click",
     "colorama",
-    "packaging",
-    "pytest",
-    "pyyaml",
-    "redis>=3.3.2",
-    # NOTE: Don't upgrade the version of six! Doing so causes installation
-    # problems. See https://github.com/ray-project/ray/issues/4169.
-    "six >= 1.0.0",
-    "faulthandler;python_version<'3.3'",
-    "protobuf >= 3.8.0",
-    "cloudpickle",
-    "py-spy >= 0.2.0",
-    "aiohttp",
+    "filelock",
     "google",
-    "grpcio"
+    "grpcio",
+    "jsonschema",
+    "msgpack >= 0.6.0, < 1.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "redis >= 3.3.2",
 ]
 
 setup(
@@ -203,7 +203,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.29"],
+    setup_requires=["cython >= 0.29.14", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

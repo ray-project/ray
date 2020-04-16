@@ -1,42 +1,35 @@
 #!/usr/bin/env bash
 
-# Cause the script to exit if a single command fails.
-set -e
+set -euxo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+WORKSPACE_DIR="${ROOT_DIR}/../.."
 
-echo "PYTHON is $PYTHON"
-
-# If we are in Travis, most of the compilation result will be cached.
-# This means we are I/O bounded. By default, Bazel set the number of concurrent
-# jobs to the the number cores on the machine, which are not efficient for
-# network bounded cache downloading workload. Therefore we increase the number
-# of jobs to 50
-if [[ "$TRAVIS" == "true" ]]; then
-  echo "build --jobs=50" >> $HOME/.bazelrc
-fi
-
-if [[ "$PYTHON" == "3.6" ]]; then
-  export PATH="$HOME/miniconda/bin:$PATH"
-
-  pushd "$ROOT_DIR/../../python"
-    pushd ray/dashboard/client
-      source $HOME/.nvm/nvm.sh
-      nvm use node
+build_dashboard_front_end() {
+  if [ "${OSTYPE}" = msys ]; then
+    { echo "WARNING: Not building dashboard front-end due to NPM package incompatibilities with Windows"; } 2> /dev/null
+  else
+    (
+      cd ray/dashboard/client
+      set +x  # suppress set -x since it'll get very noisy here
+      . "${HOME}/.nvm/nvm.sh"
+      nvm use --silent node
       npm ci
-      npm run build
-    popd
-    pip install -e . --verbose
-  popd
+      npm run -s build
+    )
+  fi
+}
 
-elif [[ "$LINT" == "1" ]]; then
-  export PATH="$HOME/miniconda/bin:$PATH"
+install_ray() {
+  (
+    cd "${WORKSPACE_DIR}"/python
+    build_dashboard_front_end
+    if [ "${OSTYPE}" = msys ]; then
+      "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e . || echo "WARNING: Ignoring Ray package build failure on Windows for now" 1>&2
+    else
+      "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
+    fi
+  )
+}
 
-  pushd "$ROOT_DIR/../../python"
-    pip install -e . --verbose
-  popd
-else
-  echo "Unrecognized Python version."
-  exit 1
-fi
-
+install_ray "$@"

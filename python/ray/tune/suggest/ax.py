@@ -30,8 +30,8 @@ class AxSearch(SuggestionAlgorithm):
             reported/returned by the Trainable.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        minimize (bool): Whether this experiment represents a minimization
-            problem. Defaults to False.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute. Defaults to "max".
         parameter_constraints (list[str]): Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
@@ -40,16 +40,23 @@ class AxSearch(SuggestionAlgorithm):
             trial results in the optimization process.
 
 
-    Example:
-        >>> parameters = [
-        >>>     {"name": "x1", "type": "range", "bounds": [0.0, 1.0]},
-        >>>     {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
-        >>> ]
-        >>> algo = AxSearch(parameters=parameters,
-        >>>     objective_name="hartmann6", max_concurrent=4)
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.ax import AxSearch
+
+        parameters = [
+            {"name": "x1", "type": "range", "bounds": [0.0, 1.0]},
+            {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
+        ]
+
+        algo = AxSearch(parameters=parameters,
+            objective_name="hartmann6", max_concurrent=4)
+        tune.run(my_func, algo=algo)
+
     """
 
-    def __init__(self, ax_client, max_concurrent=10, **kwargs):
+    def __init__(self, ax_client, max_concurrent=10, mode="max", **kwargs):
         assert ax is not None, "Ax must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._ax = ax_client
@@ -62,9 +69,10 @@ class AxSearch(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self._parameters = list(exp.parameters)
         self._live_index_mapping = {}
-        super(AxSearch, self).__init__(**kwargs)
+        super(AxSearch, self).__init__(
+            metric=self._objective_name, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
         parameters, trial_index = self._ax.get_next_trial()

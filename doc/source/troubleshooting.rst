@@ -105,7 +105,7 @@ on what Ray functionalities we use, let us see what cProfile's output might look
 like if our example involved Actors (for an introduction to Ray actors, see our
 `Actor documentation here`_).
 
-.. _`Actor documentation here`: http://ray.readthedocs.io/en/latest/actors.html
+.. _`Actor documentation here`: http://docs.ray.io/en/latest/actors.html
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
 let's create a new example and loop over five calls to a remote function

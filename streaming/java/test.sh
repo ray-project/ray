@@ -23,8 +23,7 @@ bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_on
 
 echo "Running streaming tests."
 java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
- org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml
-exit_code=$?
+ org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml || exit_code=$?
 echo "Streaming TestNG results"
 cat /tmp/ray_streaming_java_test_output/testng-results.xml
 # exit_code == 2 means there are skipped tests.
@@ -37,7 +36,7 @@ cd "$ROOT_DIR"/../../java
 echo "build ray maven deps"
 bazel build gen_maven_deps
 echo "maven install ray"
-mvn clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
 cd "$ROOT_DIR"
 echo "maven install ray streaming"
-mvn clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests

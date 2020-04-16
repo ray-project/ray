@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "lineage_cache.h"
 #include <sstream>
 #include "ray/gcs/redis_gcs_client.h"
@@ -160,14 +174,12 @@ LineageCache::LineageCache(const ClientID &self_node_id,
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
   RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
   if (!entry) {
-    return;
-  } else if (entry->TaskData().GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
     return;
   }
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
@@ -186,10 +198,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
-  if (task.GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
-    return true;
-  }
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
 

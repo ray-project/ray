@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "worker.h"
 
 #include <boost/bind.hpp>
@@ -13,7 +27,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
-               std::shared_ptr<LocalClientConnection> connection,
+               std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
@@ -90,9 +104,7 @@ void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
 
 bool Worker::IsDetachedActor() const { return is_detached_actor_; }
 
-const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
-  return connection_;
-}
+const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }

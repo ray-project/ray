@@ -3,9 +3,8 @@ from __future__ import print_function
 import collections
 import time
 
-from ray.tune.result import (CONFIG_PREFIX, EPISODE_REWARD_MEAN, MEAN_ACCURACY,
-                             MEAN_LOSS, TRAINING_ITERATION, TIME_TOTAL_S,
-                             TIMESTEPS_TOTAL)
+from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
+                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
 from ray.tune.utils import flatten_dict
 
 try:
@@ -33,50 +32,50 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
-    def report(self, trials, *sys_info):
+    def report(self, trials, done, *sys_info):
         """Reports progress across trials.
 
         Args:
             trials (list[Trial]): Trials to report on.
+            done (bool): Whether this is the last progress report attempt.
             sys_info: System info.
         """
         raise NotImplementedError
 
 
 class TuneReporterBase(ProgressReporter):
-    """Abstract base class for the default Tune reporters."""
+    """Abstract base class for the default Tune reporters.
+
+    Args:
+        metric_columns (dict[str, str]|list[str]): Names of metrics to
+            include in progress table. If this is a dict, the keys should
+            be metric names and the values should be the displayed names.
+            If this is a list, the metric name is used directly.
+        max_progress_rows (int): Maximum number of rows to print
+            in the progress table. The progress table describes the
+            progress of each trial. Defaults to 20.
+        max_error_rows (int): Maximum number of rows to print in the
+            error table. The error table lists the error file, if any,
+            corresponding to each trial. Defaults to 20.
+        max_report_frequency (int): Maximum report frequency in seconds.
+            Defaults to 5s.
+    """
 
     # Truncated representations of column names (to accommodate small screens).
-    DEFAULT_COLUMNS = {
-        EPISODE_REWARD_MEAN: "reward",
+    DEFAULT_COLUMNS = collections.OrderedDict({
         MEAN_ACCURACY: "acc",
         MEAN_LOSS: "loss",
+        TRAINING_ITERATION: "iter",
         TIME_TOTAL_S: "total time (s)",
         TIMESTEPS_TOTAL: "ts",
-        TRAINING_ITERATION: "iter",
-    }
+        EPISODE_REWARD_MEAN: "reward",
+    })
 
     def __init__(self,
                  metric_columns=None,
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
-        """Initializes a new TuneReporterBase.
-
-        Args:
-            metric_columns (dict[str, str]|list[str]): Names of metrics to
-                include in progress table. If this is a dict, the keys should
-                be metric names and the values should be the displayed names.
-                If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of rows to print
-                in the progress table. The progress table describes the
-                progress of each trial. Defaults to 20.
-            max_error_rows (int): Maximum number of rows to print in the
-                error table. The error table lists the error file, if any,
-                corresponding to each trial. Defaults to 20.
-            max_report_frequency (int): Maximum report frequency in seconds.
-                Defaults to 5s.
-        """
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
@@ -113,7 +112,7 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._metric_columns.append(metric)
 
-    def _progress_str(self, trials, *sys_info, fmt="psql", delim="\n"):
+    def _progress_str(self, trials, done, *sys_info, fmt="psql", delim="\n"):
         """Returns full progress string.
 
         This string contains a progress table and error table. The progress
@@ -123,26 +122,45 @@ class TuneReporterBase(ProgressReporter):
 
         Args:
             trials (list[Trial]): Trials to report on.
+            done (bool): Whether this is the last progress report attempt.
             fmt (str): Table format. See `tablefmt` in tabulate API.
             delim (str): Delimiter between messages.
         """
         messages = ["== Status ==", memory_debug_str(), *sys_info]
-        if self._max_progress_rows > 0:
-            messages.append(
-                trial_progress_str(
-                    trials,
-                    metric_columns=self._metric_columns,
-                    fmt=fmt,
-                    max_rows=self._max_progress_rows))
-        if self._max_error_rows > 0:
-            messages.append(
-                trial_errors_str(
-                    trials, fmt=fmt, max_rows=self._max_error_rows))
+        if done:
+            max_progress = None
+            max_error = None
+        else:
+            max_progress = self._max_progress_rows
+            max_error = self._max_error_rows
+        messages.append(
+            trial_progress_str(
+                trials,
+                metric_columns=self._metric_columns,
+                fmt=fmt,
+                max_rows=max_progress))
+        messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
         return delim.join(messages) + delim
 
 
 class JupyterNotebookReporter(TuneReporterBase):
-    """Jupyter notebook-friendly Reporter that can update display in-place."""
+    """Jupyter notebook-friendly Reporter that can update display in-place.
+
+    Args:
+        overwrite (bool): Flag for overwriting the last reported progress.
+        metric_columns (dict[str, str]|list[str]): Names of metrics to
+            include in progress table. If this is a dict, the keys should
+            be metric names and the values should be the displayed names.
+            If this is a list, the metric name is used directly.
+        max_progress_rows (int): Maximum number of rows to print
+            in the progress table. The progress table describes the
+            progress of each trial. Defaults to 20.
+        max_error_rows (int): Maximum number of rows to print in the
+            error table. The error table lists the error file, if any,
+            corresponding to each trial. Defaults to 20.
+        max_report_frequency (int): Maximum report frequency in seconds.
+            Defaults to 5s.
+    """
 
     def __init__(self,
                  overwrite,
@@ -150,67 +168,50 @@ class JupyterNotebookReporter(TuneReporterBase):
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
-        """Initializes a new JupyterNotebookReporter.
-
-        Args:
-            overwrite (bool): Flag for overwriting the last reported progress.
-            metric_columns (dict[str, str]|list[str]): Names of metrics to
-                include in progress table. If this is a dict, the keys should
-                be metric names and the values should be the displayed names.
-                If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of rows to print
-                in the progress table. The progress table describes the
-                progress of each trial. Defaults to 20.
-            max_error_rows (int): Maximum number of rows to print in the
-                error table. The error table lists the error file, if any,
-                corresponding to each trial. Defaults to 20.
-            max_report_frequency (int): Maximum report frequency in seconds.
-                Defaults to 5s.
-        """
         super(JupyterNotebookReporter,
               self).__init__(metric_columns, max_progress_rows, max_error_rows,
                              max_report_frequency)
         self._overwrite = overwrite
 
-    def report(self, trials, *sys_info):
+    def report(self, trials, done, *sys_info):
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         if self._overwrite:
             clear_output(wait=True)
         progress_str = self._progress_str(
-            trials, *sys_info, fmt="html", delim="<br>")
+            trials, done, *sys_info, fmt="html", delim="<br>")
         display(HTML(progress_str))
 
 
 class CLIReporter(TuneReporterBase):
-    """Command-line reporter"""
+    """Command-line reporter
+
+    Args:
+        metric_columns (dict[str, str]|list[str]): Names of metrics to
+            include in progress table. If this is a dict, the keys should
+            be metric names and the values should be the displayed names.
+            If this is a list, the metric name is used directly.
+        max_progress_rows (int): Maximum number of rows to print
+            in the progress table. The progress table describes the
+            progress of each trial. Defaults to 20.
+        max_error_rows (int): Maximum number of rows to print in the
+            error table. The error table lists the error file, if any,
+            corresponding to each trial. Defaults to 20.
+        max_report_frequency (int): Maximum report frequency in seconds.
+            Defaults to 5s.
+    """
 
     def __init__(self,
                  metric_columns=None,
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
-        """Initializes a CLIReporter.
 
-        Args:
-            metric_columns (dict[str, str]|list[str]): Names of metrics to
-                include in progress table. If this is a dict, the keys should
-                be metric names and the values should be the displayed names.
-                If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of rows to print
-                in the progress table. The progress table describes the
-                progress of each trial. Defaults to 20.
-            max_error_rows (int): Maximum number of rows to print in the
-                error table. The error table lists the error file, if any,
-                corresponding to each trial. Defaults to 20.
-            max_report_frequency (int): Maximum report frequency in seconds.
-                Defaults to 5s.
-        """
         super(CLIReporter, self).__init__(metric_columns, max_progress_rows,
                                           max_error_rows, max_report_frequency)
 
-    def report(self, trials, *sys_info):
-        print(self._progress_str(trials, *sys_info))
+    def report(self, trials, done, *sys_info):
+        print(self._progress_str(trials, done, *sys_info))
 
 
 def memory_debug_str():
@@ -266,10 +267,8 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
 
     num_trials_strs = [
         "{} {}".format(len(trials_by_state[state]), state)
-        for state in trials_by_state
+        for state in sorted(trials_by_state)
     ]
-    messages.append("Number of trials: {} ({})".format(
-        num_trials, ", ".join(num_trials_strs)))
 
     max_rows = max_rows or float("inf")
     if num_trials > max_rows:
@@ -277,16 +276,19 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
         trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows)
         trials = []
         overflow_strs = []
-        for state in trials_by_state:
+        for state in sorted(trials_by_state):
             trials += trials_by_state_trunc[state]
-            overflow = len(trials_by_state[state]) - len(
+            num = len(trials_by_state[state]) - len(
                 trials_by_state_trunc[state])
-            overflow_strs.append("{} {}".format(overflow, state))
+            if num > 0:
+                overflow_strs.append("{} {}".format(num, state))
         # Build overflow string.
         overflow = num_trials - max_rows
         overflow_str = ", ".join(overflow_strs)
-        messages.append("Table truncated to {} rows. {} trials ({}) not "
-                        "shown.".format(max_rows, overflow, overflow_str))
+    else:
+        overflow = False
+    messages.append("Number of trials: {} ({})".format(
+        num_trials, ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, collections.Mapping):
@@ -298,17 +300,20 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
             t.last_result.get(k) is not None for t in trials)
     ]
     # Build trial rows.
-    params = list(set().union(*[t.evaluated_params for t in trials]))
+    params = sorted(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
     # Format column headings
     if isinstance(metric_columns, collections.Mapping):
         formatted_columns = [metric_columns[k] for k in keys]
     else:
         formatted_columns = keys
-    columns = ["Trial name", "status", "loc"] + params + formatted_columns
+    columns = (["Trial name", "status", "loc"] + params + formatted_columns)
     # Tabulate.
     messages.append(
         tabulate(trial_table, headers=columns, tablefmt=fmt, showindex=False))
+    if overflow:
+        messages.append("... {} more trials not shown ({})".format(
+            overflow, overflow_str))
     return delim.join(messages)
 
 
@@ -326,8 +331,7 @@ def trial_errors_str(trials, fmt="psql", max_rows=None):
     num_failed = len(failed)
     if num_failed > 0:
         messages.append("Number of errored trials: {}".format(num_failed))
-        max_rows = max_rows or float("inf")
-        if num_failed > max_rows:
+        if num_failed > (max_rows or float("inf")):
             messages.append("Table truncated to {} rows ({} overflow)".format(
                 max_rows, num_failed - max_rows))
         error_table = []
@@ -358,7 +362,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     # Determine number of trials to keep per state.
     while max_trials > 0 and not no_change:
         no_change = True
-        for state in trials_by_state:
+        for state in sorted(trials_by_state):
             if num_trials_by_state[state] < len(trials_by_state[state]):
                 no_change = False
                 max_trials -= 1
@@ -366,15 +370,13 @@ def _fair_filter_trials(trials_by_state, max_trials):
     # Sort by start time, descending.
     sorted_trials_by_state = {
         state: sorted(
-            trials_by_state[state],
-            reverse=True,
-            key=lambda t: t.start_time if t.start_time else float("-inf"))
-        for state in trials_by_state
+            trials_by_state[state], reverse=False, key=lambda t: t.trial_id)
+        for state in sorted(trials_by_state)
     }
     # Truncate oldest trials.
     filtered_trials = {
         state: sorted_trials_by_state[state][:num_trials_by_state[state]]
-        for state in trials_by_state
+        for state in sorted(trials_by_state)
     }
     return filtered_trials
 
@@ -390,7 +392,8 @@ def _get_trial_info(trial, parameters, metrics):
         metrics (list[str]): Names of metrics to include.
     """
     result = flatten_dict(trial.last_result)
+    config = flatten_dict(trial.config)
     trial_info = [str(trial), trial.status, str(trial.location)]
-    trial_info += [result.get(CONFIG_PREFIX + param) for param in parameters]
+    trial_info += [config.get(param) for param in parameters]
     trial_info += [result.get(metric) for metric in metrics]
     return trial_info

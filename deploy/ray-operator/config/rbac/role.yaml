@@ -57,7 +57,7 @@ rules:
 - apiGroups:
   - ray.io
   resources:
-  - RayClusters
+  - rayclusters
   verbs:
   - create
   - delete
@@ -69,7 +69,7 @@ rules:
 - apiGroups:
   - ray.io
   resources:
-  - RayClusters/status
+  - rayclusters/status
   verbs:
   - get
   - patch

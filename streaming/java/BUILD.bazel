@@ -13,17 +13,17 @@ all_modules = [
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_" + module + ".jar"
+        "libio_ray_ray_" + module + ".jar"
         for module in all_modules
     ] + [
-        "liborg_ray_ray_" + module + "-src.jar"
+        "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules
     ] + [
         "all_streaming_tests_deploy.jar",
         "all_streaming_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_" + module
+        ":io_ray_ray_" + module
         for module in all_modules
     ] + [
         ":all_streaming_tests",
@@ -34,12 +34,16 @@ define_java_module(
     name = "streaming-api",
     define_test_lib = True,
     test_deps = [
-        "//java:org_ray_ray_api",
-        ":org_ray_ray_streaming-api",
+        "//java:io_ray_ray_api",
+        ":io_ray_ray_streaming-api",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
         "@ray_streaming_maven//:org_testng_testng",
+	      "@ray_streaming_maven//:org_mockito_mockito_all",
+	      "@ray_streaming_maven//:org_powermock_powermock_module_testng",
+	      "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
+	      "@ray_streaming_maven//:org_projectlombok_lombok",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -93,32 +97,42 @@ define_java_module(
     ],
     define_test_lib = True,
     exclude_srcs = [
-        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/*.java",
+        "streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/*.java",
     ],
     test_deps = [
-        "//java:org_ray_ray_api",
-        "//java:org_ray_ray_runtime",
-        ":org_ray_ray_streaming-api",
-        ":org_ray_ray_streaming-runtime",
+        "//java:io_ray_ray_api",
+        "//java:io_ray_ray_runtime",
+        ":io_ray_ray_streaming-api",
+        ":io_ray_ray_streaming-runtime",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
         "@ray_streaming_maven//:org_testng_testng",
+	      "@ray_streaming_maven//:org_mockito_mockito_all",
+	      "@ray_streaming_maven//:org_powermock_powermock_module_testng",
+	      "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
+	      "@ray_streaming_maven//:org_projectlombok_lombok",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":org_ray_ray_streaming-api",
-        "//java:org_ray_ray_api",
-        "//java:org_ray_ray_runtime",
+        ":io_ray_ray_streaming-api",
+        "//java:io_ray_ray_api",
+        "//java:io_ray_ray_runtime",
         "@ray_streaming_maven//:com_github_davidmoten_flatbuffers_java",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+	      "@ray_streaming_maven//:org_mockito_mockito_all",
+	      "@ray_streaming_maven//:org_powermock_powermock_module_testng",
+	      "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
+	      "@ray_streaming_maven//:org_projectlombok_lombok",
     ],
 )
 
@@ -128,12 +142,16 @@ java_binary(
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_streaming-api_test",
-        ":org_ray_ray_streaming-runtime",
-        ":org_ray_ray_streaming-runtime_test",
-        "//java:org_ray_ray_runtime",
+        ":io_ray_ray_streaming-api_test",
+        ":io_ray_ray_streaming-runtime",
+        ":io_ray_ray_streaming-runtime_test",
+        "//java:io_ray_ray_runtime",
         "@ray_streaming_maven//:com_beust_jcommander",
         "@ray_streaming_maven//:org_testng_testng",
+        "@ray_streaming_maven//:org_mockito_mockito_all",
+        "@ray_streaming_maven//:org_powermock_powermock_module_testng",
+     	  "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
+        "@ray_streaming_maven//:org_projectlombok_lombok",
     ],
 )
 
@@ -143,9 +161,15 @@ java_proto_compile(
     deps = ["//streaming:streaming_proto"],
 )
 
+java_proto_compile(
+    name = "remote_call_java_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
+        ":remote_call_java_proto",
         ":streaming_java_proto",
     ],
 )
@@ -153,15 +177,14 @@ filegroup(
 genrule(
     name = "copy_pom_file",
     srcs = [
-        "//streaming/java:org_ray_ray_" + module + "_pom"
+        "//streaming/java:io_ray_ray_" + module + "_pom"
         for module in all_modules
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
-        cp -f $(location //streaming/java:org_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
-        cp -f $(location //streaming/java:org_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
+        cp -f $(location //streaming/java:io_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
+        cp -f $(location //streaming/java:io_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
         date > $@
     """,
     local = 1,
@@ -176,14 +199,13 @@ genrule(
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
-        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated"
+        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated"
         rm -rf "$$GENERATED_DIR"
         mkdir -p "$$GENERATED_DIR"
         # Copy protobuf-generated files.
         for f in $(locations //streaming/java:all_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
+            unzip -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
         date > $@
     """,
@@ -200,7 +222,6 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         # Copy native dependencies.
         NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"
@@ -214,4 +235,5 @@ genrule(
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:public"],
 )

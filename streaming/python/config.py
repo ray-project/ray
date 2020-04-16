@@ -13,7 +13,8 @@ class Config:
     # return from StreamingReader.getBundle if only empty message read in this
     # interval.
     TIMER_INTERVAL_MS = "timer_interval_ms"
-
+    READ_TIMEOUT_MS = "read_timeout_ms"
+    DEFAULT_READ_TIMEOUT_MS = "10"
     STREAMING_RING_BUFFER_CAPACITY = "streaming.ring_buffer_capacity"
     # write an empty message if there is no data to be written in this
     # interval.

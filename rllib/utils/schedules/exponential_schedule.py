@@ -4,9 +4,9 @@ from ray.rllib.utils.schedules.schedule import Schedule
 class ExponentialSchedule(Schedule):
     def __init__(self,
                  schedule_timesteps,
+                 framework,
                  initial_p=1.0,
-                 decay_rate=0.1,
-                 framework=None):
+                 decay_rate=0.1):
         """
         Exponential decay schedule from initial_p to final_p over
         schedule_timesteps. After this many time steps always `final_p` is

@@ -70,7 +70,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
             endpoints=[(0, prioritized_replay_beta),
                        (prioritized_replay_beta_annealing_timesteps,
                         final_prioritized_replay_beta)],
-            outside_value=final_prioritized_replay_beta)
+            outside_value=final_prioritized_replay_beta,
+            framework=None)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
         self.before_learn_on_batch = before_learn_on_batch
@@ -99,6 +100,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
         if buffer_size < self.replay_starts:
             logger.warning("buffer_size={} < replay_starts={}".format(
                 buffer_size, self.replay_starts))
+
+        # If set, will use this batch for stepping/updating, instead of
+        # sampling from the replay buffer. Actual sampling from the env
+        # (and adding collected experiences to the replay will still happen
+        # normally).
+        # After self.step(), self.fake_batch must be set again.
+        self._fake_batch = None
 
     @override(PolicyOptimizer)
     def step(self):
@@ -155,7 +163,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
             })
 
     def _optimize(self):
-        samples = self._replay()
+        if self._fake_batch:
+            fake_batch = SampleBatch(self._fake_batch)
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: fake_batch
+            }, fake_batch.count)
+        else:
+            samples = self._replay()
 
         with self.grad_timer:
             if self.before_learn_on_batch:
@@ -168,7 +182,12 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 self.learner_stats[policy_id] = get_learner_stats(info)
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
-                    td_error = info["td_error"]
+                    # TODO(sven): This is currently structured differently for
+                    #  torch/tf. Clean up these results/info dicts across
+                    #  policies (note: fixing this in torch_policy.py will
+                    #  break e.g. DDPPO!).
+                    td_error = info.get("td_error",
+                                        info["learner_stats"].get("td_error"))
                     new_priorities = (
                         np.abs(td_error) + self.prioritized_replay_eps)
                     replay_buffer.update_priorities(

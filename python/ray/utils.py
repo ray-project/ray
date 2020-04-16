@@ -5,8 +5,10 @@ import inspect
 import logging
 import numpy as np
 import os
-import six
+import signal
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -17,6 +19,29 @@ import ray.ray_constants as ray_constants
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Linux can bind child processes' lifetimes to that of their parents via prctl.
+# prctl support is detected dynamically once, and assumed thereafter.
+linux_prctl = None
+
+# Windows can bind processes' lifetimes to that of kernel-level "job objects".
+# We keep a global job object to tie its lifetime to that of our own process.
+win32_job = None
+win32_AssignProcessToJobObject = None
+
+
+def get_user_temp_dir():
+    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tempdir = os.path.join(os.sep, "tmp")
+    else:
+        tempdir = tempfile.gettempdir()
+    return tempdir
+
+
+def get_ray_temp_dir():
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def _random_string():
@@ -198,32 +223,14 @@ def decode(byte_str, allow_none=False):
 def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
-    To keep six with lower version, see Issue 4169, we copy this function
-    from six == 1.12.0.
-
-    TODO(yuhguo): remove this function when six >= 1.12.0.
-
-    For Python 2:
-      - `unicode` -> encoded to `str`
-      - `str` -> `str`
-
-    For Python 3:
       - `str` -> `str`
       - `bytes` -> decoded to `str`
     """
-    if six.PY3:
-        text_type = str
-        binary_type = bytes
+    if isinstance(s, str):
+        return s
     else:
-        text_type = unicode  # noqa: F821
-        binary_type = str
-    if not isinstance(s, (text_type, binary_type)):
-        raise TypeError("not expecting type '%s'" % type(s))
-    if six.PY2 and isinstance(s, text_type):
-        s = s.encode(encoding, errors)
-    elif six.PY3 and isinstance(s, binary_type):
-        s = s.decode(encoding, errors)
-    return s
+        assert isinstance(s, bytes)
+        return s.decode(encoding, errors)
 
 
 def binary_to_object_id(binary_object_id):
@@ -494,6 +501,157 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def detect_fate_sharing_support_win32():
+    global win32_job, win32_AssignProcessToJobObject
+    if win32_job is None and sys.platform == "win32":
+        import ctypes
+        try:
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            kernel32 = ctypes.WinDLL("kernel32")
+            kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
+            kernel32.CreateJobObjectW.restype = HANDLE
+            sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
+            kernel32.SetInformationJobObject.argtypes = sijo_argtypes
+            kernel32.SetInformationJobObject.restype = BOOL
+            kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
+            kernel32.AssignProcessToJobObject.restype = BOOL
+            kernel32.IsDebuggerPresent.argtypes = ()
+            kernel32.IsDebuggerPresent.restype = BOOL
+        except (AttributeError, TypeError, ImportError):
+            kernel32 = None
+        job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
+        job = subprocess.Handle(job) if job else job
+        if job:
+            from ctypes.wintypes import DWORD, LARGE_INTEGER, ULARGE_INTEGER
+
+            class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("PerProcessUserTimeLimit", LARGE_INTEGER),
+                    ("PerJobUserTimeLimit", LARGE_INTEGER),
+                    ("LimitFlags", DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", DWORD),
+                    ("SchedulingClass", DWORD),
+                ]
+
+            class IO_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("ReadOperationCount", ULARGE_INTEGER),
+                    ("WriteOperationCount", ULARGE_INTEGER),
+                    ("OtherOperationCount", ULARGE_INTEGER),
+                    ("ReadTransferCount", ULARGE_INTEGER),
+                    ("WriteTransferCount", ULARGE_INTEGER),
+                    ("OtherTransferCount", ULARGE_INTEGER),
+                ]
+
+            class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("BasicLimitInformation",
+                     JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("IoInfo", IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t),
+                ]
+
+            debug = kernel32.IsDebuggerPresent()
+
+            # Defined in <WinNT.h>; also available here:
+            # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
+            JobObjectExtendedLimitInformation = 9
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+            buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            buf.BasicLimitInformation.LimitFlags = (
+                (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+            infoclass = JobObjectExtendedLimitInformation
+            if not kernel32.SetInformationJobObject(
+                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)):
+                job = None
+        win32_AssignProcessToJobObject = (kernel32.AssignProcessToJobObject
+                                          if kernel32 is not None else False)
+        win32_job = job if job else False
+    return bool(win32_job)
+
+
+def detect_fate_sharing_support_linux():
+    global linux_prctl
+    if linux_prctl is None and sys.platform.startswith("linux"):
+        try:
+            from ctypes import c_int, c_ulong, CDLL
+            prctl = CDLL(None).prctl
+            prctl.restype = c_int
+            prctl.argtypes = [c_int, c_ulong, c_ulong, c_ulong, c_ulong]
+        except (AttributeError, TypeError):
+            prctl = None
+        linux_prctl = prctl if prctl else False
+    return bool(linux_prctl)
+
+
+def detect_fate_sharing_support():
+    result = None
+    if sys.platform == "win32":
+        result = detect_fate_sharing_support_win32()
+    elif sys.platform.startswith("linux"):
+        result = detect_fate_sharing_support_linux()
+    return result
+
+
+def set_kill_on_parent_death_linux():
+    """Ensures this process dies if its parent dies (fate-sharing).
+
+    Linux-only. Must be called in preexec_fn (i.e. by the child).
+    """
+    if detect_fate_sharing_support_linux():
+        import signal
+        PR_SET_PDEATHSIG = 1
+        if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+            import ctypes
+            raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
+    else:
+        assert False, "PR_SET_PDEATHSIG used despite being unavailable"
+
+
+def set_kill_child_on_death_win32(child_proc):
+    """Ensures the child process dies if this process dies (fate-sharing).
+
+    Windows-only. Must be called by the parent, after spawning the child.
+
+    Args:
+        child_proc: The subprocess.Popen or subprocess.Handle object.
+    """
+
+    if isinstance(child_proc, subprocess.Popen):
+        child_proc = child_proc._handle
+    assert isinstance(child_proc, subprocess.Handle)
+
+    if detect_fate_sharing_support_win32():
+        if not win32_AssignProcessToJobObject(win32_job, int(child_proc)):
+            import ctypes
+            raise OSError(ctypes.get_last_error(),
+                          "AssignProcessToJobObject() failed")
+    else:
+        assert False, "AssignProcessToJobObject used despite being unavailable"
+
+
+def set_sigterm_handler(sigterm_handler):
+    """Registers a handler for SIGTERM in a platform-compatible manner."""
+    if sys.platform == "win32":
+        # Note that these signal handlers only work for console applications.
+        # TODO(mehrdadn): implement graceful process termination mechanism
+        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
+        signal.signal(signal.SIGBREAK, sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
 
 def try_make_directory_shared(directory_path):

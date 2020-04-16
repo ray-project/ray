@@ -1,11 +1,20 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_CALLBACK_H
 #define RAY_GCS_CALLBACK_H
 
-#if defined(__clang__) && defined(_MSC_VER)
-// TODO(mehrdadn): Remove this Windows (clang-cl) workaround once we upgrade to
-// Boost > 1.68: https://lists.boost.org/Archives/boost/2018/09/243420.php
-#include <boost/type_traits.hpp>
-#endif
 #include <boost/optional/optional.hpp>
 #include <vector>
 #include "ray/common/status.h"
@@ -43,6 +52,16 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 /// \param result The item returned by GCS.
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
+
+/// This callback is used to receive a large amount of results.
+/// \param status Status indicates whether the scan was successful.
+/// \param has_more Whether more data will be called back.
+/// If `has_more == true`, there are more data to be received. This callback will
+/// be called again.
+/// \param result The items returned by storage.
+template <typename Data>
+using SegmentedCallback =
+    std::function<void(Status status, bool has_more, const std::vector<Data> &result)>;
 
 }  // namespace gcs
 

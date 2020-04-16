@@ -14,9 +14,12 @@ class AlphaZeroPolicy(TorchPolicy):
                  action_distribution_class, mcts_creator, env_creator,
                  **kwargs):
         super().__init__(
-            observation_space, action_space, config, model, loss,
-            action_distribution_class
-        )
+            observation_space,
+            action_space,
+            config,
+            model=model,
+            loss=loss,
+            action_distribution_class=action_distribution_class)
         # we maintain an env copy in the policy that is used during mcts
         # simulations
         self.env_creator = env_creator
@@ -86,7 +89,7 @@ class AlphaZeroPolicy(TorchPolicy):
                     episode.user_data["mcts_policies"].append(mcts_policy)
 
             return np.array(actions), [], self.extra_action_out(
-                input_dict, state_batches, self.model)
+                input_dict, state_batches, self.model, None)
 
     @override(Policy)
     def postprocess_trajectory(self,
@@ -113,11 +116,12 @@ class AlphaZeroPolicy(TorchPolicy):
 
         loss_out, policy_loss, value_loss = self._loss(
             self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
+        self._optimizers[0].zero_grad()
         loss_out.backward()
 
-        grad_process_info = self.extra_grad_process()
-        self._optimizer.step()
+        grad_process_info = self.extra_grad_process(self._optimizers[0],
+                                                    loss_out)
+        self._optimizers[0].step()
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)

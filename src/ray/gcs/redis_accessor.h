@@ -1,6 +1,21 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_REDIS_ACCESSOR_H
 #define RAY_GCS_REDIS_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -13,10 +28,84 @@ namespace gcs {
 
 class RedisGcsClient;
 
+/// \class RedisLogBasedActorInfoAccessor
+/// `RedisLogBasedActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
+ public:
+  explicit RedisLogBasedActorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisLogBasedActorInfoAccessor() {}
+
+  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+
+  Status AsyncGet(const ActorID &actor_id,
+                  const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
+
+  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                       const StatusCallback &callback) override;
+
+  Status AsyncUpdate(const ActorID &actor_id,
+                     const std::shared_ptr<ActorTableData> &data_ptr,
+                     const StatusCallback &callback) override;
+
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                           const StatusCallback &done) override;
+
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                        const StatusCallback &done) override;
+
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+
+  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
+                            const StatusCallback &callback) override;
+
+  Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
+      const OptionalItemCallback<ActorCheckpointData> &callback) override;
+
+  Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
+
+ protected:
+  virtual std::vector<ActorID> GetAllActorID() const;
+  virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
+
+ private:
+  /// Add checkpoint id to GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor that the checkpoint belongs to.
+  /// \param checkpoint_id The ID of checkpoint that will be added to GCS.
+  /// \return Status
+  Status AsyncAddCheckpointID(const ActorID &actor_id,
+                              const ActorCheckpointID &checkpoint_id,
+                              const StatusCallback &callback);
+
+ protected:
+  RedisGcsClient *client_impl_{nullptr};
+  // Use a random ClientID for actor subscription. Because:
+  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
+  // Even we can filter out irrelevant updates, but there will be extra overhead.
+  // And because the new GCS Client will no longer hold the local ClientID, so we use
+  // random ClientID instead.
+  // TODO(micafan): Remove this random id, once GCS becomes a service.
+  ClientID subscribe_id_{ClientID::FromRandom()};
+
+ private:
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+      ActorSubscriptionExecutor;
+  ActorSubscriptionExecutor log_based_actor_sub_executor_;
+};
+
 /// \class RedisActorInfoAccessor
 /// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisActorInfoAccessor : public ActorInfoAccessor {
+class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
  public:
   explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
 
@@ -41,37 +130,11 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
-  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
-                            const StatusCallback &callback) override;
-
-  Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id,
-      const OptionalItemCallback<ActorCheckpointData> &callback) override;
-
-  Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
+ protected:
+  std::vector<ActorID> GetAllActorID() const override;
+  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
 
  private:
-  /// Add checkpoint id to GCS asynchronously.
-  ///
-  /// \param actor_id The ID of actor that the checkpoint belongs to.
-  /// \param checkpoint_id The ID of checkpoint that will be added to GCS.
-  /// \return Status
-  Status AsyncAddCheckpointID(const ActorID &actor_id,
-                              const ActorCheckpointID &checkpoint_id,
-                              const StatusCallback &callback);
-
- private:
-  RedisGcsClient *client_impl_{nullptr};
-  // Use a random ClientID for actor subscription. Because:
-  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
-  // Even we can filter out irrelevant updates, but there will be extra overhead.
-  // And because the new GCS Client will no longer hold the local ClientID, so we use
-  // random ClientID instead.
-  // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID subscribe_id_{ClientID::FromRandom()};
-
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
@@ -337,6 +400,11 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
                                   const StatusCallback &callback) override;
+
+  Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

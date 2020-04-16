@@ -15,14 +15,15 @@ halfcheetah-ddpg:
         env_config: {}
 
         # === Exploration ===
-        exploration_should_anneal: True
-        schedule_max_timesteps: 100000
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 10000
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+
         timesteps_per_iteration: 1000
-        exploration_fraction: 0.1
-        exploration_final_scale: 0.02
-        exploration_ou_noise_scale: 0.1
-        exploration_ou_theta: 0.15
-        exploration_ou_sigma: 0.2
         target_network_update_freq: 0
         tau: 0.001
 
@@ -41,13 +42,12 @@ halfcheetah-ddpg:
         huber_threshold: 1.0
         l2_reg: 0.000001
         learning_starts: 500
-        sample_batch_size: 1
+        rollout_fragment_length: 1
         train_batch_size: 64
 
         # === Parallelism ===
         num_workers: 0
         num_gpus_per_worker: 0
-        per_worker_exploration: False
         worker_side_prioritization: False
 
         # === Evaluation ===

@@ -22,8 +22,7 @@ class StreamingConfig {
 
   uint32_t empty_message_time_interval_ = DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::proto::OperatorType operator_type_ =
-      streaming::proto::OperatorType::TRANSFORM;
+  streaming::proto::NodeType node_type_ = streaming::proto::NodeType::TRANSFORM;
 
   std::string job_name_ = "DEFAULT_JOB_NAME";
 
@@ -55,7 +54,7 @@ class StreamingConfig {
   DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
   DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
   DECL_GET_SET_PROPERTY(uint32_t, EmptyMessageTimeInterval, empty_message_time_interval_)
-  DECL_GET_SET_PROPERTY(streaming::proto::OperatorType, OperatorType, operator_type_)
+  DECL_GET_SET_PROPERTY(streaming::proto::NodeType, NodeType, node_type_)
   DECL_GET_SET_PROPERTY(const std::string &, JobName, job_name_)
   DECL_GET_SET_PROPERTY(uint32_t, WriterConsumedStep, writer_consumed_step_)
   DECL_GET_SET_PROPERTY(uint32_t, ReaderConsumedStep, reader_consumed_step_)

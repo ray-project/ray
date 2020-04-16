@@ -1,3 +1,4 @@
+import asyncio
 import json
 import fnmatch
 import os
@@ -5,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import socket
 
 import ray
 
@@ -136,24 +138,22 @@ def wait_for_errors(error_type, num_errors, timeout=20):
 
 
 def wait_for_condition(condition_predictor,
-                       timeout_ms=1000,
+                       timeout=1000,
                        retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
         condition_predictor: A function that predicts the condition.
-        timeout_ms: Maximum timeout in milliseconds.
+        timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
 
     Return:
         Whether the condition is met within the timeout.
     """
-    time_elapsed = 0
     start = time.time()
-    while time_elapsed <= timeout_ms:
+    while time.time() - start <= timeout:
         if condition_predictor():
             return True
-        time_elapsed = (time.time() - start) * 1000
         time.sleep(retry_interval_ms / 1000.0)
     return False
 
@@ -210,3 +210,51 @@ def generate_internal_config_map(**kwargs):
         "_internal_config": internal_config,
     }
     return ray_kwargs
+
+
+@ray.remote(num_cpus=0)
+class SignalActor:
+    def __init__(self):
+        self.ready_event = asyncio.Event()
+
+    def send(self):
+        self.ready_event.set()
+
+    async def wait(self, should_wait=True):
+        if should_wait:
+            await self.ready_event.wait()
+
+
+@ray.remote
+def _put(obj):
+    return obj
+
+
+def put_object(obj, use_ray_put):
+    if use_ray_put:
+        return ray.put(obj)
+    else:
+        return _put.remote(obj)
+
+
+def wait_until_server_available(address,
+                                timeout_ms=5000,
+                                retry_interval_ms=100):
+    ip_port = address.split(":")
+    ip = ip_port[0]
+    port = int(ip_port[1])
+    time_elapsed = 0
+    start = time.time()
+    while time_elapsed <= timeout_ms:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        try:
+            s.connect((ip, port))
+        except Exception:
+            time_elapsed = (time.time() - start) * 1000
+            time.sleep(retry_interval_ms / 1000.0)
+            s.close()
+            continue
+        s.close()
+        return True
+    return False

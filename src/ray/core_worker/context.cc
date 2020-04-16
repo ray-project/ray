@@ -1,3 +1,16 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "ray/core_worker/context.h"
 
@@ -50,10 +63,10 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
+                             const JobID &job_id)
     : worker_type_(worker_type),
-      worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
-                                                    : WorkerID::FromRandom()),
+      worker_id_(worker_id),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       current_actor_id_(ActorID::Nil()),
       main_thread_id_(boost::this_thread::get_id()) {
@@ -90,13 +103,13 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
-    current_task_is_direct_call_ = task_spec.IsDirectCall();
+    current_task_is_direct_call_ = true;
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_is_direct_call_ = task_spec.IsDirectActorCreationCall();
+    current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
   } else if (task_spec.IsActorTask()) {
@@ -134,6 +147,7 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
          CurrentThreadIsMain();
 }
 
+// TODO(edoakes): simplify these checks now that we only support direct call mode.
 bool WorkerContext::CurrentActorIsDirectCall() const {
   return current_actor_is_direct_call_;
 }

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
@@ -54,8 +68,11 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Tell this actor to exit immediately.
   ///
   /// \param[in] actor_id The actor_id of the actor to kill.
-  /// \return Status::Invalid if the actor could not be killed.
-  Status KillActor(const ActorID &actor_id);
+  /// \param[in] force_kill Whether to force kill the actor, or let the actor
+  /// try a clean exit.
+  /// \param[in] no_reconstruction If set to true, the killed actor will not be
+  /// reconstructed anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -67,6 +84,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   void DisconnectActor(const ActorID &actor_id, bool dead = false);
+
+  /// Set the timerstamp for the caller.
+  void SetCallerCreationTimestamp(int64_t timestamp);
 
  private:
   /// Push a task to a remote actor via the given client.
@@ -119,8 +139,10 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// rpc_clients_ map.
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
 
-  /// Set of actor ids that should be force killed once a client is available.
-  absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
+  /// Map from actor ids that should be force killed once a client is available to the
+  /// pending kill actor requests.
+  absl::flat_hash_map<ActorID, rpc::KillActorRequest> pending_force_kills_
+      GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
@@ -141,6 +163,12 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
+
+  /// Timestamp when the caller is created.
+  /// - if this worker is an actor, this is set to the time that the actor creation
+  ///   task starts execution;
+  /// - otherwise, it's set to the time that the current task starts execution.
+  int64_t caller_creation_timestamp_ms_ = 0;
 
   friend class CoreWorkerTest;
 };
@@ -176,14 +204,14 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(raylet::RayletClient &local_raylet_client)
-      : local_raylet_client_(local_raylet_client) {}
+  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
+      : dependency_client_(dependency_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    local_raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    dependency_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
   /// Fulfills the callback stored by Wait().
@@ -197,7 +225,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  raylet::RayletClient &local_raylet_client_;
+  DependencyWaiterInterface &dependency_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -234,22 +262,25 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
+struct SchedulingQueueTag {
+  /// Worker ID for the caller.
+  WorkerID caller_worker_id;
+  /// Timestamp for the caller, which is used as a version.
+  int64_t caller_creation_timestamp_ms = 0;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  std::shared_ptr<BoundedExecutor> pool = nullptr,
-                  bool use_asyncio = false,
-                  std::shared_ptr<FiberState> fiber_state = nullptr,
+                  WorkerContext &worker_context,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
-        pool_(pool),
-        use_asyncio_(use_asyncio),
-        fiber_state_(fiber_state) {}
+        worker_context_(worker_context) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -283,6 +314,24 @@ class SchedulingQueue {
  private:
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
+    // Only call SetMaxActorConcurrency to configure threadpool size when the
+    // actor is not async actor. Async actor is single threaded.
+    int max_concurrency = worker_context_.CurrentActorMaxConcurrency();
+    if (worker_context_.CurrentActorIsAsync()) {
+      // If this is an async actor, initialize the fiber state once.
+      if (!is_asyncio_) {
+        RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
+        fiber_state_.reset(new FiberState(max_concurrency));
+        is_asyncio_ = true;
+      }
+    } else {
+      // If this is a concurrency actor (not async), initialize the thread pool once.
+      if (max_concurrency != 1 && !pool_) {
+        RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+        pool_.reset(new BoundedExecutor(max_concurrency));
+      }
+    }
+
     // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
@@ -298,11 +347,14 @@ class SchedulingQueue {
       auto head = pending_tasks_.begin();
       auto request = head->second;
 
-      if (use_asyncio_) {
+      if (is_asyncio_) {
+        // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
-      } else if (pool_ != nullptr) {
+      } else if (pool_) {
+        // Process concurrent actor task.
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
+        // Process normal actor task.
         request.Accept();
       }
       pending_tasks_.erase(head);
@@ -339,6 +391,8 @@ class SchedulingQueue {
     }
   }
 
+  // Worker context.
+  WorkerContext &worker_context_;
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
@@ -353,13 +407,13 @@ class SchedulingQueue {
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<BoundedExecutor> pool_;
+  std::unique_ptr<BoundedExecutor> pool_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
-  bool use_asyncio_;
+  bool is_asyncio_ = false;
   /// If use_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
+  std::unique_ptr<FiberState> fiber_state_;
   friend class SchedulingQueueTest;
 };
 
@@ -371,19 +425,20 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
+  using OnTaskDone = std::function<ray::Status()>;
+
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               std::shared_ptr<raylet::RayletClient> &local_raylet_client,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void(bool)> &exit_handler)
+                               const OnTaskDone &task_done)
       : worker_context_(worker_context),
-        local_raylet_client_(local_raylet_client),
         task_handler_(task_handler),
-        exit_handler_(exit_handler),
-        task_main_io_service_(main_io_service) {}
+        task_main_io_service_(main_io_service),
+        task_done_(task_done) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address);
+  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+            std::shared_ptr<DependencyWaiterInterface> dependency_client);
 
   /// Handle a `PushTask` request.
   ///
@@ -403,45 +458,26 @@ class CoreWorkerDirectTaskReceiver {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
-  /// Set the max concurrency at runtime. It cannot be changed once set.
-  void SetMaxActorConcurrency(int max_concurrency);
-
-  /// Set the max concurrency and start async actor context.
-  void SetActorAsAsync(int max_concurrency);
-
  private:
   // Worker context.
   WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
-  /// The callback function to exit the worker.
-  std::function<void(bool)> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
+  /// The callback function to be invoked when finishing a task.
+  OnTaskDone task_done_;
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
-  /// Reference to the core worker's raylet client. This is a pointer ref so that it
-  /// can be initialized by core worker after this class is constructed.
-  std::shared_ptr<raylet::RayletClient> &local_raylet_client_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
-  /// The max number of concurrent calls to allow.
-  int max_concurrency_ = 1;
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
-  /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<BoundedExecutor> pool_;
-  /// Whether this actor use asyncio for concurrency.
-  /// TODO(simon) group all asyncio related fields into a separate struct.
-  bool is_asyncio_ = false;
-  /// If use_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
+  std::unordered_map<TaskID,
+                     std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>>
+      scheduling_queue_;
 };
 
 }  // namespace ray

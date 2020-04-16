@@ -1,6 +1,11 @@
+from typing import Union
+
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
@@ -16,55 +21,30 @@ class StochasticSampling(Exploration):
     lowering stddev, temperature, etc.. over time.
     """
 
-    def __init__(self,
-                 action_space,
-                 framework="tf",
-                 static_params=None,
-                 time_dependent_params=None,
+    def __init__(self, action_space, *, framework: str, model: ModelV2,
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            framework (Optional[str]): One of None, "tf", "torch".
-            static_params (Optional[dict]): Parameters to be passed as-is into
-                the action distribution class' constructor.
-            time_dependent_params (dict): Parameters to be evaluated based on
-                `timestep` and then passed into the action distribution
-                class' constructor.
+            framework (str): One of None, "tf", "torch".
         """
         assert framework is not None
         super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
-
-        self.static_params = static_params or {}
-
-        # TODO(sven): Support scheduled params whose values depend on timestep
-        #  and that will be passed into the distribution's c'tor.
-        self.time_dependent_params = time_dependent_params or {}
+            action_space, model=model, framework=framework, **kwargs)
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
-        kwargs = self.static_params.copy()
-
-        # TODO(sven): create schedules for these via easy-config patterns
-        #  These can be used anywhere in configs, where schedules are wanted:
-        #  e.g. lr=[0.003, 0.00001, 100k] <- linear anneal from 0.003, to
-        #  0.00001 over 100k ts.
-        # if self.time_dependent_params:
-        #    for k, v in self.time_dependent_params:
-        #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
-
+                               *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_dist, explore)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore)
         else:
-            return self._get_tf_exploration_action_op(action_dist, explore)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore)
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
         sample = action_dist.sample()

@@ -1,13 +1,11 @@
 import logging
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -67,9 +65,16 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+        if valid_mask is not None:
+            num_valid = torch.sum(valid_mask)
 
-        def reduce_mean_valid(t):
-            return torch.mean(t * valid_mask)
+            def reduce_mean_valid(t):
+                return torch.sum(t * valid_mask) / num_valid
+
+        else:
+
+            def reduce_mean_valid(t):
+                return torch.mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -109,13 +114,11 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
+    mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = torch.reshape(mask, [-1])
-    else:
-        mask = torch.ones_like(
-            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
     policy.loss_obj = PPOLoss(
         dist_class,
@@ -123,8 +126,8 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
-        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.ACTION_DIST_INPUTS],
+        train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
         model.value_function(),
@@ -157,12 +160,10 @@ def kl_and_loss_stats(policy, train_batch):
     }
 
 
-def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
-                                action_dist):
-    """Adds value function and logits outputs to experience train_batches."""
+def vf_preds_fetches(policy, input_dict, state_batches, model, action_dist):
+    """Adds value function outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 
@@ -186,14 +187,14 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                        self.device),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                        self.device),
+                    SampleBatch.CUR_OBS: self._convert_to_tensor([ob]),
+                    SampleBatch.PREV_ACTIONS: self._convert_to_tensor(
+                        [prev_action]),
+                    SampleBatch.PREV_REWARDS: self._convert_to_tensor(
+                        [prev_reward]),
                     "is_training": False,
-                }, [torch.Tensor([s]).to(self.device) for s in state],
-                                          torch.Tensor([1]).to(self.device))
+                }, [self._convert_to_tensor(s) for s in state],
+                                          self._convert_to_tensor([1]))
                 return self.model.value_function()[0]
 
         else:
@@ -217,7 +218,7 @@ PPOTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
-    extra_action_out_fn=vf_preds_and_logits_fetches,
+    extra_action_out_fn=vf_preds_fetches,
     postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,

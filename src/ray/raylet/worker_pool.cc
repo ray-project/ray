@@ -1,8 +1,21 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/worker_pool.h"
 
-#include <sys/wait.h>
-
 #include <algorithm>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
@@ -17,7 +30,7 @@ namespace {
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+    const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -44,12 +57,21 @@ namespace raylet {
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands)
+                       const WorkerCommandMap &worker_commands,
+                       const std::unordered_map<std::string, std::string> &raylet_config,
+                       std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)) {
+      gcs_client_(std::move(gcs_client)),
+      raylet_config_(raylet_config),
+      starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifndef _WIN32
+#ifdef _WIN32
+  // If worker processes fail to initialize, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
+  // If worker processes crash, don't display an error window.
+  SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
+#else
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -156,7 +178,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
-  bool num_workers_arg_replaced = false;
+  bool worker_raylet_config_placeholder_found = false;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
@@ -164,34 +186,82 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
+        auto options = ParseCommandLine(dynamic_options[dynamic_option_index]);
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
         ++dynamic_option_index;
       }
-    } else {
-      size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
-      if (num_workers_index != std::string::npos) {
-        std::string arg = token;
-        worker_command_args.push_back(arg.replace(num_workers_index,
-                                                  strlen(kWorkerNumWorkersPlaceholder),
-                                                  std::to_string(workers_to_start)));
-        num_workers_arg_replaced = true;
-      } else {
-        worker_command_args.push_back(token);
-      }
+      continue;
     }
+
+    if (token == kWorkerRayletConfigPlaceholder) {
+      worker_raylet_config_placeholder_found = true;
+      switch (language) {
+      case Language::JAVA:
+        for (auto &entry : raylet_config_) {
+          if (entry.first == "num_workers_per_process_java") {
+            continue;
+          }
+          std::string arg;
+          arg.append("-Dray.raylet.config.");
+          arg.append(entry.first);
+          arg.append("=");
+          arg.append(entry.second);
+          worker_command_args.push_back(arg);
+        }
+        // The value of `num_workers_per_process_java` may change depends on whether
+        // dynamic options is empty, so we can't use the value in `RayConfig`. We always
+        // overwrite the value here.
+        worker_command_args.push_back(
+            "-Dray.raylet.config.num_workers_per_process_java=" +
+            std::to_string(workers_to_start));
+        break;
+      default:
+        RAY_LOG(FATAL)
+            << "Raylet config placeholder is not supported for worker language "
+            << language;
+      }
+      continue;
+    }
+
+    worker_command_args.push_back(token);
   }
-  RAY_CHECK(num_workers_arg_replaced || state.num_workers_per_process == 1)
-      << "Expect to start " << state.num_workers_per_process << " workers per "
-      << Language_Name(language) << " worker process. But the "
-      << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
+
+  // Currently only Java worker process supports multi-worker.
+  if (language == Language::JAVA) {
+    RAY_CHECK(worker_raylet_config_placeholder_found)
+        << "The " << kWorkerRayletConfigPlaceholder
+        << " placeholder is not found in worker command.";
+  }
 
   Process proc = StartProcess(worker_command_args);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
+  MonitorStartingWorkerProcess(proc, language);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
+}
+
+void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
+                                              const Language &language) {
+  constexpr static size_t worker_register_timeout_seconds = 30;
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      *io_service_, boost::posix_time::seconds(worker_register_timeout_seconds));
+  // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
+  timer->async_wait(
+      [timer, language, proc, this](const boost::system::error_code e) -> void {
+        // check the error code.
+        auto &state = this->GetStateForLanguage(language);
+        // Since this process times out to start, remove it from starting_worker_processes
+        // to avoid the zombie worker.
+        auto it = state.starting_worker_processes.find(proc);
+        if (it != state.starting_worker_processes.end()) {
+          RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
+                        << ") have not registered to raylet within timeout.";
+          state.starting_worker_processes.erase(it);
+          starting_worker_timeout_callback_();
+        }
+      });
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
@@ -247,7 +317,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
@@ -258,7 +328,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+    const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {
