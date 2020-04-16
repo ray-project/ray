@@ -78,7 +78,7 @@ if __name__ == "__main__":
         "gamma": 0.0,  # No history in Env (bandit problem).
         "num_workers": 0,
         "num_envs_per_worker": 20,
-        "entropy_coeff": 0.00001,  # We don't want high entropy in this Env.
+        "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
         "num_sgd_iter": 20,
         "vf_loss_coeff": 0.01,
         "lr": 0.0005
