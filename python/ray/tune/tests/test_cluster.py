@@ -27,6 +27,17 @@ from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MOCK_REMOTE_DIR)
 
 
+def _check_trial_running(trial):
+    if trial.runner:
+        ray.get(trial.runner.get_info.remote())
+        return True
+    return False
+
+
+def _get_running_trials(runner):
+    return [t for t in runner.get_trials() if t.status == Trial.RUNNING]
+
+
 def _start_new_cluster():
     cluster = Cluster(
         initialize_head=True,
@@ -89,7 +100,9 @@ def test_counting_resources(start_connected_cluster):
         runner.add_trial(t)
 
     runner.step()  # run 1
-    runner.step()  # assert Actor is alive and placed
+    running_trials = _get_running_trials(runner)
+    assert sum(running_trials) == 1
+    assert _check_trial_running(running_trials[0])
     assert ray.available_resources().get("CPU", 0) == 0
     nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
@@ -149,6 +162,10 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     runner.add_trial(trial)
 
     runner.step()  # Start trial
+    running_trials = _get_running_trials(runner)
+    assert sum(running_trials) == 1
+    assert _check_trial_running(running_trials[0])
+
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
