@@ -53,6 +53,7 @@ class MockWorker {
         nullptr,        // check_signals
         nullptr,        // gc_collect
         nullptr,        // get_lang_stack
+        nullptr,        // kill_main
         true,           // ref_counting_enabled
         false,          // is_local_mode
         1,              // num_workers
