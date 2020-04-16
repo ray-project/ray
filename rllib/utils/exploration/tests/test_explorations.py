@@ -24,15 +24,14 @@ def do_test_explorations(run,
                          expected_mean_action=None):
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
-    config = config.copy()
+    core_config = config.copy()
     if run not in [a3c.A3CTrainer]:
-        config["num_workers"] = 0
+        core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in framework_iterator(config):
+    for fw in framework_iterator(core_config):
         if fw == "torch" and \
-                run in [ddpg.DDPGTrainer, impala.ImpalaTrainer,
-                        sac.SACTrainer, td3.TD3Trainer]:
+                run in [impala.ImpalaTrainer, sac.SACTrainer]:
             continue
         elif fw == "eager" and run in [
                 ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
@@ -44,14 +43,15 @@ def do_test_explorations(run,
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
         for exploration in [None, "Random"]:
+            local_config = core_config.copy()
             if exploration == "Random":
                 # TODO(sven): Random doesn't work for IMPALA yet.
                 if run is impala.ImpalaTrainer:
                     continue
-                config["exploration_config"] = {"type": "Random"}
+                local_config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
-            trainer = run(config=config, env=env)
+            trainer = run(config=local_config, env=env)
 
             # Make sure all actions drawn are the same, given same
             # observations.
