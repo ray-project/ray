@@ -18,7 +18,7 @@ For users RayServe is:
 - **Python First**: Configure your model serving with pure Python code - no more YAMLs or 
   JSON configs.
 
-But also enables: 
+RayServe enables: 
 
 -  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
 - **Batching** built-in to help you meet your performance objectives.
@@ -34,12 +34,7 @@ Why RayServe?
 ~~~~~~~~~~~~~
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
-
-1. You can build using a traditional webserver.
-
-or 
-
-2. You can use a cloud hosted solution.
+you can build using a **traditional webserver** - your own Flask app or you can use a cloud hosted solution.
 
 The first approach is easy to get started with, but it's hard to scale each component. The second approach
 requires vendor lock-in (SageMaker), framework specific tooling (TFServing), and a general
