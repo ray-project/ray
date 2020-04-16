@@ -155,7 +155,7 @@ class TestDistributions(unittest.TestCase):
             check(np.sum(sampled_action_logp), np.sum(log_prob), rtol=0.05)
 
             # NN output.
-            means = np.array([[0.1, 0.2, 0.3, 0.4, 50.0],
+            means = np.array([[0.1, 0.2, 0.3, 0.4, 2.9],
                               [-0.1, -0.2, -0.3, -0.4, -1.0]])
             log_stds = np.array([[0.8, -0.2, 0.3, -1.0, 2.0],
                                  [0.7, -0.3, 0.4, -0.9, 2.0]])

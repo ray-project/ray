@@ -256,7 +256,7 @@ class DiagGaussian(TFActionDistribution):
 
 
 class _SquashedGaussianBase(TFActionDistribution):
-    """A univariate gaussian distribution, squashed into bounded support."""
+    """A diagonal gaussian distribution, squashed into bounded support."""
 
     def __init__(self, inputs, model, low=-1.0, high=1.0):
         """Parameterizes the distribution via `inputs`.
@@ -268,16 +268,18 @@ class _SquashedGaussianBase(TFActionDistribution):
                 (excluding this value).
         """
         assert tfp is not None
-        loc, log_std = inputs[:, 0], inputs[:, 1]
+        mean, log_std = tf.split(inputs, 2, axis=-1)
+        self._num_vars = mean.shape[1]
+        assert log_std.shape[1] == self._num_vars
         # Clip `std` values (coming from NN) to reasonable values.
         self.log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
                                         MAX_LOG_NN_OUTPUT)
         # Clip loc too, for numerical stability reasons.
-        loc = tf.clip_by_value(loc, -3, 3)
+        mean = tf.clip_by_value(mean, -3, 3)
         std = tf.exp(self.log_std)
-        self.distr = tfp.distributions.Normal(loc=loc, scale=std)
-        assert len(self.distr.loc.shape) == 1
-        assert len(self.distr.scale.shape) == 1
+        self.distr = tfp.distributions.Normal(loc=mean, scale=std)
+        assert len(self.distr.loc.shape) == 2
+        assert len(self.distr.scale.shape) == 2
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
@@ -286,23 +288,23 @@ class _SquashedGaussianBase(TFActionDistribution):
     @override(ActionDistribution)
     def deterministic_sample(self):
         mean = self.distr.mean()
-        assert len(mean.shape) == 1, "Shape should be batch dim only"
+        assert len(mean.shape) == 2
         s = self._squash(mean)
-        assert len(s.shape) == 1
-        return s[:, None]
+        assert len(s.shape) == 2
+        return s
 
     @override(ActionDistribution)
     def logp(self, x):
         assert len(x.shape) >= 2, "First dim batch, second dim variable"
-        unsquashed_values = self._unsquash(x[:, 0])
+        unsquashed_values = self._unsquash(x)
         log_prob = self.distr.log_prob(value=unsquashed_values)
-        return log_prob - self._log_squash_grad(unsquashed_values)
+        return tf.reduce_sum(log_prob - self._log_squash_grad(unsquashed_values), axis=-1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
         s = self._squash(self.distr.sample())
-        assert len(s.shape) == 1
-        return s[:, None]
+        assert len(s.shape) == 2
+        return s
 
     def _squash(self, unsquashed_values):
         """Squash an array element-wise into the (high, low) range
