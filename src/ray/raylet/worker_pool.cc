@@ -55,8 +55,8 @@ namespace raylet {
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
-                       int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       int maximum_startup_concurrency, int min_worker_port,
+                       int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
@@ -101,6 +101,18 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
+  }
+  // Initialize free ports list with all ports in the specified range.
+  if (min_worker_port != 0) {
+    if (max_worker_port == 0) {
+      max_worker_port = 65535;  // Maximum valid port number.
+    }
+    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
+    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
+    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    for (int port = min_worker_port; port <= max_worker_port; port++) {
+      free_ports_->push(port);
+    }
   }
   Start(num_workers);
 }
@@ -290,15 +302,38 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   return child;
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid) {
-  const auto port = worker->Port();
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
+Status WorkerPool::GetNextFreePort(int *port) {
+  if (free_ports_) {
+    if (free_ports_->empty()) {
+      return Status::Invalid(
+          "Ran out of ports to allocate to workers. Please specify a wider port range.");
+    }
+    *port = free_ports_->front();
+    free_ports_->pop();
+  } else {
+    *port = 0;
+  }
+  return Status::OK();
+}
+
+void WorkerPool::MarkPortAsFree(int port) {
+  if (free_ports_) {
+    RAY_CHECK(port != 0) << "";
+    free_ports_->push(port);
+  }
+}
+
+Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid,
+                                  int *port) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
   }
+  RAY_RETURN_NOT_OK(GetNextFreePort(port));
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << *port;
+  worker->SetAssignedPort(*port);
   worker->SetProcess(it->first);
   it->second--;
   if (it->second == 0) {
@@ -309,8 +344,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   return Status::OK();
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
+Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver, int *port) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
+  RAY_RETURN_NOT_OK(GetNextFreePort(port));
+  driver->SetAssignedPort(*port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   return Status::OK();
@@ -423,6 +460,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
 
+  MarkPortAsFree(worker->AssignedPort());
   return RemoveWorker(state.idle, worker);
 }
 
@@ -432,6 +470,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
+  MarkPortAsFree(driver->AssignedPort());
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {

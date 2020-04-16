@@ -10,6 +10,7 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       before_install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       install:
@@ -22,6 +23,7 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       before_install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       install:
@@ -45,6 +47,7 @@ matrix:
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - RAY_USE_RANDOM_PORTS=1
       before_install:
         - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       install:
@@ -80,6 +83,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
       before_install:
         - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
       install:
