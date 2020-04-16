@@ -17,7 +17,7 @@ RayServe allows you to:
   built with frameworks like PyTorch or TensorFlow to scikit-learn models or arbitrary business logic.
 - **Simplify MLOps**: Configure your model serving with pure Python code - no more YAMLs or 
   JSON configs.
--  **A/B test models** (with zero downtime) by decoupling routing logic from response handling logic.
+-  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
 - Leverage built-in **batching** and **SLO awareness** to help you meet your latency objectives.
 
 Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
