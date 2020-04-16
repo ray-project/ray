@@ -3,7 +3,7 @@ import logging
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
+from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel

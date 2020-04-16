@@ -3,6 +3,7 @@ import numpy as np
 import gym
 import logging
 import pickle
+import os
 
 import ray
 from ray.util.debug import log_once, disable_log_once_globally, \
@@ -146,7 +147,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  soft_horizon=False,
                  no_done_at_end=False,
                  seed=None,
-                 _fake_sampler=False):
+                 _fake_sampler=False,
+                 extra_python_environs=None):
         """Initialize a rollout worker.
 
         Arguments:
@@ -239,12 +241,19 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
+            extra_python_environs (dict): Extra python environments need to
+                be set.
         """
         self._original_kwargs = locals().copy()
         del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
+
+        # set extra environs first
+        if extra_python_environs:
+            for key, value in extra_python_environs.items():
+                os.environ[key] = str(value)
 
         def gen_rollouts():
             while True:

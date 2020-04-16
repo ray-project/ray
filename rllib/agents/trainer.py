@@ -276,6 +276,11 @@ COMMON_CONFIG = {
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
     "seed": None,
+    # Any extra python env vars to set in the trainer process, e.g.,
+    # {"OMP_NUM_THREADS": "16"}
+    "extra_python_environs_for_driver": {},
+    # The extra python environments need to set for worker processes.
+    "extra_python_environs_for_worker": {},
 
     # === Advanced Resource Settings ===
     # Number of CPUs to allocate per worker.
@@ -397,7 +402,8 @@ class Trainer(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config", "exploration_config"
+        "evaluation_config", "exploration_config",
+        "extra_python_environs_for_driver", "extra_python_environs_for_worker"
     ]
 
     # List of top level keys with value=dict, for which we always override the
