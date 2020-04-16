@@ -567,8 +567,8 @@ def init(address=None,
 
     Args:
         address (str): The address of the Ray cluster to connect to. If
-            this address is not provided, then this command will start Redis, a
-            raylet, a plasma store, a plasma manager, and some workers.
+            this address is not provided, then this command will start Redis,
+            a raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
@@ -576,10 +576,12 @@ def init(address=None,
         redis_address (str): Deprecated; same as address.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen.
-        num_cpus (int): Number of CPUs the user wishes to assign to each raylet.
-        num_gpus (int): Number of GPUs the user wishes to assign to each raylet.
-        resources: A dictionary mapping the names of custom resources to the quantities
-            of them available.
+        num_cpus (int): Number of CPUs the user wishes to assign to each
+        raylet.
+        num_gpus (int): Number of GPUs the user wishes to assign to each
+        raylet.
+        resources: A dictionary mapping the names of custom resources to the
+            quantities for them available.
         memory: The amount of memory (in bytes) that is available for use by
             workers requesting memory resources. By default, this is
             automatically set based on available system memory.
@@ -612,11 +614,12 @@ def init(address=None,
             maxclients number.
         redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
+        plasma_directory: A directory where the Plasma memory mapped files
+            will be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        include_java: Boolean flag indicating whether or not to enable java workers.
+        include_java: Boolean flag indicating whether or not to enable java
+            workers.
         include_webui: Boolean flag indicating whether or not to start the web
             UI for the Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
@@ -626,32 +629,33 @@ def init(address=None,
             By default, this is set to localhost to prevent access from
             external machines.
         job_id: The ID of this job.
-        configure_logging: True (default) if configuration of logging is allowed
-            here. Otherwise, the user may want to configure it separately.
+        configure_logging: True (default) if configuration of logging is
+            allowed here. Otherwise, the user may want to configure it
+            separately.
         logging_level: Logging level, defaults to logging.INFO. Ignored unless
             "configure_logging" is true.
         logging_format: Logging format, defaults to string containing a
             timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details. Ignored unless "configure_logging" is
-            true.
+            ray_constants.py for details. Ignored unless "configure_logging"
+            is true.
         plasma_store_socket_name (str): If provided, specifies the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, specifies the socket path
             used by the raylet process.
         temp_dir (str): If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific conventional
-            location, e.g., "/tmp/ray".
-        load_code_from_local: Whether code should be loaded from a local module
-            or from the GCS.
+            directory for the Ray process. Defaults to an OS-specific
+            conventional location, e.g., "/tmp/ray".
+        load_code_from_local: Whether code should be loaded from a local
+            module or from the GCS.
         use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.UnreconstructableError may be thrown. If False, then
-            reference counting will be used to decide which objects are safe to
-            evict and when under memory pressure, ray.ObjectStoreFullError may
-            be thrown.
+            reference counting will be used to decide which objects are safe
+            to evict and when under memory pressure, ray.ObjectStoreFullError
+            may be thrown.
 
     Returns:
         Address information about the started processes.
@@ -1640,9 +1644,11 @@ def kill(actor):
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
     termination task.
 
-    In both cases, the worker is actually killed, but it will be restarted by Ray.
+    In both cases, the worker is actually killed, but it will be restarted by
+    Ray.
 
-    If this actor is reconstructable, it will be attempted to be reconstructed.
+    If this actor is reconstructable, an attempt will be made to reconstruct
+    it.
 
     Args:
         actor (ActorHandle): Handle to the actor to kill.
@@ -1660,9 +1666,9 @@ def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
 
     We use this wrapper so that in the remote decorator, we can call _mode()
-    instead of worker.mode. The difference is that when we attempt to serialize
-    remote functions, we don't attempt to serialize the worker object, which
-    cannot be serialized.
+    instead of worker.mode. The difference is that when we attempt to
+    serialize remote functions, we don't attempt to serialize the worker
+    object, which cannot be serialized.
     """
     return worker.mode
 
