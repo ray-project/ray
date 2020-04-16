@@ -22,7 +22,7 @@ def test_kill_chain(ray_start_regular, use_force):
     obj4 = wait_for.remote([obj3])
 
     assert len(ray.wait([obj1], timeout=.1)[0]) == 0
-    ray.kill(obj1, use_force)
+    ray.cancel(obj1, use_force)
     for ob in [obj1, obj2, obj3, obj4]:
         with pytest.raises((RayTaskError, RayCancellationError)):
             ray.get(ob)
@@ -34,7 +34,7 @@ def test_kill_chain(ray_start_regular, use_force):
     obj4 = wait_for.remote([obj3])
 
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
-    ray.kill(obj3, use_force)
+    ray.cancel(obj3, use_force)
     for ob in [obj3, obj4]:
         with pytest.raises((RayTaskError, RayCancellationError)):
             ray.get(ob)
@@ -64,7 +64,7 @@ def test_kill_multiple_dependents(ray_start_regular, use_force):
         deps.append(wait_for.remote([head]))
 
     assert len(ray.wait([head], timeout=.1)[0]) == 0
-    ray.kill(head, use_force)
+    ray.cancel(head, use_force)
     for d in deps:
         with pytest.raises((RayTaskError, RayCancellationError)):
             ray.get(d)
@@ -76,7 +76,7 @@ def test_kill_multiple_dependents(ray_start_regular, use_force):
         deps2.append(wait_for.remote([head]))
 
     for d in deps2:
-        ray.kill(d, use_force)
+        ray.cancel(d, use_force)
 
     for d in deps2:
         with pytest.raises((RayTaskError, RayCancellationError)):
@@ -101,11 +101,11 @@ def test_single_cpu_kill(shutdown_only, use_force):
     indep = wait_for.remote([signaler.wait.remote()])
 
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
-    ray.kill(obj3, use_force)
+    ray.cancel(obj3, use_force)
     with pytest.raises((RayTaskError, RayCancellationError)):
         ray.get(obj3, 0.1)
 
-    ray.kill(obj1, use_force)
+    ray.cancel(obj1, use_force)
 
     for d in [obj1, obj2]:
         with pytest.raises((RayTaskError, RayCancellationError)):
@@ -135,7 +135,7 @@ def test_comprehensive(ray_start_regular, use_force):
 
     assert len(ray.wait([a, b, a2, combo], timeout=1)[0]) == 0
 
-    ray.kill(a, use_force)
+    ray.cancel(a, use_force)
     with pytest.raises((RayTaskError, RayCancellationError)):
         ray.get(a, 1)
 
@@ -165,10 +165,10 @@ def test_stress(shutdown_only, use_force):
     killed = set()
     for t in tasks:
         if random.random() > 0.5:
-            ray.kill(t, use_force)
+            ray.cancel(t, use_force)
             killed.add(t)
 
-    ray.kill(first, use_force)
+    ray.cancel(first, use_force)
     killed.add(first)
 
     for done in killed:
@@ -178,7 +178,7 @@ def test_stress(shutdown_only, use_force):
     for indx in range(len(tasks)):
         t = tasks[indx]
         if sleep_or_no[indx]:
-            ray.kill(t, use_force)
+            ray.cancel(t, use_force)
             killed.add(t)
         if t in killed:
             with pytest.raises((RayTaskError, RayCancellationError)):

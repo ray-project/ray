@@ -1623,7 +1623,7 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
-def kill(id, force=False):
+def kill(actor):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1636,22 +1636,37 @@ def kill(id, force=False):
     If this actor is reconstructable, it will be attempted to be reconstructed.
 
     Args:
+        actor (ActorHandle): Handle to the actor to kill.
+    """
+    if not isinstance(actor, ray.actor.ActorHandle):
+        raise ValueError("ray.kill() only supported for actors. "
+                         "Got: {}.".format(type(actor)))
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    worker.core_worker.kill_actor(actor._ray_actor_id, False)
+
+
+def cancel(object_id, force=False):
+    """Kill a task forcefully.
+
+    This will interrupt any running tasks on the actor, causing them to fail
+    immediately. Any atexit handlers installed in the actor will still be run.
+
+    If this actor is reconstructable, it will be attempted to be reconstructed.
+
+    Args:
         id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
         of the task to kill.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if isinstance(id, ray.actor.ActorHandle):
-        worker.core_worker.kill_actor(id._ray_actor_id, False)
-    elif isinstance(id, ray.ObjectID):
-        if id.task_id().actor_id().hex() in ray.actors().keys():
-            raise ValueError(
-                "Please use ray.kill(ActorHandle) to kill an actor task")
-        worker.core_worker.kill_task(id, force)
-    else:
-        raise ValueError("ray.kill() only supported for actors and objects. "
-                         "Got: {}.".format(type(id)))
+    if isinstance(object_id, ray.ObjectID) and object_id.task_id().actor_id(
+    ).hex() not in ray.actors().keys():
+        worker.core_worker.kill_task(object_id, force)
+        return
+    raise ValueError("ray.cancel() only supported for non-actor object IDs. "
+                     "Got: {}.".format(type(object_id)))
 
 
 def _mode(worker=global_worker):
