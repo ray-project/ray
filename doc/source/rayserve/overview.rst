@@ -25,7 +25,7 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 
 .. note:: 
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
-  and discuss in #serve channel.
+  and discuss in the #serve channel.
 
 Why RayServe?
 ~~~~~~~~~~~~~
