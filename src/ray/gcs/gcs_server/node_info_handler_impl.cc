@@ -23,7 +23,7 @@ void DefaultNodeInfoHandler::HandleRegisterNode(
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
-
+  gcs_node_manager_.AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
   auto on_done = [node_id, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register node info: " << status.ToString()
@@ -44,6 +44,7 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
+  gcs_node_manager_.RemoveNode(node_id);
 
   auto on_done = [node_id, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
