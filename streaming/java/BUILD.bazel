@@ -148,6 +148,10 @@ java_binary(
         "//java:io_ray_ray_runtime",
         "@ray_streaming_maven//:com_beust_jcommander",
         "@ray_streaming_maven//:org_testng_testng",
+        "@ray_streaming_maven//:org_mockito_mockito_all",
+        "@ray_streaming_maven//:org_powermock_powermock_module_testng",
+     	  "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
+        "@ray_streaming_maven//:org_projectlombok_lombok",
     ],
 )
 
