@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.schedule.strategy;
+package io.ray.streaming.runtime.master.resourcemanager.strategy;
 
 import io.ray.api.id.UniqueId;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -13,7 +13,6 @@ import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceAssignmentView;
-import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.impl.PipelineFirstStrategy;
 import java.util.ArrayList;
 import java.util.HashMap;

@@ -11,13 +11,14 @@ import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import io.ray.streaming.runtime.master.scheduler.JobSchedulerImpl;
+import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * JobMaster is the core controller in streaming job as a ray actor. It is responsible for all the
- * control works facing the {@link org.ray.streaming.runtime.worker.JobWorker}.
+ * controls facing the {@link JobWorker}.
  */
 public class JobMaster {
 
