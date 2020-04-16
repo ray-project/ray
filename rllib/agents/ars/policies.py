@@ -3,13 +3,17 @@
 
 import gym
 import numpy as np
+import tree
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils import force_list
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.space_utils import flatten_space, \
+    get_base_struct_from_space, TupleActions
 
 tf = try_import_tf()
 
@@ -34,23 +38,26 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
         value to subtract from the reward. For example, survival bonus
         from humanoid
     """
-    env_timestep_limit = env.spec.max_episode_steps
+    max_timestep_limit = 999999
+    env_timestep_limit = env.spec.max_episode_steps if (
+            hasattr(env, "spec") and hasattr(env.spec, "max_episode_steps")) \
+        else max_timestep_limit
     timestep_limit = (env_timestep_limit if timestep_limit is None else min(
         timestep_limit, env_timestep_limit))
-    rews = []
+    rewards = []
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or 999999):
-        env_action = policy.compute(
+        env_action = policy.compute_actions(
             observation, add_noise=add_noise, update=True)[0]
-        observation, rew, done, _ = env.step(env_action)
-        rew -= np.abs(offset)
-        rews.append(rew)
+        observation, reward, done, _ = env.step(env_action)
+        reward -= np.abs(offset)
+        rewards.append(reward)
         t += 1
         if done:
             break
-    rews = np.array(rews, dtype=np.float32)
-    return rews, t
+    rewards = np.array(rewards, dtype=np.float32)
+    return rewards, t
 
 
 class GenericPolicy:
@@ -64,6 +71,8 @@ class GenericPolicy:
                  action_noise_std=0.0):
         self.sess = sess
         self.action_space = action_space
+        self.flattened_action_space = flatten_space(action_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
         self.observation_filter = get_filter(observation_filter,
@@ -89,16 +98,32 @@ class GenericPolicy:
             for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute(self, observation, add_noise=False, update=True):
+    def compute_actions(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
+        # `actions` is a list of (component) batches.
         actions = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        actions = unbatch_actions(actions)
-        if add_noise and isinstance(self.action_space, gym.spaces.Box):
-            actions += np.random.randn(*actions.shape) * \
+        if isinstance(actions, TupleActions):
+            actions = actions.batches
+        flat_actions = force_list(actions)
+        if add_noise:
+            flat_actions = tree.map_structure(self._add_noise, flat_actions,
+                                              self.flattened_action_space)
+        # Convert `flat_actions` to a list of lists of action components
+        # (list of single actions).
+        flat_actions = unbatch_actions(flat_actions)
+        env_actions = [
+            tree.unflatten_as(self.action_space_struct, f)
+            for f in flat_actions
+        ]
+        return env_actions
+
+    def _add_noise(self, single_action, single_action_space):
+        if isinstance(single_action_space, gym.spaces.Box):
+            single_action += np.random.randn(*single_action.shape) * \
                 self.action_noise_std
-        return actions
+        return single_action
 
     def set_weights(self, x):
         self.variables.set_flat(x)

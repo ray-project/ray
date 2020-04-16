@@ -1,7 +1,7 @@
 from collections import defaultdict
-import random
-
 import numpy as np
+import random
+import tree
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -189,10 +189,11 @@ class MultiAgentEpisode:
 
 
 def _flatten_action(action):
-    # Concatenate tuple actions
-    if isinstance(action, list) or isinstance(action, tuple):
+    # Concatenate any action into single, flat tensor.
+    if isinstance(action, (list, tuple, dict)):
+        flat_action = tree.flatten(action)
         expanded = []
-        for a in action:
+        for a in flat_action:
             expanded.append(np.reshape(a, [-1]))
-        action = np.concatenate(expanded, axis=0).flatten()
+        return np.concatenate(expanded, axis=0).flatten()
     return action

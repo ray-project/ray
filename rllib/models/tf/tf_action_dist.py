@@ -399,7 +399,7 @@ class MultiActionDistribution(TFActionDistribution):
                  input_lens):
         # skip TFActionDistribution init
         ActionDistribution.__init__(self, inputs, model)
-        self.input_lens = input_lens
+        self.input_lens = np.array(input_lens, dtype=np.int32)
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
