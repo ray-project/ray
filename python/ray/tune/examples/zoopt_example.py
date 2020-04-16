@@ -38,7 +38,7 @@ if __name__ == "__main__":
     }
 
     config = {
-        "num_samples": 200 if args.smoke_test else 1000,
+        "num_samples": 10 if args.smoke_test else 1000,
         "config": {
             "iterations": 10,  # evaluation times
         },

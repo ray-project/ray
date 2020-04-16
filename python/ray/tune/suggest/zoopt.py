@@ -1,8 +1,11 @@
 import copy
 import logging
-import dill as pickle
-from zoopt import Dimension2, Parameter
-from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
+import cloudpickle as pickle
+
+try:
+    import zoopt
+except ImportError:
+    zoopt = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
@@ -77,7 +80,7 @@ class ZOOptSearch(SuggestionAlgorithm):
                  metric="episode_reward_mean",
                  mode="min",
                  **kwargs):
-
+        assert zoopt is not None, "Zoopt not found - please install zoopt."
         assert budget is not None, "`budget` should not be None!"
         assert dim_dict is not None, "`dim_list` should not be None!"
         assert type(max_concurrent) is int and max_concurrent > 0
@@ -100,9 +103,10 @@ class ZOOptSearch(SuggestionAlgorithm):
             self._dim_keys.append(k)
             _dim_list.append(dim_dict[k])
 
-        dim = Dimension2(_dim_list)
-        par = Parameter(budget=budget)
+        dim = zoopt.Dimension2(_dim_list)
+        par = zoopt.Parameter(budget=budget)
         if _algo == "sracos" or _algo == "asracos":
+            from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(dimension=dim, parameter=par)
 
         self.solution_dict = {}
