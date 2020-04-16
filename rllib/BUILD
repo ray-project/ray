@@ -1378,6 +1378,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/nested_action_spaces_ppo",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "small",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--stop=90", "--run=PPO"]
+)
+
+py_test(
     name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
