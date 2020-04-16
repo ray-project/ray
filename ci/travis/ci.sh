@@ -61,7 +61,9 @@ init() {
 
   local variable_definitions
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
-  { declare "${variable_definitions[@]}"; } > /dev/null 2> /dev/null
+  if [ 0 -lt "${#variable_definitions[@]}" ]; then
+    declare "${variable_definitions[@]}"
+  fi
 
   if ! (set +x && should_run_job ${job_names//,/ }); then
     exit 0
