@@ -15,6 +15,9 @@
 #ifndef RAY_GCS_TEST_UTIL_H
 #define RAY_GCS_TEST_UTIL_H
 
+#include <memory>
+#include <utility>
+
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
 #include "src/ray/common/test_util.h"
@@ -22,9 +25,6 @@
 #include "src/ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "src/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "src/ray/util/asio_util.h"
-
-#include <memory>
-#include <utility>
 
 namespace ray {
 

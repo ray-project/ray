@@ -161,8 +161,7 @@ class RayletClient : public PinObjectsInterface,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               ClientID *raylet_id, const std::string &ip_address,
-               int port = -1);
+               ClientID *raylet_id, const std::string &ip_address, int port = -1);
 
   /// Connect to the raylet via grpc only.
   ///

@@ -16,6 +16,7 @@
 #define RAY_GCS_PB_UTIL_H
 
 #include <memory>
+
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/protobuf/gcs.pb.h"

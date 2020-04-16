@@ -13,8 +13,11 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_RayNativeRuntime.h"
+
 #include <jni.h>
+
 #include <sstream>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
@@ -36,7 +39,6 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
@@ -136,7 +138,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
-                                                                            jclass o) {
+                                                                           jclass o) {
   ray::CoreWorkerProcess::Shutdown();
 }
 

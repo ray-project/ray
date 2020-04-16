@@ -448,7 +448,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
-                process_info
+                process_info,
             ]
 
     def start_redis(self):
@@ -488,7 +488,7 @@ class Node:
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
-            process_info
+            process_info,
         ]
 
     def start_reporter(self):
@@ -503,7 +503,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-                process_info
+                process_info,
             ]
 
     def start_dashboard(self, require_webui):
@@ -527,7 +527,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
-                process_info
+                process_info,
             ]
             redis_client = self.create_redis_client()
             redis_client.hmset("webui", {"url": self._webui_url})
@@ -546,7 +546,7 @@ class Node:
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info
+            process_info,
         ]
 
     def start_gcs_server(self):
@@ -563,7 +563,7 @@ class Node:
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
-            process_info
+            process_info,
         ]
 
     def start_raylet(self, use_valgrind=False, use_profiler=False):
@@ -636,7 +636,7 @@ class Node:
         assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
-            process_info
+            process_info,
         ]
 
     def start_head_processes(self):

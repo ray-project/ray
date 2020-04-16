@@ -1100,8 +1100,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   auto worker = std::make_shared<Worker>(worker_id, language, worker_ip_address,
-                                         message->port(), client,
-                                         client_call_manager_);
+                                         message->port(), client, client_call_manager_);
   if (message->is_worker()) {
     // Register the new worker.
     if (worker_pool_.RegisterWorker(worker, pid).ok()) {
@@ -1119,9 +1118,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     Status status = worker_pool_.RegisterDriver(worker);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  worker_ip_address, pid);
+      auto job_data_ptr = gcs::CreateJobTableData(
+          job_id, /*is_dead*/ false, std::time(nullptr), worker_ip_address, pid);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
@@ -1262,8 +1260,8 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-        self_node_id_, worker->WorkerId(), worker->IpAddress(),
-        worker->Port(), time(nullptr), intentional_disconnect);
+        self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
+        time(nullptr), intentional_disconnect);
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
   }

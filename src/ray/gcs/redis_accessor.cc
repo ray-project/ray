@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/redis_accessor.h"
+
 #include <boost/none.hpp>
+
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
