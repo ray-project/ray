@@ -265,11 +265,11 @@ parser.add_argument(
     default=None,
     metavar="NAME",
     help="Use AutoAugment policy. 'v0' or 'original'. (default: None)"),
-parser.add_argument(
-    "--aug-splits",
-    type=int,
-    default=0,
-    help="Number of augmentation splits (default: 0, valid: 0 or >=2)")
+# parser.add_argument(
+#     "--aug-splits",
+#     type=int,
+#     default=0,
+#     help="Number of augmentation splits (default: 0, valid: 0 or >=2)")
 parser.add_argument(
     "--reprob",
     type=float,
@@ -338,10 +338,10 @@ parser.add_argument(
     default="",
     help=("Distribute BatchNorm stats between nodes after each epoch "
           "('broadcast', 'reduce', or '')"))
-parser.add_argument(
-    "--split-bn",
-    action="store_true",
-    help="Enable separate BN layers per augmentation split.")
+# parser.add_argument(
+#     "--split-bn",
+#     action="store_true",
+#     help="Enable separate BN layers per augmentation split.")
 # Model Exponential Moving Average
 parser.add_argument(
     "--model-ema",
@@ -379,14 +379,10 @@ parser.add_argument(
     metavar="N",
     help="how many batches to wait before writing recovery checkpoint")
 parser.add_argument(
-    "-j",
-    "--workers",
-    type=int,
-    default=4,
-    metavar="N",
-    help="how many training processes to use (default: 1)")
-parser.add_argument(
-    "--num-gpu", type=int, default=1, help="Number of GPUS to use")
+    "--no-gpu",
+    action="store_true",
+    default=False,
+    help="do not use a GPU even if available")
 parser.add_argument(
     "--save-images",
     action="store_true",
@@ -464,21 +460,18 @@ def parse_args():
     args.distributed = False  # ray SGD handles this (DistributedSampler)
     args.device = "cuda"  # ray should handle this
 
-    if args.num_gpu == 0 and args.prefetcher:
+    if args.no_gpu == 0 and args.prefetcher:
         logging.warning("Prefetcher needs CUDA currently "
                         "(might be a bug in timm). "
                         "Disabling it.")
         args.prefetcher = False
 
-    if args.num_gpu > 1:
-        logging.warning(
-            "We do not support using more than one GPU per process "
-            "(use Ray instead).")
-        args.num_gpu = 1
+    # assert args.aug_splits == 0 or args.aug_splits > 1, (
+    #     "Split must be 0 or 2+")
 
-    assert args.aug_splits == 0 or args.aug_splits > 1, (
-        "Split must be 0 or 2+")
+    # args.num_aug_splits = args.aug_splits
+    args.num_aug_splits = 0 # todo:
 
-    args.num_aug_splits = args.aug_splits
+    args.split_bn = False # todo:
 
     return args, args_text

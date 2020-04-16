@@ -80,13 +80,8 @@ setup_commands:
 
 
 file_mounts: {
-    ~/args.py: args.py,
-
     # This should point to ray/python/ray/util/sgd.
-    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_runner.py: ../../torch_runner.py,
-    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/distributed_torch_runner.py: ../../distributed_torch_runner.py,
-    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_trainer.py: ../../torch_trainer.py,
-    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/training_operator.py: ../../training_operator.py,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/: ../../../../sgd,
 }
 
 # Custom commands that will be run on the head node after common setup.

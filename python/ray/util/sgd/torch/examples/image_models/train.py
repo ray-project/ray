@@ -25,7 +25,7 @@ from ray.util.sgd.utils import BATCH_SIZE
 from ray.util.sgd import TorchTrainer
 # from ray.util.sgd.torch import TrainingOperator
 
-from args import parse_args
+from ray.util.sgd.torch.examples.image_models.args import parse_args
 
 
 def model_creator(config):
@@ -75,7 +75,7 @@ def data_creator(config):
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
-        num_workers=args.workers,
+        num_workers=1,
         distributed=args.distributed,
         pin_memory=args.pin_mem)
 
