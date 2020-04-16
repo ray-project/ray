@@ -4,7 +4,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class DDPGModel(TFModelV2):
+class DDPGTFModel(TFModelV2):
     """Extension of standard TFModel to provide DDPG action- and q-outputs.
 
     Data flow:
@@ -43,8 +43,8 @@ class DDPGModel(TFModelV2):
         should be defined in subclasses of DDPGActionModel.
         """
 
-        super(DDPGModel, self).__init__(obs_space, action_space, num_outputs,
-                                        model_config, name)
+        super(DDPGTFModel, self).__init__(obs_space, action_space, num_outputs,
+                                          model_config, name)
 
         actor_hidden_activation = getattr(tf.nn, actor_hidden_activation,
                                           tf.nn.relu)
@@ -84,8 +84,8 @@ class DDPGModel(TFModelV2):
 
         actor_out = tf.keras.layers.Lambda(lambda_)(actor_out)
 
-        self.action_model = tf.keras.Model(self.model_out, actor_out)
-        self.register_variables(self.action_model.variables)
+        self.policy_model = tf.keras.Model(self.model_out, actor_out)
+        self.register_variables(self.policy_model.variables)
 
         # Build the Q-model(s).
         self.actions_input = tf.keras.layers.Input(
@@ -111,15 +111,15 @@ class DDPGModel(TFModelV2):
                                    q_net([observations, actions]))
             return q_net
 
-        self.q_net = build_q_net("q", self.model_out, self.actions_input)
-        self.register_variables(self.q_net.variables)
+        self.q_model = build_q_net("q", self.model_out, self.actions_input)
+        self.register_variables(self.q_model.variables)
 
         if twin_q:
-            self.twin_q_net = build_q_net("twin_q", self.model_out,
-                                          self.actions_input)
-            self.register_variables(self.twin_q_net.variables)
+            self.twin_q_model = build_q_net("twin_q", self.model_out,
+                                            self.actions_input)
+            self.register_variables(self.twin_q_model.variables)
         else:
-            self.twin_q_net = None
+            self.twin_q_model = None
 
     def get_q_values(self, model_out, actions):
         """Return the Q estimates for the most recent forward pass.
@@ -136,9 +136,9 @@ class DDPGModel(TFModelV2):
             tensor of shape [BATCH_SIZE].
         """
         if actions is not None:
-            return self.q_net([model_out, actions])
+            return self.q_model([model_out, actions])
         else:
-            return self.q_net(model_out)
+            return self.q_model(model_out)
 
     def get_twin_q_values(self, model_out, actions):
         """Same as get_q_values but using the twin Q net.
@@ -155,9 +155,9 @@ class DDPGModel(TFModelV2):
             tensor of shape [BATCH_SIZE].
         """
         if actions is not None:
-            return self.twin_q_net([model_out, actions])
+            return self.twin_q_model([model_out, actions])
         else:
-            return self.twin_q_net(model_out)
+            return self.twin_q_model(model_out)
 
     def get_policy_output(self, model_out):
         """Return the action output for the most recent forward pass.
@@ -172,14 +172,14 @@ class DDPGModel(TFModelV2):
         Returns:
             tensor of shape [BATCH_SIZE, action_out_size]
         """
-        return self.action_model(model_out)
+        return self.policy_model(model_out)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
-        return list(self.action_model.variables)
+        return list(self.policy_model.variables)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
 
-        return self.q_net.variables + (self.twin_q_net.variables
-                                       if self.twin_q_net else [])
+        return self.q_model.variables + (self.twin_q_model.variables
+                                         if self.twin_q_model else [])

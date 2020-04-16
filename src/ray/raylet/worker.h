@@ -38,8 +38,8 @@ class Worker {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language, int port,
-         std::shared_ptr<ClientConnection> connection,
+  Worker(const WorkerID &worker_id, const Language &language,
+         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -54,7 +54,12 @@ class Worker {
   Process GetProcess() const;
   void SetProcess(Process proc);
   Language GetLanguage() const;
+  const std::string IpAddress() const;
+  /// Connect this worker's gRPC client.
+  void Connect(int port);
   int Port() const;
+  int AssignedPort() const;
+  void SetAssignedPort(int port);
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -131,8 +136,14 @@ class Worker {
   Process proc_;
   /// The language type of this worker.
   Language language_;
+  /// IP address of this worker.
+  std::string ip_address_;
+  /// Port assigned to this worker by the raylet. If this is 0, the actual
+  /// port the worker listens (port_) on will be a random one. This is required
+  /// because a worker could crash before announcing its port, in which case
+  /// we still need to be able to mark that port as free.
+  int assigned_port_;
   /// Port that this worker listens on.
-  /// If port <= 0, this indicates that the worker will not listen to a port.
   int port_;
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;

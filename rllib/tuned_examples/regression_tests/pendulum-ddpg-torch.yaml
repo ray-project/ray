@@ -1,9 +1,10 @@
-pendulum-ddpg:
+pendulum-ddpg-torch:
     env: Pendulum-v0
     run: DDPG
     stop:
         episode_reward_mean: -900
         timesteps_total: 100000
     config:
-        use_huber: True
-        clip_rewards: False
+        use_pytorch: true
+        use_huber: true
+        clip_rewards: false

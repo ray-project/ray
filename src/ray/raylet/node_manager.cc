@@ -141,7 +141,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(
           io_service, config.num_initial_workers, config.maximum_startup_concurrency,
-          gcs_client_, config.worker_commands, config.raylet_config,
+          config.min_worker_port, config.max_worker_port, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -991,6 +992,9 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
+  case protocol::MessageType::AnnounceWorkerPort: {
+    ProcessAnnounceWorkerPortMessage(client, message_data);
+  } break;
   case protocol::MessageType::TaskDone: {
     HandleWorkerAvailable(client);
   } break;
@@ -1082,28 +1086,20 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
-  flatbuffers::FlatBufferBuilder fbb;
-  auto reply =
-      ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
-  fbb.Finish(reply);
-  client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          ProcessDisconnectClientMessage(client);
-        }
-      });
-
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  auto worker = std::make_shared<Worker>(worker_id, language, message->port(), client,
+  std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
+  auto worker = std::make_shared<Worker>(worker_id, language, worker_ip_address, client,
                                          client_call_manager_);
+
+  int assigned_port;
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker_pool_.RegisterWorker(worker, pid).ok()) {
-      HandleWorkerAvailable(worker->Connection());
+    if (!worker_pool_.RegisterWorker(worker, pid, &assigned_port).ok()) {
+      // Return -1 to signal to the worker that registration failed.
+      assigned_port = -1;
     }
   } else {
     // Register the new driver.
@@ -1114,14 +1110,47 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    Status status = worker_pool_.RegisterDriver(worker);
+    Status status = worker_pool_.RegisterDriver(worker, &assigned_port);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  initial_config_.node_manager_address, pid);
+      auto job_data_ptr = gcs::CreateJobTableData(
+          job_id, /*is_dead*/ false, std::time(nullptr), worker_ip_address, pid);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
+    } else {
+      // Return -1 to signal to the worker that registration failed.
+      assigned_port = -1;
     }
+  }
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, self_node_id_), assigned_port);
+  fbb.Finish(reply);
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
+        if (!status.ok()) {
+          ProcessDisconnectClientMessage(client);
+        }
+      });
+}
+
+void NodeManager::ProcessAnnounceWorkerPortMessage(
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  bool is_worker = true;
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (worker == nullptr) {
+    is_worker = false;
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(worker != nullptr) << "No worker exists for CoreWorker with client: "
+                               << client->DebugString();
+
+  auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
+  int port = message->port();
+  worker->Connect(port);
+  if (is_worker) {
+    HandleWorkerAvailable(worker->Connection());
   }
 }
 
@@ -1260,8 +1289,8 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-        self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
-        worker->Port(), time(nullptr), intentional_disconnect);
+        self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
+        time(nullptr), intentional_disconnect);
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
   }
@@ -1687,8 +1716,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                                       ClientID spillback_to,
                                                       std::string address, int port) {
           if (worker != nullptr) {
-            reply->mutable_worker_address()->set_ip_address(
-                initial_config_.node_manager_address);
+            reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
             reply->mutable_worker_address()->set_port(worker->Port());
             reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
@@ -2654,7 +2682,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 }
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
-  RAY_LOG(INFO) << "Finishing assigned actor task";
+  RAY_LOG(DEBUG) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();

@@ -40,7 +40,7 @@ class TestParameterNoise(unittest.TestCase):
 
             config = core_config.copy()
 
-            # DQN with ParameterNoise exploration (config["explore"]=True).
+            # Algo with ParameterNoise exploration (config["explore"]=True).
             # ----
             config["exploration_config"] = {"type": "ParameterNoise"}
             config["explore"] = True
