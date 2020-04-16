@@ -318,6 +318,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         true,                           // install_failure_signal_handler
         "127.0.0.1",                    // node_ip_address
         node_manager_port_,             // node_manager_port
+        "127.0.0.1",                    // raylet_ip_address
         "queue_tests",                  // driver_name
         "",                             // stdout_file
         "",                             // stderr_file

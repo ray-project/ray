@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/redis_accessor.h"
+
 #include <boost/none.hpp>
+
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
@@ -304,7 +306,7 @@ Status RedisJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
                                                const StatusCallback &callback) {
   std::shared_ptr<JobTableData> data_ptr =
       CreateJobTableData(job_id, /*is_dead*/ true, /*time_stamp*/ std::time(nullptr),
-                         /*node_manager_address*/ "", /*driver_pid*/ -1);
+                         /*driver_ip_address*/ "", /*driver_pid*/ -1);
   return DoAsyncAppend(data_ptr, callback);
 }
 

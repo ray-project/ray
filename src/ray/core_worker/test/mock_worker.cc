@@ -45,6 +45,7 @@ class MockWorker {
         true,                // install_failure_signal_handler
         "127.0.0.1",         // node_ip_address
         node_manager_port,   // node_manager_port
+        "127.0.0.1",         // raylet_ip_address
         "",                  // driver_name
         "",                  // stdout_file
         "",                  // stderr_file
