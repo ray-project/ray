@@ -4,7 +4,7 @@ from scipy.stats import norm, beta
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    SquashedGaussian, GumbelSoftmax
+    GaussianSquashedGaussian, SquashedGaussian, GumbelSoftmax
 from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical, \
     TorchSquashedGaussian, TorchBeta
 from ray.rllib.utils import try_import_tf, try_import_torch
@@ -184,6 +184,35 @@ class TestDistributions(unittest.TestCase):
             if sess:
                 outs = sess.run(outs)
             check(outs, log_prob, decimals=4)
+
+    def test_gaussian_squashed_gaussian(self):
+        for fw, sess in framework_iterator(frameworks="tf", session=True):
+            inputs1 = tf.constant([[-0.5, 0.2, np.log(0.1), np.log(0.5)],
+                                   [0.6, 0.8, np.log(0.7), np.log(0.8)],
+                                   [-10.0, 1.2, np.log(0.9), np.log(1.0)]])
+
+            inputs2 = tf.constant([[0.2, 0.3, np.log(0.2), np.log(0.4)],
+                                   [0.6, 0.8, np.log(0.7), np.log(0.8)],
+                                   [-11.0, 1.2, np.log(0.9), np.log(1.0)]])
+
+            gsg_dist1 = GaussianSquashedGaussian(inputs1, None)
+            gsg_dist2 = GaussianSquashedGaussian(inputs2, None)
+
+            # KL, entropy, and logp values have been verified empirically.
+            check(sess.run(gsg_dist1.kl(gsg_dist2)),
+                  np.array([6.532504, 0., 0.]))
+            check(sess.run(gsg_dist1.entropy()),
+                  np.array([-0.74827796, 0.7070056, -4.971432]))
+            x = tf.constant([[-0.3939393939393939]])
+            check(sess.run(gsg_dist1.logp(x)),
+                  np.array([0.736003, -3.1547096, -6.5595593]))
+
+            # This is just the squashed distribution means. Verified using
+            # _unsquash (which was itself verified as part of the logp test).
+            expected = np.array([[-0.41861248, 0.1745522],
+                                 [0.49179232, 0.62231755],
+                                 [-0.99906087, 0.81425166]])
+            check(sess.run(gsg_dist1.deterministic_sample()), expected)
 
     def test_beta(self):
         input_space = Box(-2.0, 1.0, shape=(200, 10))
