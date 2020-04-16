@@ -55,6 +55,13 @@ reload_env() {
   export PATH PYTHON3_BIN_PATH
 }
 
+test_python() {
+  if [ "${OSTYPE}" = msys ]; then
+    # Windows -- most tests won't work yet; just do the ones we know work
+    PYTHONPATH=python python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
+  fi
+}
+
 preload() {
   local job_names="${1-}"
 
@@ -148,6 +155,10 @@ build() {
 run() {
   local result=0
   ##### BEGIN TASKS #####
+
+  if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
+    test_python
+  fi
 
   if [ "${RAY_INSTALL_JAVA-}" = 1 ]; then
     "${WORKSPACE_DIR}"/java/test.sh
