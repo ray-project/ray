@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.master;
+package io.ray.streaming.runtime.master;
 
 import java.util.HashMap;
 import org.testng.Assert;

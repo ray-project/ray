@@ -1,5 +1,7 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
+import io.ray.api.RayActor;
+import io.ray.streaming.runtime.worker.JobWorker;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -142,7 +144,7 @@ public class ExecutionGraph implements Serializable {
    * @return actor list
    */
   public List<RayActor<JobWorker>> getAllActors() {
-    return getActorsFromJobVertices(getExecutionJobVertices());
+    return getActorsFromJobVertices(getExecutionJobVertexList());
   }
 
   /**
@@ -151,7 +153,7 @@ public class ExecutionGraph implements Serializable {
    * @return actor list
    */
   public List<RayActor<JobWorker>> getSourceActors() {
-    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(ExecutionJobVertex::isSourceVertex)
         .collect(Collectors.toList());
 
@@ -164,7 +166,7 @@ public class ExecutionGraph implements Serializable {
    * @return actor list
    */
   public List<RayActor<JobWorker>> getNonSourceActors() {
-    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
             || executionJobVertex.isSinkVertex())
         .collect(Collectors.toList());
@@ -178,7 +180,7 @@ public class ExecutionGraph implements Serializable {
    * @return actor list
    */
   public List<RayActor<JobWorker>> getSinkActors() {
-    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertices().stream()
+    List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
         .filter(ExecutionJobVertex::isSinkVertex)
         .collect(Collectors.toList());
 

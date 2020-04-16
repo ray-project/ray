@@ -1,11 +1,11 @@
-package org.ray.streaming.runtime.rpc;
+package io.ray.streaming.runtime.rpc;
 
-import org.ray.api.RayActor;
-import org.ray.api.RayObject;
-import org.ray.api.RayPyActor;
-import org.ray.streaming.runtime.master.JobMaster;
-import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.worker.context.JobWorkerContext;
+import io.ray.api.RayActor;
+import io.ray.api.RayObject;
+import io.ray.api.RayPyActor;
+import io.ray.streaming.runtime.master.JobMaster;
+import io.ray.streaming.runtime.worker.JobWorker;
+import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

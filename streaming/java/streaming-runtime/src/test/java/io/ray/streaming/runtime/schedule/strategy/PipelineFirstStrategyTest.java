@@ -8,7 +8,7 @@ import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.graph.ExecutionGraphTest;
+import io.ray.streaming.runtime.core.graph.ExecutionGraphTest;
 import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;

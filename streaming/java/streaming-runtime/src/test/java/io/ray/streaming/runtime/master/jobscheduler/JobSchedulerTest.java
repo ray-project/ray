@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.master;
+package io.ray.streaming.runtime.master.jobscheduler;
 
 import org.testng.annotations.Test;
 

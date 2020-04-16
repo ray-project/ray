@@ -1,22 +1,19 @@
-package org.ray.streaming.runtime.master.scheduler;
+package io.ray.streaming.runtime.master.scheduler;
 
-import com.google.common.base.Preconditions;
+import io.ray.api.RayActor;
+import io.ray.streaming.runtime.config.StreamingConfig;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.master.JobMaster;
+import io.ray.streaming.runtime.master.graphmanager.GraphManager;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
+import io.ray.streaming.runtime.master.resourcemanager.ViewBuilder;
+import io.ray.streaming.runtime.master.scheduler.controller.WorkerLifecycleController;
+import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.RayActor;
-import org.ray.streaming.runtime.config.StreamingConfig;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import org.ray.streaming.runtime.core.resource.Container;
-import org.ray.streaming.runtime.core.resource.ContainerID;
-import org.ray.streaming.runtime.core.resource.Slot;
-import org.ray.streaming.runtime.master.JobMaster;
-import org.ray.streaming.runtime.master.graphmanager.GraphManager;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceManager;
-import org.ray.streaming.runtime.master.scheduler.controller.WorkerLifecycleController;
-import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import org.ray.streaming.runtime.worker.context.JobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,14 +30,12 @@ public class JobSchedulerImpl implements JobScheduler {
   private final ResourceManager resourceManager;
   private final GraphManager graphManager;
   private final WorkerLifecycleController workerLifecycleController;
-  private final SlotAssignStrategy strategy;
 
   public JobSchedulerImpl(JobMaster jobMaster) {
     this.jobMaster = jobMaster;
     this.graphManager = jobMaster.getGraphManager();
     this.resourceManager = jobMaster.getResourceManager();
     this.workerLifecycleController = new WorkerLifecycleController();
-    this.strategy = resourceManager.getSlotAssignStrategy();
     this.jobConf = jobMaster.getRuntimeContext().getConf();
 
     LOG.info("Scheduler init success.");
@@ -50,33 +45,30 @@ public class JobSchedulerImpl implements JobScheduler {
   public boolean scheduleJob(ExecutionGraph executionGraph) {
     LOG.info("Start to schedule job: {}.", executionGraph.getJobName());
 
-    // get max parallelism
-    int maxParallelism = executionGraph.getMaxParallelism();
-
-    // get containers
-    List<Container> containers = resourceManager.getRegisteredContainers();
-    Preconditions.checkState(containers != null && !containers.isEmpty(),
-        "containers is invalid: %s", containers);
-
-    // allocate slot
-    int slotNumPerContainer = strategy.getSlotNumPerContainer(containers, maxParallelism);
-    resourceManager.getResources().setSlotNumPerContainer(slotNumPerContainer);
-    LOG.info("Slot num per container: {}.", slotNumPerContainer);
-
-    strategy.allocateSlot(containers, slotNumPerContainer);
-    LOG.info("Container slot map is: {}.", resourceManager.getResources().getAllocatingMap());
-
-    // assign slot
-    Map<ContainerID, List<Slot>> allocatingMap = strategy.assignSlot(executionGraph);
-    LOG.info("Allocating map is: {}.", allocatingMap);
-
-    // start all new added workers
-    createWorkers(executionGraph);
+    // Allocate resource then create workers
+    prepareResourceAndCreateWorker(executionGraph);
 
     // init worker context and start to run
     initAndStart(executionGraph);
 
     return true;
+  }
+
+  /**
+   * Allocating job worker resource then create job worker actor
+   *
+   * @param executionGraph
+   */
+  protected void prepareResourceAndCreateWorker(ExecutionGraph executionGraph) {
+    List<Container> containers = resourceManager.getRegisteredContainers();
+
+    // Assign resource for execution vertices
+    resourceManager.assignResource(containers, executionGraph);
+
+    LOG.info("Allocating map is: {}.", ViewBuilder.buildResourceAssignmentView(containers));
+
+    // Start all new added workers
+    createWorkers(executionGraph);
   }
 
   /**

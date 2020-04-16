@@ -1,5 +1,17 @@
-package org.ray.streaming.runtime.master.scheduler.controller;
+package io.ray.streaming.runtime.master.scheduler.controller;
 
+import io.ray.api.Ray;
+import io.ray.api.RayActor;
+import io.ray.api.RayObject;
+import io.ray.api.WaitResult;
+import io.ray.api.id.ActorId;
+import io.ray.api.options.ActorCreationOptions;
+import io.ray.streaming.api.Language;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import io.ray.streaming.runtime.rpc.RemoteCallWorker;
+import io.ray.streaming.runtime.worker.JobWorker;
+import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -7,18 +19,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.ray.api.Ray;
-import org.ray.api.RayActor;
-import org.ray.api.RayObject;
-import org.ray.api.WaitResult;
-import org.ray.api.id.ActorId;
-import org.ray.api.options.ActorCreationOptions;
-import org.ray.streaming.api.Language;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import org.ray.streaming.runtime.rpc.RemoteCallWorker;
-import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.worker.context.JobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,10 +63,6 @@ public class WorkerLifecycleController {
     }
 
     executionVertex.setWorkerActor(actor);
-
-    if (executionVertex.getSlot() != null) {
-      executionVertex.getSlot().getActorCount().incrementAndGet();
-    }
 
     LOG.info("Create worker actor succeeded, actor: {}, vertex: {}.",
         executionVertex.getWorkerActorId(), executionVertex.getVertexName());

@@ -1,17 +1,17 @@
-package org.ray.streaming.runtime.master;
+package io.ray.streaming.runtime.master;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.RayActor;
+import io.ray.streaming.jobgraph.JobGraph;
+import io.ray.streaming.runtime.config.StreamingConfig;
+import io.ray.streaming.runtime.config.StreamingMasterConfig;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.master.graphmanager.GraphManager;
+import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
+import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
+import io.ray.streaming.runtime.master.scheduler.JobSchedulerImpl;
 import java.util.Map;
-import org.ray.api.RayActor;
-import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.runtime.config.StreamingConfig;
-import org.ray.streaming.runtime.config.StreamingMasterConfig;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.master.graphmanager.GraphManager;
-import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceManager;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
-import org.ray.streaming.runtime.master.scheduler.JobSchedulerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

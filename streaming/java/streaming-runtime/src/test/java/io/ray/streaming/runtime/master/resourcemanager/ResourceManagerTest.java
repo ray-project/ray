@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.resourcemanager;
+package io.ray.streaming.runtime.master.resourcemanager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -11,8 +11,6 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
-import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
-import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.util.Mockitools;

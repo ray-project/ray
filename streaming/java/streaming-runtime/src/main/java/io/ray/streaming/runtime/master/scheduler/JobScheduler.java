@@ -1,6 +1,6 @@
-package org.ray.streaming.runtime.master.scheduler;
+package io.ray.streaming.runtime.master.scheduler;
 
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Job scheduler is used to do the schedule job in JobMaster.
