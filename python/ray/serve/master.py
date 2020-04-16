@@ -4,8 +4,10 @@ from functools import wraps
 import inspect
 
 import ray
+import ray.cloudpickle as pickle
 from ray.serve.backend_config import BackendConfig
-from ray.serve.constants import ASYNC_CONCURRENCY
+from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
+                                 SERVE_PROXY_NAME, SERVE_METRIC_MONITOR_NAME)
 from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
@@ -58,7 +60,7 @@ class ServeMaster:
         we need to initialize and store actor handles in a seperate actor.
     """
 
-    def __init__(self, kv_store_connector):
+    def __init__(self, kv_store_connector, recovering=True):
         self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
@@ -66,25 +68,62 @@ class ServeMaster:
         self.backends = {}
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
+        self.replicas_to_start = defaultdict(list)
+        self.replicas_to_stop = defaultdict(list)
         # endpoint -> traffic_dict
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         self.workers = defaultdict(dict)
-
         self.router = None
         self.http_proxy = None
         self.metric_monitor = None
 
-    def checkpoint(self):
-        checkpoint = pickle.dumps((
-            self.routes, self.backends,
-            self.replicas, self.traffic_policies))
+        if recovering:
+            self._recover_from_checkpoint()
+
+    def _checkpoint(self):
+        # We need to checkpoint: tables, workers that we're removing, workers.
+        checkpoint = pickle.dumps((self.routes, self.backends, self.replicas,
+                                   self.traffic_policies))
         self.kv_store_client.put("checkpoint", checkpoint)
 
-    def load_checkpoint(self, checkpoint):
+    def _recover_from_checkpoint(self):
+        # 1) Check "base components" - they might not have been started yet, in
+        # which case we need to start them.
+        # 2) Check workers - they might not have been started yet, in which
+        # case we need to start them.
+        # 3) Delete the workers that we're removing (take a new checkpoint?)
         checkpoint = self.kv_store_client.get("checkpoint")
-        (self.routes, self.backends,
-         self.replicas, self.traffic_policies) = pickle.loads(checkpoint)
+        (self.routes, self.backends, self.replicas,
+         self.traffic_policies) = pickle.loads(checkpoint)
+        # On startup, check that all of the expected workers actually exist,
+        # create them if they don't.
+        workers = pickle.loads(checkpoint)
+        for backend, replicas in workers.items():
+            for replica in replicas:
+                self.workers[backend][replica] = ray.utils.get_actor(replica)
+
+        # Then, for workers that are pending deletion, delete them.
+        self.workers_to_kill = self.checkpoints.get("pending_deletion")
+        self._kill_pending_workers()
+
+        try:
+            self.router = ray.utils.get_actor(SERVE_ROUTER_NAME)
+        except ValueError:
+            self.router = None
+        try:
+            self.http_proxy = ray.utils.get_actor(SERVE_PROXY_NAME)
+        except ValueError:
+            self.http_proxy = None
+        try:
+            self.metric_monitor = ray.utils.get_actor(SERVE_PROXY_NAME)
+        except ValueError:
+            self.metric_monitor = None
+
+    def _kill_detached_actor(self, handle):
+        worker = ray.worker.global_worker
+        # Set no_reconstruction=True so the actor won't be reconstructed.
+        worker.core_worker.kill_actor(handle._ray_actor_id, True)
 
     def _list_replicas(self, backend_tag):
         return self.replicas[backend_tag]
@@ -95,6 +134,7 @@ class ServeMaster:
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
         self.router = async_retryable(router_class).options(
+            name=SERVE_ROUTER_NAME,
             max_concurrency=ASYNC_CONCURRENCY,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
         ).remote(**init_kwargs)
@@ -113,6 +153,7 @@ class ServeMaster:
         assert self.router is not None, (
             "Router must be started before HTTP proxy.")
         self.http_proxy = async_retryable(HTTPProxyActor).options(
+            name=SERVE_PROXY_NAME,
             max_concurrency=ASYNC_CONCURRENCY,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
         ).remote(host, port)
@@ -126,7 +167,8 @@ class ServeMaster:
 
     def start_metric_monitor(self, gc_window_seconds):
         assert self.metric_monitor is None, "Metric monitor already started."
-        self.metric_monitor = MetricMonitor.remote(gc_window_seconds)
+        self.metric_monitor = MetricMonitor.options(
+            name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_seconds)
         # TODO(edoakes): this should be an actor method, not a separate task.
         start_metric_monitor_loop.remote(self.metric_monitor)
         self.metric_monitor.add_target.remote(self.router)
@@ -136,6 +178,68 @@ class ServeMaster:
             "Metric monitor not started yet.")
         return [self.metric_monitor]
 
+    async def get_backend_worker_config(self):
+        return self.get_router()
+
+    def _start_backend_worker(self, backend_tag, replica_tag):
+        logger.debug("Starting worker '{}' for backend '{}'.".format(
+            replica_tag, backend_tag))
+        worker_creator, init_args, config_dict = self.backends[backend_tag]
+        # TODO(edoakes): just store the BackendConfig in self.backends.
+        backend_config = BackendConfig(**config_dict)
+        init_args = [backend_tag, replica_tag, init_args]
+        kwargs = backend_config.get_actor_creation_args(init_args)
+        kwargs["name"] = replica_tag
+        kwargs[
+            "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
+
+        return ray.remote(worker_creator)._remote(**kwargs)
+
+    async def _start_pending_replicas(self):
+        # Note: they may already be created if we failed during this operation.
+        for backend_tag, replicas_to_create in self.replicas_to_start.items():
+            for replica_tag in replicas_to_create:
+                try:
+                    worker_handle = ray.util.get_actor(replica_tag)
+                except ValueError:
+                    worker_handle = self._start_backend_worker(
+                        backend_tag, replica_tag)
+
+                self.replicas[backend_tag].append(replica_tag)
+                self.workers[backend_tag][replica_tag] = worker_handle
+
+                # Wait for the worker to start up.
+                await worker_handle.ready.remote()
+
+                # Register the worker with the router.
+                [router] = self.get_router()
+                await router.add_new_worker.remote(backend_tag, worker_handle)
+
+                # Register the worker with the metric monitor.
+                self.get_metric_monitor()[0].add_target.remote(worker_handle)
+
+        self.replicas_to_start.clear()
+
+    async def _stop_pending_replicas(self):
+        # Note: they may already be deleted if we failed during this operation.
+        for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
+            for replica_tag in replicas_to_stop:
+                try:
+                    worker_handle = ray.util.get_actor(replica_tag)
+                    # Remove the replica from metric monitor.
+                    [monitor] = self.get_metric_monitor()
+                    await monitor.remove_target.remote(worker_handle)
+
+                    # Remove the replica from router.
+                    # This will also destroy the actor handle.
+                    [router] = self.get_router()
+                    await router.remove_worker.remote(backend_tag,
+                                                      worker_handle)
+                except ValueError:
+                    pass
+
+        self.replicas_to_stop.clear()
+
     async def scale_replicas(self, backend_tag, num_replicas):
         """Scale the given backend to the number of replicas.
 
@@ -143,6 +247,8 @@ class ServeMaster:
         synchronously for backends to start up and they may make calls into
         the master actor while initializing (e.g., by calling get_handle()).
         """
+        logger.debug("Scaling backend '{}' to {} replicas".format(
+            backend_tag, num_replicas))
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
@@ -152,74 +258,32 @@ class ServeMaster:
         delta_num_replicas = num_replicas - current_num_replicas
 
         if delta_num_replicas > 0:
+            logger.debug("Adding {} replicas".format(delta_num_replicas))
             for _ in range(delta_num_replicas):
-                await self._start_backend_replica(backend_tag)
+                replica_tag = "{}#{}".format(backend_tag, get_random_letters())
+                self.replicas_to_start[backend_tag].append(replica_tag)
+            # XXX
+            #asyncio.get_event_loop().create_task(
+            #self._start_pending_replicas())
+            await self._start_pending_replicas()
+
         elif delta_num_replicas < 0:
+            logger.debug("Removing {} replicas".format(-delta_num_replicas))
+            assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
-                await self._remove_backend_replica(backend_tag)
+                replica_tag = self.replicas[backend_tag].pop()
+                if len(self.replicas[backend_tag]) == 0:
+                    del self.replicas[backend_tag]
+                del self.workers[backend_tag][replica_tag]
+                if len(self.workers[backend_tag]) == 0:
+                    del self.workers[backend_tag]
 
-    async def get_backend_worker_config(self):
-        return self.get_router()
+                self.replicas_to_stop[backend_tag].append(replica_tag)
+            # XXX
+            #asyncio.get_event_loop().create_task(self._stop_pending_replicas())
+            await self._stop_pending_replicas()
 
-    async def _start_backend_replica(self, backend_tag):
-        assert (backend_tag in self.backends
-                ), "Backend {} is not registered.".format(backend_tag)
-
-        replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
-
-        # Register the worker in the DB.
-        # TODO(edoakes): we should guarantee that if calls to the master
-        # succeed, the cluster state has changed and if they fail, it hasn't.
-        # Once we have master actor fault tolerance, this breaks that guarantee
-        # because this method could fail after writing the replica to the DB.
-        self.replicas[backend_tag].append(replica_tag)
-
-        # Fetch the info to start the replica from the backend table.
-        worker_creator, init_args, config_dict = self.backends[backend_tag]
-        backend_config = BackendConfig(**config_dict)
-        init_args = [backend_tag, replica_tag, init_args]
-
-        kwargs = backend_config.get_actor_creation_args(init_args)
-        kwargs[
-            "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
-
-        # Start the worker.
-        worker_handle = ray.remote(worker_creator)._remote(**kwargs)
-        self.workers[backend_tag][replica_tag] = worker_handle
-
-        # Wait for the worker to start up.
-        await worker_handle.ready.remote()
-
-        [router] = self.get_router()
-        await router.add_new_worker.remote(backend_tag, worker_handle)
-
-        # Register the worker with the metric monitor.
-        self.get_metric_monitor()[0].add_target.remote(worker_handle)
-
-    async def _remove_backend_replica(self, backend_tag):
-        assert (backend_tag in self.backends
-                ), "Backend {} is not registered.".format(backend_tag)
-        assert (len(self.replicas[backend_tag]) >
-                0), "Tried to remove replica from empty backend ({}).".format(
-                    backend_tag)
-
-        assert backend_tag in self.replicas
-        replica_tag = self.replicas[backend_tag].pop()
-
-        assert backend_tag in self.workers
-        assert replica_tag in self.workers[backend_tag]
-        replica_handle = self.workers[backend_tag].pop(replica_tag)
-        if len(self.workers[backend_tag]) == 0:
-            del self.workers[backend_tag]
-
-        # Remove the replica from metric monitor.
-        [monitor] = self.get_metric_monitor()
-        await monitor.remove_target.remote(replica_handle)
-
-        # Remove the replica from router.
-        # This will also destroy the actor handle.
-        [router] = self.get_router()
-        await router.remove_worker.remote(backend_tag, replica_handle)
+        self._checkpoint()
 
     def get_all_worker_handles(self):
         return self.workers

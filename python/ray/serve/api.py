@@ -139,7 +139,8 @@ def init(
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
     master_actor = ServeMaster.options(
-        detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
+        detached=True, name=SERVE_MASTER_NAME).remote(
+            kv_store_connector, recovering=False)
 
     ray.get(
         master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
