@@ -33,6 +33,8 @@ enum MessageType:int {
   // Send a reply confirming the successful registration of a worker or driver.
   // This is sent from the raylet to a worker or driver.
   RegisterClientReply,
+  // Send the worker's gRPC port to the raylet.
+  AnnounceWorkerPort,
   // Notify the raylet that this client is disconnecting unexpectedly.
   // This is sent from a worker to a raylet.
   DisconnectClient,
@@ -151,6 +153,8 @@ table RegisterClientRequest {
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
+  // IP address of this worker.
+  ip_address: string;
   // Port that this worker is listening on.
   port: int;
 }
@@ -158,6 +162,13 @@ table RegisterClientRequest {
 table RegisterClientReply {
   // GCS ClientID of the local node manager.
   raylet_id: string;
+  // Port that this worker should listen on.
+  port: int;
+}
+
+table AnnounceWorkerPort {
+  // Port that this worker is listening on.
+  port: int;
 }
 
 table RegisterNodeManagerRequest {

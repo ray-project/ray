@@ -27,3 +27,4 @@ tensorflow_probability
 torch
 torchvision
 xgboost
+zoopt>=0.4.0
