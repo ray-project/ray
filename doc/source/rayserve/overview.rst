@@ -1,3 +1,5 @@
+.. _rayserve:
+
 RayServe: Scalable and Programmable Serving
 ===========================================
 
