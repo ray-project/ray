@@ -4,14 +4,15 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -32,6 +33,16 @@ class CustomModel(Model):
 
 
 class CustomActionDistribution(TFActionDistribution):
+    def __init__(self, inputs, model):
+        # Store our output shape.
+        custom_options = model.model_config["custom_options"]
+        if "output_dim" in custom_options:
+            self.output_shape = tf.concat(
+                [tf.shape(inputs)[:1], custom_options["output_dim"]], axis=0)
+        else:
+            self.output_shape = tf.shape(inputs)
+        super().__init__(inputs, model)
+
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
         custom_options = model_config["custom_options"] or {}
@@ -39,15 +50,13 @@ class CustomActionDistribution(TFActionDistribution):
             return custom_options.get("output_dim")
         return action_space.shape
 
+    @override(TFActionDistribution)
     def _build_sample_op(self):
-        custom_options = self.model.model_config["custom_options"]
-        if "output_dim" in custom_options:
-            output_shape = tf.concat(
-                [tf.shape(self.inputs)[:1], custom_options["output_dim"]],
-                axis=0)
-        else:
-            output_shape = tf.shape(self.inputs)
-        return tf.random_uniform(output_shape)
+        return tf.random_uniform(self.output_shape)
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        return tf.zeros(self.output_shape)
 
 
 class ModelCatalogTest(unittest.TestCase):

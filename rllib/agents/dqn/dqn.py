@@ -159,7 +159,7 @@ def make_policy_optimizer(workers, config):
         **kwargs)
 
 
-def validate_config_and_setup_param_noise(config):
+def validate_config(config):
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -341,7 +341,7 @@ GenericOffPolicyTrainer = build_trainer(
     default_policy=None,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config_and_setup_param_noise,
+    validate_config=validate_config,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,

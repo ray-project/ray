@@ -8,8 +8,12 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 run_testng() {
-    $@
-    local exit_code=$?
+    local exit_code
+    if "$@"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
         exit $exit_code
@@ -42,5 +46,5 @@ popd
 
 pushd $ROOT_DIR
 echo "Testing maven install."
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN --no-transfer-progress clean install -DskipTests
 popd

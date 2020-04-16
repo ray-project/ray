@@ -54,7 +54,7 @@ public class ExecutionGraph implements Serializable {
     return jobName;
   }
 
-  public List<ExecutionJobVertex> getExecutionJobVertexLices() {
+  public List<ExecutionJobVertex> getExecutionJobVertexList() {
     return new ArrayList<ExecutionJobVertex>(executionJobVertexMap.values());
   }
 
