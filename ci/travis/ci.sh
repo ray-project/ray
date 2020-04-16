@@ -149,6 +149,10 @@ run() {
   local result=0
   ##### BEGIN TASKS #####
 
+  if [ "${TESTSUITE-}" = cpp_worker ]; then
+    bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+  fi
+
   ##### END TASKS #####
   return "${result}"
 }
