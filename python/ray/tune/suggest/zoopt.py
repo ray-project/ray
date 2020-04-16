@@ -1,6 +1,6 @@
 import copy
 import logging
-import cloudpickle as pickle
+import ray.cloudpickle as pickle
 
 try:
     import zoopt
