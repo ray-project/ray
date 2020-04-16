@@ -131,7 +131,7 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
-        serialize_data_creation: A filelock will be used
+        serialize_data_creation (bool): A filelock will be used
             to ensure no race conditions in data downloading among
             different workers on the same node (using the local file system).
             Defaults to True.
