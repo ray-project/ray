@@ -8,7 +8,6 @@ from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import ASYNC_CONCURRENCY
 from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.kv_store_service import BackendTable
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import get_random_letters, logger
@@ -62,7 +61,8 @@ class ServeMaster:
     def __init__(self, kv_store_connector):
         self.kv_store_connector = kv_store_connector
         self.routes = {}
-        self.backend_table = BackendTable(kv_store_connector)
+        self.backends = {}
+        self.replicas = defaultdict(list)
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         self.workers = defaultdict(dict)
@@ -70,6 +70,9 @@ class ServeMaster:
         self.router = None
         self.http_proxy = None
         self.metric_monitor = None
+
+    def _list_replicas(self, backend_tag):
+        return self.replicas[backend_tag]
 
     def get_traffic_policy(self, endpoint):
         return self.traffic_policies[endpoint]
@@ -118,9 +121,6 @@ class ServeMaster:
             "Metric monitor not started yet.")
         return [self.metric_monitor]
 
-    def _list_replicas(self, backend_tag):
-        return self.backend_table.list_replicas(backend_tag)
-
     async def scale_replicas(self, backend_tag, num_replicas):
         """Scale the given backend to the number of replicas.
 
@@ -128,12 +128,12 @@ class ServeMaster:
         synchronously for backends to start up and they may make calls into
         the master actor while initializing (e.g., by calling get_handle()).
         """
-        assert (backend_tag in self.backend_table.list_backends()
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
 
-        current_num_replicas = len(self._list_replicas(backend_tag))
+        current_num_replicas = len(self.replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
         if delta_num_replicas > 0:
@@ -147,7 +147,7 @@ class ServeMaster:
         return self.get_router()
 
     async def _start_backend_replica(self, backend_tag):
-        assert (backend_tag in self.backend_table.list_backends()
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
 
         replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
@@ -156,25 +156,20 @@ class ServeMaster:
         # TODO(edoakes): we should guarantee that if calls to the master
         # succeed, the cluster state has changed and if they fail, it hasn't.
         # Once we have master actor fault tolerance, this breaks that guarantee
-
         # because this method could fail after writing the replica to the DB.
-        self.backend_table.add_replica(backend_tag, replica_tag)
+        self.replicas[backend_tag].append(replica_tag)
 
         # Fetch the info to start the replica from the backend table.
-        backend_actor = ray.remote(
-            self.backend_table.get_backend_creator(backend_tag))
-        backend_config_dict = self.backend_table.get_info(backend_tag)
-        backend_config = BackendConfig(**backend_config_dict)
-        init_args = [
-            backend_tag, replica_tag,
-            self.backend_table.get_init_args(backend_tag)
-        ]
+        worker_creator, init_args, config_dict = self.backends[backend_tag]
+        backend_config = BackendConfig(**config_dict)
+        init_args = [backend_tag, replica_tag, init_args]
+
         kwargs = backend_config.get_actor_creation_args(init_args)
         kwargs[
             "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
 
         # Start the worker.
-        worker_handle = backend_actor._remote(**kwargs)
+        worker_handle = ray.remote(worker_creator)._remote(**kwargs)
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Wait for the worker to start up.
@@ -187,13 +182,15 @@ class ServeMaster:
         self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
     async def _remove_backend_replica(self, backend_tag):
-        assert (backend_tag in self.backend_table.list_backends()
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
-        assert (len(self._list_replicas(backend_tag)) >
+        assert (len(self.replicas[backend_tag]) >
                 0), "Tried to remove replica from empty backend ({}).".format(
                     backend_tag)
 
-        replica_tag = self.backend_table.remove_replica(backend_tag)
+        assert backend_tag in self.replicas
+        replica_tag = self.replicas[backend_tag].pop()
+
         assert backend_tag in self.workers
         assert replica_tag in self.workers[backend_tag]
         replica_handle = self.workers[backend_tag].pop(replica_tag)
@@ -223,7 +220,7 @@ class ServeMaster:
         prob = 0
         for backend, weight in traffic_policy_dictionary.items():
             prob += weight
-            assert (backend in self.backend_table.list_backends()
+            assert (backend in self.backends
                     ), "backend {} is not registered".format(backend)
         assert np.isclose(
             prob, 1, atol=0.02
@@ -250,14 +247,10 @@ class ServeMaster:
         backend_config_dict = dict(backend_config)
         backend_worker = create_backend_worker(func_or_class)
 
-        # Save creator which starts replicas.
-        self.backend_table.register_backend(backend_tag, backend_worker)
-
-        # Save information about configurations needed to start the replicas.
-        self.backend_table.register_info(backend_tag, backend_config_dict)
-
-        # Save the initial arguments needed by replicas.
-        self.backend_table.save_init_args(backend_tag, actor_init_args)
+        # Save creator that starts replicas, the arguments to be passed in,
+        # and the configuration for the backends.
+        self.backends[backend_tag] = (backend_worker, actor_init_args,
+                                      backend_config_dict)
 
         # Set the backend config inside the router
         # (particularly for max-batch-size).
@@ -269,19 +262,21 @@ class ServeMaster:
                                   backend_config_dict["num_replicas"])
 
     async def set_backend_config(self, backend_tag, backend_config):
-        assert (backend_tag in self.backend_table.list_backends()
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         assert isinstance(backend_config,
                           BackendConfig), ("backend_config must be"
                                            " of instance BackendConfig")
         backend_config_dict = dict(backend_config)
-        old_backend_config_dict = self.backend_table.get_info(backend_tag)
+        backend_worker, init_args, old_backend_config_dict = self.backends[
+            backend_tag]
 
         if (not old_backend_config_dict["has_accept_batch_annotation"]
                 and backend_config.max_batch_size is not None):
             raise batch_annotation_not_found
 
-        self.backend_table.register_info(backend_tag, backend_config_dict)
+        self.backends[backend_tag] = (backend_worker, init_args,
+                                      backend_config_dict)
 
         # Inform the router about change in configuration
         # (particularly for setting max_batch_size).
@@ -303,7 +298,6 @@ class ServeMaster:
                                   backend_config_dict["num_replicas"])
 
     def get_backend_config(self, backend_tag):
-        assert (backend_tag in self.backend_table.list_backends()
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
-        backend_config_dict = self.backend_table.get_info(backend_tag)
-        return BackendConfig(**backend_config_dict)
+        return BackendConfig(**self.backends[backend_tag][2])

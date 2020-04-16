@@ -2,7 +2,6 @@ import json
 import sqlite3
 from abc import ABC
 
-from ray import cloudpickle as pickle
 import ray.experimental.internal_kv as ray_kv
 
 
@@ -164,49 +163,3 @@ class SQLiteKVStore(NamespacedKVStore):
         result = list(
             cursor.execute("SELECT key, value FROM {}".format(self.namespace)))
         return dict(result)
-
-
-# Tables
-class BackendTable:
-    def __init__(self, kv_connector):
-        self.backend_table = kv_connector("backend_creator")
-        self.replica_table = kv_connector("replica_table")
-        self.backend_info = kv_connector("backend_info")
-        self.backend_init_args = kv_connector("backend_init_args")
-
-    def register_backend(self, backend_tag: str, backend_creator):
-        backend_creator_serialized = pickle.dumps(backend_creator)
-        self.backend_table.put(backend_tag, backend_creator_serialized)
-
-    def save_init_args(self, backend_tag: str, arg_list):
-        serialized_arg_list = pickle.dumps(arg_list)
-        self.backend_init_args.put(backend_tag, serialized_arg_list)
-
-    def get_init_args(self, backend_tag):
-        return pickle.loads(self.backend_init_args.get(backend_tag))
-
-    def register_info(self, backend_tag: str, backend_info_d):
-        self.backend_info.put(backend_tag, json.dumps(backend_info_d))
-
-    def get_info(self, backend_tag):
-        return json.loads(self.backend_info.get(backend_tag, "{}"))
-
-    def get_backend_creator(self, backend_tag):
-        return pickle.loads(self.backend_table.get(backend_tag))
-
-    def list_backends(self):
-        return list(self.backend_table.as_dict().keys())
-
-    def list_replicas(self, backend_tag: str):
-        return json.loads(self.replica_table.get(backend_tag, "[]"))
-
-    def add_replica(self, backend_tag: str, new_replica_tag: str):
-        replica_tags = self.list_replicas(backend_tag)
-        replica_tags.append(new_replica_tag)
-        self.replica_table.put(backend_tag, json.dumps(replica_tags))
-
-    def remove_replica(self, backend_tag):
-        replica_tags = self.list_replicas(backend_tag)
-        removed_replica = replica_tags.pop()
-        self.replica_table.put(backend_tag, json.dumps(replica_tags))
-        return removed_replica
