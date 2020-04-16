@@ -130,7 +130,7 @@ popd
 
 
 if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+    CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
             --target="$ROOT_DIR/python/ray/thirdparty_files"
 fi
 
