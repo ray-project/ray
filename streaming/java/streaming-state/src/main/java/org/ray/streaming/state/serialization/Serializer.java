@@ -16,17 +16,23 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.keystate.state;
+package org.ray.streaming.state.serialization;
+
+import org.nustaq.serialization.FSTConfiguration;
 
 /**
- * one value per state.
+ * fst wrapper.
  */
-public interface OneState<O> extends State {
+public class Serializer {
 
-  /**
-   * get the value in state
-   *
-   * @return the value in state
-   */
-  O get();
+  private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal
+      .withInitial(FSTConfiguration::createDefaultConfiguration);
+
+  public static byte[] object2Bytes(Object value) {
+    return conf.get().asByteArray(value);
+  }
+
+  public static Object bytes2Object(byte[] buffer) {
+    return conf.get().asObject(buffer);
+  }
 }

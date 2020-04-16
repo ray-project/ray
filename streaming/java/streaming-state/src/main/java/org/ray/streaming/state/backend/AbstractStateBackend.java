@@ -24,7 +24,7 @@ import java.io.Serializable;
 import java.util.Map;
 import org.ray.streaming.state.config.ConfigKey;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
-import org.ray.streaming.state.serde.KeyMapStoreSerialization;
+import org.ray.streaming.state.serialization.KeyMapStoreSerializer;
 import org.ray.streaming.state.store.KeyMapStore;
 import org.ray.streaming.state.store.KeyValueStore;
 
@@ -49,8 +49,8 @@ public abstract class AbstractStateBackend implements Serializable {
 
   public abstract <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(String tableName);
 
-  public abstract <K, S, T> KeyMapStore<K, S, T> getKeyMapStoreWithSerializer(
-      String tableName, KeyMapStoreSerialization keyMapStoreSerialization);
+  public abstract <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(
+      String tableName, KeyMapStoreSerializer keyMapStoreSerializer);
 
   public BackendType getBackendType() {
     return backendType;

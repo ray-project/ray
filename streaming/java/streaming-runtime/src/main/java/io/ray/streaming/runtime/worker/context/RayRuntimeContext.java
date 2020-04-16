@@ -8,7 +8,7 @@ import io.ray.streaming.runtime.core.graph.ExecutionTask;
 import java.util.Map;
 import org.ray.streaming.state.backend.KeyStateBackend;
 import org.ray.streaming.state.backend.OperatorStateBackend;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import org.ray.streaming.state.keystate.desc.MapStateDescriptor;
@@ -126,7 +126,7 @@ public class RayRuntimeContext implements RuntimeContext {
   }
 
   protected void stateSanityCheck(AbstractStateDescriptor stateDescriptor,
-                                  TransactionKeyStateBackend backend) {
+                                  AbstractKeyStateBackend backend) {
     Preconditions.checkNotNull(stateDescriptor, "The state properties must not be null");
     Preconditions.checkNotNull(backend, "backend must not be null");
   }

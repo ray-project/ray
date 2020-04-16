@@ -16,31 +16,28 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde.impl;
+package org.ray.streaming.state.impl;
 
-import com.google.common.hash.Hashing;
-import org.apache.commons.lang3.StringUtils;
-import org.ray.streaming.state.StateException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.ray.streaming.state.serialization.impl.DefaultKeyValueStoreSerialization;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
-/**
- * AbstractSerDe. Generate row key.
- */
-public abstract class AbstractSerialization {
+public class DefaultKeyValueStoreSerializationTest {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AbstractSerialization.class);
+  DefaultKeyValueStoreSerialization<String, Integer> serDe = new DefaultKeyValueStoreSerialization<>();
+  byte[] ret;
 
-  public String generateRowKeyPrefix(String key) {
-    if (StringUtils.isNotEmpty(key)) {
-      String md5 = Hashing.md5().hashUnencodedChars(key).toString();
-      if ("".equals(md5)) {
-        throw new StateException("Invalid VALUE to md5:" + key);
-      }
-      return StringUtils.substring(md5, 0, 4) + ":" + key;
-    } else {
-      LOG.warn("key is empty");
-      return key;
-    }
+  @Test
+  public void testSerKey() throws Exception {
+    ret = serDe.serializeKey("key");
+    String key = new String(ret);
+    Assert.assertEquals(key.indexOf("key"), 5);
+  }
+
+  @Test
+  public void testSerValue() throws Exception {
+    ret = serDe.serializeValue(5);
+    Assert.assertEquals(ret.length, 2);
+    Assert.assertEquals((int) serDe.deserializeValue(ret), 5);
   }
 }

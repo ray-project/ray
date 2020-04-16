@@ -23,12 +23,12 @@ import org.ray.streaming.state.backend.KeyStateBackend;
 import org.ray.streaming.state.keystate.desc.ValueStateDescriptor;
 import org.ray.streaming.state.keystate.state.ValueState;
 import org.ray.streaming.state.keystate.state.impl.ValueStateImpl;
-import org.ray.streaming.state.strategy.TransactionStateStoreManagerProxy;
+import org.ray.streaming.state.strategy.StateStoreManagerProxy;
 
 /**
  * This class defines ValueState Wrapper, connecting state and backend.
  */
-public class ValueStateStoreManagerProxy<T> extends TransactionStateStoreManagerProxy<T> implements
+public class ValueStateStoreManagerProxy<T> extends StateStoreManagerProxy<T> implements
     KeyValueState<String, T> {
 
   private final ValueStateImpl<T> valueState;

@@ -21,12 +21,12 @@ package org.ray.streaming.state.keystate.state;
 /**
  * ValueState interface.
  */
-public interface ValueState<T> extends OneState<T> {
+public interface ValueState<T> extends UnaryState<T> {
 
   /**
-   * update the VALUE
+   * update the value
    *
-   * @param value the new VALUE
+   * @param value the new value
    */
   void update(T value);
 }

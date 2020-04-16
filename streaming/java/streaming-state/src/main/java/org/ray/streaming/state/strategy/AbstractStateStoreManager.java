@@ -23,16 +23,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.ray.streaming.state.StateException;
 import org.ray.streaming.state.StorageRecord;
-import org.ray.streaming.state.TransactionStateStoreManager;
-import org.ray.streaming.state.serde.SerializationHelper;
+import org.ray.streaming.state.StateStoreManager;
+import org.ray.streaming.state.serialization.Serializer;
 import org.ray.streaming.state.store.KeyValueStore;
 
 /**
  * This class defines the StoreManager Abstract class.
- * We use three layer to store the state, frontStore, middleStore and kvStore(remote).
+ * We use three layer to store the state, frontStore, middleStore and keyValueStore(remote).
  */
-public abstract class AbstractTransactionStateStoreManager<V> implements
-    TransactionStateStoreManager {
+public abstract class AbstractStateStoreManager<V> implements StateStoreManager {
 
   /**
    * read-write
@@ -50,16 +49,16 @@ public abstract class AbstractTransactionStateStoreManager<V> implements
   protected Map<Long, Map<String, byte[]>> middleStore = new ConcurrentHashMap<>();
   protected int keyGroupIndex = -1;
 
-  public AbstractTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
+  public AbstractStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
     kvStore = backStore;
   }
 
-  public byte[] toByte(StorageRecord storageRecord) {
-    return SerializationHelper.object2Byte(storageRecord);
+  public byte[] toBytes(StorageRecord storageRecord) {
+    return Serializer.object2Bytes(storageRecord);
   }
 
   public StorageRecord<V> toStorageRecord(byte[] data) {
-    return (StorageRecord<V>) SerializationHelper.byte2Object(data);
+    return (StorageRecord<V>) Serializer.bytes2Object(data);
   }
 
   public abstract V get(long checkpointId, String key);

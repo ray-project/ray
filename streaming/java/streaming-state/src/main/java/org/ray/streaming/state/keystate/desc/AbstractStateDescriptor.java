@@ -55,7 +55,7 @@ public abstract class AbstractStateDescriptor<S extends State, T> {
     this.tableName = tableName;
   }
 
-  public abstract DescType getDescType();
+  public abstract StateType getStateType();
 
   public String getIdentify() {
     Preconditions.checkArgument(this.tableName != null, "table name must not be null.");
@@ -69,7 +69,7 @@ public abstract class AbstractStateDescriptor<S extends State, T> {
         + ", type=" + type + '}';
   }
 
-  public enum DescType {
+  public enum StateType {
     /**
      * VALUE state
      */

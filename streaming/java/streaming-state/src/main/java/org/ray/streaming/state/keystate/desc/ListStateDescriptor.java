@@ -67,8 +67,8 @@ public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>
   }
 
   @Override
-  public DescType getDescType() {
-    return DescType.LIST;
+  public StateType getStateType() {
+    return StateType.LIST;
   }
 
   @Override

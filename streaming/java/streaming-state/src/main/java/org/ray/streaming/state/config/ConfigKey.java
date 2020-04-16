@@ -41,7 +41,7 @@ public final class ConfigKey {
   }
 
   public static String getStateStrategyEnum(Map<String, String> config) {
-    return ConfigHelper.getStringOrDefault(config, STATE_STRATEGY_MODE, "DUALVERSION");
+    return ConfigHelper.getStringOrDefault(config, STATE_STRATEGY_MODE, "DUAL_VERSION");
   }
 
   public static String getBackendType(Map<String, String> config) {

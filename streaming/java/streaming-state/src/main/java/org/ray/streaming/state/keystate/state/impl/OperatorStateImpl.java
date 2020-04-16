@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.ray.streaming.state.PartitionRecord;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import org.ray.streaming.state.keystate.state.ListState;
 
@@ -43,7 +43,7 @@ public class OperatorStateImpl<V> implements ListState<V> {
   private AtomicBoolean hasInit;
   private boolean isSplit;
 
-  public OperatorStateImpl(ListStateDescriptor<V> descriptor, TransactionKeyStateBackend backend) {
+  public OperatorStateImpl(ListStateDescriptor<V> descriptor, AbstractKeyStateBackend backend) {
     this.descriptor = descriptor;
     this.helper = new StateHelper<>(backend, descriptor);
     this.isSplit = false;

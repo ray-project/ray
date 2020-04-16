@@ -20,24 +20,24 @@ package org.ray.streaming.state.impl;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.streaming.state.serde.impl.DefaultKeyMapStoreSerialization;
+import org.ray.streaming.state.serialization.impl.DefaultKeyMapStoreSerializer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class DefaultKeyMapStoreSerDeTest {
+public class DefaultKeyMapStoreSerializationTest {
 
-  private DefaultKeyMapStoreSerialization<String, String, Map<String, String>> defaultKMapStoreSerDe;
+  private DefaultKeyMapStoreSerializer<String, String, Map<String, String>> defaultKMapStoreSerDe;
 
   @BeforeClass
   public void setUp() {
-    this.defaultKMapStoreSerDe = new DefaultKeyMapStoreSerialization<>();
+    this.defaultKMapStoreSerDe = new DefaultKeyMapStoreSerializer<>();
   }
 
   @Test
   public void testSerKey() {
     String key = "hello";
-    byte[] result = this.defaultKMapStoreSerDe.serKey(key);
+    byte[] result = this.defaultKMapStoreSerDe.serializeKey(key);
     String keyWithPrefix = this.defaultKMapStoreSerDe.generateRowKeyPrefix(key.toString());
     Assert.assertEquals(result, keyWithPrefix.getBytes());
   }
@@ -45,16 +45,16 @@ public class DefaultKeyMapStoreSerDeTest {
   @Test
   public void testSerUKey() {
     String subKey = "hell1";
-    byte[] result = this.defaultKMapStoreSerDe.serUKey(subKey);
-    Assert.assertEquals(subKey, this.defaultKMapStoreSerDe.deSerUKey(result));
+    byte[] result = this.defaultKMapStoreSerDe.serializeUKey(subKey);
+    Assert.assertEquals(subKey, this.defaultKMapStoreSerDe.deserializeUKey(result));
   }
 
   @Test
   public void testSerUValue() {
     Map<String, String> value = new HashMap<>();
     value.put("foo", "bar");
-    byte[] result = this.defaultKMapStoreSerDe.serUValue(value);
-    Assert.assertEquals(value, this.defaultKMapStoreSerDe.deSerUValue(result));
+    byte[] result = this.defaultKMapStoreSerDe.serializeUValue(value);
+    Assert.assertEquals(value, this.defaultKMapStoreSerDe.deserializeUValue(result));
   }
 
 }

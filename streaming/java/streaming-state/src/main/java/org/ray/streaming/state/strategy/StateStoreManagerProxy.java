@@ -19,9 +19,9 @@
 package org.ray.streaming.state.strategy;
 
 import java.util.Map;
-import org.ray.streaming.state.TransactionStateStoreManager;
+import org.ray.streaming.state.StateStoreManager;
 import org.ray.streaming.state.backend.StateStrategy;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import org.ray.streaming.state.store.KeyValueStore;
 
@@ -33,23 +33,23 @@ import org.ray.streaming.state.store.KeyValueStore;
  * class will be created. All method calls will be delegated to the strategy instance.
  */
 
-public abstract class TransactionStateStoreManagerProxy<V> implements TransactionStateStoreManager {
+public abstract class StateStoreManagerProxy<V> implements StateStoreManager {
 
-  protected final AbstractTransactionStateStoreManager<V> stateStrategy;
-  private final TransactionKeyStateBackend keyStateBackend;
+  protected final AbstractStateStoreManager<V> stateStrategy;
+  private final AbstractKeyStateBackend keyStateBackend;
 
-  public TransactionStateStoreManagerProxy(TransactionKeyStateBackend keyStateBackend,
-                                           AbstractStateDescriptor stateDescriptor) {
+  public StateStoreManagerProxy(AbstractKeyStateBackend keyStateBackend,
+                                AbstractStateDescriptor stateDescriptor) {
     this.keyStateBackend = keyStateBackend;
     KeyValueStore<String, Map<Long, byte[]>> backStorage = keyStateBackend
         .getBackStorage(stateDescriptor);
-    StateStrategy stateStrategy = keyStateBackend.getStateStrategyEnum();
+    StateStrategy stateStrategy = keyStateBackend.getStateStrategy();
     switch (stateStrategy) {
-      case DUALVERSION:
-        this.stateStrategy = new DualTransactionStateStoreManager<>(backStorage);
+      case DUAL_VERSION:
+        this.stateStrategy = new DualStateStoreManager<>(backStorage);
         break;
-      case SINGLEVERSION:
-        this.stateStrategy = new MVTransactionStateStoreManager<>(backStorage);
+      case SINGLE_VERSION:
+        this.stateStrategy = new MVStateStoreManager<>(backStorage);
         break;
       default:
         throw new UnsupportedOperationException("store vertexType not support");

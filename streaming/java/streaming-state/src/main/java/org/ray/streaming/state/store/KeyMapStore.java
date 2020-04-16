@@ -26,7 +26,13 @@ import java.util.Map;
  */
 public interface KeyMapStore<K, S, T> extends KeyValueStore<K, Map<S, T>> {
 
+  /**
+   * put sub key value into the store incrementally.
+   */
   void put(K key, S subKey, T value) throws IOException;
 
+  /**
+   * get subValue from store.
+   */
   T get(K key, S subKey) throws IOException;
 }

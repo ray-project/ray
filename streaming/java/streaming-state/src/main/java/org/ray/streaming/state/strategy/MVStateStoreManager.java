@@ -31,9 +31,9 @@ import org.ray.streaming.state.store.KeyValueStore;
 /**
  * This class define the multi-version store strategy, which leverages external storage's mvcc.
  */
-public class MVTransactionStateStoreManager<V> extends AbstractTransactionStateStoreManager<V> {
+public class MVStateStoreManager<V> extends AbstractStateStoreManager<V> {
 
-  public MVTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> kvStore) {
+  public MVStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> kvStore) {
     super(kvStore);
   }
 
@@ -41,7 +41,7 @@ public class MVTransactionStateStoreManager<V> extends AbstractTransactionStateS
   public void finish(long checkpointId) {
     Map<String, byte[]> currentStateRecords = new HashMap<>();
     for (Entry<String, StorageRecord<V>> entry : frontStore.entrySet()) {
-      currentStateRecords.put(entry.getKey(), toByte(entry.getValue()));
+      currentStateRecords.put(entry.getKey(), toBytes(entry.getValue()));
     }
 
     middleStore.put(checkpointId, currentStateRecords);

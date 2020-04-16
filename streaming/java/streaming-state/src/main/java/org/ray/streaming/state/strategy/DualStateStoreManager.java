@@ -34,11 +34,11 @@ import org.slf4j.LoggerFactory;
 /**
  * This class define the checkpoint store strategy, which saves two-version data once.
  */
-public class DualTransactionStateStoreManager<V> extends AbstractTransactionStateStoreManager<V> {
+public class DualStateStoreManager<V> extends AbstractStateStoreManager<V> {
 
-  private static final Logger LOG = LoggerFactory.getLogger(DualTransactionStateStoreManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DualStateStoreManager.class);
 
-  public DualTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
+  public DualStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
     super(backStore);
   }
 
@@ -49,7 +49,7 @@ public class DualTransactionStateStoreManager<V> extends AbstractTransactionStat
     for (Entry<String, StorageRecord<V>> entry : frontStore.entrySet()) {
       String key = entry.getKey();
       StorageRecord<V> value = entry.getValue();
-      cpStore.put(key, toByte(value));
+      cpStore.put(key, toBytes(value));
     }
     middleStore.put(checkpointId, cpStore);
     frontStore.clear();
@@ -68,14 +68,14 @@ public class DualTransactionStateStoreManager<V> extends AbstractTransactionStat
         byte[] value = entry.getValue();
 
         /**
-         * 2 is specific key in kv store and indicates that new VALUE
-         * should be stored with this key after overwriting old VALUE in key 1. i.e.
+         * 2 is specific key in kv store and indicates that new value
+         * should be stored with this key after overwriting old value in key 1. i.e.
          *
          *      -2     -1     1        2
          * k1   6      5      a        b
          * k2   9      7      d        e
          *
-         * k1's VALUE for checkpoint 5 is a, and b for checkpoint 6.
+         * k1's value for checkpoint 5 is a, and b for checkpoint 6.
          */
         Map<Long, byte[]> remoteData = super.kvStore.get(key);
         if (remoteData == null || remoteData.size() == 0) {

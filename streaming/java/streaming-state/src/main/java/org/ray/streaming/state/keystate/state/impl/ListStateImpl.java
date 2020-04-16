@@ -20,7 +20,7 @@ package org.ray.streaming.state.keystate.state.impl;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import org.ray.streaming.state.keystate.state.ListState;
 
@@ -31,7 +31,7 @@ public class ListStateImpl<V> implements ListState<V> {
 
   private final StateHelper<List<V>> helper;
 
-  public ListStateImpl(ListStateDescriptor<V> descriptor, TransactionKeyStateBackend backend) {
+  public ListStateImpl(ListStateDescriptor<V> descriptor, AbstractKeyStateBackend backend) {
     this.helper = new StateHelper<>(backend, descriptor);
   }
 

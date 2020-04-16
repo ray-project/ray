@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde.impl;
+package org.ray.streaming.state.serialization.impl;
 
-import org.ray.streaming.state.serde.KeyValueStoreSerialization;
-import org.ray.streaming.state.serde.SerializationHelper;
+import org.ray.streaming.state.serialization.KeyValueStoreSerialization;
+import org.ray.streaming.state.serialization.Serializer;
 
 /**
  * KV Store Serialization and Deserialization.
@@ -28,18 +28,18 @@ public class DefaultKeyValueStoreSerialization<K, V> extends AbstractSerializati
     implements KeyValueStoreSerialization<K, V> {
 
   @Override
-  public byte[] serKey(K key) {
+  public byte[] serializeKey(K key) {
     String keyWithPrefix = generateRowKeyPrefix(key.toString());
     return keyWithPrefix.getBytes();
   }
 
   @Override
-  public byte[] serValue(V value) {
-    return SerializationHelper.object2Byte(value);
+  public byte[] serializeValue(V value) {
+    return Serializer.object2Bytes(value);
   }
 
   @Override
-  public V deSerValue(byte[] valueArray) {
-    return (V) SerializationHelper.byte2Object(valueArray);
+  public V deserializeValue(byte[] valueArray) {
+    return (V) Serializer.bytes2Object(valueArray);
   }
 }

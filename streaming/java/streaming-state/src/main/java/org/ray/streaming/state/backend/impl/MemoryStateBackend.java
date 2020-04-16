@@ -20,7 +20,7 @@ package org.ray.streaming.state.backend.impl;
 
 import java.util.Map;
 import org.ray.streaming.state.backend.AbstractStateBackend;
-import org.ray.streaming.state.serde.KeyMapStoreSerialization;
+import org.ray.streaming.state.serialization.KeyMapStoreSerializer;
 import org.ray.streaming.state.store.KeyMapStore;
 import org.ray.streaming.state.store.KeyValueStore;
 import org.ray.streaming.state.store.impl.MemoryKeyMapStore;
@@ -46,8 +46,8 @@ public class MemoryStateBackend extends AbstractStateBackend {
   }
 
   @Override
-  public <K, S, T> KeyMapStore<K, S, T> getKeyMapStoreWithSerializer(
-      String tableName, KeyMapStoreSerialization keyMapStoreSerialization) {
+  public <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(
+      String tableName, KeyMapStoreSerializer keyMapStoreSerializer) {
     return new MemoryKeyMapStore<>();
   }
 

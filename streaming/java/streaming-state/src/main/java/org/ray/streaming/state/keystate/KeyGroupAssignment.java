@@ -32,7 +32,6 @@ public final class KeyGroupAssignment {
 
   /**
    * Computes the range of key-groups that are assigned for a given operator instance.
-   * parallelism.
    *
    * @param maxParallelism Maximal parallelism of the job.
    * @param parallelism Parallelism for the job. <= maxParallelism.

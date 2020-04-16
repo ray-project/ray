@@ -16,21 +16,17 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde;
+package org.ray.streaming.state.keystate.state;
 
 /**
- * Key Map Serialization and Deserialization.
+ * one value per state.
  */
-public interface KeyMapStoreSerialization<K, S, T> {
+public interface UnaryState<O> extends State {
 
-  byte[] serKey(K key);
-
-  byte[] serUKey(S uk);
-
-  S deSerUKey(byte[] ukArray);
-
-  byte[] serUValue(T uv);
-
-  T deSerUValue(byte[] uvArray);
-
+  /**
+   * get the value in state
+   *
+   * @return the value in state
+   */
+  O get();
 }

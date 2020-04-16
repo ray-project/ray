@@ -26,7 +26,7 @@ import org.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 /**
  * OperatorState manager.
  */
-public class OperatorStateBackend extends TransactionKeyStateBackend {
+public class OperatorStateBackend extends AbstractKeyStateBackend {
 
   public OperatorStateBackend(AbstractStateBackend backend) {
     super(backend);
@@ -43,7 +43,7 @@ public class OperatorStateBackend extends TransactionKeyStateBackend {
   }
 
   /**
-   * splitList
+   * get spitted List for different operator instance.
    */
   public <T> ListState<T> getSplitListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
@@ -60,7 +60,7 @@ public class OperatorStateBackend extends TransactionKeyStateBackend {
   }
 
   /**
-   * unionList
+   * get a union List for different operator instance.
    */
   public <T> ListState<T> getUnionListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();

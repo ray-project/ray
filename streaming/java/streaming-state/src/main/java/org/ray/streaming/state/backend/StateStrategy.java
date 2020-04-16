@@ -25,12 +25,12 @@ public enum StateStrategy {
   /**
    * save two version together in case of rollback.
    */
-  DUALVERSION,
+  DUAL_VERSION,
 
   /**
    * for storage supporting mvcc, we save only current version.
    */
-  SINGLEVERSION,
+  SINGLE_VERSION,
   /**
    * other storage mode.
    */

@@ -37,7 +37,7 @@ public class MapStateDescriptor<K, V> extends AbstractStateDescriptor<MapState<K
   }
 
   @Override
-  public DescType getDescType() {
-    return DescType.MAP;
+  public StateType getStateType() {
+    return StateType.MAP;
   }
 }

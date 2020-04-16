@@ -23,9 +23,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.ray.streaming.state.TransactionStateStoreManager;
+import org.ray.streaming.state.StateStoreManager;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
-import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor.DescType;
+import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor.StateType;
 import org.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
@@ -40,9 +40,9 @@ import org.slf4j.LoggerFactory;
  * State VALUE modification is not thread safe! By default, every processing thread has its own
  * space to handle state.
  */
-public abstract class TransactionKeyStateBackend implements TransactionStateStoreManager {
+public abstract class AbstractKeyStateBackend implements StateStoreManager {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TransactionKeyStateBackend.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AbstractKeyStateBackend.class);
 
   protected long currentCheckpointId;
   protected Object currentKey;
@@ -53,12 +53,12 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
   protected Set<String> descNamespace;
 
   /**
-   * tablename, IKVStore key, checkpointId, content
+   * tablename, KeyValueStore key, checkpointId, content
    */
   protected Map<String, KeyValueStore<String, Map<Long, byte[]>>> backStorageCache;
   private AbstractStateBackend backend;
 
-  public TransactionKeyStateBackend(AbstractStateBackend backend) {
+  public AbstractKeyStateBackend(AbstractStateBackend backend) {
     this.backStorageCache = new HashMap<>();
     this.backend = backend;
     this.descNamespace = new HashSet<>();
@@ -66,15 +66,15 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
 
   public <K, T> void put(AbstractStateDescriptor descriptor, K key, T value) {
     String desc = descriptor.getIdentify();
-    if (descriptor.getDescType() == DescType.VALUE) {
+    if (descriptor.getStateType() == StateType.VALUE) {
       if (this.valueManagerProxyHashMap.containsKey(desc)) {
         valueManagerProxyHashMap.get(desc).put((String) key, value);
       }
-    } else if (descriptor.getDescType() == DescType.LIST) {
+    } else if (descriptor.getStateType() == StateType.LIST) {
       if (this.listManagerProxyHashMap.containsKey(desc)) {
         listManagerProxyHashMap.get(desc).put((String) key, value);
       }
-    } else if (descriptor.getDescType() == DescType.MAP) {
+    } else if (descriptor.getStateType() == StateType.MAP) {
       if (this.mapManagerProxyHashMap.containsKey(desc)) {
         mapManagerProxyHashMap.get(desc).put((String) key, value);
       }
@@ -83,15 +83,15 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
 
   public <K, T> T get(AbstractStateDescriptor descriptor, K key) {
     String desc = descriptor.getIdentify();
-    if (descriptor.getDescType() == DescType.VALUE) {
+    if (descriptor.getStateType() == StateType.VALUE) {
       if (this.valueManagerProxyHashMap.containsKey(desc)) {
         return (T) valueManagerProxyHashMap.get(desc).get((String) key);
       }
-    } else if (descriptor.getDescType() == DescType.LIST) {
+    } else if (descriptor.getStateType() == StateType.LIST) {
       if (this.listManagerProxyHashMap.containsKey(desc)) {
         return (T) listManagerProxyHashMap.get(desc).get((String) key);
       }
-    } else if (descriptor.getDescType() == DescType.MAP) {
+    } else if (descriptor.getStateType() == StateType.MAP) {
       if (this.mapManagerProxyHashMap.containsKey(desc)) {
         return (T) mapManagerProxyHashMap.get(desc).get((String) key);
       }
@@ -170,7 +170,7 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
     return getBackStorage(tableName);
   }
 
-  public StateStrategy getStateStrategyEnum() {
+  public StateStrategy getStateStrategy() {
     return this.backend.getStateStrategy();
   }
 

@@ -16,28 +16,16 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.impl;
+package org.ray.streaming.state.serialization;
 
-import org.ray.streaming.state.serde.impl.DefaultKeyValueStoreSerialization;
-import org.testng.Assert;
-import org.testng.annotations.Test;
+/**
+ * Key Value Serialization and Deserialization.
+ */
+public interface KeyValueStoreSerialization<K, V> {
 
-public class DefaultKeyValueStoreSerDeTest {
+  byte[] serializeKey(K key);
 
-  DefaultKeyValueStoreSerialization<String, Integer> serDe = new DefaultKeyValueStoreSerialization<>();
-  byte[] ret;
+  byte[] serializeValue(V value);
 
-  @Test
-  public void testSerKey() throws Exception {
-    ret = serDe.serKey("key");
-    String key = new String(ret);
-    Assert.assertEquals(key.indexOf("key"), 5);
-  }
-
-  @Test
-  public void testSerValue() throws Exception {
-    ret = serDe.serValue(5);
-    Assert.assertEquals(ret.length, 2);
-    Assert.assertEquals((int) serDe.deSerValue(ret), 5);
-  }
+  V deserializeValue(byte[] valueArray);
 }

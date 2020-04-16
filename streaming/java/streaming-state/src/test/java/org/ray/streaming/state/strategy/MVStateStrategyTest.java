@@ -46,7 +46,7 @@ public class MVStateStrategyTest {
 
   @BeforeClass
   public void setUp() {
-    config.put(ConfigKey.STATE_STRATEGY_MODE, StateStrategy.SINGLEVERSION.name());
+    config.put(ConfigKey.STATE_STRATEGY_MODE, StateStrategy.SINGLE_VERSION.name());
     currentTime = Long.toString(System.currentTimeMillis());
   }
 

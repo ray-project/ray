@@ -19,7 +19,7 @@
 package org.ray.streaming.state.keystate.state.impl;
 
 import com.google.common.base.Preconditions;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 
 /**
@@ -27,10 +27,10 @@ import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
  */
 public class StateHelper<T> {
 
-  private final TransactionKeyStateBackend backend;
+  private final AbstractKeyStateBackend backend;
   private final AbstractStateDescriptor descriptor;
 
-  public StateHelper(TransactionKeyStateBackend backend, AbstractStateDescriptor descriptor) {
+  public StateHelper(AbstractKeyStateBackend backend, AbstractStateDescriptor descriptor) {
     this.backend = backend;
     this.descriptor = descriptor;
   }
@@ -74,7 +74,7 @@ public class StateHelper<T> {
     return descriptor;
   }
 
-  public TransactionKeyStateBackend getBackend() {
+  public AbstractKeyStateBackend getBackend() {
     return backend;
   }
 }

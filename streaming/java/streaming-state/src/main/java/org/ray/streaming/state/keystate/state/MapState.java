@@ -25,21 +25,21 @@ import java.util.Map.Entry;
 /**
  * MapState interface.
  */
-public interface MapState<K, V> extends OneState<Map<K, V>> {
+public interface MapState<K, V> extends UnaryState<Map<K, V>> {
 
   /**
-   * Returns the current VALUE associated with the given key.
+   * Returns the current value associated with the given key.
    *
    * @param key The key of the mapping
-   * @return The VALUE of the mapping with the given key
+   * @return The value of the mapping with the given key
    */
   V get(K key);
 
   /**
-   * Associates a new VALUE with the given key.
+   * Associates a new value with the given key.
    *
    * @param key The key of the mapping
-   * @param value The new VALUE of the mapping
+   * @param value The new value of the mapping
    */
   void put(K key, V value);
 
@@ -51,7 +51,7 @@ public interface MapState<K, V> extends OneState<Map<K, V>> {
   void update(Map<K, V> map);
 
   /**
-   * Copies all of the mappings from the given MAP into the state.
+   * Copies all of the mappings from the given map into the state.
    *
    * @param map The mappings to be stored in this state
    */

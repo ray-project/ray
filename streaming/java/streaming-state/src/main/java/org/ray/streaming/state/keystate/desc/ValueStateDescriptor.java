@@ -41,7 +41,7 @@ public class ValueStateDescriptor<T> extends AbstractStateDescriptor<ValueState<
   }
 
   @Override
-  public DescType getDescType() {
-    return DescType.VALUE;
+  public StateType getStateType() {
+    return StateType.VALUE;
   }
 }

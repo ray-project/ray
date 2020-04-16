@@ -26,15 +26,33 @@ import java.io.Serializable;
  */
 public interface KeyValueStore<K, V> extends Serializable {
 
+  /**
+   * put key value into store.
+   */
   void put(K key, V value) throws IOException;
 
+  /**
+   * get value from store.
+   */
   V get(K key) throws IOException;
 
+  /**
+   * remove key in the store.
+   */
   void remove(K key) throws IOException;
 
+  /**
+   * flush to disk.
+   */
   void flush() throws IOException;
 
+  /**
+   * clear all cache.
+   */
   void clearCache();
 
+  /**
+   * close the store.
+   */
   void close() throws IOException;
 }

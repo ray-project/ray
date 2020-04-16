@@ -16,40 +16,40 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde.impl;
+package org.ray.streaming.state.serialization.impl;
 
-import org.ray.streaming.state.serde.KeyMapStoreSerialization;
-import org.ray.streaming.state.serde.SerializationHelper;
+import org.ray.streaming.state.serialization.KeyMapStoreSerializer;
+import org.ray.streaming.state.serialization.Serializer;
 
 /**
  * Default Key Map Serialization and Deserialization.
  */
-public class DefaultKeyMapStoreSerialization<K, S, T> extends AbstractSerialization implements
-    KeyMapStoreSerialization<K, S, T> {
+public class DefaultKeyMapStoreSerializer<K, S, T> extends AbstractSerialization implements
+    KeyMapStoreSerializer<K, S, T> {
 
   @Override
-  public byte[] serKey(K key) {
+  public byte[] serializeKey(K key) {
     String keyWithPrefix = generateRowKeyPrefix(key.toString());
     return keyWithPrefix.getBytes();
   }
 
   @Override
-  public byte[] serUKey(S uk) {
-    return SerializationHelper.object2Byte(uk);
+  public byte[] serializeUKey(S uk) {
+    return Serializer.object2Bytes(uk);
   }
 
   @Override
-  public S deSerUKey(byte[] ukArray) {
-    return (S) SerializationHelper.byte2Object(ukArray);
+  public S deserializeUKey(byte[] ukArray) {
+    return (S) Serializer.bytes2Object(ukArray);
   }
 
   @Override
-  public byte[] serUValue(T uv) {
-    return SerializationHelper.object2Byte(uv);
+  public byte[] serializeUValue(T uv) {
+    return Serializer.object2Bytes(uv);
   }
 
   @Override
-  public T deSerUValue(byte[] uvArray) {
-    return (T) SerializationHelper.byte2Object(uvArray);
+  public T deserializeUValue(byte[] uvArray) {
+    return (T) Serializer.bytes2Object(uvArray);
   }
 }

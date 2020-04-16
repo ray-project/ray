@@ -49,7 +49,7 @@ public class DualStateStrategyTest {
 
   @BeforeClass
   public void setUp() {
-    config.put(ConfigKey.STATE_STRATEGY_MODE, StateStrategy.DUALVERSION.name());
+    config.put(ConfigKey.STATE_STRATEGY_MODE, StateStrategy.DUAL_VERSION.name());
     currentTime = Long.toString(System.currentTimeMillis());
   }
 

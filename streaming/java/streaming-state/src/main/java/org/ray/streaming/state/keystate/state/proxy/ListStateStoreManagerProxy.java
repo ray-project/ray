@@ -20,22 +20,21 @@ package org.ray.streaming.state.keystate.state.proxy;
 
 import java.util.List;
 import org.ray.streaming.state.KeyValueState;
-import org.ray.streaming.state.backend.TransactionKeyStateBackend;
+import org.ray.streaming.state.backend.AbstractKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import org.ray.streaming.state.keystate.state.ListState;
 import org.ray.streaming.state.keystate.state.impl.ListStateImpl;
 import org.ray.streaming.state.keystate.state.impl.OperatorStateImpl;
-import org.ray.streaming.state.strategy.TransactionStateStoreManagerProxy;
+import org.ray.streaming.state.strategy.StateStoreManagerProxy;
 
 /**
  * This class defines ListState Wrapper, connecting state and backend.
  */
-public class ListStateStoreManagerProxy<T> extends
-    TransactionStateStoreManagerProxy<List<T>> implements KeyValueState<String, List<T>> {
+public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>> implements KeyValueState<String, List<T>> {
 
   private final ListState<T> listState;
 
-  public ListStateStoreManagerProxy(TransactionKeyStateBackend keyStateBackend,
+  public ListStateStoreManagerProxy(AbstractKeyStateBackend keyStateBackend,
                                     ListStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     if (stateDescriptor.isOperatorList()) {

@@ -24,7 +24,7 @@ package org.ray.streaming.state;
  * Streaming State should implement transaction in case of failure,
  * which in our case is four default method, finish, commit, ackCommit, rollback.
  */
-public interface TransactionStateStoreManager {
+public interface StateStoreManager {
 
   /**
    * The finish method is used when the batched data is all saved in state.

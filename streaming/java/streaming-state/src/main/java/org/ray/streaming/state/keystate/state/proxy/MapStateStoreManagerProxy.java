@@ -24,13 +24,12 @@ import org.ray.streaming.state.backend.KeyStateBackend;
 import org.ray.streaming.state.keystate.desc.MapStateDescriptor;
 import org.ray.streaming.state.keystate.state.MapState;
 import org.ray.streaming.state.keystate.state.impl.MapStateImpl;
-import org.ray.streaming.state.strategy.TransactionStateStoreManagerProxy;
+import org.ray.streaming.state.strategy.StateStoreManagerProxy;
 
 /**
  * This class defines MapState Wrapper, connecting state and backend.
  */
-public class MapStateStoreManagerProxy<K, V> extends
-    TransactionStateStoreManagerProxy<Map<K, V>> implements KeyValueState<String, Map<K, V>> {
+public class MapStateStoreManagerProxy<K, V> extends StateStoreManagerProxy<Map<K, V>> implements KeyValueState<String, Map<K, V>> {
 
   private final MapStateImpl<K, V> mapState;
 

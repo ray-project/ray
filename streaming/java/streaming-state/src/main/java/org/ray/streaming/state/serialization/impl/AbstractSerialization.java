@@ -16,23 +16,31 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde;
+package org.ray.streaming.state.serialization.impl;
 
-import org.nustaq.serialization.FSTConfiguration;
+import com.google.common.hash.Hashing;
+import org.apache.commons.lang3.StringUtils;
+import org.ray.streaming.state.StateException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * fst wrapper.
+ * AbstractSerialization. Generate row key.
  */
-public class SerializationHelper {
+public abstract class AbstractSerialization {
 
-  private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal
-      .withInitial(FSTConfiguration::createDefaultConfiguration);
+  private static final Logger LOG = LoggerFactory.getLogger(AbstractSerialization.class);
 
-  public static byte[] object2Byte(Object value) {
-    return conf.get().asByteArray(value);
-  }
-
-  public static Object byte2Object(byte[] buffer) {
-    return conf.get().asObject(buffer);
+  public String generateRowKeyPrefix(String key) {
+    if (StringUtils.isNotEmpty(key)) {
+      String md5 = Hashing.md5().hashUnencodedChars(key).toString();
+      if ("".equals(md5)) {
+        throw new StateException("Invalid VALUE to md5:" + key);
+      }
+      return StringUtils.substring(md5, 0, 4) + ":" + key;
+    } else {
+      LOG.warn("key is empty");
+      return key;
+    }
   }
 }

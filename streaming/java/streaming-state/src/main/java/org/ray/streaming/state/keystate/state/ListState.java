@@ -23,19 +23,19 @@ import java.util.List;
 /**
  * ListState interface.
  */
-public interface ListState<T> extends OneState<List<T>> {
+public interface ListState<T> extends UnaryState<List<T>> {
 
   /**
-   * add the VALUE to LIST
+   * add the value to list
    *
-   * @param value the new VALUE
+   * @param value the new value
    */
   void add(T value);
 
   /**
-   * update LIST state
+   * update list state
    *
-   * @param list the new VALUE
+   * @param list the new value
    */
   void update(List<T> list);
 }
