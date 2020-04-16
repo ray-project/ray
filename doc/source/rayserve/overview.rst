@@ -21,7 +21,7 @@ RayServe allows you to:
 - Leverage built-in **batching** and **SLO awareness** to help you meet your latency objectives.
 
 Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
-and allows you to leverage all of the core Ray framework so you can deploy and scale on any cloud.
+and allows you to leverage all of the other Ray frameworks so you can deploy and scale on any cloud.
 
 .. note:: 
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
