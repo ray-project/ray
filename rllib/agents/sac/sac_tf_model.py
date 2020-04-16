@@ -117,10 +117,14 @@ class SACTFModel(TFModelV2):
         self.log_alpha = tf.Variable(
             np.log(initial_alpha), dtype=tf.float32, name="log_alpha")
         self.alpha = tf.exp(self.log_alpha)
+
         # Auto-calculate the target entropy.
         if target_entropy is None or target_entropy == "auto":
+            # See hyperparams in [2] (README.md).
             if self.discrete:
-                target_entropy = -action_space.n
+                target_entropy = 0.98 * np.array(
+                    -np.log(1.0 / action_space.n), dtype=np.float32)
+            # See [1] (README.md).
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
