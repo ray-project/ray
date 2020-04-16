@@ -99,7 +99,7 @@ build() {
   fi
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
-    eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
+    eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=stable bash)"
   fi
 
   if [ "${LINUX_WHEELS-}" = 1 ]; then
