@@ -64,7 +64,7 @@ class ServeMaster:
         self.kv_store_connector = kv_store_connector
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
-        self.policy_table = TrafficPolicyTable(kv_store_connector)
+        self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         self.workers = defaultdict(dict)
 
@@ -73,7 +73,7 @@ class ServeMaster:
         self.metric_monitor = None
 
     def get_traffic_policy(self, endpoint_name):
-        return self.policy_table.list_traffic_policy()[endpoint_name]
+        return self.traffic_policies[endpoint_name]
 
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
@@ -234,10 +234,9 @@ class ServeMaster:
             prob, 1, atol=0.02
         ), "weights must sum to 1, currently it sums to {}".format(prob)
 
-        self.policy_table.register_traffic_policy(endpoint_name,
-                                                  traffic_policy_dictionary)
-        [router] = self.get_router()
+        self.traffic_policies[endpoint_name] = traffic_policy_dictionary
 
+        [router] = self.get_router()
         await router.set_traffic.remote(endpoint_name,
                                         traffic_policy_dictionary)
 

@@ -279,17 +279,3 @@ class BackendTable:
         removed_replica = replica_tags.pop()
         self.replica_table.put(backend_tag, json.dumps(replica_tags))
         return removed_replica
-
-
-class TrafficPolicyTable:
-    def __init__(self, kv_connector):
-        self.traffic_policy_table = kv_connector("traffic_policy")
-
-    def register_traffic_policy(self, service_name, policy_dict):
-        self.traffic_policy_table.put(service_name, json.dumps(policy_dict))
-
-    def list_traffic_policy(self):
-        return {
-            service: json.loads(policy)
-            for service, policy in self.traffic_policy_table.as_dict().items()
-        }
