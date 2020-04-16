@@ -78,7 +78,7 @@ Endpoints
 
 Endpoints allow you to name the "entity" that you'll be exposing, 
 the HTTP path that your application will expose. 
-Endpoint are "logical" and decoupled from the business logic or 
+Endpoints are "logical" and decoupled from the business logic or 
 model that you'll be serving. To create one, we'll simply specify the name, route, and methods.
 
 .. code-block:: python
