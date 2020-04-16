@@ -60,9 +60,13 @@ class ServeMaster:
 
     def __init__(self, kv_store_connector):
         self.kv_store_connector = kv_store_connector
+        # path -> (endpoint, methods).
         self.routes = {}
+        # backend -> (worker_creator, init_args, backend_config).
         self.backends = {}
+        # backend -> replica_tags.
         self.replicas = defaultdict(list)
+        # endpoint -> traffic_dict
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         self.workers = defaultdict(dict)
