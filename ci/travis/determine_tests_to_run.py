@@ -56,7 +56,7 @@ if __name__ == "__main__":
             with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
                 event = json.loads(f.read())
             base = event["pull_request"]["base"]["sha"]
-            commit_range = "{}...{}".format(base, event["after"])
+            commit_range = "{}...{}".format(base, event.get("after", ""))
         files = list_changed_files(commit_range)
 
         print(pformat(files), file=sys.stderr)
