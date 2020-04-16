@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 
@@ -35,6 +36,10 @@ class RayParams:
         node_ip_address (str): The IP address of the node that we are on.
         raylet_ip_address (str): The IP address of the raylet that this node
             connects to.
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set or set to 0, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
@@ -98,6 +103,8 @@ class RayParams:
                  node_manager_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
+                 min_worker_port=None,
+                 max_worker_port=None,
                  object_id_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -135,6 +142,8 @@ class RayParams:
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
         self.raylet_ip_address = raylet_ip_address
+        self.min_worker_port = min_worker_port
+        self.max_worker_port = max_worker_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -189,6 +198,31 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
+        # Used primarily for testing.
+        if os.environ.get("RAY_USE_RANDOM_PORTS", False):
+            if self.min_worker_port is None and self.min_worker_port is None:
+                self.min_worker_port = 0
+                self.max_worker_port = 0
+
+        if self.min_worker_port is not None:
+            if self.min_worker_port != 0 and (self.min_worker_port < 1024
+                                              or self.min_worker_port > 65535):
+                raise ValueError("min_worker_port must be 0 or an integer "
+                                 "between 1024 and 65535.")
+
+        if self.max_worker_port is not None:
+            if self.min_worker_port is None:
+                raise ValueError("If max_worker_port is set, min_worker_port "
+                                 "must also be set.")
+            elif self.max_worker_port != 0:
+                if self.max_worker_port < 1024 or self.max_worker_port > 65535:
+                    raise ValueError(
+                        "max_worker_port must be 0 or an integer between "
+                        "1024 and 65535.")
+                elif self.max_worker_port <= self.min_worker_port:
+                    raise ValueError("max_worker_port must be higher than "
+                                     "min_worker_port.")
+
         if self.resources is not None:
             assert "CPU" not in self.resources, (
                 "'CPU' should not be included in the resource dictionary. Use "
