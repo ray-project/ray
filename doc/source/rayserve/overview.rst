@@ -52,7 +52,7 @@ For more on the motivation behind RayServe, check out these `meetup slides <http
 When should I use Ray Serve?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RayServe should be used when you need to deploy at least one models, preferrably many models. 
+RayServe should be used when you need to deploy at least one model, preferrably many models. 
 RayServe (and Ray) allow for trivial model scaling and routing. 
 Unlike traditional web servers, a running RayServe cluster can be modified and updated throughout it's lifetime. 
 New routes, backends and policies can be added and removed. 
