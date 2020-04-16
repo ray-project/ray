@@ -8,11 +8,10 @@ from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import ASYNC_CONCURRENCY
 from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.kv_store_service import (BackendTable, RoutingTable,
-                                        TrafficPolicyTable)
+from ray.serve.kv_store_service import BackendTable
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
-from ray.serve.utils import expand, get_random_letters, logger
+from ray.serve.utils import get_random_letters, logger
 
 import numpy as np
 
@@ -62,7 +61,7 @@ class ServeMaster:
 
     def __init__(self, kv_store_connector):
         self.kv_store_connector = kv_store_connector
-        self.route_table = RoutingTable(kv_store_connector)
+        self.routes = {}
         self.backend_table = BackendTable(kv_store_connector)
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
@@ -72,8 +71,8 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_monitor = None
 
-    def get_traffic_policy(self, endpoint_name):
-        return self.traffic_policies[endpoint_name]
+    def get_traffic_policy(self, endpoint):
+        return self.traffic_policies[endpoint]
 
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
@@ -101,9 +100,7 @@ class ServeMaster:
         ).remote(host, port)
 
     async def get_http_proxy_config(self):
-        route_table = self.route_table.list_service(
-            include_methods=True, include_headless=False)
-        return route_table, self.get_router()
+        return self.routes, self.get_router()
 
     def get_http_proxy(self):
         assert self.http_proxy is not None, "HTTP proxy not started yet."
@@ -216,12 +213,10 @@ class ServeMaster:
         return self.workers
 
     def get_all_endpoints(self):
-        return expand(
-            self.route_table.list_service(include_headless=True).values())
+        return [endpoint for endpoint, methods in self.routes.values()]
 
     async def split_traffic(self, endpoint_name, traffic_policy_dictionary):
-        assert endpoint_name in expand(
-            self.route_table.list_service(include_headless=True).values())
+        assert endpoint_name in self.get_all_endpoints()
 
         assert isinstance(traffic_policy_dictionary,
                           dict), "Traffic policy must be dictionary"
@@ -240,14 +235,15 @@ class ServeMaster:
         await router.set_traffic.remote(endpoint_name,
                                         traffic_policy_dictionary)
 
-    async def create_endpoint(self, route, endpoint_name, methods):
-        self.route_table.register_service(
-            route, endpoint_name, methods=methods)
-        [http_proxy] = self.get_http_proxy()
+    async def create_endpoint(self, route, endpoint, methods):
+        logger.debug(
+            "Registering route {} to endpoint {} with methods {}.".format(
+                route, endpoint, methods))
+        # TODO(edoakes): reject existing routes.
+        self.routes[route] = (endpoint, methods)
 
-        await http_proxy.set_route_table.remote(
-            self.route_table.list_service(
-                include_methods=True, include_headless=False))
+        [http_proxy] = self.get_http_proxy()
+        await http_proxy.set_route_table.remote(self.routes)
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
