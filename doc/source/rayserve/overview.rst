@@ -41,8 +41,7 @@ or
 
 2. You can use a cloud hosted solution.
 
-The first approach is easy to get started with, but it's hard to scale each component. Unlike traditional web servers, a running RayServe cluster can be modified and updated throughout it's lifetime. 
-New routes, backends, and policies can be added and removed. The second approach
+The first approach is easy to get started with, but it's hard to scale each component. The second approach
 requires vendor lock-in (SageMaker), framework specific tooling (TFServing), and a general
 lack of flexibility.
 
