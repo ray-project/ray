@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.resourcemanager;
+package org.ray.streaming.runtime.master.resourcemanager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -14,14 +14,12 @@ import org.ray.streaming.runtime.config.global.CommonConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.resource.ResourceType;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceManager;
-import org.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;
 import org.ray.streaming.runtime.core.resource.Slot;
-import org.ray.streaming.runtime.graph.ExecutionGraphTest;
+import org.ray.streaming.runtime.core.graph.ExecutionGraphTest;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.master.graphmanager.GraphManager;
 import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;

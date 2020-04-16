@@ -40,8 +40,6 @@ public class JobMaster {
     // init runtime context
     runtimeContext = new JobRuntimeContext(streamingConfig);
 
-    String moduleName = conf.commonConfig.jobName();
-
     LOG.info("Job master init success.");
   }
 

@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.graph;
+package org.ray.streaming.runtime.core.graph;
 
 import com.google.common.collect.Lists;
 
