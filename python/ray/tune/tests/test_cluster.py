@@ -101,7 +101,7 @@ def test_counting_resources(start_connected_cluster):
 
     runner.step()  # run 1
     running_trials = _get_running_trials(runner)
-    assert sum(running_trials) == 1
+    assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
     assert ray.available_resources().get("CPU", 0) == 0
     nodes += [cluster.add_node(num_cpus=1)]
@@ -163,7 +163,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
 
     runner.step()  # Start trial
     running_trials = _get_running_trials(runner)
-    assert sum(running_trials) == 1
+    assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
 
     assert trial.status == Trial.RUNNING
