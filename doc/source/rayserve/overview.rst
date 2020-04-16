@@ -55,7 +55,7 @@ RayServe **won't work well** when you need to run batch prediction over a datase
 Key Concepts
 ------------
 
-RayServe focuses on **simplicity** and only has two core concepts. Endpoints and backends.
+RayServe focuses on **simplicity** and only has two core concepts: endpoints and backends.
 
 To follow along, you'll need to make the necessary imports.
 
