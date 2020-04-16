@@ -125,8 +125,7 @@ For instance, you can route 50% of traffic to Model A and 50% of traffic to Mode
 
   serve.link("my_endpoint_backend", "my_endpoint")
 
-Once we've done that,we can now query our endpoint with something like requests 
-(or an external service).
+Once we've done that, we can now query our endpoint via HTTP (we use `requests` to make HTTP calls here).
 
 .. code-block:: python
   
