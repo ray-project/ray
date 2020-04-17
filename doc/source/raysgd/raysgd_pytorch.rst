@@ -717,6 +717,9 @@ to contribute an example, feel free to create a `pull request here <https://gith
 - `Semantic Segmentation example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/segmentation/train_segmentation.py>`__:
    Fine-tuning a ResNet50 model on VOC with Batch Norm.
 
+- `ImageNet Models example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/image_models/train.py>`__:
+   Training state-of-the-art ImageNet models.
+
 - `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__:
    Training a ResNet18 model on CIFAR10.
 
