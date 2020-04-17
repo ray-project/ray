@@ -92,7 +92,7 @@ def data_creator(config):
         color_jitter=args.color_jitter,
         auto_augment=args.aa,
         interpolation=args.train_interpolation,
-        num_aug_splits=args.num_aug_splits, # always 0 right now
+        num_aug_splits=args.num_aug_splits,  # always 0 right now
         **common_params)
     eval_loader = create_loader(
         dataset_eval,

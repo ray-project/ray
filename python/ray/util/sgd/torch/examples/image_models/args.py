@@ -470,8 +470,8 @@ def parse_args():
     #     "Split must be 0 or 2+")
 
     # args.num_aug_splits = args.aug_splits
-    args.num_aug_splits = 0 # todo:
+    args.num_aug_splits = 0  # todo:
 
-    args.split_bn = False # todo:
+    args.split_bn = False  # todo:
 
     return args, args_text
