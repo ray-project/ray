@@ -25,7 +25,7 @@ def async_retryable(cls):
 
     Usage:
         @ray.remote(max_reconstructions=10000)
-        @retryable
+        @async_retryable
         class A:
             pass
     """
