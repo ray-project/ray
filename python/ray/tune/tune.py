@@ -334,6 +334,7 @@ def run(run_or_experiment,
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
+    runner.cleanup_trials()
 
     incomplete_trials = []
     for trial in runner.get_trials():

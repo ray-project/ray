@@ -16,6 +16,7 @@
 #define RAY_GCS_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/protobuf/gcs.pb.h"
@@ -45,6 +46,14 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
+  /// Create an actor to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
+                                  const StatusCallback &callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///
