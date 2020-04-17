@@ -1,6 +1,7 @@
 # coding=utf-8
 # This is a modified example originally from The Google AI Language Team
 # Authors and The HuggingFace Inc. team.
+# Modified by Richard Liaw.
 # Copyright 2018 The Google AI Language Team Authors,
 # The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
