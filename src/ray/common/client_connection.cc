@@ -25,7 +25,6 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
-#include "ray/util/url.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -299,7 +298,7 @@ bool ClientConnection::CheckRayCookie() {
 }
 
 std::string ClientConnection::RemoteEndpointInfo() {
-  return endpoint_to_url(ServerConnection::socket_.remote_endpoint(), false);
+  return EndpointToUrl(ServerConnection::socket_.remote_endpoint(), false);
 }
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {

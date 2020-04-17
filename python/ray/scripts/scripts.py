@@ -159,6 +159,20 @@ def dashboard(cluster_config_file, cluster_name, port):
     type=int,
     help="the port to use for starting the node manager")
 @click.option(
+    "--min-worker-port",
+    required=False,
+    type=int,
+    default=10000,
+    help="the lowest port number that workers will bind on. If not set, "
+    "random ports will be chosen.")
+@click.option(
+    "--max-worker-port",
+    required=False,
+    type=int,
+    default=10999,
+    help="the highest port number that workers will bind on. If set, "
+    "'--min-worker-port' must also be set.")
+@click.option(
     "--memory",
     required=False,
     type=int,
@@ -277,10 +291,11 @@ def dashboard(cluster_config_file, cluster_name, port):
     help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, webui_host, block, plasma_directory, huge_pages,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          redis_shard_ports, object_manager_port, node_manager_port,
+          min_worker_port, max_worker_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
+          webui_host, block, plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     if redis_address is not None:
@@ -308,6 +323,8 @@ def start(node_ip_address, redis_address, address, redis_port,
     redirect_output = None if not no_redirect_output else True
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
+        min_worker_port=min_worker_port,
+        max_worker_port=max_worker_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
@@ -485,7 +502,7 @@ def stop(force, verbose):
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker.
-        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
@@ -754,7 +771,10 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @click.argument("script", required=True, type=str)
 @click.option(
-    "--args", required=False, type=str, help="(deprecated) Script args.")
+    "--args",
+    required=False,
+    type=str,
+    help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
            cluster_name, port_forward, script, args, script_args):
@@ -769,6 +789,13 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
+
+    if args:
+        logger.warning(
+            "ray submit [yaml] [script.py] --args=... is deprecated and "
+            "will be removed in a future version of Ray. Use "
+            "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
+
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
                                  True, cluster_name)

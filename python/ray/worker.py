@@ -355,7 +355,7 @@ class Worker:
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "run_on_other_drivers": str(run_on_other_drivers)
+                    "run_on_other_drivers": str(run_on_other_drivers),
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -689,6 +689,8 @@ def init(address=None,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
+    raylet_ip_address = node_ip_address
+
     _internal_config = (json.loads(_internal_config)
                         if _internal_config else {})
     # Set the internal config options for LRU eviction.
@@ -708,6 +710,7 @@ def init(address=None,
             redis_address=redis_address,
             redis_port=redis_port,
             node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_id_seed=object_id_seed,
             driver_mode=driver_mode,
             redirect_worker_output=redirect_worker_output,
@@ -788,6 +791,7 @@ def init(address=None,
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
             node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
@@ -1053,7 +1057,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
-                    JobID.nil().binary()
+                    JobID.nil().binary(),
             ]:
                 continue
 
@@ -1226,6 +1230,7 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
+
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
         node.plasma_store_socket_name,
@@ -1235,6 +1240,7 @@ def connect(node,
         node.get_logs_dir_path(),
         node.node_ip_address,
         node.node_manager_port,
+        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         log_stdout_file_name,
@@ -1575,9 +1581,8 @@ def wait(object_ids, num_returns=1, timeout=None):
             blocking_wait_inside_async_warned = True
 
     if isinstance(object_ids, ObjectID):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectID, got a single ray.ObjectID"
-        )
+        raise TypeError("wait() expected a list of ray.ObjectID, got a single "
+                        "ray.ObjectID")
 
     if not isinstance(object_ids, list):
         raise TypeError(
