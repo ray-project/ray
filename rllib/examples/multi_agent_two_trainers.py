@@ -13,7 +13,7 @@ import gym
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer
-from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole

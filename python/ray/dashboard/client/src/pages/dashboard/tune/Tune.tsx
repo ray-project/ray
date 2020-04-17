@@ -13,6 +13,7 @@ import { connect } from "react-redux";
 import { getTuneInfo } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
+import TuneErrors from "./TuneErrors";
 import TuneTable from "./TuneTable";
 import TuneTensorBoard from "./TuneTensorBoard";
 
@@ -83,7 +84,7 @@ class Tune extends React.Component<
   };
 
   render() {
-    const { classes } = this.props;
+    const { classes, tuneInfo } = this.props;
 
     const { tabIndex } = this.state;
 
@@ -91,6 +92,10 @@ class Tune extends React.Component<
       { label: "Table", component: TuneTable },
       { label: "TensorBoard", component: TuneTensorBoard },
     ];
+
+    if (tuneInfo !== null && Object.keys(tuneInfo["errors"]).length > 0) {
+      tabs.push({ label: "Errors", component: TuneErrors });
+    }
 
     const SelectedComponent = tabs[tabIndex].component;
     return (

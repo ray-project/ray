@@ -167,6 +167,39 @@ print("success")
         assert "success" in out
 
 
+def test_cleanup_on_driver_exit(call_ray_start):
+    # This test will create a driver that creates a bunch of objects and then
+    # exits. The entries in the object table should be cleaned up.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a bunch of objects and exits.
+    driver_script = """
+import time
+import ray
+ray.init(address="{}")
+object_ids = [ray.put(i) for i in range(1000)]
+start_time = time.time()
+while time.time() - start_time < 30:
+    if len(ray.objects()) == 1000:
+        break
+else:
+    raise Exception("Objects did not appear in object table.")
+print("success")
+""".format(address)
+
+    run_string_as_driver(driver_script)
+
+    # Make sure the objects are removed from the object table.
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        if len(ray.objects()) == 0:
+            break
+    else:
+        raise Exception("Objects were not all removed from object table.")
+
+
 def test_drivers_named_actors(call_ray_start):
     # This test will create some drivers that submit some tasks to the same
     # named actor.
@@ -340,6 +373,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
     subprocess.check_output([
         "ray", "start", "--head", "--object-manager-port", "12345",
         "--node-manager-port", "54321"
+    ])
+    subprocess.check_output(["ray", "stop"])
+
+    # Test starting Ray with the worker port range specified.
+    subprocess.check_output([
+        "ray", "start", "--head", "--min-worker-port", "12345",
+        "--max-worker-port", "12346"
     ])
     subprocess.check_output(["ray", "stop"])
 

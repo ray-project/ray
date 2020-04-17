@@ -60,6 +60,7 @@ class SamplerInput(InputReader):
 
 class SyncSampler(SamplerInput):
     def __init__(self,
+                 worker,
                  env,
                  policies,
                  policy_mapping_fn,
@@ -84,7 +85,7 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = PerfStats()
         self.rollout_provider = _env_runner(
-            self.base_env, self.extra_batches.put, self.policies,
+            worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
@@ -121,6 +122,7 @@ class SyncSampler(SamplerInput):
 
 class AsyncSampler(threading.Thread, SamplerInput):
     def __init__(self,
+                 worker,
                  env,
                  policies,
                  policy_mapping_fn,
@@ -139,6 +141,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
+        self.worker = worker
         self.base_env = BaseEnv.to_base_env(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
@@ -178,7 +181,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            self.base_env, extra_batches_putter, self.policies,
+            self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
@@ -224,13 +227,14 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
-                rollout_fragment_length, horizon, preprocessors, obs_filters,
-                clip_rewards, clip_actions, pack, callbacks, tf_sess,
-                perf_stats, soft_horizon, no_done_at_end):
+def _env_runner(worker, base_env, extra_batch_callback, policies,
+                policy_mapping_fn, rollout_fragment_length, horizon,
+                preprocessors, obs_filters, clip_rewards, clip_actions, pack,
+                callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end):
     """This implements the common experience collection logic.
 
     Args:
+        worker (RolloutWorker): reference to the current rollout worker.
         base_env (BaseEnv): env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
         policies (dict): Map of policy ids to Policy instances.
@@ -250,7 +254,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             guarantees batches will be exactly `rollout_fragment_length` in
             size.
         clip_actions (bool): Whether to clip actions to the space range.
-        callbacks (dict): User callbacks to run on episode events.
+        callbacks (DefaultCallbacks): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
         perf_stats (PerfStats): Record perf stats into this object.
@@ -300,8 +304,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(
-                policies, clip_rewards, callbacks.get("on_postprocess_traj"))
+            return MultiAgentSampleBatchBuilder(policies, clip_rewards,
+                                                callbacks)
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
@@ -313,13 +317,11 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
                 environment=base_env,
                 episode=episode,
                 tf_sess=getattr(p, "_sess", None))
-        # Call custom on_episode_start callback.
-        if callbacks.get("on_episode_start"):
-            callbacks["on_episode_start"]({
-                "env": base_env,
-                "policy": policies,
-                "episode": episode,
-            })
+        callbacks.on_episode_start(
+            worker=worker,
+            base_env=base_env,
+            policies=policies,
+            episode=episode)
         return episode
 
     active_episodes = defaultdict(new_episode)
@@ -340,7 +342,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         # Process observations and prepare for policy evaluation
         t1 = time.time()
         active_envs, to_eval, outputs = _process_observations(
-            base_env, policies, batch_builder_pool, active_episodes,
+            worker, base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, rollout_fragment_length, pack,
             callbacks, soft_horizon, no_done_at_end)
@@ -368,7 +370,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         perf_stats.env_wait_time += time.time() - t4
 
 
-def _process_observations(base_env, policies, batch_builder_pool,
+def _process_observations(worker, base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
                           obs_filters, rollout_fragment_length, pack,
@@ -482,8 +484,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     **episode.last_pi_info_for(agent_id))
 
         # Invoke the step callback after the step is logged to the episode
-        if callbacks.get("on_episode_step"):
-            callbacks["on_episode_step"]({"env": base_env, "episode": episode})
+        callbacks.on_episode_step(
+            worker=worker, base_env=base_env, episode=episode)
 
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
@@ -508,12 +510,11 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     episode=episode,
                     tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
-            if callbacks.get("on_episode_end"):
-                callbacks["on_episode_end"]({
-                    "env": base_env,
-                    "policy": policies,
-                    "episode": episode
-                })
+            callbacks.on_episode_end(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode)
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs = agent_obs
@@ -579,12 +580,16 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             state_batches = _to_column_format(rnn_in)
 
             # TODO(ekl): how can we make info batch available to TF code?
+            obs_batch = [t.obs for t in eval_data]
+            prev_action_batch = [t.prev_action for t in eval_data]
+            prev_reward_batch = [t.prev_reward for t in eval_data]
+
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=obs_batch,
                 state_batches=state_batches,
-                prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data],
+                prev_action_batch=prev_action_batch,
+                prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
             # TODO(sven): Does this work for LSTM torch?
@@ -601,8 +606,8 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 episodes=[active_episodes[t.env_id] for t in eval_data],
                 timestep=policy.global_timestep)
     if builder:
-        for k, v in pending_fetches.items():
-            eval_results[k] = builder.get(v)
+        for pid, v in pending_fetches.items():
+            eval_results[pid] = builder.get(v)
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(
@@ -629,7 +634,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
+
+        actions = eval_results[policy_id][0]
+        rnn_out_cols = eval_results[policy_id][1]
+        pi_info_cols = eval_results[policy_id][2]
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))

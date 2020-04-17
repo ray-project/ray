@@ -1,10 +1,14 @@
+import logging
+
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
+from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, \
     DEPRECATED_VALUE
 from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
     PerWorkerOrnsteinUhlenbeckNoise
+
+logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -80,9 +84,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    "parameter_noise": False,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
@@ -143,16 +144,15 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # Deprecated keys.
+    "parameter_noise": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def validate_config(config):
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
-
     # TODO(sven): Remove at some point.
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
@@ -185,10 +185,31 @@ def validate_config(config):
             config["exploration_config"]["type"] = \
                 PerWorkerOrnsteinUhlenbeckNoise
 
+    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("parameter_noise", "exploration_config={"
+                            "type=ParameterNoise"
+                            "}")
+
+    if config["exploration_config"]["type"] == "ParameterNoise":
+        if config["batch_mode"] != "complete_episodes":
+            logger.warning(
+                "ParameterNoise Exploration requires `batch_mode` to be "
+                "'complete_episodes'. Setting batch_mode=complete_episodes.")
+            config["batch_mode"] = "complete_episodes"
+
+
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+        return DDPGTorchPolicy
+    else:
+        return DDPGTFPolicy
+
 
 DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
+    get_policy_class=get_policy_class,
     validate_config=validate_config,
 )

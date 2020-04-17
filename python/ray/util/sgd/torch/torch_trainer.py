@@ -1,6 +1,6 @@
 import numpy as np
-import os
 import logging
+import os
 import numbers
 import tempfile
 import time
@@ -10,9 +10,10 @@ import torch.distributed as dist
 import ray
 from ray.exceptions import RayActorError
 from ray.tune import Trainable
-from ray.tune.trial import Resources
+from ray.tune.resources import Resources
+from ray.tune.utils.util import merge_dicts
 from ray.util.sgd.torch.distributed_torch_runner import (
-    DistributedTorchRunner, LocalDistributedRunner)
+    DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
@@ -29,15 +30,22 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
+def _remind_gpu_usage(use_gpu):
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
+
+
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and
-    coordinate gradient updates to train the provided model.
+    coordinate gradient updates to train the provided model. If Ray is not
+    initialized, TorchTrainer will automatically initialize a local Ray
+    cluster for you. Be sure to run `ray.init(address="auto")` to leverage
+    multi-node training.
 
     .. code-block:: python
-
-        ray.init()
 
         def model_creator(config):
             return nn.Linear(1, 1)
@@ -67,6 +75,14 @@ class TorchTrainer:
         for i in range(4):
             trainer.train()
 
+    The creator functions will execute before distributed coordination and
+    training is setup. This is so that creator functions that download
+    large datasets will not trigger any timeouts.
+
+    The order of operations for creator functions are:
+
+    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
+    ``scheduler_creator`` -> ``loss_creator``.
 
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
@@ -115,6 +131,15 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        serialize_data_creation (bool): A filelock will be used
+            to ensure no race conditions in data downloading among
+            different workers on the same node (using the local file system).
+            Defaults to True.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
+        add_dist_sampler (bool): Whether to automatically add a
+            DistributedSampler to all created dataloaders. Only applicable
+            if num_workers > 1.
         use_fp16 (bool): Enables mixed precision training via apex if apex
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
@@ -130,6 +155,11 @@ class TorchTrainer:
 
     """
 
+    # TODO: Implement autoscaling. If num_workers=-1, the trainer will use as
+    # many resources as available. Upon each train call, TorchTrainer will
+    # query the Ray global state for total available resources and resize
+    # its remote workers to consume all available resources.
+
     def __init__(
             self,
             *,
@@ -142,11 +172,14 @@ class TorchTrainer:
             initialization_hook=None,
             config=None,
             num_workers=1,
-            use_gpu=False,
+            use_gpu="auto",
             backend="auto",
+            wrap_ddp=True,
+            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
+            add_dist_sampler=True,
             scheduler_step_freq="batch",
             num_replicas=None,
             batch_size=None,
@@ -196,19 +229,24 @@ class TorchTrainer:
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
+        if use_gpu == "auto":
+            use_gpu = torch.cuda.is_available()
+
+        _remind_gpu_usage(use_gpu)
 
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
         logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
-
-        # TODO: Have an auto "use_gpu" option to detect and use GPUs.
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.serialize_data_creation = serialize_data_creation
+        self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
+        self.add_dist_sampler = add_dist_sampler
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -218,9 +256,17 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
+        self.local_worker = DeactivatedRunner()
+        self.remote_workers = []
+
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
+        if not ray.is_initialized() and self.max_replicas > 1:
+            logger.info("Automatically initializing single-node Ray. To use "
+                        "multi-node training, be sure to run `ray.init("
+                        "address='auto')` before instantiating the Trainer.")
+            ray.init()
         self._start_workers(self.max_replicas)
 
     def _configure_and_split_batch(self, num_workers):
@@ -250,42 +296,32 @@ class TorchTrainer:
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
 
-        self.local_worker = None
-        self.remote_workers = []
+        params = dict(
+            model_creator=self.model_creator,
+            data_creator=self.data_creator,
+            optimizer_creator=self.optimizer_creator,
+            loss_creator=self.loss_creator,
+            scheduler_creator=self.scheduler_creator,
+            training_operator_cls=self.training_operator_cls,
+            config=worker_config,
+            serialize_data_creation=self.serialize_data_creation,
+            use_fp16=self.use_fp16,
+            use_gpu=self.use_gpu,
+            use_tqdm=self.use_tqdm,
+            apex_args=self.apex_args,
+            scheduler_step_freq=self.scheduler_step_freq)
 
         if num_workers == 1:
             # Start local worker
-            self.local_worker = TorchRunner(
-                model_creator=self.model_creator,
-                data_creator=self.data_creator,
-                optimizer_creator=self.optimizer_creator,
-                loss_creator=self.loss_creator,
-                scheduler_creator=self.scheduler_creator,
-                training_operator_cls=self.training_operator_cls,
-                config=worker_config,
-                use_fp16=self.use_fp16,
-                use_tqdm=self.use_tqdm,
-                apex_args=self.apex_args,
-                scheduler_step_freq=self.scheduler_step_freq)
-
+            self.local_worker = TorchRunner(**params)
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
-
             self.local_worker.setup()
         else:
-            params = dict(
-                model_creator=self.model_creator,
-                data_creator=self.data_creator,
-                optimizer_creator=self.optimizer_creator,
-                loss_creator=self.loss_creator,
-                scheduler_creator=self.scheduler_creator,
+            params.update(
                 backend=self.backend,
-                training_operator_cls=self.training_operator_cls,
-                config=worker_config,
-                use_fp16=self.use_fp16,
-                use_tqdm=self.use_tqdm,
-                apex_args=self.apex_args,
-                scheduler_step_freq=self.scheduler_step_freq)
+                add_dist_sampler=self.add_dist_sampler,
+                wrap_ddp=self.wrap_ddp)
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
@@ -307,20 +343,38 @@ class TorchTrainer:
 
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
-            remote_setups = [
-                worker.setup.remote(address, i + 1, num_workers)
+            # Runs the creator functions.
+            remote_component_setup = [
+                worker.setup_components.remote()
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup(address, 0, num_workers)
+            self.local_worker.setup_components()
             # Get setup tasks in order to throw errors on failure
-            ray.get(remote_setups)
+            ray.get(remote_component_setup)
+
+            # Setup the process group among all workers.
+            remote_pgroup_setups = [
+                worker.setup_process_group.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
+            ]
+            self.local_worker.setup_process_group(address, 0, num_workers)
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_pgroup_setups)
+
+            # Runs code that requires all creator functions to have run.
+            remote_operator_setups = [
+                worker.setup_ddp_and_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_ddp_and_operator()
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,
               profile=False,
               reduce_results=True,
-              max_retries=0,
-              checkpoint="auto",
+              max_retries=3,
               info=None):
         """Runs a training epoch.
 
@@ -339,14 +393,12 @@ class TorchTrainer:
                 all workers into one dict. If a metric is a non-numerical
                 value (or nested dictionaries), one value will be randomly
                 selected among the workers. If False, returns a list of dicts.
-            max_retries (int): Must be non-negative. If set to N, will
-                kill all current workers, query the Ray global state for
-                total available resources, and re-launch up to the
-                available resources. Behavior is not well-defined
-                in case of shared cluster usage.
-            checkpoint (str): Path to checkpoint to restore from if retrying.
-                If max_retries is set and ``checkpoint == "auto"``,
-                TorchTrainer will save a checkpoint before starting to train.
+            max_retries (int): Must be non-negative. If set to N, TorchTrainer
+                will detect and recover from training failure. The recovery
+                process will kill all current workers, query the Ray
+                global state for total available resources, and re-launch up to
+                the available resources. Behavior is not well-defined
+                in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -358,18 +410,9 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        if max_retries:
-            if checkpoint == "auto":
-                logger.debug("Retrying detected. Automatically checkpointing.")
-                checkpoint = self.save(
-                    os.path.join(self.temp_dir, "tmp_checkpoint"))
-            elif not checkpoint:
-                raise ValueError("Cannot retry from empty checkpoint.")
-
-        if checkpoint and self._should_resize():
+        if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_workers(checkpoint=checkpoint)
-
+            self._resize_workers()
         success, worker_stats = self._train_epoch(
             num_steps=num_steps, profile=profile, info=info)
         # Fault handling
@@ -378,7 +421,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_workers(checkpoint=checkpoint)
+            self._resize_workers()
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
@@ -461,7 +504,11 @@ class TorchTrainer:
         local_call = self.local_worker.apply_operator(fn)
         return [local_call] + ray.get(remote_calls)
 
-    def validate(self, num_steps=None, profile=False, info=None):
+    def validate(self,
+                 num_steps=None,
+                 profile=False,
+                 reduce_results=True,
+                 info=None):
         """Evaluates the model on the validation data set.
 
         Args:
@@ -469,6 +516,10 @@ class TorchTrainer:
                 This corresponds also to the number of times
                 ``TrainingOperator.validate_batch`` is called.
             profile (bool): Returns time stats for the evaluation procedure.
+            reduce_results (bool): Whether to average all metrics across
+                all workers into one dict. If a metric is a non-numerical
+                value (or nested dictionaries), one value will be randomly
+                selected among the workers. If False, returns a list of dicts.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
 
@@ -483,9 +534,12 @@ class TorchTrainer:
             w.validate.remote(**params) for w in self.remote_workers
         ]
         local_worker_stats = self.local_worker.validate(**params)
+        worker_stats = [local_worker_stats] + ray.get(remote_worker_stats)
 
-        return self._process_stats([local_worker_stats] +
-                                   ray.get(remote_worker_stats))
+        if reduce_results:
+            return self._process_stats(worker_stats)
+        else:
+            return worker_stats
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.
@@ -497,47 +551,60 @@ class TorchTrainer:
 
     def get_model(self):
         """Returns the learned model(s)."""
-        models = self.model_creator(self.config)
-        state = self.local_worker.get_state()
-        if len(state["models"]) == 1:
-            models.load_state_dict(state["models"][0])
-        else:
-            for model, state_dict in zip(models, state["models"]):
-                model.load_state_dict(state_dict)
-        return models
+        unwrapped = []
+        for model in self.local_worker.models:
+            unwrapped += [model.module if hasattr(model, "module") else model]
+        if len(unwrapped) == 1:
+            return unwrapped[0]
+        return unwrapped
 
-    def state_dict(self):
-        return self.local_worker.get_state()
+    def get_local_operator(self):
+        """Returns the local TrainingOperator object.
 
-    def load_state_dict(self, state):
-        state_id = ray.put(state)
-
-        remote_calls = [
-            worker.set_state.remote(state_id) for worker in self.remote_workers
-        ]
-        self.local_worker.set_state(state)
-        ray.get(remote_calls)
-
-    def save(self, checkpoint):
-        """Saves the model(s) to the provided checkpoint.
-
-        Args:
-            checkpoint (str): Path to target checkpoint file.
+        Be careful not to perturb its state, or else you can cause the system
+        to enter an inconsistent state.
 
         Returns:
+            TrainingOperator: The local TrainingOperator object.
+        """
+        return self.local_worker.training_operator
+
+    def state_dict(self):
+        return self.local_worker.state_dict()
+
+    def load_state_dict(self, state_dict, blocking=False):
+        # This is not the most efficient because you have to wait for
+        # the local worker to save then dump to buffer.
+        self.local_worker.load_state_dict(state_dict)
+        state_id = ray.put(self.local_worker.state_stream())
+
+        remote_calls = [
+            worker.load_state_stream.remote(state_id)
+            for worker in self.remote_workers
+        ]
+        if blocking:
+            ray.get(remote_calls)
+
+    def save(self, checkpoint):
+        """Saves the Trainer state to the provided checkpoint path.
+
+        Args:
             checkpoint (str): Path to target checkpoint file.
         """
         torch.save(self.state_dict(), checkpoint)
         return checkpoint
 
-    def restore(self, checkpoint):
-        """Restores the Trainer and all workers from the provided checkpoint.
+    def load(self, checkpoint):
+        """Loads the Trainer and all workers from the provided checkpoint.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        state = torch.load(checkpoint)
-        self.load_state_dict(state)
+        state_dict = torch.load(checkpoint)
+        self.load_state_dict(state_dict)
+
+    def restore(self, *args):
+        raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
@@ -562,19 +629,19 @@ class TorchTrainer:
         else:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
-                logger.warning("Killing worker {}.".format(worker))
+                logger.debug("Killing worker {}.".format(worker))
                 ray.kill(worker)
 
-        self.local_worker = None
+        self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
     def _reset(self):
         """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
-            logger.warning("Killing worker {}.".format(worker))
+            logger.debug("Killing worker {}.".format(worker))
             ray.kill(worker)
-        self.local_worker = None
+        self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
     def _check_potential_remote_workers_size(self):
@@ -588,9 +655,8 @@ class TorchTrainer:
                 remote_resources.get("GPU", 0), new_remote_workers)
         return new_remote_workers
 
-    def _resize_workers(self, checkpoint, max_retries=10):
+    def _resize_workers(self, max_retries=10):
         self._reset()
-        assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
         for i in range(max_retries):
@@ -598,7 +664,7 @@ class TorchTrainer:
             if new_remote_workers:
                 self._last_resize = time.time()
                 self._start_workers(int(new_remote_workers) + 1)
-                self.restore(checkpoint)
+                self.load_state_dict(self.state_dict())
                 return
             else:
                 delay = 2**i
@@ -617,32 +683,128 @@ class TorchTrainer:
             return potential_remote_size > 0
         return False
 
-
-class TorchTrainable(Trainable):
     @classmethod
-    def default_resource_request(cls, config):
-        remote_worker_count = config["num_workers"] - 1
-        return Resources(
-            cpu=1,
-            gpu=int(config["use_gpu"]),
-            extra_cpu=int(remote_worker_count),
-            extra_gpu=int(int(config["use_gpu"]) * remote_worker_count))
+    def as_trainable(cls, *args, **kwargs):
+        """Creates a BaseTorchTrainable class compatible with Tune.
+
+        Any configuration parameters will be overriden by the Tune
+        Trial configuration. You can also subclass the provided Trainable
+        to implement your own iterative optimization routine.
+
+        .. code-block:: python
+
+            TorchTrainable = TorchTrainer.as_trainable(
+                model_creator=ResNet18,
+                data_creator=cifar_creator,
+                optimizer_creator=optimizer_creator,
+                loss_creator=nn.CrossEntropyLoss,
+                num_gpus=2
+            )
+            analysis = tune.run(
+                TorchTrainable,
+                config={"lr": tune.grid_search([0.01, 0.1])}
+            )
+
+        """
+
+        class TorchTrainable(BaseTorchTrainable):
+            @classmethod
+            def default_resource_request(cls, config):
+                num_workers = config.get("num_workers",
+                                         kwargs.get("num_workers", 1))
+                use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
+
+                remote_worker_count = num_workers - 1
+
+                return Resources(
+                    cpu=1,
+                    gpu=int(use_gpu),
+                    extra_cpu=int(remote_worker_count),
+                    extra_gpu=int(int(use_gpu) * remote_worker_count))
+
+            def _create_trainer(self, tune_config):
+                """Overrides the provided config with Tune config."""
+                provided_config = kwargs.get("config", {}).copy()
+                provided_config.update(tune_config)
+                kwargs["config"] = provided_config
+                trainer = TorchTrainer(*args, **kwargs)
+                return trainer
+
+        return TorchTrainable
+
+
+class BaseTorchTrainable(Trainable):
+    """Base class for converting TorchTrainer to a Trainable class.
+
+    This class is produced when you call ``TorchTrainer.as_trainable(...)``.
+
+    You can override the produced Trainable to implement custom iterative
+    training procedures:
+
+    .. code-block:: python
+
+        TorchTrainable = TorchTrainer.as_trainable(
+            model_creator=ResNet18,
+            data_creator=cifar_creator,
+            optimizer_creator=optimizer_creator,
+            loss_creator=nn.CrossEntropyLoss,
+            num_gpus=2
+        )
+        # TorchTrainable is subclass of BaseTorchTrainable.
+
+        class CustomTrainable(TorchTrainable):
+            def _train(self):
+                for i in range(5):
+                    train_stats = self.trainer.train()
+                validation_stats = self.trainer.validate()
+                train_stats.update(validation_stats)
+                return train_stats
+
+        analysis = tune.run(
+            CustomTrainable,
+            config={"lr": tune.grid_search([0.01, 0.1])}
+        )
+
+    """
 
     def _setup(self, config):
-        self._trainer = TorchTrainer(**config)
+        """Constructs a TorchTrainer object as `self.trainer`."""
+        self._trainer = self._create_trainer(config)
 
     def _train(self):
-        train_stats = self._trainer.train()
-        validation_stats = self._trainer.validate()
+        """Calls `self.trainer.train()` and `self.trainer.validate()` once.
 
-        train_stats.update(validation_stats)
-        return train_stats
+        You may want to override this if using a custom LR scheduler.
+        """
+        train_stats = self.trainer.train(max_retries=10, profile=True)
+        validation_stats = self.trainer.validate(profile=True)
+        stats = merge_dicts(train_stats, validation_stats)
+        return stats
 
     def _save(self, checkpoint_dir):
-        return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
+        """Returns a path containing the trainer state."""
+        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
+        self.trainer.save(checkpoint_path)
+        return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        return self._trainer.restore(checkpoint_path)
+        """Restores the trainer state.
+
+        Override this if you have state external to the Trainer object.
+        """
+        return self.trainer.load(checkpoint_path)
 
     def _stop(self):
-        self._trainer.shutdown()
+        """Shuts down the trainer."""
+        self.trainer.shutdown()
+
+    def _create_trainer(self, config):
+        raise NotImplementedError
+
+    @property
+    def trainer(self):
+        """An instantiated TorchTrainer object.
+
+        Use this when specifying custom training procedures for Tune.
+        """
+        return self._trainer

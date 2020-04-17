@@ -106,8 +106,8 @@ class _VectorizedGymEnv(VectorEnv):
             obs, r, done, info = self.envs[i].step(actions[i])
             if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
                 raise ValueError(
-                    "Reward should be finite scalar, got {} ({})".format(
-                        r, type(r)))
+                    "Reward should be finite scalar, got {} ({}). "
+                    "Actions={}.".format(r, type(r), actions[i]))
             if type(info) is not dict:
                 raise ValueError("Info should be a dict, got {} ({})".format(
                     info, type(info)))

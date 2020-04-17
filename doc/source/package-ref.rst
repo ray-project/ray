@@ -34,8 +34,6 @@ Inspect the Cluster State
 
 .. autofunction:: ray.nodes
 
-.. autofunction:: ray.tasks
-
 .. autofunction:: ray.objects
 
 .. autofunction:: ray.timeline

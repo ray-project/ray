@@ -1,8 +1,6 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
-from torch.optim import RMSprop
-from torch.distributions import Categorical
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
@@ -216,6 +214,8 @@ class QMixTorchPolicy(Policy):
             name="target_model",
             default_model=RNNModel).to(self.device)
 
+        self.exploration = self._create_exploration()
+
         # Setup the mixer network.
         if config["mixer"] is None:
             self.mixer = None
@@ -242,6 +242,7 @@ class QMixTorchPolicy(Policy):
         self.loss = QMixLoss(self.model, self.target_model, self.mixer,
                              self.target_mixer, self.n_agents, self.n_actions,
                              self.config["double_q"], self.config["gamma"])
+        from torch.optim import RMSprop
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -281,6 +282,7 @@ class QMixTorchPolicy(Policy):
             random_numbers = torch.rand_like(q_values[:, :, 0])
             pick_random = (random_numbers < (self.cur_epsilon
                                              if explore else 0.0)).long()
+            from torch.distributions import Categorical
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.argmax(dim=2))

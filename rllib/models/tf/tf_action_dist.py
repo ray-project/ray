@@ -19,6 +19,7 @@ class TFActionDistribution(ActionDistribution):
     def __init__(self, inputs, model):
         super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
+        self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @DeveloperAPI
     def _build_sample_op(self):
@@ -37,7 +38,7 @@ class TFActionDistribution(ActionDistribution):
     @override(ActionDistribution)
     def sampled_action_logp(self):
         """Returns the log probability of the sampled action."""
-        return self.logp(self.sample_op)
+        return self.sampled_action_logp_op
 
 
 class Categorical(TFActionDistribution):
@@ -99,6 +100,7 @@ class MultiCategorical(TFActionDistribution):
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
+        self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -270,27 +272,16 @@ class SquashedGaussian(TFActionDistribution):
                 (excluding this value).
         """
         assert tfp is not None
-        loc, log_scale = tf.split(inputs, 2, axis=-1)
+        mean, log_std = tf.split(inputs, 2, axis=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
-        log_scale = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
-                                     MAX_LOG_NN_OUTPUT)
-        scale = tf.exp(log_scale)
-        self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
+        log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
+                                   MAX_LOG_NN_OUTPUT)
+        std = tf.exp(log_std)
+        self.distr = tfp.distributions.Normal(loc=mean, scale=std)
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
         super().__init__(inputs, model)
-
-    @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        unsquashed_values = self._unsquash(self.sample_op)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(unsquashed_values), axis=-1)
-        unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        log_prob -= tf.math.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            axis=-1)
-        return log_prob
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -338,8 +329,8 @@ class Deterministic(TFActionDistribution):
         return self.inputs
 
     @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        return 0.0
+    def logp(self, x):
+        return tf.zeros_like(self.inputs)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):

@@ -3,7 +3,7 @@ import unittest
 
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -14,31 +14,24 @@ class TestDDPG(unittest.TestCase):
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
 
+        num_iterations = 2
+
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
+        for _ in framework_iterator(config, ("torch", "tf")):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
-            num_iterations = 2
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        core_config = ddpg.DEFAULT_CONFIG.copy()
+        core_config["num_workers"] = 0  # Run locally.
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
-
+        for _ in framework_iterator(core_config, ("torch", "tf")):
+            config = core_config.copy()
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.

@@ -259,3 +259,7 @@ class TrialExecutor:
     def has_gpus(self):
         """Returns True if GPUs are detected on the cluster."""
         return None
+
+    def cleanup(self, trial):
+        """Ensures that trials are cleaned up after stopping."""
+        pass

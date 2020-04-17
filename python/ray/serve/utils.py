@@ -111,7 +111,7 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
         retries -= 1
         if retries == 0:
             raise Exception(
-                "HTTP server not ready after {} retries.".format(num_retries))
+                "HTTP proxy not ready after {} retries.".format(num_retries))
 
 
 def get_random_letters(length=6):

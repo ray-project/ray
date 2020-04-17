@@ -15,13 +15,10 @@
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
-
-static std::string redis_server_executable;
-static std::string redis_client_executable;
-static std::string libray_redis_module_path;
 
 class GcsServerTest : public RedisServiceManagerForTest {
  public:
@@ -386,56 +383,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return status == std::future_status::ready;
   }
 
-  rpc::JobTableData GenJobTableData(JobID job_id) {
-    rpc::JobTableData job_table_data;
-    job_table_data.set_job_id(job_id.Binary());
-    job_table_data.set_is_dead(false);
-    job_table_data.set_timestamp(std::time(nullptr));
-    job_table_data.set_node_manager_address("127.0.0.1");
-    job_table_data.set_driver_pid(5667L);
-    return job_table_data;
-  }
-
-  rpc::ActorTableData GenActorTableData(const ActorID &actor_id) {
-    rpc::ActorTableData actor_table_data;
-    actor_table_data.set_actor_id(actor_id.Binary());
-    actor_table_data.set_job_id(actor_id.JobId().Binary());
-    actor_table_data.set_state(
-        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-    actor_table_data.set_max_reconstructions(1);
-    actor_table_data.set_remaining_reconstructions(1);
-    return actor_table_data;
-  }
-
-  rpc::GcsNodeInfo GenGcsNodeInfo(const std::string &node_id) {
-    rpc::GcsNodeInfo gcs_node_info;
-    gcs_node_info.set_node_id(node_id);
-    gcs_node_info.set_node_manager_address("127.0.0.1");
-    gcs_node_info.set_node_manager_port(6000);
-    gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
-    return gcs_node_info;
-  }
-
-  rpc::TaskTableData GenTaskTableData(const std::string &job_id,
-                                      const std::string &task_id) {
-    rpc::TaskTableData task_table_data;
-    rpc::Task task;
-    rpc::TaskSpec task_spec;
-    task_spec.set_job_id(job_id);
-    task_spec.set_task_id(task_id);
-    task.mutable_task_spec()->CopyFrom(task_spec);
-    task_table_data.mutable_task()->CopyFrom(task);
-    return task_table_data;
-  }
-
-  rpc::TaskLeaseData GenTaskLeaseData(const std::string &task_id,
-                                      const std::string &node_id) {
-    rpc::TaskLeaseData task_lease_data;
-    task_lease_data.set_task_id(task_id);
-    task_lease_data.set_node_manager_id(node_id);
-    return task_lease_data;
-  }
-
  protected:
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -454,32 +401,31 @@ class GcsServerTest : public RedisServiceManagerForTest {
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-  rpc::ActorTableData actor_table_data = GenActorTableData(actor_id);
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
 
   // Register actor
   rpc::RegisterActorInfoRequest register_actor_info_request;
-  register_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  register_actor_info_request.mutable_actor_table_data()->CopyFrom(*actor_table_data);
   ASSERT_TRUE(RegisterActorInfo(register_actor_info_request));
-  rpc::ActorTableData result = GetActorInfo(actor_table_data.actor_id());
+  rpc::ActorTableData result = GetActorInfo(actor_table_data->actor_id());
   ASSERT_TRUE(result.state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Update actor state
   rpc::UpdateActorInfoRequest update_actor_info_request;
-  actor_table_data.set_state(
+  actor_table_data->set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  update_actor_info_request.set_actor_id(actor_table_data.actor_id());
-  update_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  update_actor_info_request.set_actor_id(actor_table_data->actor_id());
+  update_actor_info_request.mutable_actor_table_data()->CopyFrom(*actor_table_data);
   ASSERT_TRUE(UpdateActorInfo(update_actor_info_request));
-  result = GetActorInfo(actor_table_data.actor_id());
+  result = GetActorInfo(actor_table_data->actor_id());
   ASSERT_TRUE(result.state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 
   // Add actor checkpoint
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   rpc::ActorCheckpointData checkpoint;
-  checkpoint.set_actor_id(actor_table_data.actor_id());
+  checkpoint.set_actor_id(actor_table_data->actor_id());
   checkpoint.set_checkpoint_id(checkpoint_id.Binary());
   checkpoint.set_execution_dependency(checkpoint_id.Binary());
 
@@ -487,39 +433,38 @@ TEST_F(GcsServerTest, TestActorInfo) {
   add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
   ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
   rpc::ActorCheckpointData checkpoint_result =
-      GetActorCheckpoint(actor_id.Binary(), checkpoint_id.Binary());
-  ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data.actor_id());
+      GetActorCheckpoint(actor_table_data->actor_id(), checkpoint_id.Binary());
+  ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data->actor_id());
   ASSERT_TRUE(checkpoint_result.checkpoint_id() == checkpoint_id.Binary());
   rpc::ActorCheckpointIdData checkpoint_id_result =
-      GetActorCheckpointID(actor_table_data.actor_id());
-  ASSERT_TRUE(checkpoint_id_result.actor_id() == actor_table_data.actor_id());
+      GetActorCheckpointID(actor_table_data->actor_id());
+  ASSERT_TRUE(checkpoint_id_result.actor_id() == actor_table_data->actor_id());
   ASSERT_TRUE(checkpoint_id_result.checkpoint_ids_size() == 1);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  rpc::JobTableData job_table_data = GenJobTableData(job_id);
+  auto job_table_data = Mocker::GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;
-  add_job_request.mutable_data()->CopyFrom(job_table_data);
+  add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
   // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
-  mark_job_finished_request.set_job_id(job_table_data.job_id());
+  mark_job_finished_request.set_job_id(job_table_data->job_id());
   ASSERT_TRUE(MarkJobFinished(mark_job_finished_request));
 }
 
 TEST_F(GcsServerTest, TestNodeInfo) {
   // Create gcs node info
-  ClientID node_id = ClientID::FromRandom();
-  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id.Binary());
+  auto gcs_node_info = Mocker::GenNodeInfo();
 
   // Register node info
   rpc::RegisterNodeRequest register_node_info_request;
-  register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
+  register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
@@ -528,12 +473,12 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Report heartbeat
   rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_client_id(node_id.Binary());
+  report_heartbeat_request.mutable_heartbeat()->set_client_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(node_id.Binary());
+  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
@@ -542,21 +487,21 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Update node resources
   rpc::UpdateResourcesRequest update_resources_request;
-  update_resources_request.set_node_id(node_id.Binary());
+  update_resources_request.set_node_id(gcs_node_info->node_id());
   rpc::ResourceTableData resource_table_data;
   resource_table_data.set_resource_capacity(1.0);
   std::string resource_name = "CPU";
   (*update_resources_request.mutable_resources())[resource_name] = resource_table_data;
   ASSERT_TRUE(UpdateResources(update_resources_request));
-  auto resources = GetResources(node_id.Binary());
+  auto resources = GetResources(gcs_node_info->node_id());
   ASSERT_TRUE(resources.size() == 1);
 
   // Delete node resources
   rpc::DeleteResourcesRequest delete_resources_request;
-  delete_resources_request.set_node_id(node_id.Binary());
+  delete_resources_request.set_node_id(gcs_node_info->node_id());
   delete_resources_request.add_resource_name_list(resource_name);
   ASSERT_TRUE(DeleteResources(delete_resources_request));
-  resources = GetResources(node_id.Binary());
+  resources = GetResources(gcs_node_info->node_id());
   ASSERT_TRUE(resources.empty());
 }
 
@@ -595,11 +540,11 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   // Create task_table_data
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
-  rpc::TaskTableData job_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
+  auto job_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
   // Add task
   rpc::AddTaskRequest add_task_request;
-  add_task_request.mutable_task_data()->CopyFrom(job_table_data);
+  add_task_request.mutable_task_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddTask(add_task_request));
   rpc::TaskTableData result = GetTask(task_id.Binary());
   ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
@@ -613,10 +558,9 @@ TEST_F(GcsServerTest, TestTaskInfo) {
 
   // Add task lease
   ClientID node_id = ClientID::FromRandom();
-  rpc::TaskLeaseData task_lease_data =
-      GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   rpc::AddTaskLeaseRequest add_task_lease_request;
-  add_task_lease_request.mutable_task_lease_data()->CopyFrom(task_lease_data);
+  add_task_lease_request.mutable_task_lease_data()->CopyFrom(*task_lease_data);
   ASSERT_TRUE(AddTaskLease(add_task_lease_request));
 
   // Attempt task reconstruction
