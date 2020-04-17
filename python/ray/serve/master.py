@@ -103,7 +103,7 @@ class ServeMaster:
                 await self._start_backend_replica(backend_tag)
         elif delta_num_replicas < 0:
             for _ in range(-delta_num_replicas):
-                self._remove_backend_replica(backend_tag)
+                await self._remove_backend_replica(backend_tag)
 
     async def get_backend_worker_config(self):
         return self.get_router()
