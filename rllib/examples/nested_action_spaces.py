@@ -2,10 +2,10 @@ import argparse
 import gym
 from gym.spaces import Dict, Tuple, Box, Discrete
 import numpy as np
+import sys
 import tree
 
 import ray
-from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.space_utils import flatten_space
@@ -15,6 +15,7 @@ tf = try_import_tf()
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--stop", type=int, default=90)
+parser.add_argument("--max-trainstop", type=int, default=90)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
@@ -84,8 +85,10 @@ if __name__ == "__main__":
         "lr": 0.0005
     }
 
-    tune.run(
-        args.run,
-        config=config,
-        stop={"episode_reward_mean": args.stop},
-        verbose=1)
+    import ray.rllib.agents.ppo as ppo
+    trainer = ppo.PPOTrainer(config=config)
+    for _ in range(100):
+        results = trainer.train()
+        if results["episode_reward_mean"] > args.stop:
+            sys.exit(0)  # Learnt, exit gracefully.
+    sys.exit(1)  # Done, but did not learn, exit with error.

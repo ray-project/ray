@@ -1,13 +1,14 @@
 import functools
 from math import log
 import numpy as np
+import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.space_utils import TupleActions
+#from ray.rllib.utils.space_utils import TupleActions
 from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
@@ -309,62 +310,108 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
     def __init__(self, inputs, model, action_space, child_distributions,
                  input_lens):
-        for i, input_ in enumerate(inputs):
-            if not isinstance(input_, torch.Tensor):
-                inputs[i] = torch.Tensor(input_)
+        inputs = tree.map_structure(
+            lambda i: torch.Tensor(i) if not isinstance(i, torch.Tensor)
+            else i, inputs)
+        #for i, input_ in enumerate(inputs):
+        #    if not isinstance(input_, torch.Tensor):
+        #        inputs[i] = torch.Tensor(input_)
         super().__init__(inputs, model)
         self.input_lens = input_lens
-        split_inputs = torch.split(self.inputs, self.input_lens, dim=1)
-        child_list = []
-        for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i], model))
-        self.child_distributions = child_list
+        split_inputs = tree.unflatten_as(
+            child_distributions, torch.split(inputs, self.input_lens, dim=1))
+        self.child_distributions = tree.map_structure(
+            lambda dist, input_: dist(input_, model),
+            child_distributions, split_inputs)
+        self.flat_child_distributions = tree.flatten(self.child_distributions)
+
+
+
+        #self.input_lens = input_lens
+        #split_inputs = torch.split(self.inputs, self.input_lens, dim=1)
+        #child_list = []
+        #for i, distribution in enumerate(child_distributions):
+        #    child_list.append(distribution(split_inputs[i], model))
+        #self.child_distributions = child_list
 
     @override(ActionDistribution)
     def logp(self, x):
-        split_indices = []
-        for dist in self.child_distributions:
+
+        def map_(val, dist):
+            # Remove extra categorical dimension.
             if isinstance(dist, TorchCategorical):
-                split_indices.append(1)
-            else:
-                split_indices.append(dist.sample().size()[1])
-        split_list = list(torch.split(x, split_indices, dim=1))
-        for i, distribution in enumerate(self.child_distributions):
-            # Remove extra categorical dimension
-            if isinstance(distribution, TorchCategorical):
-                split_list[i] = torch.squeeze(split_list[i], dim=-1).int()
-        log_list = [
-            distribution.logp(split_x) for distribution, split_x in zip(
-                self.child_distributions, split_list)
-        ]
+                val = torch.squeeze(val, dim=-1).int()
+            return dist.logp(val)
+
+        # Remove extra categorical dimension
+        logps = tree.map_structure(map_, x, self.child_distributions)
+        flat_logps = tree.flatten(logps)
+
+        #log_list = [
+        #    distribution.logp(split_x) for distribution, split_x in zip(
+        #        self.child_distributions, split_list)
+        #]
+        return functools.reduce(lambda a, b: a + b, flat_logps)
+
+        #split_indices = []
+        #for dist in self.child_distributions:
+        #    if isinstance(dist, TorchCategorical):
+        #        split_indices.append(1)
+        #    else:
+        #        split_indices.append(dist.sample().size()[1])
+        #split_list = list(torch.split(x, split_indices, dim=1))
+        #for i, distribution in enumerate(self.child_distributions):
+        #    # Remove extra categorical dimension
+        #    if isinstance(distribution, TorchCategorical):
+        #        split_list[i] = torch.squeeze(split_list[i], dim=-1).int()
+        #log_list = [
+        #    distribution.logp(split_x) for distribution, split_x in zip(
+        #        self.child_distributions, split_list)
+        #]
         return functools.reduce(lambda a, b: a + b, log_list)
 
     @override(ActionDistribution)
     def kl(self, other):
-        kl_list = [
-            distribution.kl(other_distribution)
-            for distribution, other_distribution in zip(
-                self.child_distributions, other.child_distributions)
-        ]
+        kl_list = [d.kl(o) for d, o in zip(
+            self.flat_child_distributions, other.flat_child_distributions)]
         return functools.reduce(lambda a, b: a + b, kl_list)
+        #kl_list = [
+        #    distribution.kl(other_distribution)
+        #    for distribution, other_distribution in zip(
+        #        self.child_distributions, other.child_distributions)
+        #]
+        #return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
     def entropy(self):
-        entropy_list = [s.entropy() for s in self.child_distributions]
-        return functools.reduce(lambda a, b: a + b, entropy_list)
+        entropy_list = [d.entropy() for d in self.flat_child_distributions]
+        return functools.reduce(lambda a, b: a + b, entropies)
+        #entropy_list = [s.entropy() for s in self.child_distributions]
+        #return functools.reduce(lambda a, b: a + b, entropy_list)
 
     @override(ActionDistribution)
     def sample(self):
-        return TupleActions([s.sample() for s in self.child_distributions])
+        return tree.map_structure(
+            lambda s: s.sample(), self.child_distributions)
+        ##TupleActions
+        #return tuple([s.sample() for s in self.child_distributions])
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return TupleActions(
-            [s.deterministic_sample() for s in self.child_distributions])
+        return tree.map_structure(
+            lambda s: s.deterministic_sample(), self.child_distributions)
+        ##TupleActions
+        #return tuple(
+        #    [s.deterministic_sample() for s in self.child_distributions])
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):
-        p = self.child_distributions[0].sampled_action_logp()
-        for c in self.child_distributions[1:]:
+        p = self.flat_child_distributions[0].sampled_action_logp()
+        for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
+
+        #p = self.child_distributions[0].sampled_action_logp()
+        #for c in self.child_distributions[1:]:
+        #    p += c.sampled_action_logp()
+        #return p

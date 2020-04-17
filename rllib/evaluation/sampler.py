@@ -18,7 +18,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.space_utils import TupleActions
+#from ray.rllib.utils.space_utils import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
@@ -645,9 +645,9 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
         # Force flatten all actions for further easy processing.
         # TODO(sven): See, whether TupleActions can be retired.
-        if isinstance(actions, TupleActions):
-            actions = actions.batches
-        flat_actions = force_list(actions)
+        #if isinstance(actions, TupleActions):
+        #    actions = actions.batches
+        #flat_actions = force_list(actions)
 
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
@@ -664,17 +664,17 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         policy = _get_or_raise(policies, policy_id)
         # Clip if necessary (while action components are still batched).
         if clip_actions:
-            flat_actions = clip_action(flat_actions,
-                                       policy.flattened_action_space)
+            actions = clip_action(actions,
+                                  policy.action_space_struct)
         # Split action-component batches into single action rows.
-        flat_actions = unbatch_actions(flat_actions)
-        for i, flat_action in enumerate(flat_actions):
+        actions = unbatch_actions(actions)
+        for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
-            # Unflatten action.
-            env_action = tree.unflatten_as(policy.action_space_struct,
-                                           flat_action)
-            actions_to_send[env_id][agent_id] = env_action
+            ## Unflatten action.
+            #env_action = tree.unflatten_as(policy.action_space_struct,
+            #                               flat_action)
+            actions_to_send[env_id][agent_id] = action
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
@@ -685,7 +685,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
                 episode._set_last_action(agent_id,
                                          off_policy_actions[env_id][agent_id])
             else:
-                episode._set_last_action(agent_id, env_action)
+                episode._set_last_action(agent_id, action)
 
     return actions_to_send
 

@@ -14,7 +14,7 @@ from ray.rllib.models.model import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.space_utils import TupleActions
+#from ray.rllib.utils.space_utils import TupleActions
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)

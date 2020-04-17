@@ -1,12 +1,13 @@
 from math import log
 import numpy as np
 import functools
+import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.space_utils import TupleActions
+#from ray.rllib.utils.space_utils import TupleActions
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -400,59 +401,74 @@ class MultiActionDistribution(TFActionDistribution):
         # skip TFActionDistribution init
         ActionDistribution.__init__(self, inputs, model)
         self.input_lens = np.array(input_lens, dtype=np.int32)
-        split_inputs = tf.split(inputs, self.input_lens, axis=1)
-        child_list = []
-        for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i], model))
-        self.child_distributions = child_list
+        split_inputs = tree.unflatten_as(
+            child_distributions, tf.split(inputs, self.input_lens, axis=1))
+        self.child_distributions = tree.map_structure(
+            lambda dist, input_: dist(input_, model),
+            child_distributions, split_inputs)
+        self.flat_child_distributions = tree.flatten(self.child_distributions)
+        #self.split_indices_for_values = tree.map_structure(
+        #    lambda , self.child_distributions)
 
     @override(ActionDistribution)
     def logp(self, x):
-        split_indices = []
-        for dist in self.child_distributions:
+        #split_indices = []
+        #for dist in self.child_distributions:
+        #    if isinstance(dist, Categorical):
+        #        split_indices.append(1)
+        #    else:
+        #        split_indices.append(tf.shape(dist.sample())[1])
+        #split_list = tf.split(x, self.split_indices_for_values, axis=1)
+        #TODO unflatten!
+        #values = tree.unflatten(self.child_distributions, split_list)
+        #for i, distribution in enumerate(self.child_distributions):
+        #    # Remove extra categorical dimension
+        #    if isinstance(distribution, Categorical):
+        #        split_list[i] = tf.cast(
+        #            tf.squeeze(split_list[i], axis=-1), tf.int32)
+
+        def map_(val, dist):
+            # Remove extra categorical dimension.
             if isinstance(dist, Categorical):
-                split_indices.append(1)
-            else:
-                split_indices.append(tf.shape(dist.sample())[1])
-        split_list = tf.split(x, split_indices, axis=1)
-        for i, distribution in enumerate(self.child_distributions):
-            # Remove extra categorical dimension
-            if isinstance(distribution, Categorical):
-                split_list[i] = tf.cast(
-                    tf.squeeze(split_list[i], axis=-1), tf.int32)
-        log_list = [
-            distribution.logp(split_x) for distribution, split_x in zip(
-                self.child_distributions, split_list)
-        ]
-        return functools.reduce(lambda a, b: a + b, log_list)
+                val = tf.cast(
+                    tf.squeeze(val, axis=-1), tf.int32)
+            return dist.logp(val)
+
+        # Remove extra categorical dimension
+        logps = tree.map_structure(map_, x, self.child_distributions)
+        flat_logps = tree.flatten(logps)
+
+        #log_list = [
+        #    distribution.logp(split_x) for distribution, split_x in zip(
+        #        self.child_distributions, split_list)
+        #]
+        return functools.reduce(lambda a, b: a + b, flat_logps)
 
     @override(ActionDistribution)
     def kl(self, other):
-        kl_list = [
-            distribution.kl(other_distribution)
-            for distribution, other_distribution in zip(
-                self.child_distributions, other.child_distributions)
-        ]
+        kl_list = [d.kl(o) for d, o in zip(
+            self.flat_child_distributions, other.flat_child_distributions)]
         return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
     def entropy(self):
-        entropy_list = [s.entropy() for s in self.child_distributions]
-        return functools.reduce(lambda a, b: a + b, entropy_list)
+        entropy_list = [d.entropy() for d in self.flat_child_distributions]
+        return functools.reduce(lambda a, b: a + b, entropies)
 
     @override(ActionDistribution)
     def sample(self):
-        return TupleActions([s.sample() for s in self.child_distributions])
+        return tree.map_structure(
+            lambda s: s.sample(), self.child_distributions)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return TupleActions(
-            [s.deterministic_sample() for s in self.child_distributions])
+        return tree.map_structure(
+            lambda s: s.deterministic_sample(), self.child_distributions)
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
-        p = self.child_distributions[0].sampled_action_logp()
-        for c in self.child_distributions[1:]:
+        p = self.flat_child_distributions[0].sampled_action_logp()
+        for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
 
