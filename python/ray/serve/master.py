@@ -59,7 +59,7 @@ class ServeMaster:
     """
 
     def __init__(self, kv_store_connector):
-        self.kv_store_connector = kv_store_connector
+        self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
         # backend -> (worker_creator, init_args, backend_config).
@@ -74,6 +74,17 @@ class ServeMaster:
         self.router = None
         self.http_proxy = None
         self.metric_monitor = None
+
+    def checkpoint(self):
+        checkpoint = pickle.dumps((
+            self.routes, self.backends,
+            self.replicas, self.traffic_policies))
+        self.kv_store_client.put("checkpoint", checkpoint)
+
+    def load_checkpoint(self, checkpoint):
+        checkpoint = self.kv_store_client.get("checkpoint")
+        (self.routes, self.backends,
+         self.replicas, self.traffic_policies) = pickle.loads(checkpoint)
 
     def _list_replicas(self, backend_tag):
         return self.replicas[backend_tag]
