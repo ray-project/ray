@@ -18,7 +18,6 @@
 #include <inttypes.h>
 
 #include <boost/asio/io_service.hpp>
-#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -55,18 +54,13 @@ class WorkerPool {
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
-  /// \param min_worker_port The lowest port number that workers started will bind on.
-  /// If this is set to 0, workers will bind on random ports.
-  /// \param max_worker_port The highest port number that workers started will bind on.
-  /// If this is not set to 0, min_worker_port must also not be set to 0.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
+             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback);
@@ -77,20 +71,15 @@ class WorkerPool {
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
-  /// \param[in] worker The worker to be registered.
-  /// \param[in] pid The PID of the worker.
-  /// \param[out] port The port that this worker's gRPC server should listen on.
-  /// Returns 0 if the worker should bind on a random port.
+  /// \param The Worker to be registered.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid, int *port);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
 
   /// Register a new driver.
   ///
-  /// \param[in] worker The driver to be registered.
-  /// \param[out] port The port that this driver's gRPC server should listen on.
-  /// Returns 0 if the driver should bind on a random port.
+  /// \param The driver to be registered.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<Worker> &worker, int *port);
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -259,22 +248,10 @@ class WorkerPool {
   /// think there are unregistered workers, and won't start new workers.
   void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
 
-  /// Get the next unallocated port in the free ports list. If a port range isn't
-  /// configured, returns 0.
-  /// \param[out] port The next available port.
-  Status GetNextFreePort(int *port);
-
-  /// Mark this port as free to be used by another worker.
-  /// \param[in] port The port to mark as free.
-  void MarkPortAsFree(int port);
-
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
-  /// Keeps track of unused ports that newly-created workers can bind on.
-  /// If null, workers will not be passed ports and will choose them randomly.
-  std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The raylet config list of this node.
