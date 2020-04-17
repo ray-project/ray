@@ -161,20 +161,32 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     trial = Trial("__fake", **kwargs)
     runner.add_trial(trial)
 
-    runner.step()  # Start trial
+    runner.step()  # Start trial, call _train once
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
-
+    assert not trial.last_result
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
 
-    # Process result (x2), process save, process result.
-    for _ in range(4):
-        runner.step()
+    # Process result: fetch data, invoke _train again
+    runner.step()
+    assert trial.last_result.get("training_iteration") == 1
+
+    # Process result: discover failure, recover, _train (from scratch)
+    runner.step()
+
+    runner.step()  # Process result, invoke _train
+    assert trial.last_result.get("training_iteration") == 1
+    runner.step()  # Process result, invoke _save
+    assert trial.last_result.get("training_iteration") == 2
+    # process save, invoke _train
+    runner.step()
+    # process result
+    runner.step()
     assert trial.status == Trial.TERMINATED
 
     with pytest.raises(TuneError):
