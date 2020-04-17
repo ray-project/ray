@@ -33,7 +33,7 @@ def test_e2e(serve_instance):
         return {"method": flask_request.method}
 
     serve.create_backend(function, "echo:v1")
-    serve.set_traffic("endpoint", "echo:v1")
+    serve.set_traffic("endpoint", {"echo:v1": 1.0})
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
@@ -64,7 +64,7 @@ def test_no_route(serve_instance):
         return 1
 
     serve.create_backend(func, "backend:1")
-    serve.set_traffic("noroute-endpoint", "backend:1")
+    serve.set_traffic("noroute-endpoint", {"backend:1": 1.0})
     service_handle = serve.get_handle("noroute-endpoint")
     result = ray.get(service_handle.remote(i=1))
     assert result == 1
@@ -88,7 +88,7 @@ def test_scaling_replicas(serve_instance):
 
     b_config = BackendConfig(num_replicas=2)
     serve.create_backend(Counter, "counter:v1", backend_config=b_config)
-    serve.set_traffic("counter", "counter:v1")
+    serve.set_traffic("counter", {"counter:v1": 1.0})
 
     counter_result = []
     for _ in range(10):
@@ -133,7 +133,7 @@ def test_batching(serve_instance):
     b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
         BatchingExample, "counter:v11", backend_config=b_config)
-    serve.set_traffic("counter1", "counter:v11")
+    serve.set_traffic("counter1", {"counter:v11": 1.0})
 
     future_list = []
     handle = serve.get_handle("counter1")
@@ -163,7 +163,7 @@ def test_batching_exception(serve_instance):
     b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
         NoListReturned, "exception:v1", backend_config=b_config)
-    serve.set_traffic("exception-test", "exception:v1")
+    serve.set_traffic("exception-test", {"exception:v1": 1.0})
 
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
