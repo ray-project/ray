@@ -182,7 +182,7 @@ def get_address_info_from_redis_helper(redis_address,
 
     relevant_client = None
     for client_info in client_table:
-        client_node_ip_address = client_info["DriverIPAddress"]
+        client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
                     and redis_ip_address == get_node_ip_address())):
