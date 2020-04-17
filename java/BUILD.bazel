@@ -175,7 +175,6 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         # Copy protobuf-generated files.
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
@@ -204,7 +203,6 @@ genrule(
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"

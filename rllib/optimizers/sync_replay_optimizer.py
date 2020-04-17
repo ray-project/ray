@@ -101,6 +101,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
             logger.warning("buffer_size={} < replay_starts={}".format(
                 buffer_size, self.replay_starts))
 
+        # If set, will use this batch for stepping/updating, instead of
+        # sampling from the replay buffer. Actual sampling from the env
+        # (and adding collected experiences to the replay will still happen
+        # normally).
+        # After self.step(), self.fake_batch must be set again.
+        self._fake_batch = None
+
     @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
@@ -156,7 +163,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
             })
 
     def _optimize(self):
-        samples = self._replay()
+        if self._fake_batch:
+            fake_batch = SampleBatch(self._fake_batch)
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: fake_batch
+            }, fake_batch.count)
+        else:
+            samples = self._replay()
 
         with self.grad_timer:
             if self.before_learn_on_batch:
@@ -173,8 +186,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
                     #  torch/tf. Clean up these results/info dicts across
                     #  policies (note: fixing this in torch_policy.py will
                     #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info["learner_stats"].get("td_error"))
+                    td_error = info.get("td_error",
+                                        info["learner_stats"].get("td_error"))
                     new_priorities = (
                         np.abs(td_error) + self.prioritized_replay_eps)
                     replay_buffer.update_priorities(
