@@ -72,9 +72,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = ray::JoinPaths(
-        ray::GetUserTempDir(),
-        "store" + RandomObjectID().Hex());
+    std::string store_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + RandomObjectID().Hex());
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable_ + " -m 10000000 -s " +
                                  store_socket_name +
@@ -96,8 +95,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   std::string StartGcsServer(std::string redis_address) {
     std::string gcs_server_socket_name = ray::JoinPaths(
-        ray::GetUserTempDir(),
-        "gcs_server" + ObjectID::FromRandom().Hex());
+        ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
     std::string ray_start_cmd = gcs_server_executable_;
     ray_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -122,9 +120,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = ray::JoinPaths(
-        ray::GetUserTempDir(),
-        "raylet" + RandomObjectID().Hex());
+    std::string raylet_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "raylet" + RandomObjectID().Hex());
     std::string ray_start_cmd = raylet_executable_;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -156,11 +153,12 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  void InitWorker(CoreWorker &driver, ActorID &self_actor_id, ActorID &peer_actor_id,
+  void InitWorker(ActorID &self_actor_id, ActorID &peer_actor_id,
                   const queue::protobuf::StreamingQueueTestRole role,
                   const std::vector<ObjectID> &queue_ids,
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
+    auto &driver = CoreWorkerProcess::GetCoreWorker();
     std::string forked_serialized_str;
     ObjectID actor_handle_id;
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str,
@@ -174,40 +172,42 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
-                     ray::FunctionDescriptorBuilder::BuildPython("init", "", "", "")};
+                     ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
   }
 
-  void SubmitTestToActor(CoreWorker &driver, ActorID &actor_id, const std::string test) {
+  void SubmitTestToActor(ActorID &actor_id, const std::string test) {
+    auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "execute_test", test, "", "")};
+                                                "", test, "execute_test", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
   }
 
-  bool CheckCurTest(CoreWorker &driver, ActorID &actor_id, const std::string test_name) {
+  bool CheckCurTest(ActorID &actor_id, const std::string test_name) {
+    auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, true, resources};
+    TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "check_current_test_status", "", "", "")};
+                                                "", "", "check_current_test_status", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -258,8 +258,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     return message->Status();
   }
 
-  ActorID CreateActorHelper(CoreWorker &worker,
-                            const std::unordered_map<std::string, double> &resources,
+  ActorID CreateActorHelper(const std::unordered_map<std::string, double> &resources,
                             bool is_direct_call, uint64_t max_reconstructions) {
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -268,20 +267,20 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "actor creation task", "", "", "")};
+                                                "", "", "actor creation task", "")};
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     ActorCreationOptions actor_options{
-        max_reconstructions,   is_direct_call,
+        max_reconstructions,
         /*max_concurrency*/ 1, resources,           resources, {},
         /*is_detached*/ false, /*is_asyncio*/ false};
 
     // Create an actor.
     ActorID actor_id;
-    RAY_CHECK_OK(
-        worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(
+        func, args, actor_options, /*extension_data*/ "", &actor_id));
     return actor_id;
   }
 
@@ -308,33 +307,55 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
-    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                      node_manager_port_, nullptr);
+    CoreWorkerOptions options = {
+        WorkerType::DRIVER,             // worker_type
+        Language::PYTHON,               // langauge
+        raylet_store_socket_names_[0],  // store_socket
+        raylet_socket_names_[0],        // raylet_socket
+        NextJobId(),                    // job_id
+        gcs_options_,                   // gcs_options
+        "",                             // log_dir
+        true,                           // install_failure_signal_handler
+        "127.0.0.1",                    // node_ip_address
+        node_manager_port_,             // node_manager_port
+        "127.0.0.1",                    // raylet_ip_address
+        "queue_tests",                  // driver_name
+        "",                             // stdout_file
+        "",                             // stderr_file
+        nullptr,                        // task_execution_callback
+        nullptr,                        // check_signals
+        nullptr,                        // gc_collect
+        nullptr,                        // get_lang_stack
+        true,                           // ref_counting_enabled
+        false,                          // is_local_mode
+        1,                              // num_workers
+    };
+    InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
+                                      CoreWorkerProcess::Shutdown, options);
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;
-    auto actor_id_writer = CreateActorHelper(driver, resources, true, 0);
-    auto actor_id_reader = CreateActorHelper(driver, resources, true, 0);
+    auto actor_id_writer = CreateActorHelper(resources, true, 0);
+    auto actor_id_reader = CreateActorHelper(resources, true, 0);
 
-    InitWorker(driver, actor_id_writer, actor_id_reader,
+    InitWorker(actor_id_writer, actor_id_reader,
                queue::protobuf::StreamingQueueTestRole::WRITER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
-    InitWorker(driver, actor_id_reader, actor_id_writer,
+    InitWorker(actor_id_reader, actor_id_writer,
                queue::protobuf::StreamingQueueTestRole::READER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-    SubmitTestToActor(driver, actor_id_writer, test_name);
-    SubmitTestToActor(driver, actor_id_reader, test_name);
+    SubmitTestToActor(actor_id_writer, test_name);
+    SubmitTestToActor(actor_id_reader, test_name);
 
     uint64_t slept_time_ms = 0;
     while (slept_time_ms < timeout_ms) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5 * 1000));
       STREAMING_LOG(INFO) << "Check test status.";
-      if (CheckCurTest(driver, actor_id_writer, test_name) &&
-          CheckCurTest(driver, actor_id_reader, test_name)) {
+      if (CheckCurTest(actor_id_writer, test_name) &&
+          CheckCurTest(actor_id_reader, test_name)) {
         STREAMING_LOG(INFO) << "Test Success, Exit.";
         return;
       }

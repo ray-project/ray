@@ -4,12 +4,12 @@ import logging
 import math
 import os
 import pickle
-import six
 import time
 import tempfile
 
 import ray
 from ray.exceptions import RayError
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -127,24 +127,10 @@ COMMON_CONFIG = {
     # `rllib train` command, you can also use the `-v` and `-vv` flags as
     # shorthand for INFO and DEBUG.
     "log_level": "WARN",
-    # Callbacks that will be run during various phases of training. These all
-    # take a single "info" dict as an argument. For episode callbacks, custom
-    # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
-    # may also mutate the passed in batch data in your callback.
-    "callbacks": {
-        "on_episode_start": None,     # arg: {"env": .., "episode": ...}
-        "on_episode_step": None,      # arg: {"env": .., "episode": ...}
-        "on_episode_end": None,       # arg: {"env": .., "episode": ...}
-        "on_sample_end": None,        # arg: {"samples": .., "worker": ...}
-        "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {
-                                      #   "agent_id": ..., "episode": ...,
-                                      #   "pre_batch": (before processing),
-                                      #   "post_batch": (after processing),
-                                      #   "all_pre_batches": (other agent ids),
-                                      # }
-    },
+    # Callbacks that will be run during various phases of training. See the
+    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
+    # for more usage information.
+    "callbacks": DefaultCallbacks,
     # Whether to attempt to continue training if a worker crashes. The number
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
@@ -277,6 +263,11 @@ COMMON_CONFIG = {
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
     "seed": None,
+    # Any extra python env vars to set in the trainer process, e.g.,
+    # {"OMP_NUM_THREADS": "16"}
+    "extra_python_environs_for_driver": {},
+    # The extra python environments need to set for worker processes.
+    "extra_python_environs_for_worker": {},
 
     # === Advanced Resource Settings ===
     # Number of CPUs to allocate per worker.
@@ -398,7 +389,8 @@ class Trainer(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config", "exploration_config"
+        "evaluation_config", "exploration_config",
+        "extra_python_environs_for_driver", "extra_python_environs_for_worker"
     ]
 
     # List of top level keys with value=dict, for which we always override the
@@ -420,7 +412,8 @@ class Trainer(Trainable):
         config = config or {}
 
         if tf and config.get("eager"):
-            tf.enable_eager_execution()
+            if not tf.executing_eagerly():
+                tf.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 "True" if config.get("eager_tracing") else "False"))
 
@@ -536,11 +529,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def _log_result(self, result):
-        if self.config["callbacks"].get("on_train_result"):
-            self.config["callbacks"]["on_train_result"]({
-                "trainer": self,
-                "result": result,
-            })
+        self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
         Trainable._log_result(self, result)
@@ -578,6 +567,12 @@ class Trainer(Trainable):
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
+        if not callable(self.config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got {}".format(
+                    self.config["callbacks"]))
+        self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -629,6 +624,7 @@ class Trainer(Trainable):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+
         return checkpoint_path
 
     @override(Trainable)
@@ -677,13 +673,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-        if not self.config["evaluation_config"]:
-            raise ValueError(
-                "No evaluation_config specified. It doesn't make sense "
-                "to enable evaluation without specifying any config "
-                "overrides, since the results will be the "
-                "same as reported during normal policy evaluation.")
-
         self._before_evaluate()
 
         # Broadcast the new policy weights to all evaluation workers.
@@ -868,6 +857,25 @@ class Trainer(Trainable):
             export_dir, filename_prefix, policy_id)
 
     @DeveloperAPI
+    def import_policy_model_from_h5(self,
+                                    import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        """Imports a policy's model with given policy_id from a local h5 file.
+
+        Arguments:
+            import_file (str): The h5 file to import from.
+            policy_id (string): Optional policy id to import into.
+
+        Example:
+            >>> trainer = MyTrainer()
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
+            >>> for _ in range(10):
+            >>>     trainer.train()
+        """
+        self.workers.local_worker().import_policy_model_from_h5(
+            import_file, policy_id)
+
+    @DeveloperAPI
     def collect_metrics(self, selected_workers=None):
         """Collects metrics from the remote workers of this agent.
 
@@ -899,6 +907,15 @@ class Trainer(Trainable):
                 "sample_batch_size", new="rollout_fragment_length")
             config2["rollout_fragment_length"] = config2["sample_batch_size"]
             del config2["sample_batch_size"]
+        if "callbacks" in config2 and type(config2["callbacks"]) is dict:
+            legacy_callbacks_dict = config2["callbacks"]
+
+            def make_callbacks():
+                # Deprecation warning will be logged by DefaultCallbacks.
+                return DefaultCallbacks(
+                    legacy_callbacks_dict=legacy_callbacks_dict)
+
+            config2["callbacks"] = make_callbacks
         return deep_update(config1, config2, cls._allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
@@ -1004,6 +1021,31 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         return exported
 
+    def import_model(self, import_file):
+        """Imports a model from import_file.
+
+        Note: Currently, only h5 files are supported.
+
+        Args:
+            import_file (str): The file to import the model from.
+
+        Returns:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        # Check for existence.
+        if not os.path.exists(import_file):
+            raise FileNotFoundError(
+                "`import_file` '{}' does not exist! Can't import Model.".
+                format(import_file))
+        # Get the format of the given file.
+        import_format = "h5"  # TODO(sven): Support checkpoint loading.
+
+        ExportFormat.validate([import_format])
+        if import_format != ExportFormat.H5:
+            raise NotImplementedError
+        else:
+            return self.import_policy_model_from_h5(import_file)
+
     def __getstate__(self):
         state = {}
         if hasattr(self, "workers"):
@@ -1022,7 +1064,7 @@ class Trainer(Trainable):
             self.optimizer.restore(state["optimizer"])
 
     def _register_if_needed(self, env_object):
-        if isinstance(env_object, six.string_types):
+        if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__

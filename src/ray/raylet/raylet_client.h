@@ -43,15 +43,21 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-typedef
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::stream_protocol
-#else
-    boost::asio::ip::tcp
-#endif
-        local_stream_protocol;
-
 namespace ray {
+
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
+typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
+
+/// Interface for pinning objects. Abstract for testing.
+class PinObjectsInterface {
+ public:
+  /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
+  virtual ray::Status PinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+
+  virtual ~PinObjectsInterface(){};
+};
 
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
@@ -71,7 +77,26 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
 
+  virtual ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+
   virtual ~WorkerLeaseInterface(){};
+};
+
+/// Interface for waiting dependencies. Abstract for testing.
+class DependencyWaiterInterface {
+ public:
+  /// Wait for the given objects, asynchronously. The core worker is notified when
+  /// the wait completes.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \return ray::Status.
+  virtual ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+                                                 int64_t tag) = 0;
+
+  virtual ~DependencyWaiterInterface(){};
 };
 
 namespace raylet {
@@ -108,14 +133,16 @@ class RayletConnection {
 
  private:
   /// The Unix domain socket that connects to raylet.
-  local_stream_protocol::socket conn_;
+  local_stream_socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
 };
 
-class RayletClient : public WorkerLeaseInterface {
+class RayletClient : public PinObjectsInterface,
+                     public WorkerLeaseInterface,
+                     public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -127,13 +154,14 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
-  /// \param port The port that the worker will listen on for gRPC requests, if
-  /// any.
+  /// \param ip_address The IP address of the worker.
+  /// \param port The port that the worker should listen on for gRPC requests. If
+  /// 0, the worker should choose a random port.
   RayletClient(boost::asio::io_service &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               ClientID *raylet_id, int port = -1);
+               ClientID *raylet_id, const std::string &ip_address, int *port);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -141,6 +169,12 @@ class RayletClient : public WorkerLeaseInterface {
   RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
+
+  /// Tell the raylet which port this worker's gRPC server is listening on.
+  ///
+  /// \param The port.
+  /// \return ray::Status.
+  Status AnnounceWorkerPort(int port);
 
   /// Submit a task using the raylet code path.
   ///
@@ -205,7 +239,7 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
-                                         int64_t tag);
+                                         int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
@@ -267,9 +301,13 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
 
+  ray::Status CancelWorkerLease(
+      const TaskID &task_id,
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

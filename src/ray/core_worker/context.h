@@ -26,7 +26,7 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 
@@ -72,13 +72,16 @@ class WorkerContext {
 
   int GetNextPutIndex();
 
+ protected:
+  // allow unit test to set.
+  bool current_actor_is_direct_call_ = false;
+  bool current_task_is_direct_call_ = false;
+
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
   JobID current_job_id_;
   ActorID current_actor_id_;
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
 

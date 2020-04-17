@@ -1,91 +1,55 @@
 name: CI
 
-env:
-  DEBIAN_FRONTEND: noninteractive
-
 on: [push, pull_request]
 
 jobs:
-  iwyu:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        name: [
-          ubuntu-clang-iwyu,
-        ]
-        include:
-          - name: ubuntu-clang-iwyu
-            os: ubuntu-latest
-            compiler: clang
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 1
-    - name: Setup Bazel
-      shell: bash
-      env:
-        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./ci/travis/install-bazel.sh
-    - name: Setup Clang Include-What-You-Use
-      shell: bash
-      run: |
-        sudo apt-get install iwyu
-    - name: Perform build
-      continue-on-error: true
-      shell: bash
-      env:
-        CC: ${{ matrix.compiler }}
-      run: |
-        # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
-        . ./ci/travis/build-helper.sh prep_build_env
-        bazel --batch build \
-          --compilation_mode=fastbuild \
-          --config=iwyu \
-          --keep_going \
-          "//:*"
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Github Actions requires a single row to be added to the build matrix.
-        # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
-        name: [
-          windows-clang-cl,
-        ]
+        # Useful info: https://help.github.com/en/articles/workflow-syntax-for-github-actions
         include:
-          - name: windows-clang-cl
-            os: windows-latest
-            compiler: clang-cl
+          - name: ubuntu
+            os: ubuntu-16.04
+          - name: windows
+            os: windows-2019
+          - name: macos
+            os: macos-10.15
+    env:
+      PYTHON: 3.6
     steps:
+    - name: Pre-checkout system configuration
+      # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
+      shell: bash -e -o pipefail -l {0}
+      run: |
+        # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
+        if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
+          echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
+        fi
+        git config --global core.symlinks true && git config --global core.autocrlf false
+        if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
       uses: actions/checkout@v2
-    - name: Setup Bazel
-      shell: bash
+      with:
+        # we need full history to diff against the original for linting etc.
+        fetch-depth: 0
+    - name: Run CI script
+      shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./ci/travis/install-bazel.sh
-    - name: Install C/C++ toolchains
-      if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
-      shell: bash
-      env:
-        CC: ${{ matrix.compiler }}
-      run: ./ci/travis/install-toolchains.sh "${CC%%-*}"
-    - name: Install MSYS2 (only needed if some shell commands are missing)
-      if: false && runner.os == 'Windows'
-      uses: numworks/setup-msys2@v1
-      with:
-        update: false
-    - name: Perform build
-      shell: bash
       run: |
-        . ./ci/travis/build-helper.sh prep_build_env
-        bazel --batch build \
+        . ./ci/travis/ci.sh init
+        . ./ci/travis/ci.sh build
+    - name: Run Clang Include-What-You-Use
+      continue-on-error: true
+      if: runner.os == 'Linux'
+      shell: bash -e -o pipefail -l {0}
+      run: |
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
+        bazel build \
           --keep_going \
-          "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
+          --config=iwyu \
+          "//:*"

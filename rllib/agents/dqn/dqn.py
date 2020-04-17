@@ -2,16 +2,17 @@ import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, LocalReplay
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,11 @@ DEFAULT_CONFIG = with_common_config({
     "sigma0": 0.5,
     # Whether to use dueling dqn
     "dueling": True,
+    # Dense-layer setup for each the advantage branch and the value branch
+    # in a dueling architecture.
+    "hiddens": [256],
     # Whether to use double dqn
     "double_q": True,
-    # Postprocess model outputs with these hidden layers to compute the
-    # state and action values. See also the model config in catalog.py.
-    "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
 
@@ -59,11 +60,6 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # TODO(sven): Make Exploration class for parameter noise.
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    "parameter_noise": False,
-
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
@@ -86,7 +82,7 @@ DEFAULT_CONFIG = with_common_config({
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -96,13 +92,13 @@ DEFAULT_CONFIG = with_common_config({
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": 40,
+    "grad_clip": 40,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
-    # Size of a batched sampled from replay buffer for training. Note that
+    # Size of a batch sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
@@ -127,6 +123,8 @@ DEFAULT_CONFIG = with_common_config({
     "per_worker_exploration": DEPRECATED_VALUE,
     "softmax_temp": DEPRECATED_VALUE,
     "soft_q": DEPRECATED_VALUE,
+    "parameter_noise": DEPRECATED_VALUE,
+    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -138,35 +136,42 @@ def make_policy_optimizer(workers, config):
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
+    # SimpleQ does not use a PR buffer.
+    kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
+    kwargs.update(**config["optimizer"])
+    if "prioritized_replay" in config:
+        kwargs.update({
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_beta_annealing_timesteps": config[
+                "prioritized_replay_beta_annealing_timesteps"],
+            "final_prioritized_replay_beta": config[
+                "final_prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        })
+
     return SyncReplayOptimizer(
         workers,
         # TODO(sven): Move all PR-beta decays into Schedule components.
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
-        prioritized_replay=config["prioritized_replay"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_beta_annealing_timesteps=config[
-            "prioritized_replay_beta_annealing_timesteps"],
-        final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"],
         train_batch_size=config["train_batch_size"],
-        **config["optimizer"])
+        **kwargs)
 
 
-def validate_config_and_setup_param_noise(config):
+def validate_config(config):
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
-
     # TODO(sven): Remove at some point.
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
+    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("grad_norm_clipping", "grad_clip")
+        config["grad_clip"] = config.pop("grad_norm_clipping")
+
     schedule_max_timesteps = None
     if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
@@ -221,48 +226,26 @@ def validate_config_and_setup_param_noise(config):
             "type": "SoftQ",
             "temperature": config.get("softmax_temp", 1.0)
         }
+    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("parameter_noise", "exploration_config={"
+                            "type=ParameterNoise"
+                            "}")
+
+    if config["exploration_config"]["type"] == "ParameterNoise":
+        if config["batch_mode"] != "complete_episodes":
+            logger.warning(
+                "ParameterNoise Exploration requires `batch_mode` to be "
+                "'complete_episodes'. Setting batch_mode=complete_episodes.")
+            config["batch_mode"] = "complete_episodes"
+        if config.get("noisy", False):
+            raise ValueError(
+                "ParameterNoise Exploration and `noisy` network cannot be "
+                "used at the same time!")
 
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["rollout_fragment_length"],
                               config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
-
-    # Setup parameter noise.
-    if config.get("parameter_noise", False):
-        if config["batch_mode"] != "complete_episodes":
-            raise ValueError("Exploration with parameter space noise requires "
-                             "batch_mode to be complete_episodes.")
-        if config.get("noisy", False):
-            raise ValueError("Exploration with parameter space noise and "
-                             "noisy network cannot be used at the same time.")
-
-        start_callback = config["callbacks"].get("on_episode_start")
-
-        def on_episode_start(info):
-            # as a callback function to sample and pose parameter space
-            # noise on the parameters of network
-            policies = info["policy"]
-            for pi in policies.values():
-                pi.add_parameter_noise()
-            if start_callback is not None:
-                start_callback(info)
-
-        config["callbacks"]["on_episode_start"] = on_episode_start
-
-        end_callback = config["callbacks"].get("on_episode_end")
-
-        def on_episode_end(info):
-            # as a callback function to monitor the distance
-            # between noisy policy and original policy
-            policies = info["policy"]
-            episode = info["episode"]
-            model = policies[DEFAULT_POLICY_ID].model
-            if hasattr(model, "pi_distance"):
-                episode.custom_metrics["policy_distance"] = model.pi_distance
-            if end_callback is not None:
-                end_callback(info)
-
-        config["callbacks"]["on_episode_end"] = on_episode_end
 
 
 def get_initial_state(config):
@@ -336,11 +319,29 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+        return DQNTorchPolicy
+    else:
+        return DQNTFPolicy
+
+
+def get_simple_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.dqn.simple_q_torch_policy import \
+            SimpleQTorchPolicy
+        return SimpleQTorchPolicy
+    else:
+        return SimpleQTFPolicy
+
+
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
+    get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config_and_setup_param_noise,
+    validate_config=validate_config,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,
@@ -351,4 +352,5 @@ GenericOffPolicyTrainer = build_trainer(
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
 
-SimpleQTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)
+SimpleQTrainer = DQNTrainer.with_updates(
+    default_policy=SimpleQTFPolicy, get_policy_class=get_simple_policy_class)

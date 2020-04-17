@@ -38,43 +38,40 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_policy (cls): the default Policy class to use
-        default_config (Optional[dict]): The default config dict of the
-            algorithm. If None, uses the Trainer default config.
-        validate_config (Optional[callable]): Optional callback that checks a
-            given config for correctness. It may mutate the config as needed.
-        get_initial_state (Optional[callable]): Optional callable that returns
-            the initial state dict given the trainer instance as an argument.
-            The state dict must be serializable so that it can be checkpointed,
-            and will be available as the `trainer.state` variable.
-        get_policy_class (Optional[callable]): Optional callable that takes a
-            Trainer config and returns the policy class to override the default
-            with.
-        before_init (Optional[callable]): Optional callable to run at the start
-            of trainer init that takes the trainer instance as argument.
-        make_workers (Optional[callable]): Override the default method that
-            creates rollout workers. This takes in (trainer, env_creator,
-            policy, config) as args.
-        make_policy_optimizer (Optional[callable]): Optional callable that
-            returns a PolicyOptimizer instance given (WorkerSet, config).
-        after_init (Optional[callable]): Optional callable to run at the end of
-            trainer init that takes the trainer instance as argument.
-        before_train_step (Optional[callable]): Optional callable to run before
-            each train() call. It takes the trainer instance as an argument.
-        after_optimizer_step (Optional[callable]): Optional callable to run
-            after each step() call to the policy optimizer. It takes the
-            trainer instance and the policy gradient fetches as arguments.
-        after_train_result (Optional[callable]): Optional callable to run at
-            the end of each train() call. It takes the trainer instance and
-            result dict as arguments, and may mutate the result dict as needed.
-        collect_metrics_fn (Optional[callable]): Optional callable to override
-            the default method used to collect metrics. Takes the trainer
-            instance as argumnt.
-        before_evaluate_fn (Optional[callable]): Optional callable to run
-            before evaluation. Takes the trainer instance as argument.
-        mixins (Optional[List[class]]): Optional list of mixin class(es) for
-            the returned trainer class. These mixins will be applied in order
-            and will have higher precedence than the Trainer class.
-        execution_plan (Optional[callable]): Experimental distributed execution
+        default_config (dict): The default config dict of the algorithm,
+            otherwise uses the Trainer default config.
+        validate_config (func): optional callback that checks a given config
+            for correctness. It may mutate the config as needed.
+        get_initial_state (func): optional function that returns the initial
+            state dict given the trainer instance as an argument. The state
+            dict must be serializable so that it can be checkpointed, and will
+            be available as the `trainer.state` variable.
+        get_policy_class (func): optional callback that takes a config and
+            returns the policy class to override the default with
+        before_init (func): optional function to run at the start of trainer
+            init that takes the trainer instance as argument
+        make_workers (func): override the method that creates rollout workers.
+            This takes in (trainer, env_creator, policy, config) as args.
+        make_policy_optimizer (func): optional function that returns a
+            PolicyOptimizer instance given (WorkerSet, config)
+        after_init (func): optional function to run at the end of trainer init
+            that takes the trainer instance as argument
+        before_train_step (func): optional callback to run before each train()
+            call. It takes the trainer instance as an argument.
+        after_optimizer_step (func): optional callback to run after each
+            step() call to the policy optimizer. It takes the trainer instance
+            and the policy gradient fetches as arguments.
+        after_train_result (func): optional callback to run at the end of each
+            train() call. It takes the trainer instance and result dict as
+            arguments, and may mutate the result dict as needed.
+        collect_metrics_fn (func): override the method used to collect metrics.
+            It takes the trainer instance as argumnt.
+        before_evaluate_fn (func): callback to run before evaluation. This
+            takes the trainer instance as argument.
+        mixins (list): list of any class mixins for the returned trainer class.
+            These mixins will be applied in order and will have higher
+            precedence than the Trainer class
+        execution_plan (func): Experimental distributed execution
             API. This overrides `make_policy_optimizer`.
 
     Returns:
@@ -100,11 +97,10 @@ def build_trainer(name,
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
-
-            # Override default policy if `get_policy_class` is provided.
-            if get_policy_class is not None:
+            if get_policy_class is None:
+                self._policy = default_policy
+            else:
                 self._policy = get_policy_class(config)
-
             if before_init:
                 before_init(self)
             use_exec_api = (execution_plan
@@ -150,8 +146,10 @@ def build_trainer(name,
             prev_steps = self.optimizer.num_steps_sampled
 
             start = time.time()
+            optimizer_steps_this_iter = 0
             while True:
                 fetches = self.optimizer.step()
+                optimizer_steps_this_iter += 1
                 if after_optimizer_step:
                     after_optimizer_step(self, fetches)
                 if (time.time() - start >= self.config["min_iter_time_s"]
@@ -164,6 +162,7 @@ def build_trainer(name,
             else:
                 res = self.collect_metrics()
             res.update(
+                optimizer_steps_this_iter=optimizer_steps_this_iter,
                 timesteps_this_iter=self.optimizer.num_steps_sampled -
                 prev_steps,
                 info=res.get("info", {}))
@@ -189,14 +188,16 @@ def build_trainer(name,
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
             if self.train_exec_impl:
-                state["train_exec_impl"] = self.train_exec_impl.metrics.save()
+                state["train_exec_impl"] = (
+                    self.train_exec_impl.shared_metrics.get().save())
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
             if self.train_exec_impl:
-                self.train_exec_impl.metrics.restore(state["train_exec_impl"])
+                self.train_exec_impl.shared_metrics.get().restore(
+                    state["train_exec_impl"])
 
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.

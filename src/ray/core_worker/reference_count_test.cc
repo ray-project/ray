@@ -36,6 +36,20 @@ class ReferenceCountTest : public ::testing::Test {
   virtual void TearDown() {}
 };
 
+class ReferenceCountLineageEnabledTest : public ::testing::Test {
+ protected:
+  std::unique_ptr<ReferenceCounter> rc;
+  virtual void SetUp() {
+    rpc::Address addr;
+    rc = std::unique_ptr<ReferenceCounter>(
+        new ReferenceCounter(addr,
+                             /*distributed_ref_counting_enabled=*/true,
+                             /*lineage_pinning_enabled=*/true));
+  }
+
+  virtual void TearDown() {}
+};
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   // Helper function to generate a random address.
@@ -50,8 +64,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   MockWorkerClient(const std::string &addr, rpc::ClientFactoryFn client_factory = nullptr)
       : task_id_(TaskID::ForFakeTask()),
         address_(CreateRandomAddress(addr)),
-        rc_(rpc::WorkerAddress(address_), /*distributed_ref_counting_enabled=*/true,
-            client_factory) {}
+        rc_(rpc::WorkerAddress(address_),
+            /*distributed_ref_counting_enabled=*/true,
+            /*lineage_pinning_enabled=*/false, client_factory) {}
 
   ray::Status WaitForRefRemoved(
       const rpc::WaitForRefRemovedRequest &request,
@@ -156,7 +171,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
-    rc_.UpdateFinishedTaskReferences(arguments, borrower_address, borrower_refs, nullptr);
+    rc_.UpdateFinishedTaskReferences(arguments, false, borrower_address, borrower_refs,
+                                     nullptr);
   }
 
   // Global map from Worker ID -> MockWorkerClient.
@@ -202,13 +218,13 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->UpdateSubmittedTaskReferences({id1});
   rc->UpdateSubmittedTaskReferences({id1, id2});
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -221,13 +237,23 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  ASSERT_EQ(out.size(), 2);
+  out.clear();
+
+  // Submitted task with inlined references.
+  rc->UpdateSubmittedTaskReferences({id1});
+  rc->UpdateSubmittedTaskReferences({id2}, {id1}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(out.size(), 1);
+  rc->UpdateSubmittedTaskReferences({}, {id2}, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -306,15 +332,15 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.
-  RAY_CHECK_OK(store.Put(buffer, id2));
+  RAY_CHECK(store.Put(buffer, id2));
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
   rc->AddLocalReference(id1, "");
-  RAY_CHECK_OK(store.Put(buffer, id1));
+  RAY_CHECK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
-  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1, ctx,
                          /*remove_after_get*/ true, &results));
   ASSERT_EQ(results.size(), 1);
@@ -1706,6 +1732,168 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
 }
 
 // TODO: Test Pop and Merge individually.
+
+// Test to make sure that we call the lineage released callback correctly.
+TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
+
+  // We should not keep lineage for borrowed objects.
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(lineage_deleted.empty());
+
+  // We should keep lineage for owned objects.
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+// Test for pinning the lineage of an object, where the lineage is a chain of
+// tasks that each depend on the previous. The previous objects should already
+// have gone out of scope, but their Reference entry is pinned until the final
+// object goes out of scope.
+TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 3; i++) {
+    ObjectID id = ObjectID::FromRandom();
+    ids.push_back(id);
+    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  }
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+        // Simulate releasing objects in downstream_id's lineage.
+        size_t i = 0;
+        for (; i < ids.size(); i++) {
+          if (ids[i] == object_id) {
+            break;
+          }
+        }
+        RAY_CHECK(i < ids.size());
+        if (i > 0) {
+          ids_to_release->push_back(ids[i - 1]);
+        }
+      });
+
+  for (size_t i = 0; i < ids.size() - 1; i++) {
+    auto id = ids[i];
+    // Submit a dependent task on id.
+    rc->AddLocalReference(id, "");
+    ASSERT_TRUE(rc->HasReference(id));
+    rc->UpdateSubmittedTaskReferences({id});
+    rc->RemoveLocalReference(id, nullptr);
+
+    // The task finishes but is retryable.
+    rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+    // We should fail to set the deletion callback because the object has
+    // already gone out of scope.
+    ASSERT_FALSE(rc->SetDeleteCallback(
+        id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
+
+    ASSERT_EQ(out.size(), 1);
+    out.clear();
+    ASSERT_TRUE(lineage_deleted.empty());
+    ASSERT_TRUE(rc->HasReference(id));
+  }
+
+  // The task return ID goes out of scope.
+  rc->AddLocalReference(ids.back(), "");
+  rc->RemoveLocalReference(ids.back(), nullptr);
+  // The removal of the last return ID should recursively delete all
+  // references.
+  ASSERT_EQ(lineage_deleted.size(), ids.size());
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
+
+  // Local references.
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Submit 2 dependent tasks.
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Both tasks finish, 1 is retryable.
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  // The dependency is no longer in scope, but we still keep a reference to it
+  // because it is in the lineage of the retryable task.
+  ASSERT_EQ(out.size(), 1);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Simulate retrying the task.
+  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  ASSERT_FALSE(rc->HasReference(id));
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
+  auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
+  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+
+  ObjectID borrowed_id = ObjectID::FromRandom();
+  rc->AddLocalReference(borrowed_id, "");
+  bool pinned = false;
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned));
+
+  ObjectID id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(pinned);
+
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
+
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  auto objects = rc->ResetObjectsOnRemovedNode(node_id);
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
+}
 
 }  // namespace ray
 

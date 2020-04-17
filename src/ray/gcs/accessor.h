@@ -16,6 +16,7 @@
 #define RAY_GCS_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/protobuf/gcs.pb.h"
@@ -32,6 +33,12 @@ class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
 
+  /// Get all actor specification from GCS synchronously.
+  ///
+  /// \param actor_table_data_list The container to hold the actor specification.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
+
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -39,6 +46,14 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
+  /// Create an actor to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
+                                  const StatusCallback &callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -560,6 +575,17 @@ class WorkerInfoAccessor {
   /// \param Status
   virtual Status AsyncReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Register a worker to GCS asynchronously.
+  ///
+  /// \param worker_type The type of the worker.
+  /// \param worker_id The ID of the worker.
+  /// \param worker_info The information of the worker.
+  /// \return Status.
+  virtual Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
+      const std::unordered_map<std::string, std::string> &worker_info,
       const StatusCallback &callback) = 0;
 
  protected:

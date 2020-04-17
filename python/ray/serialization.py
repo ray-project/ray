@@ -15,7 +15,15 @@ from ray.exceptions import (
     RayWorkerError,
     UnreconstructableError,
 )
-from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
+from ray._raylet import (
+    split_buffer,
+    unpack_pickle5_buffers,
+    Pickle5Writer,
+    Pickle5SerializedObject,
+    MessagePackSerializer,
+    MessagePackSerializedObject,
+    RawSerializedObject,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,51 +40,6 @@ class CloudPickleError(Exception):
 
 class DeserializationError(Exception):
     pass
-
-
-class SerializedObject:
-    def __init__(self, metadata, contained_object_ids=None):
-        self._metadata = metadata
-        self._contained_object_ids = contained_object_ids or []
-
-    @property
-    def total_bytes(self):
-        raise NotImplementedError
-
-    @property
-    def metadata(self):
-        return self._metadata
-
-    @property
-    def contained_object_ids(self):
-        return self._contained_object_ids
-
-
-class Pickle5SerializedObject(SerializedObject):
-    def __init__(self, metadata, inband, writer, contained_object_ids):
-        super(Pickle5SerializedObject, self).__init__(metadata,
-                                                      contained_object_ids)
-        self.inband = inband
-        self.writer = writer
-        # cached total bytes
-        self._total_bytes = None
-
-    @property
-    def total_bytes(self):
-        if self._total_bytes is None:
-            self._total_bytes = self.writer.get_total_bytes(self.inband)
-        return self._total_bytes
-
-
-class RawSerializedObject(SerializedObject):
-    def __init__(self, value):
-        super(RawSerializedObject,
-              self).__init__(ray_constants.RAW_BUFFER_METADATA)
-        self.value = value
-
-    @property
-    def total_bytes(self):
-        return len(self.value)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
@@ -164,7 +127,7 @@ class SerializationContext:
             # TODO(swang): Remove this check. Otherwise, we will not be able to
             # handle serialized plasma IDs correctly.
             if obj.is_direct_call_type():
-                worker = ray.worker.get_global_worker()
+                worker = ray.worker.global_worker
                 worker.check_connected()
                 obj, owner_id, owner_address = (
                     worker.core_worker.serialize_and_promote_object_id(obj))
@@ -184,7 +147,7 @@ class SerializationContext:
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
             if owner_id:
-                worker = ray.worker.get_global_worker()
+                worker = ray.worker.global_worker
                 worker.check_connected()
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
@@ -250,7 +213,7 @@ class SerializationContext:
             # cloudpickle directly or captured in a remote function/actor),
             # then pin the object for the lifetime of this worker by adding
             # a local reference that won't ever be removed.
-            ray.worker.get_global_worker().core_worker.add_object_id_reference(
+            ray.worker.global_worker.core_worker.add_object_id_reference(
                 object_id)
 
     def _deserialize_pickle5_data(self, data):
@@ -265,23 +228,51 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
+    def _deserialize_msgpack_data(self, data, metadata):
+        msgpack_data, pickle5_data = split_buffer(data)
+
+        if metadata == ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE:
+            python_objects = []
+        else:
+            python_objects = self._deserialize_pickle5_data(pickle5_data)
+
+        try:
+
+            def _python_deserializer(index):
+                return python_objects[index]
+
+            obj = MessagePackSerializer.loads(msgpack_data,
+                                              _python_deserializer)
+        except Exception:
+            raise DeserializationError()
+        return obj
+
     def _deserialize_object(self, data, metadata, object_id):
         if metadata:
-            if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
-                return self._deserialize_pickle5_data(data)
+            if metadata in [
+                    ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
+                    ray_constants.OBJECT_METADATA_TYPE_PYTHON
+            ]:
+                return self._deserialize_msgpack_data(data, metadata)
             # Check if the object should be returned as raw bytes.
-            if metadata == ray_constants.RAW_BUFFER_METADATA:
+            if metadata == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
                     return b""
                 return data.to_pybytes()
             # Otherwise, return an exception object based on
             # the error type.
-            error_type = int(metadata)
+            try:
+                error_type = int(metadata)
+            except Exception:
+                raise Exception(
+                    "Can't deserialize object: {}, metadata: {}".format(
+                        object_id, metadata))
+
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_pickle5_data(data)
+                obj = self._deserialize_msgpack_data(data, metadata)
                 assert isinstance(obj, RayTaskError)
                 return obj
             elif error_type == ErrorType.Value("WORKER_DIED"):
@@ -347,6 +338,43 @@ class SerializationContext:
 
         return results
 
+    def _serialize_to_pickle5(self, metadata, value):
+        writer = Pickle5Writer()
+        # TODO(swang): Check that contained_object_ids is empty.
+        try:
+            self.set_in_band_serialization()
+            inband = pickle.dumps(
+                value, protocol=5, buffer_callback=writer.buffer_callback)
+        except Exception as e:
+            self.get_and_clear_contained_object_ids()
+            raise e
+        finally:
+            self.set_out_of_band_serialization()
+
+        return Pickle5SerializedObject(
+            metadata, inband, writer,
+            self.get_and_clear_contained_object_ids())
+
+    def _serialize_to_msgpack(self, metadata, value):
+        python_objects = []
+
+        def _python_serializer(o):
+            index = len(python_objects)
+            python_objects.append(o)
+            return index
+
+        msgpack_data = MessagePackSerializer.dumps(value, _python_serializer)
+
+        if python_objects:
+            pickle5_serialized_object = \
+                self._serialize_to_pickle5(metadata, python_objects)
+        else:
+            metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+            pickle5_serialized_object = None
+
+        return MessagePackSerializedObject(metadata, msgpack_data,
+                                           pickle5_serialized_object)
+
     def serialize(self, value):
         """Serialize an object.
 
@@ -365,23 +393,9 @@ class SerializationContext:
                 metadata = str(ErrorType.Value(
                     "TASK_EXECUTION_EXCEPTION")).encode("ascii")
             else:
-                metadata = ray_constants.PICKLE5_BUFFER_METADATA
+                metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
 
-            writer = Pickle5Writer()
-            # TODO(swang): Check that contained_object_ids is empty.
-            try:
-                self.set_in_band_serialization()
-                inband = pickle.dumps(
-                    value, protocol=5, buffer_callback=writer.buffer_callback)
-            except Exception as e:
-                self.get_and_clear_contained_object_ids()
-                raise e
-            finally:
-                self.set_out_of_band_serialization()
-
-            return Pickle5SerializedObject(
-                metadata, inband, writer,
-                self.get_and_clear_contained_object_ids())
+            return self._serialize_to_msgpack(metadata, value)
 
     def register_custom_serializer(self,
                                    cls,

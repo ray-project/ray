@@ -13,11 +13,17 @@ def env_integer(key, default):
     return default
 
 
+def env_bool(key, default):
+    if key in os.environ:
+        return True if os.environ[key].lower() == "true" else False
+    return default
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -174,13 +180,12 @@ PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
-# A constant used as object metadata to indicate the object is raw binary.
-RAW_BUFFER_METADATA = b"RAW"
-# A constant used as object metadata to indicate the object is pickled. This
-# format is only ever used for Python inline task argument values.
-PICKLE_BUFFER_METADATA = b"PICKLE"
-# A constant used as object metadata to indicate the object is pickle5 format.
-PICKLE5_BUFFER_METADATA = b"PICKLE5"
+# A constant used as object metadata to indicate the object is cross language.
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
+# A constant used as object metadata to indicate the object is python specific.
+OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
+# A constant used as object metadata to indicate the object is raw bytes.
+OBJECT_METADATA_TYPE_RAW = b"RAW"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
@@ -197,4 +202,4 @@ MACH_PAGE_SIZE_BYTES = 4096
 # RAY_GCS_SERVICE_ENABLED only set in ci job.
 # TODO(ffbin): Once we entirely migrate to service-based GCS, we should
 # remove it.
-RAY_GCS_SERVICE_ENABLED = "RAY_GCS_SERVICE_ENABLED"
+GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)

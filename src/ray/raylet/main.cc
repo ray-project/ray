@@ -31,6 +31,10 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
+DEFINE_int32(min_worker_port, 0,
+             "The lowest port that workers' gRPC servers will bind on.");
+DEFINE_int32(max_worker_port, 0,
+             "The highest port that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
@@ -62,6 +66,8 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
+  const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
+  const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
@@ -121,14 +127,16 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+  node_manager_config.min_worker_port = min_worker_port;
+  node_manager_config.max_worker_port = max_worker_port;
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
+        make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
+        make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -177,8 +185,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
-  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+  if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
@@ -202,7 +209,12 @@ int main(int argc, char *argv[]) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };
-  boost::asio::signal_set signals(main_service, SIGTERM);
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
   signals.async_wait(handler);
 
   main_service.run();

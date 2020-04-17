@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
 enum Language {
@@ -67,11 +67,22 @@ message PythonFunctionDescriptor {
   string function_hash = 4;
 }
 
+/// Function descriptor for C/C++.
+message CppFunctionDescriptor {
+  /// Dynamic library name which contains the remote function.
+  string lib_name = 1;
+  /// Remote function offset from base address.
+  string function_offset = 2;
+  /// Executable function offset from base address.
+  string exec_function_offset = 3;
+}
+
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
     JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
+    CppFunctionDescriptor cpp_function_descriptor = 3;
   }
 }
 
@@ -113,10 +124,8 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
-  // Whether this task is a direct call task.
-  bool is_direct_call = 16;
   // Number of times this task may be retried on worker failure.
-  int32 max_retries = 17;
+  int32 max_retries = 16;
 }
 
 // Argument in the task.
@@ -146,14 +155,12 @@ message ActorCreationTaskSpec {
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
   // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
-  // Whether direct actor call is used.
-  bool is_direct_call = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Whether the actor use async actor calls
-  bool is_asyncio = 8;
+  bool is_asyncio = 7;
 }
 
 // Task spec of an actor task.
@@ -262,16 +269,18 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   map<string, string> webui_display = 10;
+  // Number of objects that are IN_PLASMA_ERROR in the local memory store.
+  int32 num_in_plasma = 11;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 11;
+  int32 num_local_objects = 12;
   // Used local object store memory.
-  int64 used_object_store_memory = 12;
+  int64 used_object_store_memory = 13;
   // Length of the task queue.
-  int32 task_queue_length = 13;
+  int32 task_queue_length = 14;
   // Number of executed tasks.
-  int32 num_executed_tasks = 14;
+  int32 num_executed_tasks = 15;
   // Actor constructor.
-  string actor_title = 15;
+  string actor_title = 16;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 16;
+  repeated ObjectRefInfo object_refs = 17;
 }

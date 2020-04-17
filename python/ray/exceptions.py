@@ -11,6 +11,11 @@ class RayError(Exception):
     pass
 
 
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
+    pass
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
@@ -36,10 +41,8 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         if proctitle:
             self.proctitle = proctitle
-        elif setproctitle:
-            self.proctitle = setproctitle.getproctitle()
         else:
-            self.proctitle = "ray_worker"
+            self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name
@@ -139,7 +142,7 @@ class ObjectStoreFullError(RayError):
             "You can also try setting an option to fallback to LRU eviction "
             "when the object store is full by calling "
             "ray.init(lru_evict=True). See also: "
-            "https://ray.readthedocs.io/en/latest/memory-management.html.")
+            "https://docs.ray.io/en/latest/memory-management.html.")
 
 
 class UnreconstructableError(RayError):
@@ -164,7 +167,7 @@ class UnreconstructableError(RayError):
             "or setting object store limits with "
             "ray.remote(object_store_memory=<bytes>). See also: {}".format(
                 self.object_id.hex(),
-                "https://ray.readthedocs.io/en/latest/memory-management.html"))
+                "https://docs.ray.io/en/latest/memory-management.html"))
 
 
 class RayTimeoutError(RayError):
