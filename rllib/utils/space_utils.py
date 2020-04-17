@@ -42,6 +42,7 @@ def flatten_space(space):
 
 
 def get_base_struct_from_space(space):
+
     def _helper_struct(space_):
         if isinstance(space_, Tuple):
             return [_helper_struct(s) for s in space_]

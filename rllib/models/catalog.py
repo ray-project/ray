@@ -198,22 +198,32 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space):
+    def get_action_shape(action_space, discrete_to_one_hot=True):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
+            discrete_to_one_hot (bool): Whether to return the one-hot shape
+                for discrete actions or not.
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return (tf.int64, (None, ))
+            if discrete_to_one_hot:
+                return (tf.float32, (None, action_space.n))
+            else:
+                return (tf.int64, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return (tf.float32, (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            return (tf.as_dtype(action_space.dtype),
-                    (None, ) + action_space.shape)
+            if discrete_to_one_hot:
+                return tf.as_dtype(action_space.dtype), \
+                       (None,) + action_space.shape[:-1] + \
+                       (action_space.shape[-1] * action_space.nvec,)
+            else:
+                return (tf.as_dtype(action_space.dtype),
+                        (None, ) + action_space.shape)
         elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
@@ -232,16 +242,20 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space, name=None):
+    def get_action_placeholder(
+        action_space, name=None, discrete_to_one_hot=True):
         """Returns an action placeholder consistent with the action space
 
         Args:
             action_space (Space): Action space of the target gym env.
+            discrete_to_one_hot (bool): Whether to make placeholder one-hot
+                for discrete actions.
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(action_space)
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space, discrete_to_one_hot=discrete_to_one_hot)
         return tf.placeholder(dtype, shape=shape, name=(name or "action"))
 
     @staticmethod

@@ -3,12 +3,11 @@ import gym
 import numpy as np
 import logging
 
-from ray.rllib.utils import force_list
+#from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.space_utils import flatten_space, \
-    get_base_struct_from_space, TupleActions
+from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,6 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space = observation_space
         self.action_space = action_space
-        self.flattened_action_space = flatten_space(action_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
         # The global timestep, broadcast down from time to time from the
@@ -160,7 +158,7 @@ class Policy(metaclass=ABCMeta):
         if state is not None:
             state_batch = [[s] for s in state]
 
-        [flat_action], state_out, info = self.compute_actions(
+        [action], state_out, info = self.compute_actions(
             [obs],
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -170,17 +168,17 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        if isinstance(flat_action, TupleActions):
-            flat_action = flat_action.batches
-        flat_action = force_list(flat_action)
+        #if isinstance(flat_action, TupleActions):
+        #    flat_action = flat_action.batches
+        #flat_action = force_list(flat_action)
 
         if clip_actions:
-            flat_action = clip_action(flat_action, self.flattened_action_space)
+            action = clip_action(action, self.action_space_struct)
 
-        env_action = tree.unflatten_as(self.action_space_struct, flat_action)
+        #env_action = tree.unflatten_as(self.action_space_struct, flat_action)
 
         # Return action, internal state(s), infos.
-        return env_action, [s[0] for s in state_out], \
+        return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
@@ -405,7 +403,7 @@ class Policy(metaclass=ABCMeta):
         return exploration
 
 
-def clip_action(flat_actions, flat_space):
+def clip_action(action, action_space):
     """Clips all actions in `flat_actions` according to the given Spaces.
 
     Arguments:
@@ -417,11 +415,18 @@ def clip_action(flat_actions, flat_space):
     Returns:
         List[np.ndarray]: Flattened list of single clipped "primitive" actions.
     """
-    assert len(flat_actions) == len(flat_space), (flat_actions, flat_space)
-    clipped = []
-    for component, space in zip(flat_actions, flat_space):
-        a = component
-        if isinstance(space, gym.spaces.Box):
-            a = np.clip(a, space.low, space.high)
-        clipped.append(a)
-    return clipped
+
+    def map_(a, s):
+        if isinstance(s, gym.spaces.Box):
+            a = np.clip(a, s.low, s.high)
+        return a
+
+    return tree.map_structure(map_, action, action_space)
+    #assert len(flat_actions) == len(flat_space), (flat_actions, flat_space)
+    #clipped = []
+    #for component, space in zip(flat_actions, flat_space):
+    #    a = component
+    #    if isinstance(space, gym.spaces.Box):
+    #        a = np.clip(a, space.low, space.high)
+    #    clipped.append(a)
+    #return clipped

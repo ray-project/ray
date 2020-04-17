@@ -119,10 +119,11 @@ class DynamicTFPolicy(TFPolicy):
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
-            action_input = ModelCatalog.get_action_placeholder(action_space)
+            action_input = ModelCatalog.get_action_placeholder(
+                action_space, discrete_to_one_hot=False)
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
-                    action_space, "prev_action")
+                    action_space, name="prev_action", discrete_to_one_hot=True)
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
             explore = tf.placeholder_with_default(
@@ -321,7 +322,8 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.NEXT_OBS: fake_array(self._obs_input),
             SampleBatch.DONES: np.array([False], dtype=np.bool),
             SampleBatch.ACTIONS: fake_array(
-                ModelCatalog.get_action_placeholder(self.action_space)),
+                ModelCatalog.get_action_placeholder(
+                    self.action_space, discrete_to_one_hot=False)),
             SampleBatch.REWARDS: np.array([0], dtype=np.float32),
         }
         if self._obs_include_prev_action_reward:
