@@ -45,7 +45,7 @@ public class JobMaster {
   }
 
   /**
-   * Init JobMaster.
+   * Init JobMaster. To initiate or recover other components(like metrics and extra coordinators).
    *
    * @param isRecover if it is recover from state
    * @return init result
@@ -60,7 +60,7 @@ public class JobMaster {
 
     // recover from last checkpoint
     if (isRecover) {
-      // TODO
+      // TODO (lianxin)
     }
 
     ExecutionGraph executionGraph = graphManager.getExecutionGraph();
