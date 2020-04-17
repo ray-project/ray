@@ -93,6 +93,7 @@ public class JobMaster {
 
     // build and set graph into runtime context
     ExecutionGraph executionGraph = graphManager.buildExecutionGraph(jobGraph);
+    runtimeContext.setJobGraph(jobGraph);
     runtimeContext.setExecutionGraph(executionGraph);
 
     // init scheduler

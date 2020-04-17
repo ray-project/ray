@@ -30,10 +30,10 @@ public class RemoteCallWorker {
 
     // python
     if (actor instanceof RayPyActor) {
-      // TODO (yunye)
+      // TODO (datayjz)
     } else {
       // java
-      // TODO (yunye)
+      // TODO (datayjz)
     }
 
     LOG.info("Finish call worker to init.");
@@ -52,10 +52,10 @@ public class RemoteCallWorker {
 
     // python
     if (actor instanceof RayPyActor) {
-      // TODO (yunye)
+      // TODO (datayjz)
     } else {
       // java
-      // TODO (yunye)
+      // TODO (datayjz)
     }
 
     LOG.info("Finish call worker to start.");
@@ -75,9 +75,9 @@ public class RemoteCallWorker {
 
     // python
     if (actor instanceof RayPyActor) {
-      // TODO (yunye)
+      // TODO (datayjz)
     } else {
-      // TODO (yunye)
+      // TODO (datayjz)
     }
 
     LOG.info("Finish call wk shutdownWithoutReconstruction, ret is {}.", ret);

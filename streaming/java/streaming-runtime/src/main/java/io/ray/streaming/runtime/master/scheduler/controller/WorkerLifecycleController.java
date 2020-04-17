@@ -52,9 +52,9 @@ public class WorkerLifecycleController {
 
     RayActor<JobWorker> actor = null;
     if (Language.JAVA == language) {
-      // TODO (yunye)
+      // TODO (datayjz)
     } else {
-      // TODO (yunye)
+      // TODO (datayjz)
     }
     
     if (null == actor) {
