@@ -103,7 +103,8 @@ class TestDistributions(unittest.TestCase):
         input_space = Box(-2.0, 2.0, shape=(200, 10))
         low, high = -2.0, 1.0
 
-        for fw, sess in framework_iterator(session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf", "eager"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Batch of size=n and deterministic.
@@ -125,8 +126,8 @@ class TestDistributions(unittest.TestCase):
                 values = sess.run(values)
             else:
                 values = values.numpy()
-            self.assertTrue(np.max(values) < high)
-            self.assertTrue(np.min(values) > low)
+            self.assertTrue(np.max(values) <= high)
+            self.assertTrue(np.min(values) >= low)
 
             check(np.mean(values), expected.mean(), decimals=1)
 
@@ -143,11 +144,12 @@ class TestDistributions(unittest.TestCase):
             # Unsquash values, then get log-llh from regular gaussian.
             # atanh_in = np.clip((values - low) / (high - low) * 2.0 - 1.0,
             #   -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            atanh_in = (values - low) / (high - low) * 2.0 - 1.0
-            unsquashed_values = np.arctanh(atanh_in)
+            normed_values = (values - low) / (high - low) * 2.0 - 1.0
+            save_normed_values = np.clip(normed_values, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+            unsquashed_values = np.arctanh(save_normed_values)
             log_prob_unsquashed = np.sum(
                 np.log(
-                    norm.pdf(unsquashed_values, means, stds) + SMALL_NUMBER),
+                    norm.pdf(unsquashed_values, means, stds)),  #  + SMALL_NUMBER),
                 -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
