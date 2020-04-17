@@ -234,6 +234,13 @@ class WorkerSet:
                     tmp[k] = (policy, v[1], v[2], v[3])
             policy = tmp
 
+        if worker_index == 0:
+            extra_python_environs = config.get(
+                "extra_python_environs_for_driver", None)
+        else:
+            extra_python_environs = config.get(
+                "extra_python_environs_for_worker", None)
+
         worker = cls(
             env_creator,
             policy,
@@ -269,7 +276,8 @@ class WorkerSet:
             no_done_at_end=config["no_done_at_end"],
             seed=(config["seed"] + worker_index)
             if config["seed"] is not None else None,
-            _fake_sampler=config.get("_fake_sampler", False))
+            _fake_sampler=config.get("_fake_sampler", False),
+            extra_python_environs=extra_python_environs)
 
         # Check for correct policy class (only locally, remote Workers should
         # create the exact same Policy types).

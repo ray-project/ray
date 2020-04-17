@@ -17,9 +17,7 @@ class ReaderClient {
   /// \param[in] async_func DataReader's raycall function descriptor to be called by
   /// DataWriter, asynchronous semantics \param[in] sync_func DataReader's raycall
   /// function descriptor to be called by DataWriter, synchronous semantics
-  ReaderClient(RayFunction &async_func, RayFunction &sync_func) {
-    DownstreamQueueMessageHandler::peer_async_function_ = async_func;
-    DownstreamQueueMessageHandler::peer_sync_function_ = sync_func;
+  ReaderClient() {
     downstream_handler_ = ray::streaming::DownstreamQueueMessageHandler::CreateService(
         CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
   }
@@ -38,9 +36,7 @@ class ReaderClient {
 /// Interface of streaming queue for DataWriter. Similar to ReaderClient.
 class WriterClient {
  public:
-  WriterClient(RayFunction &async_func, RayFunction &sync_func) {
-    UpstreamQueueMessageHandler::peer_async_function_ = async_func;
-    UpstreamQueueMessageHandler::peer_sync_function_ = sync_func;
+  WriterClient() {
     upstream_handler_ = ray::streaming::UpstreamQueueMessageHandler::CreateService(
         CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
   }

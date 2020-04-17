@@ -80,6 +80,19 @@ class Node:
             node_ip_address = ray.services.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
+        if ray_params.raylet_ip_address:
+            raylet_ip_address = ray_params.raylet_ip_address
+        else:
+            raylet_ip_address = node_ip_address
+
+        if raylet_ip_address != node_ip_address and (not connect_only or head):
+            raise ValueError(
+                "The raylet IP address should only be different than the node "
+                "IP address when connecting to an existing raylet; i.e., when "
+                "head=False and connect_only=True.")
+
+        self._raylet_ip_address = raylet_ip_address
+
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
@@ -122,7 +135,7 @@ class Node:
                 # from Redis.
                 address_info = ray.services.get_address_info_from_redis(
                     self.redis_address,
-                    self._node_ip_address,
+                    self._raylet_ip_address,
                     redis_password=self.redis_password)
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
@@ -229,8 +242,13 @@ class Node:
 
     @property
     def node_ip_address(self):
-        """Get the cluster Redis address."""
+        """Get the IP address of this node."""
         return self._node_ip_address
+
+    @property
+    def raylet_ip_address(self):
+        """Get the IP address of the raylet that this node connects to."""
+        return self._raylet_ip_address
 
     @property
     def address(self):
@@ -287,6 +305,7 @@ class Node:
         """Get a dictionary of addresses."""
         return {
             "node_ip_address": self._node_ip_address,
+            "raylet_ip_address": self._raylet_ip_address,
             "redis_address": self._redis_address,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
@@ -394,6 +413,7 @@ class Node:
             socket_path (string): the socket file to prepare.
         """
         result = socket_path
+        is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
                 result = "tcp://{}:{}".format(self._localhost,
@@ -407,6 +427,12 @@ class Node:
                     raise RuntimeError(
                         "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
+
+            # Check socket path length to make sure it's short enough
+            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
+            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
+                raise OSError("AF_UNIX path length cannot exceed "
+                              "{} bytes: {!r}".format(maxlen, result))
         return result
 
     def start_reaper_process(self):
@@ -422,7 +448,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
-                process_info
+                process_info,
             ]
 
     def start_redis(self):
@@ -462,7 +488,7 @@ class Node:
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
-            process_info
+            process_info,
         ]
 
     def start_reporter(self):
@@ -477,7 +503,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-                process_info
+                process_info,
             ]
 
     def start_dashboard(self, require_webui):
@@ -501,7 +527,7 @@ class Node:
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
-                process_info
+                process_info,
             ]
             redis_client = self.create_redis_client()
             redis_client.hmset("webui", {"url": self._webui_url})
@@ -520,7 +546,7 @@ class Node:
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info
+            process_info,
         ]
 
     def start_gcs_server(self):
@@ -537,7 +563,7 @@ class Node:
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
-            process_info
+            process_info,
         ]
 
     def start_raylet(self, use_valgrind=False, use_profiler=False):
@@ -610,7 +636,7 @@ class Node:
         assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
-            process_info
+            process_info,
         ]
 
     def start_head_processes(self):

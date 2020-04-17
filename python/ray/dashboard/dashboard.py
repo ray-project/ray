@@ -329,7 +329,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         profiling_id = req.query.get("profiling_id")
         profiling_info = self.dashboard_controller.get_profiling_info(
             profiling_id)
-        return aiohttp.web.json_response(self.is_dev, profiling_info)
+        return aiohttp.web.json_response(profiling_info)
 
     async def kill_actor(self, req) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")

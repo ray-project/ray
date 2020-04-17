@@ -175,7 +175,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
-                     ray::FunctionDescriptorBuilder::BuildPython("init", "", "", "")};
+                     ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
   }
@@ -191,7 +191,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "execute_test", test, "", "")};
+                                                "", test, "execute_test", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
   }
@@ -207,7 +207,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "check_current_test_status", "", "", "")};
+                                                "", "", "check_current_test_status", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -267,7 +267,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "actor creation task", "", "", "")};
+                                                "", "", "actor creation task", "")};
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
@@ -318,6 +318,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         true,                           // install_failure_signal_handler
         "127.0.0.1",                    // node_ip_address
         node_manager_port_,             // node_manager_port
+        "127.0.0.1",                    // raylet_ip_address
         "queue_tests",                  // driver_name
         "",                             // stdout_file
         "",                             // stderr_file

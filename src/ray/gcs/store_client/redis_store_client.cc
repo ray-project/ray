@@ -145,6 +145,20 @@ Status RedisStoreClient<Key, Data, IndexKey>::AsyncDeleteByIndex(
 }
 
 template class RedisStoreClient<ActorID, rpc::ActorTableData, JobID>;
+template class RedisStoreClient<JobID, rpc::JobTableData, JobID>;
+template class RedisStoreClient<ActorCheckpointID, rpc::ActorCheckpointData, JobID>;
+template class RedisStoreClient<ActorID, rpc::ActorCheckpointIdData, JobID>;
+template class RedisStoreClient<TaskID, rpc::TaskTableData, JobID>;
+template class RedisStoreClient<TaskID, rpc::TaskLeaseData, JobID>;
+template class RedisStoreClient<TaskID, rpc::TaskReconstructionData, JobID>;
+template class RedisStoreClient<ObjectID, rpc::ObjectTableDataList, JobID>;
+template class RedisStoreClient<ClientID, rpc::GcsNodeInfo, JobID>;
+template class RedisStoreClient<ClientID, rpc::ResourceMap, JobID>;
+template class RedisStoreClient<ClientID, rpc::HeartbeatTableData, JobID>;
+template class RedisStoreClient<ClientID, rpc::HeartbeatBatchTableData, JobID>;
+template class RedisStoreClient<JobID, rpc::ErrorTableData, JobID>;
+template class RedisStoreClient<UniqueID, rpc::ProfileTableData, JobID>;
+template class RedisStoreClient<WorkerID, rpc::WorkerFailureData, JobID>;
 
 }  // namespace gcs
 
