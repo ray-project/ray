@@ -975,10 +975,13 @@ cdef class CoreWorker:
     def kill_task(self, ObjectID object_id, c_bool force_kill):
         cdef:
             CObjectID c_object_id = object_id.native()
+            CRayStatus status = CRayStatus.OK()
 
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KillTask(
-                                                c_object_id, force_kill))
+        status = CCoreWorkerProcess.GetCoreWorker().KillTask(
+                                            c_object_id, force_kill)
+
+        if not status.ok():
+            raise ValueError(status.message().decode())
 
     def resource_ids(self):
         cdef:

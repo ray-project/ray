@@ -1663,8 +1663,9 @@ def cancel(object_id, force=False):
 
     if isinstance(object_id, ray.ObjectID) and object_id.task_id().actor_id(
     ).hex() not in ray.actors().keys():
-        worker.core_worker.kill_task(object_id, force)
-        return
+        if len(ray.wait([object_id], timeout=0)[1]) != 1:
+            return
+        return worker.core_worker.kill_task(object_id, force)
     raise ValueError("ray.cancel() only supported for non-actor object IDs. "
                      "Got: {}.".format(type(object_id)))
 

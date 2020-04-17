@@ -8,7 +8,7 @@ from ray.test_utils import SignalActor
 
 
 @pytest.mark.parametrize("use_force", [True, False])
-def test_kill_chain(ray_start_regular, use_force):
+def test_cancel_chain(ray_start_regular, use_force):
     """A helper method for chain of events tests"""
     signaler = SignalActor.remote()
 
@@ -50,7 +50,7 @@ def test_kill_chain(ray_start_regular, use_force):
 
 
 @pytest.mark.parametrize("use_force", [True, False])
-def test_kill_multiple_dependents(ray_start_regular, use_force):
+def test_cancel_multiple_dependents(ray_start_regular, use_force):
     """A helper method for multiple waiters on events tests"""
     signaler = SignalActor.remote()
 
@@ -87,7 +87,7 @@ def test_kill_multiple_dependents(ray_start_regular, use_force):
 
 
 @pytest.mark.parametrize("use_force", [True, False])
-def test_single_cpu_kill(shutdown_only, use_force):
+def test_single_cpu_cancel(shutdown_only, use_force):
     ray.init(num_cpus=1)
     signaler = SignalActor.remote()
 
@@ -162,16 +162,16 @@ def test_stress(shutdown_only, use_force):
 
     sleep_or_no = [random.randint(0, 1) for _ in range(100)]
     tasks = [infinite_sleep.remote(i) for i in sleep_or_no]
-    killed = set()
+    cancelled = set()
     for t in tasks:
         if random.random() > 0.5:
             ray.cancel(t, use_force)
-            killed.add(t)
+            cancelled.add(t)
 
     ray.cancel(first, use_force)
-    killed.add(first)
+    cancelled.add(first)
 
-    for done in killed:
+    for done in cancelled:
         with pytest.raises((RayTaskError, RayCancellationError)):
             ray.get(done, 10)
 
@@ -179,8 +179,8 @@ def test_stress(shutdown_only, use_force):
         t = tasks[indx]
         if sleep_or_no[indx]:
             ray.cancel(t, use_force)
-            killed.add(t)
-        if t in killed:
+            cancelled.add(t)
+        if t in cancelled:
             with pytest.raises((RayTaskError, RayCancellationError)):
                 ray.get(t, 10)
         else:

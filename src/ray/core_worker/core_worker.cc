@@ -1200,11 +1200,14 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
+  if (!object_id.CreatedByTask()) {
+    return Status::Invalid("Not created by a task.");
+  }
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    RAY_RETURN_NOT_OK(direct_task_submitter_->KillTask(task_spec.value(), force_kill));
+    return direct_task_submitter_->KillTask(task_spec.value(), force_kill);
   }
-  return Status::OK();
+  return Status::Invalid("Task is not locally submitted.");
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
