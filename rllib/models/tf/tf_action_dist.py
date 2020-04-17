@@ -298,7 +298,8 @@ class _SquashedGaussianBase(TFActionDistribution):
         assert len(x.shape) >= 2, "First dim batch, second dim variable"
         unsquashed_values = self._unsquash(x)
         log_prob = self.distr.log_prob(value=unsquashed_values)
-        return tf.reduce_sum(log_prob - self._log_squash_grad(unsquashed_values), axis=1)
+        return tf.reduce_sum(log_prob -
+                             self._log_squash_grad(unsquashed_values), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -308,7 +309,7 @@ class _SquashedGaussianBase(TFActionDistribution):
 
     def _squash(self, unsquashed_values):
         """Squash an array element-wise into the (high, low) range
-        
+
         Arguments:
             unsquashed_values: values to be squashed
 
@@ -320,7 +321,7 @@ class _SquashedGaussianBase(TFActionDistribution):
 
     def _unsquash(self, values):
         """Unsquash an array element-wise from the (high, low) range
-        
+
         Arguments:
             squashed_values: values to be unsquashed
 

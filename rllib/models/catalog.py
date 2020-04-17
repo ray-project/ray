@@ -13,7 +13,8 @@ from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet, GaussianSquashedGaussian
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet, \
+    GaussianSquashedGaussian
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
