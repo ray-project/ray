@@ -63,15 +63,25 @@ public class OutputCollector implements Collector<Record> {
       if (targetLanguages[partition] == Language.JAVA) {
         // avoid repeated serialization
         if (javaBuffer == null) {
-          javaBuffer = ByteBuffer.wrap(javaSerializer.serialize(record));
+          byte[] bytes = javaSerializer.serialize(record);
+          javaBuffer = ByteBuffer.allocate(1 + bytes.length);
+          javaBuffer.put(Serializer.JAVA_TYPE_ID);
+          // TODO(mubai) remove copy
+          javaBuffer.put(bytes);
+          javaBuffer.flip();
         }
-        writer.write(outputQueues[partition], javaBuffer);
+        writer.write(outputQueues[partition], javaBuffer.duplicate());
       } else {
         // avoid repeated serialization
         if (crossLangBuffer == null) {
-          crossLangBuffer = ByteBuffer.wrap(crossLangSerializer.serialize(record));
+          byte[] bytes = crossLangSerializer.serialize(record);
+          crossLangBuffer = ByteBuffer.allocate(1 + bytes.length);
+          crossLangBuffer.put(Serializer.CROSS_LANG_TYPE_ID);
+          // TODO(mubai) remove copy
+          crossLangBuffer.put(bytes);
+          crossLangBuffer.flip();
         }
-        writer.write(outputQueues[partition], crossLangBuffer);
+        writer.write(outputQueues[partition], crossLangBuffer.duplicate());
       }
     }
   }
