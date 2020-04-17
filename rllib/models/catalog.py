@@ -18,7 +18,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchMultiCategorical, TorchDiagGaussian
+    TorchMultiCategorical, TorchDeterministic, TorchDiagGaussian
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -149,7 +149,7 @@ class ModelCatalog:
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic
+                dist = Deterministic if framework == "tf" else TorchDeterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical

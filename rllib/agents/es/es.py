@@ -73,7 +73,9 @@ class Worker:
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.policy_params = policy_params
+        #self.policy_params = policy_params
+        self.config.update(policy_params)
+        self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
@@ -84,10 +86,10 @@ class Worker:
 
         policy_cls = get_policy_class(config)
         self.policy = policy_cls(
-            self.env.action_space, self.env.observation_space,
-            self.preprocessor, config["observation_filter"], config["model"],
-            single_threaded=True,
-            **policy_params)
+            self.env.observation_space, self.env.action_space, config)
+            #self.preprocessor, config["observation_filter"], config["model"],
+            #single_threaded=True)
+            #**policy_params)
 
     @property
     def filters(self):
@@ -115,7 +117,7 @@ class Worker:
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
-        self.policy.set_weights(params)
+        self.policy.set_flat_weights(params)
 
         noise_indices, returns, sign_returns, lengths = [], [], [], []
         eval_returns, eval_lengths = [], []
@@ -127,7 +129,7 @@ class Worker:
 
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
-                self.policy.set_weights(params)
+                self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
                 eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
@@ -140,10 +142,10 @@ class Worker:
 
                 # These two sampling steps could be done in parallel on
                 # different actors letting us update twice as frequently.
-                self.policy.set_weights(params + perturbation)
+                self.policy.set_flat_weights(params + perturbation)
                 rewards_pos, lengths_pos = self.rollout(timestep_limit)
 
-                self.policy.set_weights(params - perturbation)
+                self.policy.set_flat_weights(params - perturbation)
                 rewards_neg, lengths_neg = self.rollout(timestep_limit)
 
                 noise_indices.append(noise_index)
@@ -180,15 +182,17 @@ class ESTrainer(Trainer):
     @override(Trainer)
     def _init(self, config, env_creator):
         policy_params = {"action_noise_std": 0.01}
+        config.update(policy_params)  # ["action_noise_std"] = 0.01
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
-        from ray.rllib import models
-        preprocessor = models.ModelCatalog.get_preprocessor(env)
+        #from ray.rllib import models
+        #preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         policy_cls = get_policy_class(config)
         self.policy = policy_cls(
-            env.action_space, env.observation_space, preprocessor,
-            config["observation_filter"], config["model"], **policy_params)
+            env.action_space, env.observation_space, config)
+            #, preprocessor,
+            #config["observation_filter"], config["model"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
         self.report_length = config["report_length"]
 
@@ -212,8 +216,9 @@ class ESTrainer(Trainer):
     def _train(self):
         config = self.config
 
-        theta = self.policy.get_weights()
+        theta = self.policy.get_flat_weights()
         assert theta.dtype == np.float32
+        assert len(theta.shape) == 1
 
         # Put the current policy weights in the object store.
         theta_id = ray.put(theta)
@@ -269,7 +274,7 @@ class ESTrainer(Trainer):
         theta, update_ratio = self.optimizer.update(-g +
                                                     config["l2_coeff"] * theta)
         # Set the new weights in the local copy of the policy.
-        self.policy.set_weights(theta)
+        self.policy.set_flat_weights(theta)
         # Store the rewards
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
@@ -298,7 +303,7 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute(observation, update=False)[0]
+        return self.policy.compute_actions(observation, update=False)[0]
 
     @override(Trainer)
     def _stop(self):
@@ -330,14 +335,14 @@ class ESTrainer(Trainer):
 
     def __getstate__(self):
         return {
-            "weights": self.policy.get_weights(),
+            "weights": self.policy.get_flat_weights(),
             "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_weights(state["weights"])
+        self.policy.set_flat_weights(state["weights"])
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.observation_filter
