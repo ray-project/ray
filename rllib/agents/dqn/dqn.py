@@ -344,7 +344,8 @@ def execution_plan(workers, config):
             workers, config["target_network_update_freq"]))
 
     # Alternate deterministically between (1) and (2).
-    train_op = Concurrently([store_op, replay_op], mode="round_robin")
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 
