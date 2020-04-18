@@ -381,7 +381,7 @@ _check_job_triggers() {
   local job_names
   job_names="$1"
 
-  . "${WORKSPACE_DIR}"/ci/remote-watch.sh "$$"
+  "${WORKSPACE_DIR}"/ci/remote-watch.py &
 
   local variable_definitions
   # shellcheck disable=SC2031
