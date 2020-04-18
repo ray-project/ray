@@ -304,17 +304,29 @@ class SquashedGaussian(TFActionDistribution):
         return log_prob
 
     def _squash(self, raw_values):
-        # Make sure raw_values are not too high/low (such that tanh would
-        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
-        return (tf.clip_by_value(
-            tf.math.tanh(raw_values),
-            -1.0 + SMALL_NUMBER,
-            1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
-               self.low
+        # Returned values are within [low, high] (including `low` and `high`).
+        squashed = ((tf.math.tanh(raw_values) + 1.0) / 2.0) * \
+            (self.high - self.low) + self.low
+        return tf.clip_by_value(squashed, self.low, self.high)
+
+        ## Make sure raw_values are not too high/low (such that tanh would
+        ## return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
+        #return (tf.clip_by_value(
+        #    tf.math.tanh(raw_values),
+        #    -1.0 + SMALL_NUMBER,
+        #    1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
+        #       self.low
 
     def _unsquash(self, values):
-        return tf.math.atanh((values - self.low) /
-                             (self.high - self.low) * 2.0 - 1.0)
+        normed_values = (values - self.low) / (self.high - self.low) * 2.0 - \
+                        1.0
+        # Stabilize input to atanh.
+        save_normed_values = tf.clip_by_value(
+            normed_values, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        unsquashed = tf.math.atanh(save_normed_values)
+        return unsquashed
+        #return tf.math.atanh((values - self.low) /
+        #                     (self.high - self.low) * 2.0 - 1.0)
 
 
 class Deterministic(TFActionDistribution):

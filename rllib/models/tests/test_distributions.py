@@ -9,7 +9,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical, \
     TorchSquashedGaussian, TorchBeta
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
-    softmax, SMALL_NUMBER
+    softmax, SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
@@ -18,6 +18,38 @@ torch, _ = try_import_torch()
 
 class TestDistributions(unittest.TestCase):
     """Tests ActionDistribution classes."""
+
+    def _stability_test(self, distribution_cls, network_output_shape,
+                        fw, sess=None, bounds=None):
+        extreme_values = [
+            0.0,
+            float(LARGE_INTEGER), -float(LARGE_INTEGER),
+            1.1e-34, 1.1e34, -1.1e-34, -1.1e34,
+            SMALL_NUMBER, -SMALL_NUMBER,
+        ]
+        inputs = np.zeros(shape=network_output_shape, dtype=np.float32)
+        for batch_item in range(network_output_shape[0]):
+            for num in range(len(inputs[batch_item])):
+                inputs[batch_item][num] = np.random.choice(extreme_values)
+        dist = distribution_cls(inputs, {})
+        for _ in range(1000):
+            sample = dist.sample()
+            if fw != "tf":
+                sample_check = sample.numpy()
+            else:
+                sample_check = sess.run(sample)
+            assert not np.any(np.isnan(sample_check))
+            assert np.all(np.isfinite(sample_check))
+            if bounds:
+                assert np.min(sample_check) >= bounds[0]
+                assert np.max(sample_check) <= bounds[1]
+            logp = dist.logp(sample)
+            if fw != "tf":
+                logp_check = logp.numpy()
+            else:
+                logp_check = sess.run(logp)
+            assert not np.any(np.isnan(logp_check))
+            assert np.all(np.isfinite(logp_check))
 
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
@@ -106,6 +138,11 @@ class TestDistributions(unittest.TestCase):
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf", "eager"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
+
+            # Do a stability test using extreme NN outputs to see whether
+            # sampling and logp'ing result in NaN or +/-inf values.
+            self._stability_test(cls, input_space.shape, fw=fw, sess=sess,
+                                 bounds=(low, high))
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()

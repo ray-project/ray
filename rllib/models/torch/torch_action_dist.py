@@ -206,15 +206,16 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     @override(ActionDistribution)
     def logp(self, x):
         unsquashed_values = self._unsquash(x)
-        log_prob = torch.sum(self.dist.log_prob(unsquashed_values), dim=-1)
+        log_prob_gaussian = self.dist.log_prob(unsquashed_values)
+        log_prob_gaussian = torch.clamp(log_prob_gaussian, -100, 100)
+        log_prob_gaussian = torch.sum(log_prob_gaussian, dim=-1)
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
-        log_prob -= torch.sum(
+        log_prob = log_prob_gaussian - torch.sum(
             torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
         return log_prob
 
     def _squash(self, raw_values):
-        # Make sure raw_values are not too high/low (such that tanh would
-        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
+        # Returned values are within [low, high] (including `low` and `high`).
         squashed = ((torch.tanh(raw_values) + 1.0) / 2.0) * \
             (self.high - self.low) + self.low
         return torch.clamp(squashed, self.low, self.high)
