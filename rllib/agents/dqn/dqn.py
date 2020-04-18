@@ -317,15 +317,17 @@ def execution_plan(workers, config):
     store_op = rollouts.for_each(
         StoreToReplayBuffer(local_buffer=local_replay_buffer))
 
+    def update_prio(item):
+        pass  # TODO(ekl) update priorities
+
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(TrainOneStep(workers)) \
+        .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
-
-    # TODO(ekl) update priorities
 
     # Alternate deterministically between (1) and (2).
     train_op = Concurrently([store_op, replay_op], mode="round_robin")
