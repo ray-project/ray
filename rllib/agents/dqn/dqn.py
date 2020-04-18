@@ -325,6 +325,8 @@ def execution_plan(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
+    # TODO(ekl) update priorities
+
     # Alternate deterministically between (1) and (2).
     train_op = Concurrently([store_op, replay_op], mode="round_robin")
 
