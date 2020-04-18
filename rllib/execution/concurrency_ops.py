@@ -36,6 +36,8 @@ def Concurrently(ops: List[LocalIterator],
         raise ValueError("Unknown mode {}".format(mode))
 
     if output_indexes:
+        for i in output_indexes:
+            assert i in range(len(ops)), ("Index out of range", i)
 
         def tag(op, i):
             return op.for_each(lambda x: (i, x))
