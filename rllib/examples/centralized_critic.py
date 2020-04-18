@@ -206,6 +206,7 @@ if __name__ == "__main__":
         },
         config={
             "env": TwoStepGame,
+            "batch_mode": "complete_episodes",
             "eager": False,
             "num_workers": 0,
             "multiagent": {
