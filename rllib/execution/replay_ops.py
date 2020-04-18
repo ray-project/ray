@@ -8,7 +8,7 @@ from ray.rllib.execution.common import SampleBatchType
 
 
 class StoreToReplayBuffer:
-    """Callable that stores data into a replay buffer actors.
+    """Callable that stores data into replay buffer actors.
 
     If constructed with a local replay actor, data will be stored into that
     buffer. If constructed with a list of replay actor handles, data will
@@ -31,7 +31,7 @@ class StoreToReplayBuffer:
                  actors: List["ActorHandle"] = None):
         if bool(local_buffer) == bool(actors):
             raise ValueError(
-                "Exact one of local_buffer and replay_actors must be given.")
+                "Exactly one of local_buffer and replay_actors must be given.")
 
         if local_buffer:
             self.local_actor = local_buffer
@@ -53,7 +53,7 @@ def Replay(*,
            local_buffer: LocalReplayBuffer = None,
            actors: List["ActorHandle"] = None,
            async_queue_depth=4):
-    """Replay experiences in parallel from the given actors.
+    """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
     Concurrently() operator.
@@ -75,7 +75,7 @@ def Replay(*,
 
     if bool(local_buffer) == bool(actors):
         raise ValueError(
-            "Exact one of local_buffer and replay_actors must be given.")
+            "Exactly one of local_buffer and replay_actors must be given.")
 
     if actors:
         replay = from_actors(actors)
