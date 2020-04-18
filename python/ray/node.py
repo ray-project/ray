@@ -586,8 +586,6 @@ class Node:
             self._temp_dir,
             self._session_dir,
             self.get_resource_spec(),
-            self._ray_params.min_worker_port,
-            self._ray_params.max_worker_port,
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
             use_valgrind=use_valgrind,

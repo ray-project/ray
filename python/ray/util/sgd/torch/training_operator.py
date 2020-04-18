@@ -1,4 +1,3 @@
-import collections
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -7,6 +6,11 @@ from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
+
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 try:
     from apex import amp
@@ -25,7 +29,7 @@ except ImportError:
 
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
-    return isinstance(component, collections.Iterable) and len(component) > 1
+    return isinstance(component, Iterable) and len(component) > 1
 
 
 class TrainingOperator:
@@ -66,19 +70,24 @@ class TrainingOperator:
                  use_tqdm=False):
         # You are not expected to override this method.
         self._models = models  # List of models
-        assert isinstance(models, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(models)))
+        assert isinstance(
+            models,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(models)))
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(optimizers)))
+        assert isinstance(
+            optimizers,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(optimizers)))
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(schedulers, collections.Iterable), (
-                "Components need to be iterable. Got: {}".format(
+            assert isinstance(
+                schedulers,
+                Iterable), ("Components need to be iterable. Got: {}".format(
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
