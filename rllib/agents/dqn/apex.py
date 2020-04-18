@@ -184,8 +184,13 @@ def execution_plan(workers, config):
         })
         return result
 
-    return StandardMetricsReporting(merged_op, workers, config) \
-        .for_each(add_apex_metrics)
+    # Only report metrics from the workers with the lowest 1/3 of epsilons.
+    selected_workers = workers.remote_workers()[
+        -len(workers.remote_workers()) // 3:]
+
+    return StandardMetricsReporting(
+        merged_op, workers, config,
+        selected_workers=selected_workers).for_each(add_apex_metrics)
 
 
 APEX_TRAINER_PROPERTIES = {

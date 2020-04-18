@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 import time
 
 from ray.util.iter import LocalIterator
@@ -7,8 +7,11 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
-def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
-                             config: dict) -> LocalIterator[dict]:
+def StandardMetricsReporting(
+        train_op: LocalIterator[Any],
+        workers: WorkerSet,
+        config: dict,
+        selected_workers: List["ActorHandle"] = None) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
     Arguments:
@@ -17,6 +20,8 @@ def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
         workers (WorkerSet): Rollout workers to collect metrics from.
         config (dict): Trainer configuration, used to determine the frequency
             of stats reporting.
+        selected_workers (list): Override the list of remote workers
+            to collect metrics from.
 
     Returns:
         A local iterator over training results.
@@ -32,7 +37,8 @@ def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
         .filter(OncePerTimeInterval(max(2, config["min_iter_time_s"]))) \
         .for_each(CollectMetrics(
             workers, min_history=config["metrics_smoothing_episodes"],
-            timeout_seconds=config["collect_metrics_timeout"]))
+            timeout_seconds=config["collect_metrics_timeout"],
+            selected_workers=selected_workers))
     return output_op
 
 
@@ -50,18 +56,23 @@ class CollectMetrics:
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
-    def __init__(self, workers, min_history=100, timeout_seconds=180):
+    def __init__(self,
+                 workers,
+                 min_history=100,
+                 timeout_seconds=180,
+                 selected_workers: List["ActorHandle"] = None):
         self.workers = workers
         self.episode_history = []
         self.to_be_collected = []
         self.min_history = min_history
         self.timeout_seconds = timeout_seconds
+        self.selected_workers = selected_workers
 
     def __call__(self, _):
         # Collect worker metrics.
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
-            self.workers.remote_workers(),
+            self.selected_workers or self.workers.remote_workers(),
             self.to_be_collected,
             timeout_seconds=self.timeout_seconds)
         orig_episodes = list(episodes)

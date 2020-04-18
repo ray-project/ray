@@ -197,6 +197,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
+            include_webui=False,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,
