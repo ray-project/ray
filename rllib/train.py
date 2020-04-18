@@ -46,6 +46,11 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--no-ray-ui",
+        action="store_true",
+        type=bool,
+        help="Whether to disable the Ray web ui.")
+    parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
@@ -197,7 +202,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_webui=False,
+            include_webui=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,
