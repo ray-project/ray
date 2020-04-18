@@ -142,15 +142,6 @@ void GcsActorManager::RegisterActor(
       actor_id, actor_table_data, [this, actor](Status status) {
         RAY_CHECK_OK(status);
         RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
-        // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from
-        // actor_to_register_callbacks_.
-        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
-        for (auto &callback : iter->second) {
-          callback(actor);
-        }
-        actor_to_register_callbacks_.erase(iter);
         gcs_actor_scheduler_->Schedule(actor);
       }));
 }
@@ -264,7 +255,20 @@ void GcsActorManager::OnActorCreateSuccess(std::shared_ptr<GcsActor> actor) {
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor_id, actor_table_data, nullptr));
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor_id, actor_table_data, [this, actor](Status status) {
+        RAY_CHECK_OK(status);
+        // Invoke all callbacks for all registration requests of this actor (duplicated
+        // requests are included) and remove all of them from
+        // actor_to_register_callbacks_.
+        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+        if (iter != actor_to_register_callbacks_.end()) {
+          for (auto &callback : iter->second) {
+            callback(actor);
+          }
+          actor_to_register_callbacks_.erase(iter);
+        }
+      }));
 }
 
 void GcsActorManager::SchedulePendingActors() {
