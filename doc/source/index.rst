@@ -250,11 +250,9 @@ Getting Involved
    :caption: Tune
 
    tune.rst
-   Tune Guides and Tutorials <tune/generated_guides/overview.rst>
-   tune-usage.rst
+   Tutorials, Guides, Examples <tune/generated_guides/overview.rst>
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-examples.rst
    tune/api_docs/overview.rst
    tune-contrib.rst
 

@@ -1,3 +1,5 @@
+.. _tune-reporter-doc:
+
 Console Output (Reporters)
 ==========================
 

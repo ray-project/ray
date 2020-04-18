@@ -3,7 +3,7 @@
 Training (tune.Trainable, tune.track)
 =====================================
 
-Training can be done with either a **Class API** (``tune.Trainable``) < or **function-based API** (``track.log``).
+Training can be done with either a **Class API** (``tune.Trainable``) or **function-based API** (``track.log``).
 
 You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control for advanced algorithms.
 
@@ -41,26 +41,26 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
     from ray import tune
 
     class Guesser(tune.Trainable):
-        """Randomly picks 10 number from [1, 10000) to find the password."""
+        """Randomly picks a number from [1, 10000) to find the password."""
 
         def _setup(self, config):
-            self.config = config
+            self.guess = config["guess"]
+            self.iter = 0
             self.password = 1024
 
         def _train(self):
-            """Execute one step of 'training'."""
-            result_dict = {"diff": abs(self.config['guess'] - self.password)}
-            return result_dict
+            """Execute one step of 'training'. This function will be called iteratively"""
+            self.iter += 1
+            self.guess += 1
+            return {
+                "accuracy": abs(self.guess - self.password),
+                "training_iteration": self.iter  # Tune will automatically provide this.
+            }
 
-        def _stop(self):
-            # perform any cleanup necessary.
-            pass
 
     analysis = tune.run(
         Guesser,
-        stop={
-            "training_iteration": 1,
-        },
+        stop={"training_iteration": 10},
         num_samples=10,
         config={
             "guess": tune.randint(1, 10000)
@@ -108,6 +108,28 @@ Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors before exec
     # both of these should return
     validate_save_restore(MyTrainableClass)
     validate_save_restore(MyTrainableClass, use_object_store=True)
+
+
+Advanced Resource Allocation
+----------------------------
+
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, in ``tune.run``, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
+
+.. code-block:: python
+   :emphasize-lines: 4-8
+
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 1,
+            "extra_gpu": 4
+        }
+    )
+
+The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
+
 
 Advanced: Reusing Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~

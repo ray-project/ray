@@ -26,14 +26,15 @@ Currently, Tune offers the following search algorithms (and library integrations
 Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
-By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
+By default, Tune uses a BasicVariantGenerator to sample trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
 
 .. autoclass:: ray.tune.suggest.BasicVariantGenerator
     :show-inheritance:
     :noindex:
 
+Read about this in the :ref:`Grid/Random Search API <tune-grid-random>`.
 
-Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
+Note that other search algorithms will require a different search space declaration than the default Tune format.
 
 
 Repeated Evaluations
