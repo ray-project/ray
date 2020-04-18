@@ -167,8 +167,10 @@ def execution_plan(workers, config):
             workers, config["target_network_update_freq"],
             by_steps_trained=True))
 
-    # Execute (1), (2), (3) asynchronously as fast as possible.
-    merged_op = Concurrently([store_op, replay_op, update_op], mode="async")
+    # Execute (1), (2), (3) asynchronously as fast as possible. Only output
+    # items from (3) since metrics aren't available before then.
+    merged_op = Concurrently(
+        [store_op, replay_op, update_op], mode="async", output_indexes=[2])
 
     # Add in extra replay and learner metrics to the training result.
     def add_apex_metrics(result):
