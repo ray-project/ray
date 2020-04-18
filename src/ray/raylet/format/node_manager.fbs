@@ -151,6 +151,8 @@ table RegisterClientRequest {
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
+  // IP address of this worker.
+  ip_address: string;
   // Port that this worker is listening on.
   port: int;
 }
