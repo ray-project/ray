@@ -1,8 +1,22 @@
-import time
+import os
 import requests
+import tempfile
+import time
 
-from ray import serve
 import ray
+from ray import serve
+
+
+def request_with_retries(endpoint, timeout=30):
+    start = time.time()
+    while True:
+        try:
+            return requests.get(
+                "http://127.0.0.1:8000" + endpoint, timeout=timeout)
+        except requests.RequestException:
+            if time.time() - start > timeout:
+                raise TimeoutError
+            time.sleep(0.1)
 
 
 def _kill_http_proxy():
@@ -11,47 +25,135 @@ def _kill_http_proxy():
     ray.kill(http_proxy)
 
 
-def request_with_retries(endpoint, verify_response, timeout=30):
-    start = time.time()
-    while True:
-        try:
-            verify_response(requests.get("http://127.0.0.1:8000" + endpoint))
-            break
-        except requests.RequestException:
-            if time.time() - start > timeout:
-                raise TimeoutError
-            time.sleep(0.1)
-
-
 def test_http_proxy_failure(serve_instance):
     serve.init()
-    serve.create_endpoint(
-        "failure_endpoint", "/failure_endpoint", methods=["GET"])
+    serve.create_endpoint("proxy_failure", "/proxy_failure", methods=["GET"])
 
-    def function(flask_request):
+    def function():
         return "hello1"
 
-    serve.create_backend(function, "failure:v1")
-    serve.link("failure_endpoint", "failure:v1")
+    serve.create_backend(function, "proxy_failure:v1")
+    serve.link("proxy_failure", "proxy_failure:v1")
 
-    def verify_response(response):
+    assert request_with_retries("/proxy_failure", timeout=0.1).text == "hello1"
+
+    for _ in range(10):
+        response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello1"
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=0)
-
     _kill_http_proxy()
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=30)
-
-    _kill_http_proxy()
-
-    def function(flask_request):
+    def function():
         return "hello2"
 
-    serve.create_backend(function, "failure:v2")
-    serve.link("failure_endpoint", "failure:v2")
+    serve.create_backend(function, "proxy_failure:v2")
+    serve.link("proxy_failure", "proxy_failure:v2")
 
-    def verify_response(response):
+    for _ in range(10):
+        response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello2"
 
-    request_with_retries("/failure_endpoint", verify_response, timeout=30)
+
+def _get_worker_handles(backend):
+    handles = {}
+    for tag, handle in ray.get(serve.api._get_master_actor()
+                               .get_all_worker_handles.remote()).items():
+        if tag.startswith(backend):
+            handles[tag] = handle
+
+    return handles
+
+
+# Test that a worker dying unexpectedly causes it to restart and continue
+# serving requests.
+def test_worker_restart(serve_instance):
+    serve.init()
+    serve.create_endpoint("worker_failure", "/worker_failure", methods=["GET"])
+
+    class Worker1:
+        def __call__(self):
+            return os.getpid()
+
+    serve.create_backend(Worker1, "worker_failure:v1")
+    serve.link("worker_failure", "worker_failure:v1")
+
+    # Get the PID of the worker.
+    old_pid = request_with_retries("/worker_failure", timeout=0.1).text
+
+    # Kill the worker.
+    handles = _get_worker_handles("worker_failure:v1")
+    assert len(handles) == 1
+    ray.kill(list(handles.values())[0])
+
+    # Wait until the worker is killed and a one is started.
+    start = time.time()
+    while time.time() - start < 30:
+        response = request_with_retries("/worker_failure", timeout=30)
+        if response.text != old_pid:
+            break
+    else:
+        assert False, "Timed out waiting for worker to die."
+
+
+# Test that if there are multiple replicas for a worker and one dies
+# unexpectedly, the others continue to serve requests.
+def test_worker_replica_failure(serve_instance):
+    serve.http_proxy.MAX_ACTOR_DEAD_RETRIES = 0
+    serve.init()
+    serve.create_endpoint(
+        "replica_failure", "/replica_failure", methods=["GET"])
+
+    class Worker:
+        # Assumes that two replicas are started. Will hang forever in the
+        # constructor for any workers that are restarted.
+        def __init__(self, path):
+            self.should_hang = False
+            if not os.path.exists(path):
+                with open(path, "w") as f:
+                    f.write("1")
+            else:
+                with open(path, "r") as f:
+                    num = int(f.read())
+
+                with open(path, "w") as f:
+                    if num == 2:
+                        self.should_hang = True
+                    else:
+                        f.write(str(num + 1))
+
+            if self.should_hang:
+                while True:
+                    pass
+
+        def __call__(self):
+            pass
+
+    temp_path = tempfile.gettempdir() + "/" + serve.utils.get_random_letters()
+    serve.create_backend(Worker, "replica_failure", temp_path)
+    backend_config = serve.get_backend_config("replica_failure")
+    backend_config.num_replicas = 2
+    serve.set_backend_config("replica_failure", backend_config)
+    serve.link("replica_failure", "replica_failure")
+
+    # Wait until both replicas have been started.
+    responses = set()
+    while len(responses) == 1:
+        responses.add(
+            request_with_retries("/replica_failure", timeout=0.1).text)
+        time.sleep(0.1)
+
+    # Kill one of the replicas.
+    handles = _get_worker_handles("replica_failure")
+    assert len(handles) == 2
+    ray.kill(list(handles.values())[0])
+
+    # Check that the other replica still serves requests.
+    for _ in range(10):
+        while True:
+            try:
+                # The timeout needs to be small here because the request to
+                # the restarting worker will hang.
+                request_with_retries("/replica_failure", timeout=0.1)
+                break
+            except TimeoutError:
+                time.sleep(0.1)

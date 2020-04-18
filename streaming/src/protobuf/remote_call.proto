@@ -4,7 +4,7 @@ package ray.streaming.proto;
 
 import "streaming/src/protobuf/streaming.proto";
 
-option java_package = "org.ray.streaming.runtime.generated";
+option java_package = "io.ray.streaming.runtime.generated";
 
 // Streaming execution graph
 message ExecutionGraph {

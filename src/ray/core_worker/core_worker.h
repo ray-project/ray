@@ -23,6 +23,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -83,6 +84,8 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
+  /// IP address of the raylet.
+  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// The stdout file of this process.
@@ -867,6 +870,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Handler if a raylet node is removed from the cluster.
+  void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -960,6 +966,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+
+  /// Manages recovery of objects stored in remote plasma nodes.
+  std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.

@@ -24,5 +24,4 @@ def test_remote(ray_start_regular_shared):
     # assert set(to_list(it.get_shard(0))) == set([0, 3, 5])
 
 
-
 test_remote(None)
