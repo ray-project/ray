@@ -170,6 +170,7 @@ def execution_plan(workers, config):
     # Execute (1), (2), (3) asynchronously as fast as possible.
     merged_op = Concurrently([store_op, replay_op, update_op], mode="async")
 
+    # Add in extra replay and learner metrics to the training result.
     def add_apex_metrics(result):
         replay_stats = ray.get(replay_actors[0].stats.remote(
             config["optimizer"].get("debug")))
