@@ -14,7 +14,7 @@ class TestApex(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_apex_compilation(self):
+    def test_apex_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
