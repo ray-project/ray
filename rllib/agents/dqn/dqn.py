@@ -343,7 +343,8 @@ def execution_plan(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2).
+    # Alternate deterministically between (1) and (2). Only return the output
+    # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
         [store_op, replay_op], mode="round_robin", output_indexes=[1])
 

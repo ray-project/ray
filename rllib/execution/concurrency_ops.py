@@ -45,7 +45,8 @@ def Concurrently(ops: List[LocalIterator],
     output = ops[0].union(*ops[1:], deterministic=deterministic)
 
     if output_indexes:
-        output = output.filter(lambda tup: tup[0] in output_indexes)
+        output = (output.filter(lambda tup: tup[0] in output_indexes)
+                  .for_each(lambda tup: tup[1]))
 
     return output
 

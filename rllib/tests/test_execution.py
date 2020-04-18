@@ -52,6 +52,18 @@ def test_concurrently(ray_start_regular_shared):
     assert c.take(6) == [1, 2, 3, 4, 5, 6]
 
 
+def test_concurrently_output(ray_start_regular_shared):
+    a = iter_list([1, 2, 3])
+    b = iter_list([4, 5, 6])
+    c = Concurrently([a, b], mode="round_robin", output_indexes=[1])
+    assert c.take(6) == [4, 5, 6]
+
+    a = iter_list([1, 2, 3])
+    b = iter_list([4, 5, 6])
+    c = Concurrently([a, b], mode="round_robin", output_indexes=[0, 1])
+    assert c.take(6) == [1, 4, 2, 5, 3, 6]
+
+
 def test_enqueue_dequeue(ray_start_regular_shared):
     a = iter_list([1, 2, 3])
     q = queue.Queue(100)
