@@ -36,7 +36,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
-    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexLices();
+    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
 
     Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertexList().size());
 
@@ -88,6 +88,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     jobConfig.put("key1", "value1");
     jobConfig.put("key2", "value2");
     jobConfig.put(ResourceConfig.TASK_RESOURCE_CPU, "2.0");
+    jobConfig.put(ResourceConfig.TASK_RESOURCE_MEM, "2.0");
 
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(
         Lists.newArrayList(streamSink), "test", jobConfig);

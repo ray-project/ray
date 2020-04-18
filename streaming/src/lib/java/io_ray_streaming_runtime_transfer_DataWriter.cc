@@ -7,10 +7,13 @@ using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
-    JNIEnv *env, jclass, jobjectArray output_queue_ids, jobjectArray output_actor_ids,
+    JNIEnv *env, jclass, jobject initial_parameters, jobjectArray output_queue_ids,
     jlongArray msg_ids, jlong channel_size, jbyteArray conf_bytes_array,
     jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: createDataWriterNative.";
+
+  std::vector<ray::streaming::ChannelCreationParameter> parameter_vec;
+  ParseChannelInitParameters(env, initial_parameters, parameter_vec);
   std::vector<ray::ObjectID> queue_id_vec =
       jarray_to_object_id_vec(env, output_queue_ids);
   for (auto id : queue_id_vec) {
@@ -22,9 +25,6 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
   std::vector<uint64_t> msg_ids_vec = LongVectorFromJLongArray(env, msg_ids).data;
   std::vector<uint64_t> queue_size_vec(long_array_obj.data.size(), channel_size);
   std::vector<ray::ObjectID> remain_id_vec;
-  std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, output_actor_ids);
-
-  STREAMING_LOG(INFO) << "actor_ids: " << actor_ids[0];
 
   RawDataFromJByteArray conf(env, conf_bytes_array);
   STREAMING_CHECK(conf.data != nullptr);
@@ -36,7 +36,8 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
     runtime_context->MarkMockTest();
   }
   auto *data_writer = new DataWriter(runtime_context);
-  auto status = data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
+  auto status =
+      data_writer->Init(queue_id_vec, parameter_vec, msg_ids_vec, queue_size_vec);
   if (status != StreamingStatus::OK) {
     STREAMING_LOG(WARNING) << "DataWriter init failed.";
   } else {
@@ -64,10 +65,8 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(
   return result;
 }
 
-JNIEXPORT void JNICALL
-Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(JNIEnv *env,
-                                                                    jobject thisObj,
-                                                                    jlong ptr) {
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(
+    JNIEnv *env, jobject thisObj, jlong ptr) {
   STREAMING_LOG(INFO) << "jni: stop writer.";
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   data_writer->Stop();
@@ -75,8 +74,8 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(JNIEnv *env,
 
 JNIEXPORT void JNICALL
 Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
-                                                                     jobject thisObj,
-                                                                     jlong ptr) {
+                                                                    jobject thisObj,
+                                                                    jlong ptr) {
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }

@@ -256,8 +256,8 @@ message JobTableData {
   bool is_dead = 2;
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
-  // IP of the node this job was started on.
-  string node_manager_address = 4;
+  // IP address of the driver that started this job.
+  string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
 }
@@ -301,6 +301,19 @@ message WorkerFailureData {
   int64 timestamp = 3;
   // Is intentional disconnect
   bool intentional_disconnect = 4;
+}
+
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
+
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
+
+message PubSubMessage {
+  bytes id = 1;
+  bytes data = 2;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating

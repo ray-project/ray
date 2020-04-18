@@ -313,13 +313,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      options_.node_ip_address, options_.node_manager_port, *client_call_manager_);
+      options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       (options_.worker_type == ray::WorkerType::WORKER),
       worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
-      core_worker_server_.GetPort()));
+      options_.node_ip_address, core_worker_server_.GetPort()));
   connected_ = true;
 
   // Set our own address.
@@ -1798,6 +1798,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   (*stats->mutable_webui_display()) = webui_map;
 
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  stats->set_num_in_plasma(memory_store_stats.num_in_plasma);
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 

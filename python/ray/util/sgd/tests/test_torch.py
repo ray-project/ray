@@ -60,6 +60,29 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
     assert len(results) == 2
 
 
+def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
+    duration = 10
+
+    def slow_data(func):
+        def slowed_func(*args, **kwargs):
+            time.sleep(duration)
+            return func(*args, **kwargs)
+
+        return slowed_func
+
+    start = time.time()
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=slow_data(data_creator),
+        optimizer_creator=optimizer_creator,
+        serialize_data_creation=False,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2)
+    elapsed = time.time() - start
+    assert elapsed < duration * 2
+    trainer.shutdown()
+
+
 def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,

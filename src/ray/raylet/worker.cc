@@ -26,11 +26,13 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
+Worker::Worker(const WorkerID &worker_id, const Language &language,
+               const std::string &ip_address, int port,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
+      ip_address_(ip_address),
       port_(port),
       connection_(connection),
       dead_(false),
@@ -39,7 +41,7 @@ Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
       is_detached_actor_(false) {
   if (port_ > 0) {
     rpc::Address addr;
-    addr.set_ip_address("127.0.0.1");
+    addr.set_ip_address(ip_address_);
     addr.set_port(port_);
     rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(addr, client_call_manager_));
@@ -66,6 +68,8 @@ void Worker::SetProcess(Process proc) {
 }
 
 Language Worker::GetLanguage() const { return language_; }
+
+const std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const { return port_; }
 
