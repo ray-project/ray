@@ -212,6 +212,56 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
+            counts = ray_get_and_free([c[1][1] for c in completed])
+            for i, (ev, (sample_batch, count)) in enumerate(completed):
+                sample_timesteps += counts[i]
+
+                # Send the data to the replay buffer
+                random.choice(
+                    self.replay_actors).add_batch.remote(sample_batch)
+
+                # Update weights if needed
+                self.steps_since_update[ev] += counts[i]
+                if self.steps_since_update[ev] >= self.max_weight_sync_delay:
+                    # Note that it's important to pull new weights once
+                    # updated to avoid excessive correlation between actors
+                    if weights is None or self.learner.weights_updated:
+                        self.learner.weights_updated = False
+                        with self.timers["put_weights"]:
+                            weights = ray.put(
+                                self.workers.local_worker().get_weights())
+                    ev.set_weights.remote(weights)
+                    self.num_weight_syncs += 1
+                    self.steps_since_update[ev] = 0
+
+                # Kick off another sample request
+                self.sample_tasks.add(ev, ev.sample_with_count.remote())
+
+        with self.timers["replay_processing"]:
+            for ra, replay in self.replay_tasks.completed():
+                self.replay_tasks.add(ra, ra.replay.remote())
+                if self.learner.inqueue.full():
+                    self.num_samples_dropped += 1
+                else:
+                    with self.timers["get_samples"]:
+                        samples = ray_get_and_free(replay)
+                    # Defensive copy against plasma crashes, see #2610 #3452
+                    self.learner.inqueue.put((ra, samples and samples.copy()))
+
+        with self.timers["update_priorities"]:
+            while not self.learner.outqueue.empty():
+                ra, prio_dict, count = self.learner.outqueue.get()
+                ra.update_priorities.remote(prio_dict)
+                train_timesteps += count
+
+        return sample_timesteps, train_timesteps
+
+    def _step_possibly_broken(self):
+        sample_timesteps, train_timesteps = 0, 0
+        weights = None
+
+        with self.timers["sample_processing"]:
+            completed = list(self.sample_tasks.completed())
             # First try a batched ray.get().
             ray_error = None
             try:
