@@ -195,7 +195,7 @@ def build_q_losses(policy, model, _, train_batch):
                           config["num_atoms"], config["v_min"],
                           config["v_max"])
 
-    return [policy.q_loss.loss]
+    return policy.q_loss.loss
 
 
 def adam_optimizer(policy, config):
