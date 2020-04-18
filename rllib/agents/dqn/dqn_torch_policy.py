@@ -249,6 +249,7 @@ def grad_process_and_td_error_fn(policy, optimizer, loss):
     info = apply_grad_clipping(policy, optimizer, loss)
     # Add td-error to info dict.
     info["td_error"] = policy.q_loss.td_error
+    return info
 
 
 def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
