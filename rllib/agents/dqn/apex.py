@@ -1,4 +1,5 @@
 import collections
+import copy
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
@@ -153,7 +154,7 @@ def execution_plan(workers, config):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
-    replay_op = Replay(replay_actors, async_queue_depth=4) \
+    replay_op = Replay(actors=replay_actors, async_queue_depth=4) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
@@ -169,7 +170,18 @@ def execution_plan(workers, config):
     # Execute (1), (2), (3) asynchronously as fast as possible.
     merged_op = Concurrently([store_op, replay_op, update_op], mode="async")
 
-    return StandardMetricsReporting(merged_op, workers, config)
+    def add_apex_metrics(result):
+        replay_stats = ray.get(replay_actors[0].stats.remote(
+            config["optimizer"].get("debug")))
+        result["info"].update({
+            "learner_queue": learner_thread.learner_queue_size.stats(),
+            "learner": copy.deepcopy(learner_thread.stats),
+            "replay_shard_0": replay_stats,
+        })
+        return result
+
+    return StandardMetricsReporting(merged_op, workers, config) \
+        .for_each(add_apex_metrics)
 
 
 APEX_TRAINER_PROPERTIES = {
