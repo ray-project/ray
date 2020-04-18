@@ -48,7 +48,6 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--no-ray-ui",
         action="store_true",
-        type=bool,
         help="Whether to disable the Ray web ui.")
     parser.add_argument(
         "--ray-num-cpus",
