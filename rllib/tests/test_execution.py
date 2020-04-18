@@ -16,6 +16,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
     ReplayActor
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
 
@@ -132,7 +133,9 @@ def test_train_one_step(ray_start_regular_shared):
     workers = make_workers(0)
     a = ParallelRollouts(workers, mode="bulk_sync")
     b = a.for_each(TrainOneStep(workers))
-    assert "learner_stats" in next(b)
+    batch, stats = next(b)
+    assert isinstance(batch, SampleBatch)
+    assert "learner_stats" in stats
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters

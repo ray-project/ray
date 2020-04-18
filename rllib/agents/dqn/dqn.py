@@ -6,6 +6,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 from ray.rllib.execution.rollout_ops import ParallelRollouts
@@ -318,7 +319,20 @@ def execution_plan(workers, config):
         StoreToReplayBuffer(local_buffer=local_replay_buffer))
 
     def update_prio(item):
-        pass  # TODO(ekl) update priorities
+        samples, info_dict = item
+        if config["prioritized_replay"]:
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error",
+                                    info[LEARNER_STATS_KEY].get("td_error"))
+                prio_dict[policy_id] = (samples.policy_batches[policy_id]
+                                        .data.get("batch_indexes"), td_error)
+            local_replay_buffer.update_priorities(prio_dict)
+        return info_dict
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
