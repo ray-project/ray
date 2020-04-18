@@ -173,10 +173,10 @@ def build_trainer(name,
 
         def _train_exec_impl(self):
             if before_train_step:
-                logger.warning("Ignoring before_train_step callback")
+                logger.debug("Ignoring before_train_step callback")
             res = next(self.train_exec_impl)
             if after_train_result:
-                logger.warning("Ignoring after_train_result callback")
+                logger.debug("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)
