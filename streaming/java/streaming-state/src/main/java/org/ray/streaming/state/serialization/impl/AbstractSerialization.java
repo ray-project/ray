@@ -35,7 +35,7 @@ public abstract class AbstractSerialization {
     if (StringUtils.isNotEmpty(key)) {
       String md5 = Hashing.md5().hashUnencodedChars(key).toString();
       if ("".equals(md5)) {
-        throw new StateException("Invalid VALUE to md5:" + key);
+        throw new StateException("Invalid value to md5:" + key);
       }
       return StringUtils.substring(md5, 0, 4) + ":" + key;
     } else {

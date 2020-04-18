@@ -29,7 +29,8 @@ import org.ray.streaming.state.strategy.StateStoreManagerProxy;
 /**
  * This class defines MapState Wrapper, connecting state and backend.
  */
-public class MapStateStoreManagerProxy<K, V> extends StateStoreManagerProxy<Map<K, V>> implements KeyValueState<String, Map<K, V>> {
+public class MapStateStoreManagerProxy<K, V> extends StateStoreManagerProxy<Map<K, V>>
+    implements KeyValueState<String, Map<K, V>> {
 
   private final MapStateImpl<K, V> mapState;
 

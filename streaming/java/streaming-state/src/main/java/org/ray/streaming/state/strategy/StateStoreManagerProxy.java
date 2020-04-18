@@ -20,8 +20,8 @@ package org.ray.streaming.state.strategy;
 
 import java.util.Map;
 import org.ray.streaming.state.StateStoreManager;
-import org.ray.streaming.state.backend.StateStrategy;
 import org.ray.streaming.state.backend.AbstractKeyStateBackend;
+import org.ray.streaming.state.backend.StateStrategy;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import org.ray.streaming.state.store.KeyValueStore;
 

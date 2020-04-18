@@ -31,7 +31,8 @@ import org.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
 
 /**
- * key state backend manager, managing different kinds of states.
+ * key state backend manager, managing different kinds of states in different thread.
+ * This class is not thread safe.
  */
 public class KeyStateBackend extends AbstractKeyStateBackend {
 
@@ -46,7 +47,7 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   }
 
   /**
-   * value State
+   * get new value state proxy
    */
   protected <T> ValueStateStoreManagerProxy<T> newValueStateProxy(
       ValueStateDescriptor<T> stateDescriptor) {
@@ -65,7 +66,7 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   }
 
   /**
-   * list State
+   * get new list state proxy
    */
   protected <T> ListStateStoreManagerProxy<T> newListStateProxy(
       ListStateDescriptor<T> stateDescriptor) {
@@ -85,7 +86,7 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   }
 
   /**
-   * map state
+   * get map state proxy
    */
   protected <S, T> MapStateStoreManagerProxy<S, T> newMapStateProxy(
       MapStateDescriptor<S, T> stateDescriptor) {

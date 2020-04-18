@@ -30,7 +30,8 @@ import org.ray.streaming.state.strategy.StateStoreManagerProxy;
 /**
  * This class defines ListState Wrapper, connecting state and backend.
  */
-public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>> implements KeyValueState<String, List<T>> {
+public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>>
+    implements KeyValueState<String, List<T>> {
 
   private final ListState<T> listState;
 

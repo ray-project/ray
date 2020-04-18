@@ -23,7 +23,13 @@ package org.ray.streaming.state;
  */
 public interface KeyValueState<K, V> {
 
+  /**
+   * get value from state
+   */
   V get(K key);
 
+  /**
+   * put key and value into state
+   */
   void put(K k, V v);
 }

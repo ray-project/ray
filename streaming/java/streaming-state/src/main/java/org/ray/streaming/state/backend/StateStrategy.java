@@ -30,11 +30,8 @@ public enum StateStrategy {
   /**
    * for storage supporting mvcc, we save only current version.
    */
-  SINGLE_VERSION,
-  /**
-   * other storage mode.
-   */
-  OTHER;
+  SINGLE_VERSION;
+
 
   public static StateStrategy getEnum(String value) {
     for (StateStrategy v : values()) {
@@ -42,6 +39,6 @@ public enum StateStrategy {
         return v;
       }
     }
-    return OTHER;
+    throw new IllegalArgumentException(value + " strategy is not supported");
   }
 }

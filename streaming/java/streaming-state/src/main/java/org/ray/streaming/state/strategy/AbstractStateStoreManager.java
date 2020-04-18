@@ -22,8 +22,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.ray.streaming.state.StateException;
-import org.ray.streaming.state.StorageRecord;
 import org.ray.streaming.state.StateStoreManager;
+import org.ray.streaming.state.StorageRecord;
 import org.ray.streaming.state.serialization.Serializer;
 import org.ray.streaming.state.store.KeyValueStore;
 

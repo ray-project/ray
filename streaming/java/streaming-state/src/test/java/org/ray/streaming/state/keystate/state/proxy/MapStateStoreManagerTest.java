@@ -32,7 +32,7 @@ public class MapStateStoreManagerTest extends StateStoreManagerTest {
   @BeforeClass
   public void setUp() {
     MapStateDescriptor<String, Integer> descriptor = MapStateDescriptor
-      .build("MAP", String.class, Integer.class);
+      .build("map", String.class, Integer.class);
     descriptor.setTableName("tableName");
     keyStateBackend.setContext(1L, "key");
     facade = new MapStateStoreManagerProxy<>(keyStateBackend, descriptor);

@@ -44,7 +44,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   void put(K key, V value);
 
   /**
-   * Resets the state VALUE.
+   * Resets the state value.
    *
    * @param map The mappings for reset in this state
    */
@@ -77,7 +77,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns all the mappings in the state
    *
-   * @return An iterable view of all the key-VALUE pairs in the state.
+   * @return An iterable view of all the key-value pairs in the state.
    */
   default Iterable<Entry<K, V>> entries() {
     return get().entrySet();

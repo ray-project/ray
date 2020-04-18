@@ -71,17 +71,17 @@ public abstract class AbstractStateDescriptor<S extends State, T> {
 
   public enum StateType {
     /**
-     * VALUE state
+     * value state
      */
     VALUE,
 
     /**
-     * LIST state
+     * list state
      */
     LIST,
 
     /**
-     * MAP state
+     * map state
      */
     MAP
   }

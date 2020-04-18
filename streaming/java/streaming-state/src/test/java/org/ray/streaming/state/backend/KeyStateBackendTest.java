@@ -38,7 +38,7 @@ public class KeyStateBackendTest {
   public void testGetValueState() {
     keyStateBackend.setCheckpointId(1L);
     ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-      .build("VALUE", String.class, null);
+      .build("value", String.class, null);
     valueStateDescriptor.setTableName("kepler_hlg_ut");
     ValueState<String> valueState = keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -120,7 +120,7 @@ public class KeyStateBackendTest {
   public void testGetListState() {
     keyStateBackend.setCheckpointId(1l);
     ListStateDescriptor<String> listStateDescriptor = ListStateDescriptor
-      .build("LIST", String.class);
+      .build("list", String.class);
     listStateDescriptor.setTableName("kepler_hlg_ut");
     ListState<String> listState = keyStateBackend.getListState(listStateDescriptor);
 
@@ -208,7 +208,7 @@ public class KeyStateBackendTest {
   public void testGetMapState() {
     keyStateBackend.setCheckpointId(1l);
     MapStateDescriptor<String, String> mapStateDescriptor = MapStateDescriptor
-      .build("MAP", String.class, String.class);
+      .build("map", String.class, String.class);
     mapStateDescriptor.setTableName("kepler_hlg_ut");
     MapState<String, String> mapState = keyStateBackend.getMapState(mapStateDescriptor);
 

@@ -31,7 +31,7 @@ public class ListStateStoreManagerTest extends StateStoreManagerTest {
 
   @BeforeClass
   public void setUp() {
-    ListStateDescriptor<Integer> descriptor = ListStateDescriptor.build("LIST", Integer.class);
+    ListStateDescriptor<Integer> descriptor = ListStateDescriptor.build("list", Integer.class);
     descriptor.setTableName("tableName");
     keyStateBackend.setContext(1L, "key");
     proxy = new ListStateStoreManagerProxy<>(keyStateBackend, descriptor);

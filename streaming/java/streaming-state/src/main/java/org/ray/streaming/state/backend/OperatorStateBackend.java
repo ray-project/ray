@@ -24,7 +24,7 @@ import org.ray.streaming.state.keystate.state.impl.OperatorStateImpl;
 import org.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 
 /**
- * OperatorState manager.
+ * OperatorState manager for getting split or union list state.
  */
 public class OperatorStateBackend extends AbstractKeyStateBackend {
 
