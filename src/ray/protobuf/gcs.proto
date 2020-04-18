@@ -312,12 +312,12 @@ message ObjectTableDataList {
 }
 
 message ObjectChange {
-  GcsChangeMode change_mode = 1;
+  bool is_add = 1;
   ObjectTableData data = 2;
 }
 
 message ResourceChange {
-  GcsChangeMode change_mode = 1;
+  bool is_add = 1;
   ResourceMap data = 2;
 }
 

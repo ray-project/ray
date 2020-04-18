@@ -168,11 +168,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Handle a client table notification.
   void HandleNotification(const GcsNodeInfo &node_info);
 
-  /// Register a callback to call when a new node is added or a node is removed.
-  ///
-  /// \param callback The callback to register.
-  void RegisterNodeChangeCallback(const NodeChangeCallback &callback);
-
   ServiceBasedGcsClient *client_impl_;
 
   GcsNodeInfo local_node_info_;

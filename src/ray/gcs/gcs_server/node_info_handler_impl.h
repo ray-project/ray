@@ -28,11 +28,10 @@ namespace rpc {
 class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
  public:
   explicit DefaultNodeInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                  gcs::GcsNodeManager &gcs_node_manager,
-                                  const std::shared_ptr<gcs::RedisClient> &redis_client)
+                                  gcs::GcsNodeManager &gcs_node_manager)
       : gcs_client_(gcs_client),
         gcs_node_manager_(gcs_node_manager),
-        gcs_pub_sub_(redis_client) {}
+        gcs_pub_sub_(gcs_client.GetRedisClient()) {}
 
   void HandleRegisterNode(const RegisterNodeRequest &request, RegisterNodeReply *reply,
                           SendReplyCallback send_reply_callback) override;
@@ -75,10 +74,6 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
   gcs::GcsNodeManager &gcs_node_manager_;
   gcs::GcsPubSub gcs_pub_sub_;
 
-  /// Mutex to protect the nodes_cache_ field.
-  absl::Mutex node_mutex_;
-  /// A mapping from node id to node info.
-  std::unordered_map<ClientID, rpc::GcsNodeInfo> nodes_cache_ GUARDED_BY(node_mutex_);
   /// Mutex to protect the nodes_cache_ field.
   absl::Mutex node_resource_mutex_;
   /// A mapping from node id to node resource.

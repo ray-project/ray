@@ -61,8 +61,7 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_.Publish(
           OBJECT_CHANNEL, object_id.Binary(),
-          GenObjectChange(node_id, GcsChangeMode::APPEND_OR_ADD).SerializeAsString(),
-          nullptr));
+          GenObjectChange(node_id, true).SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
                      << ", node id = " << node_id;
     } else {
@@ -91,7 +90,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_.Publish(
           OBJECT_CHANNEL, object_id.Binary(),
-          GenObjectChange(node_id, GcsChangeMode::REMOVE).SerializeAsString(), nullptr));
+          GenObjectChange(node_id, false).SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;
@@ -109,12 +108,12 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   }
 }
 
-ObjectChange DefaultObjectInfoHandler::GenObjectChange(
-    const ClientID &node_id, const rpc::GcsChangeMode &change_mode) {
+ObjectChange DefaultObjectInfoHandler::GenObjectChange(const ClientID &node_id,
+                                                       bool is_add) {
   ObjectTableData object_table_data;
   object_table_data.set_manager(node_id.Binary());
   ObjectChange object_change;
-  object_change.set_change_mode(change_mode);
+  object_change.set_is_add(is_add);
   object_change.mutable_data()->CopyFrom(object_table_data);
   return object_change;
 }

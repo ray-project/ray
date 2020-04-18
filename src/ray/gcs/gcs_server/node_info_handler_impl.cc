@@ -24,14 +24,12 @@ void DefaultNodeInfoHandler::HandleRegisterNode(
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
   gcs_node_manager_.AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
-  auto on_done = [this, node_id, request, reply, send_reply_callback](Status status) {
+  auto on_done = [this, node_id, request, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register node info: " << status.ToString()
                      << ", node id = " << node_id;
     } else {
-      node_mutex_.Lock();
-      nodes_cache_[node_id] = request.node_info();
-      node_mutex_.Unlock();
       RAY_CHECK_OK(gcs_pub_sub_.Publish(NODE_CHANNEL, node_id.Binary(),
                                         request.node_info().SerializeAsString(),
                                         nullptr));
@@ -51,22 +49,15 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
-  gcs_node_manager_.RemoveNode(node_id);
-
-  boost::optional<rpc::GcsNodeInfo> node_info;
-  node_mutex_.Lock();
-  auto it = nodes_cache_.find(node_id);
-  if (it != nodes_cache_.end()) {
-    node_info = it->second;
-    nodes_cache_.erase(it);
-  }
-  node_mutex_.Unlock();
+  auto node_info = gcs_node_manager_.GetNode(node_id);
 
   if (node_info) {
     UnregisterNode(node_id, *node_info, reply, send_reply_callback);
+    gcs_node_manager_.RemoveNode(node_id);
   } else {
     auto on_done = [this, node_id, reply, send_reply_callback](
-                       Status status, const std::vector<rpc::GcsNodeInfo> &result) {
+                       const Status &status,
+                       const std::vector<rpc::GcsNodeInfo> &result) {
       if (status.ok()) {
         auto it = std::find_if(result.begin(), result.end(),
                                [node_id](const rpc::GcsNodeInfo &node_info) {
@@ -92,7 +83,7 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all nodes info.";
   auto on_done = [reply, send_reply_callback](
-                     Status status, const std::vector<rpc::GcsNodeInfo> &result) {
+                     const Status &status, const std::vector<rpc::GcsNodeInfo> &result) {
     if (status.ok()) {
       for (const rpc::GcsNodeInfo &node_info : result) {
         reply->add_node_info_list()->CopyFrom(node_info);
@@ -116,7 +107,8 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>(request.heartbeat());
-  auto on_done = [node_id, heartbeat_data, reply, send_reply_callback](Status status) {
+  auto on_done = [node_id, heartbeat_data, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report heartbeat: " << status.ToString()
                      << ", node id = " << node_id;
@@ -141,7 +133,7 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
   RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
 
   auto on_done = [node_id, reply, send_reply_callback](
-                     Status status,
+                     const Status &status,
                      const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
     if (status.ok()) {
       if (result) {
@@ -175,7 +167,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
   }
 
   auto on_done = [this, request, resources, node_id, reply,
-                  send_reply_callback](Status status) {
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to update node resources: " << status.ToString()
                      << ", node id = " << node_id;
@@ -184,7 +176,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
       resource_data.mutable_items()->insert(request.resources().begin(),
                                             request.resources().end());
       ResourceChange resource_change;
-      resource_change.set_change_mode(GcsChangeMode::APPEND_OR_ADD);
+      resource_change.set_is_add(true);
       resource_change.mutable_data()->CopyFrom(resource_data);
       RAY_CHECK_OK(gcs_pub_sub_.Publish(NODE_RESOURCE_CHANNEL, node_id.Binary(),
                                         resource_change.SerializeAsString(), nullptr));
@@ -227,7 +219,7 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
   } else {
     auto on_done =
         [this, node_id, resource_names, reply, send_reply_callback](
-            Status status,
+            const Status &status,
             const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
           RAY_DCHECK(result);
           gcs::NodeInfoAccessor::ResourceMap resources;
@@ -246,7 +238,8 @@ void DefaultNodeInfoHandler::UnregisterNode(
     const ClientID &node_id, rpc::GcsNodeInfo &node_info, rpc::UnregisterNodeReply *reply,
     const SendReplyCallback &send_reply_callback) {
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  auto on_done = [this, node_id, node_info, reply, send_reply_callback](Status status) {
+  auto on_done = [this, node_id, node_info, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to unregister node info: " << status.ToString()
                      << ", node id = " << node_id;
@@ -269,7 +262,7 @@ void DefaultNodeInfoHandler::DeleteResources(
     const gcs::NodeInfoAccessor::ResourceMap &delete_resources,
     DeleteResourcesReply *reply, const SendReplyCallback &send_reply_callback) {
   ResourceChange resource_change;
-  resource_change.set_change_mode(GcsChangeMode::REMOVE);
+  resource_change.set_is_add(false);
   ResourceMap resource_map;
   for (auto &delete_resource : delete_resources) {
     (*resource_map.mutable_items())[delete_resource.first] = *delete_resource.second;
@@ -277,7 +270,7 @@ void DefaultNodeInfoHandler::DeleteResources(
   resource_change.mutable_data()->CopyFrom(resource_map);
 
   auto on_done = [this, node_id, resource_change, reply,
-                  send_reply_callback](Status status) {
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete node resources: " << status.ToString()
                      << ", node id = " << node_id;

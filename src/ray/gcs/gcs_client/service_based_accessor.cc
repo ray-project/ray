@@ -400,6 +400,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node change.";
   RAY_CHECK(subscribe != nullptr);
+  RAY_CHECK(node_change_callback_ == nullptr);
+  node_change_callback_ = subscribe;
+
   auto on_subscribe = [this, subscribe](const std::string &id, const std::string &data) {
     GcsNodeInfo node_info;
     node_info.ParseFromString(data);
@@ -408,33 +411,16 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 
   // Callback to request notifications from the client table once we've
   // successfully subscribed.
-  auto on_done = [this, subscribe, done](const Status &status) {
-    RAY_CHECK_OK(status);
+  auto on_done = [subscribe, done](const Status &status) {
     if (done != nullptr) {
       done(status);
     }
-    // Register node change callbacks after SubscribeAll finishes.
-    RegisterNodeChangeCallback(subscribe);
   };
 
   auto status =
       client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
-}
-
-void ServiceBasedNodeInfoAccessor::RegisterNodeChangeCallback(
-    const NodeChangeCallback &callback) {
-  RAY_CHECK(node_change_callback_ == nullptr);
-  node_change_callback_ = callback;
-  // Call the callback for any added clients that are cached.
-  for (const auto &entry : node_cache_) {
-    if (!entry.first.IsNil()) {
-      RAY_CHECK(entry.second.state() == GcsNodeInfo::ALIVE ||
-                entry.second.state() == GcsNodeInfo::DEAD);
-      node_change_callback_(entry.first, entry.second);
-    }
-  }
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
@@ -548,8 +534,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     for (auto &item : resource_change.data().items()) {
       resource_map[item.first] = std::make_shared<rpc::ResourceTableData>(item.second);
     }
-    gcs::ResourceChangeNotification notification(resource_change.change_mode(),
-                                                 resource_map);
+    auto change_mode = resource_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
+                                                : rpc::GcsChangeMode::REMOVE;
+    gcs::ResourceChangeNotification notification(change_mode, resource_map);
     subscribe(ClientID::FromBinary(id), notification);
   };
   auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
@@ -614,48 +601,39 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   ClientID node_id = ClientID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
-  // It's possible to get duplicate notifications from the client table, so
-  // check whether this notification is new.
   auto entry = node_cache_.find(node_id);
   bool is_notif_new;
   if (entry == node_cache_.end()) {
     // If the entry is not in the cache, then the notification is new.
     is_notif_new = true;
   } else {
-    // If the entry is in the cache, then the notification is new if the client
+    // If the entry is in the cache, then the notification is new if the node
     // was alive and is now dead or resources have been updated.
     bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
     is_notif_new = was_alive && !is_alive;
-    // Once a client with a given ID has been removed, it should never be added
-    // again. If the entry was in the cache and the client was deleted, check
+    // Once a node with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the node was deleted, check
     // that this new notification is not an insertion.
     if (!was_alive) {
       RAY_CHECK(!is_alive)
-          << "Notification for addition of a client that was already removed:" << node_id;
+          << "Notification for addition of a node that was already removed:" << node_id;
     }
   }
 
-  // Add the notification to our cache. Notifications are idempotent.
-  RAY_LOG(INFO) << "[ClientTableNotification] ClientTable Insertion/Deletion "
-                   "notification for client id "
-                << node_id << ". IsAlive: " << is_alive
-                << ". Setting the client cache to data.";
+  // Add the notification to our cache.
+  RAY_LOG(INFO) << "Insertion/Deletion notification for node id = " << node_id
+                << ", IsAlive = " << is_alive;
   node_cache_[node_id] = node_info;
 
-  // If the notification is new, call any registered callbacks.
+  // If the notification is new, call registered callback.
   GcsNodeInfo &cache_data = node_cache_[node_id];
   if (is_notif_new) {
     if (is_alive) {
       RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
     } else {
-      // NOTE(swang): The node should be added to this data structure before
-      // the callback gets called, in case the callback depends on the data
-      // structure getting updated.
       removed_nodes_.insert(node_id);
     }
-    if (node_change_callback_ != nullptr) {
-      node_change_callback_(node_id, cache_data);
-    }
+    node_change_callback_(node_id, cache_data);
   }
 }
 
@@ -908,8 +886,9 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     object_change.ParseFromString(data);
     auto object_data_vector = std::vector<rpc::ObjectTableData>();
     object_data_vector.emplace_back(object_change.data());
-    gcs::ObjectChangeNotification notification(object_change.change_mode(),
-                                               object_data_vector);
+    auto change_mode = object_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
+                                              : rpc::GcsChangeMode::REMOVE;
+    gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };
   auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Binary(),

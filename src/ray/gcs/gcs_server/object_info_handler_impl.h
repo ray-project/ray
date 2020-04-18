@@ -42,8 +42,7 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
                                   SendReplyCallback send_reply_callback) override;
 
  private:
-  ObjectChange GenObjectChange(const ClientID &node_id,
-                               const rpc::GcsChangeMode &change_mode);
+  ObjectChange GenObjectChange(const ClientID &node_id, bool is_add);
 
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsPubSub gcs_pub_sub_;
