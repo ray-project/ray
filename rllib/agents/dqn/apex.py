@@ -5,7 +5,7 @@ from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
-from ray.rllib.execution.replay_ops import StoreToReplayActors, ParallelReplay
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import AsyncReplayOptimizer
@@ -144,7 +144,7 @@ def execution_plan(workers, config):
     # the weights of the worker that generated the batch.
     rollouts = ParallelRollouts(workers, mode="async", async_queue_depth=2)
     store_op = rollouts \
-        .for_each(StoreToReplayActors(replay_actors)) \
+        .for_each(StoreToReplayBuffer(actors=replay_actors)) \
         .zip_with_source_actor() \
         .for_each(UpdateWorkerWeights(
             learner_thread, workers,
@@ -153,7 +153,7 @@ def execution_plan(workers, config):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
-    replay_op = ParallelReplay(replay_actors, async_queue_depth=4) \
+    replay_op = Replay(replay_actors, async_queue_depth=4) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
