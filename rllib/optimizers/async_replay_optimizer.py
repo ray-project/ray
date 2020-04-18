@@ -330,7 +330,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 for row in s.rows():
                     self.replay_buffers[policy_id].add(
                         row["obs"], row["actions"], row["rewards"],
-                        row["new_obs"], row["dones"], row["weights"])
+                        row["new_obs"], row["dones"], row["weights"]
+                        if "weights" in row else None)
         self.num_added += batch.count
 
     def replay(self):
