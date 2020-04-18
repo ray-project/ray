@@ -26,11 +26,12 @@ void DefaultActorInfoHandler::HandleCreateActor(
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
-  gcs_actor_manager_.RegisterActor(request, [reply, send_reply_callback, actor_id](
-                                                std::shared_ptr<gcs::GcsActor> actor) {
-    RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  });
+  gcs_actor_manager_.RegisterActor(
+      request, [reply, send_reply_callback,
+                actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
+        RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
 }
 
 void DefaultActorInfoHandler::HandleGetActorInfo(
@@ -41,7 +42,8 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
                  << ", actor id = " << actor_id;
 
   auto on_done = [actor_id, reply, send_reply_callback](
-                     Status status, const boost::optional<ActorTableData> &result) {
+                     const Status &status,
+                     const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_actor_table_data()->CopyFrom(*result);
@@ -70,13 +72,13 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
   auto actor_table_data = std::make_shared<ActorTableData>();
   actor_table_data->CopyFrom(request.actor_table_data());
   auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](Status status) {
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_.Publish(actor_channel_, actor_id.Binary(),
-                                    actor_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_.Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                        actor_table_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
@@ -98,15 +100,15 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
   auto actor_table_data = std::make_shared<ActorTableData>();
   actor_table_data->CopyFrom(request.actor_table_data());
   auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](Status status) {
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
-      RAY_CHECK_OK(gcs_pub_.Publish(actor_channel_, actor_id.Binary(),
-                                    actor_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_.Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                        actor_table_data->SerializeAsString(), nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -127,7 +129,8 @@ void DefaultActorInfoHandler::HandleAddActorCheckpoint(
                  << ", actor id = " << actor_id << ", checkpoint id = " << checkpoint_id;
   auto actor_checkpoint_data = std::make_shared<ActorCheckpointData>();
   actor_checkpoint_data->CopyFrom(request.checkpoint_data());
-  auto on_done = [actor_id, checkpoint_id, reply, send_reply_callback](Status status) {
+  auto on_done = [actor_id, checkpoint_id, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add actor checkpoint: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
@@ -155,7 +158,8 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
   RAY_LOG(DEBUG) << "Getting actor checkpoint, job id = " << actor_id.JobId()
                  << ", checkpoint id = " << checkpoint_id;
   auto on_done = [actor_id, checkpoint_id, reply, send_reply_callback](
-                     Status status, const boost::optional<ActorCheckpointData> &result) {
+                     const Status &status,
+                     const boost::optional<ActorCheckpointData> &result) {
     if (status.ok()) {
       RAY_DCHECK(result);
       reply->mutable_checkpoint_data()->CopyFrom(*result);
@@ -183,7 +187,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
   RAY_LOG(DEBUG) << "Getting actor checkpoint id, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
   auto on_done = [actor_id, reply, send_reply_callback](
-                     Status status,
+                     const Status &status,
                      const boost::optional<ActorCheckpointIdData> &result) {
     if (status.ok()) {
       RAY_DCHECK(result);

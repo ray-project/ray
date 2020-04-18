@@ -26,7 +26,8 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
                  << ", object id = " << object_id;
 
   auto on_done = [reply, object_id, send_reply_callback](
-                     Status status, const std::vector<rpc::ObjectTableData> &result) {
+                     const Status &status,
+                     const std::vector<rpc::ObjectTableData> &result) {
     if (status.ok()) {
       for (const rpc::ObjectTableData &object_table_data : result) {
         reply->add_object_table_data_list()->CopyFrom(object_table_data);
@@ -55,10 +56,11 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_.Publish(
-          object_channel_, object_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_.Publish(
+          OBJECT_CHANNEL, object_id.Binary(),
           GenObjectChange(node_id, GcsChangeMode::APPEND_OR_ADD).SerializeAsString(),
           nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
@@ -84,10 +86,11 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [this, object_id, node_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_.Publish(
-          object_channel_, object_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_.Publish(
+          OBJECT_CHANNEL, object_id.Binary(),
           GenObjectChange(node_id, GcsChangeMode::REMOVE).SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id

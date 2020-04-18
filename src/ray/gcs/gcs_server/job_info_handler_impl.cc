@@ -25,7 +25,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
                  << ", driver pid = " << request.data().driver_pid();
   auto job_table_data = std::make_shared<JobTableData>();
   job_table_data->CopyFrom(request.data());
-  auto on_done = [job_id, request, reply, send_reply_callback](Status status) {
+  auto on_done = [job_id, request, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
@@ -50,12 +50,12 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
   auto job_table_data =
       gcs::CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr), "", -1);
   auto on_done = [this, job_id, job_table_data, reply,
-                  send_reply_callback](Status status) {
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_.Publish(job_channel_, job_id.Binary(),
-                                    job_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_.Publish(JOB_CHANNEL, job_id.Binary(),
+                                        job_table_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished marking job state, job id = " << job_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);

@@ -132,9 +132,7 @@ class GcsNodeManager {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing heartbeat batch messages.
-  gcs::GcsPubSub gcs_pub_;
-  const std::string heartbeat_batch_channel_ =
-      TablePubsub_Name(TablePubsub::HEARTBEAT_BATCH_PUBSUB);
+  gcs::GcsPubSub gcs_pub_sub_;
 };
 
 }  // namespace gcs

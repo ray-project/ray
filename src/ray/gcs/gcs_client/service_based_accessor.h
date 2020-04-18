@@ -17,7 +17,6 @@
 
 #include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 
@@ -46,10 +45,6 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string job_channel_ = TablePubsub_Name(TablePubsub::JOB_PUBSUB);
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -99,11 +94,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string actor_channel_ = TablePubsub_Name(TablePubsub::ACTOR_PUBSUB);
-
   Sequencer<ActorID> sequencer_;
 };
 
@@ -185,14 +175,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   ServiceBasedGcsClient *client_impl_;
 
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string node_channel_ = TablePubsub_Name(TablePubsub::CLIENT_PUBSUB);
-  const std::string node_resource_channel_ =
-      TablePubsub_Name(TablePubsub::NODE_RESOURCE_PUBSUB);
-  const std::string heartbeat_batch_channel_ =
-      TablePubsub_Name(TablePubsub::HEARTBEAT_BATCH_PUBSUB);
-
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
 
@@ -248,12 +230,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string task_channel_ = TablePubsub_Name(TablePubsub::TASK_PUBSUB);
-  const std::string task_lease_channel_ =
-      TablePubsub_Name(TablePubsub::TASK_LEASE_PUBSUB);
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -286,9 +262,6 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string object_channel_ = TablePubsub_Name(TablePubsub::OBJECT_PUBSUB);
   Sequencer<ObjectID> sequencer_;
 };
 
@@ -347,11 +320,6 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  /// Subscribe to GCS table information.
-  GcsPubSub gcs_sub_;
-  const std::string worker_failure_channel_ =
-      TablePubsub_Name(TablePubsub::WORKER_FAILURE_PUBSUB);
 };
 
 }  // namespace gcs

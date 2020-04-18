@@ -35,6 +35,8 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   redis_gcs_client_.reset(new RedisGcsClient(options_));
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
+  gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
+
   // Get gcs service address
   auto get_server_address = [this]() {
     std::pair<std::string, int> address;
