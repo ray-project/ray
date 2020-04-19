@@ -49,6 +49,7 @@ class HyperOptSearch(Searcher):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
+        use_early_stopped_trials: Deprecated.
 
     .. code-block:: python
 
@@ -78,7 +79,7 @@ class HyperOptSearch(Searcher):
             n_initial_points=20,
             random_state_seed=None,
             gamma=0.25,
-            use_early_stopped_trials=True,
+            use_early_stopped_trials=None,
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")

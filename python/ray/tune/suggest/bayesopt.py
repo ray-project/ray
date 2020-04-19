@@ -6,12 +6,12 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     byo = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class BayesOptSearch(SuggestionAlgorithm):
+class BayesOptSearch(Searcher):
     """A wrapper around BayesOpt to provide trial suggestions.
 
     Requires BayesOpt to be installed. You can install BayesOpt with the
@@ -51,32 +51,26 @@ class BayesOptSearch(SuggestionAlgorithm):
 
     def __init__(self,
                  space,
-                 max_concurrent=10,
-                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
+                 max_concurrent=10,
                  utility_kwargs=None,
                  random_state=1,
                  verbose=0,
-                 **kwargs):
+                 use_early_stopped_trials=None):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
-        assert type(max_concurrent) is int and max_concurrent > 0
         assert utility_kwargs is not None, (
-            "Must define arguments for the utiliy function!")
+            "Must define arguments for the utility function!")
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+        super(BayesOptSearch, self).__init__(
+            metric=metric,
+            mode=mode,
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
 
-        self._max_concurrent = max_concurrent
-        self._metric = metric
         if mode == "max":
             self._metric_op = 1.
         elif mode == "min":
@@ -88,13 +82,7 @@ class BayesOptSearch(SuggestionAlgorithm):
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
-        super(BayesOptSearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
-
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
         new_trial = self.optimizer.suggest(self.utility)
 
         self._live_trial_mapping[trial_id] = new_trial

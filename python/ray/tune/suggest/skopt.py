@@ -5,7 +5,7 @@ try:
 except ImportError:
     sko = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
                 " do not match.")
 
 
-class SkOptSearch(SuggestionAlgorithm):
+class SkOptSearch(Searcher):
     """A wrapper around skopt to provide trial suggestions.
 
     Requires skopt to be installed.
@@ -50,11 +50,11 @@ class SkOptSearch(SuggestionAlgorithm):
             from skopt.
         parameter_names (list): List of parameter names. Should match
             the dimension of the optimizer output.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
         points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help
@@ -66,8 +66,7 @@ class SkOptSearch(SuggestionAlgorithm):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
+        use_early_stopped_trials: Deprecated.
 
     Example:
         >>> from skopt import Optimizer
@@ -84,28 +83,23 @@ class SkOptSearch(SuggestionAlgorithm):
     def __init__(self,
                  optimizer,
                  parameter_names,
-                 max_concurrent=10,
-                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
+                 max_concurrent=10,
                  points_to_evaluate=None,
                  evaluated_rewards=None,
-                 **kwargs):
+                 use_early_stopped_trials=None):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
-        assert type(max_concurrent) is int and max_concurrent > 0
         _validate_warmstart(parameter_names, points_to_evaluate,
                             evaluated_rewards)
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+        super(SkOptSearch, self).__init__(
+            metric=metric,
+            mode=mode,
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
 
         self._initial_points = []
         if points_to_evaluate and evaluated_rewards:
@@ -114,7 +108,6 @@ class SkOptSearch(SuggestionAlgorithm):
             self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
-        self._metric = metric
         # Skopt internally minimizes, so "max" => -1
         if mode == "max":
             self._metric_op = -1.
@@ -122,12 +115,8 @@ class SkOptSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
-        super(SkOptSearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
         if self._initial_points:
             suggested_config = self._initial_points[0]
             del self._initial_points[0]
@@ -135,9 +124,6 @@ class SkOptSearch(SuggestionAlgorithm):
             suggested_config = self._skopt_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
         return dict(zip(self._parameters, suggested_config))
-
-    def on_trial_result(self, trial_id, result):
-        pass
 
     def on_trial_complete(self,
                           trial_id,
@@ -161,9 +147,6 @@ class SkOptSearch(SuggestionAlgorithm):
         skopt_trial_info = self._live_trial_mapping[trial_id]
         self._skopt_opt.tell(skopt_trial_info,
                              self._metric_op * result[self._metric])
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self._initial_points, self._skopt_opt)
