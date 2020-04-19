@@ -58,12 +58,6 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
-  /// The lowest port number that workers started will bind on.
-  /// If this is set to 0, workers will bind on random ports.
-  int min_worker_port;
-  /// The highest port number that workers started will bind on.
-  /// If this is not set to 0, min_worker_port must also not be set to 0.
-  int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
   /// The maximum number of workers that can be started concurrently by a
@@ -458,14 +452,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
-
-  /// Process client message of AnnounceWorkerPort
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
