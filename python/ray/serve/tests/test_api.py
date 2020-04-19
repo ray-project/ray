@@ -192,8 +192,10 @@ def test_killing_replicas(serve_instance):
     serve.set_backend_config("simple:v1", bnew_config)
     new_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("simple:v1"))
-    new_all_tag_list = list(
-        ray.get(master_actor.get_all_worker_handles.remote()).keys())
+    new_all_tag_list = []
+    for worker_dict in ray.get(
+            master_actor.get_all_worker_handles.remote()).values():
+        new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
@@ -226,8 +228,10 @@ def test_not_killing_replicas(serve_instance):
     serve.set_backend_config("bsimple:v1", bnew_config)
     new_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("bsimple:v1"))
-    new_all_tag_list = list(
-        ray.get(master_actor.get_all_worker_handles.remote()).keys())
+    new_all_tag_list = []
+    for worker_dict in ray.get(
+            master_actor.get_all_worker_handles.remote()).values():
+        new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
     # and should be subset of all_tag_list
