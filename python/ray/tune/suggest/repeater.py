@@ -87,23 +87,7 @@ class Repeater(Searcher):
         super(Repeater, self).__init__(
             metric=self.search_alg.metric,
             mode=self.search_alg.mode,
-            use_early_stopped_trials=self.search_alg._use_early_stopped)
-
-    def add_configurations(self, experiments):
-        """Chains generator given experiment specifications.
-
-        Multiplies the number of trials by the repeat factor.
-
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
-        """
-        experiment_list = convert_to_experiment_list(experiments)
-        for experiment in experiment_list:
-            self._trial_generator = itertools.chain(
-                self._trial_generator,
-                self._generate_trials(
-                    experiment.spec.get("num_samples", 1) * self._repeat,
-                    experiment.spec, experiment.name))
+            max_concurrent=float("inf"))
 
     def suggest(self, trial_id):
         if self._current_group is None or self._current_group.full():
@@ -124,7 +108,7 @@ class Repeater(Searcher):
         self._trial_id_to_group[trial_id] = self._current_group
         return config
 
-    def on_trial_complete(self, trial_id, result=None, **kwargs):
+    def observe(self, trial_id, result=None, **kwargs):
         """Stores the score for and keeps track of a completed trial.
 
         Stores the metric of a trial as nan if any of the following conditions
@@ -151,3 +135,9 @@ class Repeater(Searcher):
                 trial_group.primary_trial_id,
                 result={self.search_alg.metric: np.nanmean(scores)},
                 **kwargs)
+
+    def save(self, path):
+        self.searcher.save(path)
+
+    def restore(self, path):
+        self.searcher.restore(path)

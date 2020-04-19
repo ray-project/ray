@@ -69,7 +69,8 @@ class Searcher:
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._metric = metric
         self._mode = mode
-        self.max_concurrent = max_concurrent
+        self._max_concurrent = max_concurrent
+        self.live_trials = set()
 
     def on_trial_result(self, trial_id, result):
         """Optional notification for result during training.
@@ -89,7 +90,20 @@ class Searcher:
         """
         pass
 
+    def on_trial_create(self, trial_id):
+        if len(self.live_trials) >= self.max_concurrent:
+            return
+        self.live_trials.add(trial_id)
+        return self.suggest(trial_id)
+
     def on_trial_complete(self, trial_id, result=None, error=False):
+        if trial_id not in self.live_trials:
+            return
+        else:
+            self.observe(trial_id, result=result, error=error)
+            self.live_trials.remove(trial_id)
+
+    def observe(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -112,21 +126,11 @@ class Searcher:
         """Queries the algorithm to retrieve the next set of parameters.
 
         Arguments:
-            trial_id: Trial ID used for subsequent notifications.
+            trial_id (str): Trial ID used for subsequent notifications.
 
         Returns:
             dict|None: Configuration for a trial, if possible.
-                Else, returns None, which will temporarily stop querying.
 
-        Example:
-            >>> searcher = SuggestionAlgorithm(max_concurrent=1)
-            >>> searcher.add_configurations({ ... })
-            >>> parameters_1 = searcher.suggest()
-            >>> parameters_2 = searcher.suggest()
-            >>> parameters_2 is None
-            >>> searcher.on_trial_complete(trial_id, result)
-            >>> parameters_2 = searcher.suggest()
-            >>> parameters_2 is not None
         """
         raise NotImplementedError
 
@@ -148,6 +152,10 @@ class Searcher:
         """Specifies if minimizing or maximizing the metric."""
         return self._mode
 
+    @property
+    def max_concurrent(self):
+        return self._max_concurrent
+
 
 class SearchGenerator(SearchAlgorithm):
     """Generates trials to be passed to the TrialRunner.
@@ -166,10 +174,8 @@ class SearchGenerator(SearchAlgorithm):
             type(searcher),
             Searcher), ("Searcher should be subclassing Searcher.")
         self.searcher = searcher
-        self.max_concurrent = searcher.max_concurrent
         self._parser = make_parser()
         self._experiment = None
-        self._live_trials = set()
         self._counter = 0  # Keeps track of number of trials created.
         self._total_samples = 0  # int: total samples to evaluate.
         self._finished = False
@@ -197,10 +203,9 @@ class SearchGenerator(SearchAlgorithm):
             List[Trial]: A list of trials for the Runner to consume.
         """
         trials = []
-        while not self.is_finished() and self.allow_new_trial():
+        while not self.is_finished():
             trial = self.create_trial_if_possible(self._experiment.spec,
                                                   self._experiment.name)
-            self._live_trials.add(trial.trial_id)
             if trial is None:
                 break
             trials.append(trial)
@@ -230,9 +235,6 @@ class SearchGenerator(SearchAlgorithm):
             trial_id=trial_id)
         return trial
 
-    def allow_new_trial(self):
-        return self.max_concurrent > len(self._live_trials)
-
     def on_trial_result(self, trial_id, result):
         """Notifies the underlying searcher."""
         self.searcher.on_trial_result(trial_id, result)
@@ -240,7 +242,6 @@ class SearchGenerator(SearchAlgorithm):
     def on_trial_complete(self, trial_id, result=None, error=False):
         self.searcher.on_trial_complete(
             trial_id=trial_id, result=result, error=error)
-        self._live_trials.remove(trial_id)
 
     def is_finished(self):
         return self._counter >= self._total_samples
