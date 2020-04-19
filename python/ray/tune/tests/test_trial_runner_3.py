@@ -14,8 +14,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
-                                         SuggestionAlgorithm)
+from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm, Searcher
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -214,7 +213,7 @@ class TrialRunnerTest3(unittest.TestCase):
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
 
-        class FinishFastAlg(SuggestionAlgorithm):
+        class FinishFastAlg(Searcher):
             _index = 0
 
             def next_trials(self):
@@ -449,7 +448,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         _register_all()
 
     def testNestedSuggestion(self):
-        class TestSuggestion(SuggestionAlgorithm):
+        class TestSuggestion(Searcher):
             def suggest(self, trial_id):
                 return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
 
@@ -462,7 +461,7 @@ class SearchAlgorithmTest(unittest.TestCase):
     def _test_repeater(self, repeat):
         ray.init(num_cpus=4)
 
-        class TestSuggestion(SuggestionAlgorithm):
+        class TestSuggestion(Searcher):
             count = 0
 
             def suggest(self, trial_id):

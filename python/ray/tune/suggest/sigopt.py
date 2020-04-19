@@ -7,12 +7,12 @@ try:
 except ImportError:
     sgo = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class SigOptSearch(SuggestionAlgorithm):
+class SigOptSearch(Searcher):
     """A wrapper around SigOpt to provide trial suggestions.
 
     Requires SigOpt to be installed. Requires user to store their SigOpt

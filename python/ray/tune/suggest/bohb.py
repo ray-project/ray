@@ -3,7 +3,7 @@
 import copy
 import logging
 
-from ray.tune.suggest import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class _BOHBJobWrapper():
         self.exception = None
 
 
-class TuneBOHB(SuggestionAlgorithm):
+class TuneBOHB(Searcher):
     """BOHB suggestion component.
 
 

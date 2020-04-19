@@ -5,12 +5,12 @@ try:
 except ImportError:
     ng = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class NevergradSearch(SuggestionAlgorithm):
+class NevergradSearch(Searcher):
     """A wrapper around Nevergrad to provide trial suggestions.
 
     Requires Nevergrad to be installed.

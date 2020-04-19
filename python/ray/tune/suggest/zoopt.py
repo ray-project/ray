@@ -7,12 +7,12 @@ try:
 except ImportError:
     zoopt = None
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class ZOOptSearch(SuggestionAlgorithm):
+class ZOOptSearch(Searcher):
     """A wrapper around ZOOpt to provide trial suggestions.
 
     Requires zoopt package (>=0.4.0) to be installed. You can install it
