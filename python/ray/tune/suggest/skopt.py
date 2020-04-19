@@ -125,8 +125,7 @@ class SkOptSearch(Searcher):
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with Skopt
@@ -135,12 +134,10 @@ class SkOptSearch(Searcher):
         """
 
         if result:
-            self._process_result(trial_id, result, early_terminated)
+            self._process_result(trial_id, result)
         self._live_trial_mapping.pop(trial_id)
 
-    def _process_result(self, trial_id, result, early_terminated=False):
-        if early_terminated and self._use_early_stopped is False:
-            return
+    def _process_result(self, trial_id, result):
         skopt_trial_info = self._live_trial_mapping[trial_id]
         self._skopt_opt.tell(skopt_trial_info,
                              self._metric_op * result[self._metric])

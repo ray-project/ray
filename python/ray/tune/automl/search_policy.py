@@ -133,8 +133,7 @@ class AutoMLSearcher(SearchAlgorithm):
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         self.on_trial_result(trial_id, result)
         self._unfinished_count -= 1
         if self._unfinished_count == 0:

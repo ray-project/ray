@@ -709,7 +709,7 @@ class TrialRunner:
 
         Trials may be stopped at any time. If trial is in state PENDING
         or PAUSED, calls `on_trial_remove`  for scheduler and
-        `on_trial_complete(..., early_terminated=True) for search_alg.
+        `on_trial_complete() for search_alg.
         Otherwise waits for result for the trial and calls
         `on_trial_complete` for scheduler and search_alg if RUNNING.
         """
@@ -720,8 +720,7 @@ class TrialRunner:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, early_terminated=True)
+            self._search_alg.on_trial_complete(trial.trial_id)
         elif trial.status is Trial.RUNNING:
             try:
                 result = self.trial_executor.fetch_result(trial)

@@ -107,8 +107,7 @@ class TuneBOHB(SuggestionAlgorithm):
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         del self.trial_to_params[trial_id]
         if trial_id in self.paused:
             self.paused.remove(trial_id)

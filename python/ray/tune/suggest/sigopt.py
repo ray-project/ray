@@ -79,9 +79,6 @@ class SigOptSearch(SuggestionAlgorithm):
                 "`reward_attr` is deprecated and will be removed in a future "
                 "version of Tune. "
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
-        if "use_early_stopped_trials" in kwargs:
-            logger.warning(
-                "`use_early_stopped_trials` is not used in SigOptSearch.")
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -103,9 +100,6 @@ class SigOptSearch(SuggestionAlgorithm):
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
         # Get new suggestion from SigOpt
         suggestion = self.conn.experiments(
             self.experiment.id).suggestions().create()
@@ -114,14 +108,10 @@ class SigOptSearch(SuggestionAlgorithm):
 
         return copy.deepcopy(suggestion.assignments)
 
-    def on_trial_result(self, trial_id, result):
-        pass
-
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
@@ -137,14 +127,11 @@ class SigOptSearch(SuggestionAlgorithm):
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
-        elif error or early_terminated:
+        elif error:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)
         del self._live_trial_mapping[trial_id]
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self.conn, self.experiment)

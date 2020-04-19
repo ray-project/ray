@@ -85,22 +85,16 @@ class BayesOptSearch(Searcher):
 
         return copy.deepcopy(new_trial)
 
-    def on_trial_result(self, trial_id, result):
-        pass
-
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         """Notification for the completion of trial."""
         if result:
-            self._process_result(trial_id, result, early_terminated)
+            self._process_result(trial_id, result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result, early_terminated=False):
-        if early_terminated and self._use_early_stopped is False:
-            return
+    def _process_result(self, trial_id, result):
         self.optimizer.register(
             params=self._live_trial_mapping[trial_id],
             target=self._metric_op * result[self._metric])

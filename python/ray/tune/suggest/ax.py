@@ -86,19 +86,16 @@ class AxSearch(Searcher):
     def on_trial_complete(self,
                           trial_id,
                           result=None,
-                          error=False,
-                          early_terminated=False):
+                          error=False):
         """Notification for the completion of trial.
 
         Data of form key value dictionary of metric names and values.
         """
         if result:
-            self._process_result(trial_id, result, early_terminated)
+            self._process_result(trial_id, result)
         self._live_index_mapping.pop(trial_id)
 
-    def _process_result(self, trial_id, result, early_terminated=False):
-        if early_terminated and self._use_early_stopped is False:
-            return
+    def _process_result(self, trial_id, result):
         ax_trial_index = self._live_index_mapping[trial_id]
         metric_dict = {
             self._objective_name: (result[self._objective_name], 0.0)
