@@ -53,11 +53,7 @@ install_miniconda() {
       ;;
   esac
   { local set_x="${-//[^x]/}"; } 2> /dev/null  # save set -x to suppress noise
-  set +x
-  local source_line='PYTHON3_BIN_PATH=python; PATH="$HOME/miniconda/bin:$PATH"; export PYTHON3_BIN_PATH PATH;'
-  test -f ~/.bashrc && grep -x -q -F "${source_line}" -- ~/.bashrc || echo "${source_line}" >> ~/.bashrc
-  test -z "${set_x}" || set -x  # restore set -x
-  eval "${source_line}"
+  reload_env
   python -m pip install --upgrade --quiet pip
 }
 

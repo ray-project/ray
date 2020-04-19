@@ -38,21 +38,58 @@ should_run_job() {
   return "${skip}"
 }
 
+# Idempotent environment loading
 reload_env() {
   # TODO: We should really just use a new login shell instead of doing this manually.
   # Otherwise we might source a script that isn't idempotent (e.g. one that blindly prepends to PATH).
+
+  local definitions=() paths=()
+
+  # Environment variables for all platforms
+  definitions+=(
+    PYTHON3_BIN_PATH=python
+  )
+  # Environment variables for Windows
+  test "${OSTYPE}" != msys || definitions+=(
+    USE_CLANG_CL=1
+  )
+
+  # NOTE: Modifying PATH invalidates Bazel's cache! Do not add to PATH unnecessarily.
+  # PATH for all platforms
+  paths+=(
+    "${HOME}/miniconda/bin"
+  )
+  # PATH for Windows
+  test "${OSTYPE}" != msys || paths+=(
+    "${HOME}/miniconda/bin/Scripts"
+  )
+
+  export "${definitions[@]}" 2> /dev/null
+
+  prepend_PATH "${paths[@]}"
+}
+
+# Prepends each argument to PATH if it isn't already in the PATH.
+prepend_PATH() {
   { local set_x="${-//[^x]/}"; } 2> /dev/null  # save set -x to suppress noise
   set +x
-  local to_add="$HOME/miniconda/bin" old_path=":${PATH}:"
-  if [ "${old_path}" = "${old_path##*:${to_add}:*}" ]; then
-    PATH="${to_add}:$PATH"
-  fi
-  test -z "${set_x}" || set -x  # restore set -x
+  local old="${PATH}"
   if [ "${OSTYPE}" = msys ]; then
     PATH="${PATH// :/:}"  # HACK: Work around https://github.com/actions/virtual-environments/issues/635#issue-589318442
   fi
-  PYTHON3_BIN_PATH=python
-  export PATH PYTHON3_BIN_PATH
+
+  local to_add
+  for to_add in "$@"; do
+    case ":${PATH}:" in
+      *:"${to_add}":*) ;;  # Do nothing; already in PATH
+      *) PATH="${to_add}:${PATH}" ;;  # Prepend to PATH
+    esac
+  done
+
+  if [ "${old}" != "${PATH}" ]; then
+    echo "PATH=${PATH}"
+  fi
+  test -z "${set_x}" || set -x  # restore set -x
 }
 
 test_python() {
@@ -105,16 +142,16 @@ EOF1
 init() {
   preload
 
-  if [ "${OSTYPE}" = msys ]; then
-    export USE_CLANG_CL=1
-  fi
-
   local wheels="${LINUX_WHEELS-}${MAC_WHEELS-}"
   if [ -z "${wheels}" ]; then  # NOT building wheels
     "${ROOT_DIR}"/install-bazel.sh
   fi
   . "${ROOT_DIR}"/install-dependencies.sh
   reload_env  # We just modified our environment; reload it so we can continue
+
+  cat <<EOF >> ~/.bashrc
+. "${BASH_SOURCE:-$0}"  # reload environment
+EOF
 }
 
 build() {
@@ -173,6 +210,11 @@ run() {
 }
 
 _main() {
+  if [ -n "${GITHUB_WORKFLOW-}" ]; then
+    # Necessary for GitHub Actions (which uses separate shells for different commands)
+    # Unnecessary for Travis (which uses one shell for different commands)
+    reload_env
+  fi
   if [ 0 -lt "$#" ]; then
     "$@"
   fi
