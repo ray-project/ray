@@ -1105,7 +1105,9 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   } else {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
                                   CurrentCallSite(), max_retries);
-    return direct_task_submitter_->SubmitTask(task_spec);
+    io_service_.post(
+        [this, task_spec]() { direct_task_submitter_->SubmitTask(task_spec); });
+    return Status::OK();
   }
 }
 
