@@ -9,7 +9,6 @@ from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils import merge_dicts, flatten_dict
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -27,13 +26,11 @@ class Searcher:
     subsequent notifications.
 
     Args:
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
 
     .. code-block:: python
 
@@ -61,18 +58,21 @@ class Searcher:
     def __init__(self,
                  metric="episode_reward_mean",
                  mode="max",
-                 use_early_stopped_trials=False,
-                 max_concurrent=10):
+                 max_concurrent=10,
+                 use_early_stopped_trials=None):
+        if use_early_stopped_trials is False:
+            raise DeprecationWarning(
+                "Early stopped trials are now always used. If this is a "
+                "problem, file an issue: https://github.com/ray-project/ray.")
         assert type(max_concurrent) is int and max_concurrent > 0
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._metric = metric
         self._mode = mode
-        self.use_early_stopped_trials = use_early_stopped_trials
         self.max_concurrent = max_concurrent
 
     def on_trial_result(self, trial_id, result):
-        """Notification for result during training.
+        """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
         may not include the optimization metric. It is up to the
@@ -89,11 +89,7 @@ class Searcher:
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -108,7 +104,6 @@ class Searcher:
                 avoid breaking the optimization process. Upon errors, this
                 may also be None.
             error (bool): True if the training process raised an error.
-            early_terminated (bool): True if the trial was terminated by the scheduler.
 
         """
         raise NotImplementedError
@@ -154,9 +149,8 @@ class Searcher:
         return self._mode
 
 
-
 class SearchGenerator(SearchAlgorithm):
-    """Stateful generator for trials to be passed to the TrialRunner.
+    """Generates trials to be passed to the TrialRunner.
 
     Uses the provided ``searcher`` object to generate trials. This class
     transparently handles repeating trials with score aggregation
@@ -243,13 +237,9 @@ class SearchGenerator(SearchAlgorithm):
         """Notifies the underlying searcher."""
         self.searcher.on_trial_result(trial_id, result)
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         self.searcher.on_trial_complete(
-            trial_id=trial_id, result=result, error=error, early_terminated=early_terminated)
+            trial_id=trial_id, result=result, error=error)
         self._live_trials.remove(trial_id)
 
     def is_finished(self):
@@ -276,16 +266,11 @@ class _MockSuggestionAlgorithm(Searcher):
         self.counter["result"] += 1
         self.results += [result]
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         self.counter["complete"] += 1
         if result:
-            self._process_result(result, early_terminated)
+            self._process_result(result)
         del self.live_trials[trial_id]
 
-    def _process_result(self, result, early_terminated):
-        if early_terminated and self._use_early_stopped:
-            self.final_results += [result]
+    def _process_result(self, result):
+        self.final_results += [result]

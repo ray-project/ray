@@ -5,8 +5,8 @@ from ray.tune.suggest.variant_generator import grid_search
 from ray.tune.suggest.repeater import Repeater
 
 __all__ = [
-    "SearchAlgorithm", "Searcher", "BasicVariantGenerator",
-    "SearchGenerator", "grid_search", "Repeater"
+    "SearchAlgorithm", "Searcher", "BasicVariantGenerator", "SearchGenerator",
+    "grid_search", "Repeater"
 ]
 
 

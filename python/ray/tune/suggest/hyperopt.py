@@ -30,11 +30,11 @@ class HyperOptSearch(Searcher):
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm
@@ -49,8 +49,6 @@ class HyperOptSearch(Searcher):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
 
     .. code-block:: python
 
@@ -73,13 +71,13 @@ class HyperOptSearch(Searcher):
     def __init__(
             self,
             space,
+            metric="episode_reward_mean",
+            mode="max",
+            max_concurrent=10,
             points_to_evaluate=None,
             n_initial_points=20,
             random_state_seed=None,
             gamma=0.25,
-            metric="episode_reward_mean",
-            mode="max",
-            max_concurrent=10,
             use_early_stopped_trials=True,
     ):
         assert hpo is not None, (
@@ -88,8 +86,8 @@ class HyperOptSearch(Searcher):
         super(HyperOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent)
-        self._use_early_stopped = use_early_stopped_trials
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.
@@ -156,11 +154,7 @@ class HyperOptSearch(Searcher):
         ho_trial["book_time"] = now
         ho_trial["refresh_time"] = now
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with HyperOpt
@@ -174,20 +168,15 @@ class HyperOptSearch(Searcher):
             ho_trial["state"] = hpo.base.JOB_STATE_ERROR
             ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
             self._hpopt_trials.refresh()
-        else:
-            self._process_result(trial_id, result, early_terminated)
+        elif result:
+            self._process_result(trial_id, result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result, early_terminated=False):
+    def _process_result(self, trial_id, result):
         ho_trial = self._get_hyperopt_trial(trial_id)
         if not ho_trial:
             return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
-
-        if early_terminated and self._use_early_stopped is False:
-            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
-            ho_trial["misc"]["error"] = (str(TuneError), "Tune Removed")
-            return
 
         ho_trial["state"] = hpo.base.JOB_STATE_DONE
         hp_result = self._to_hyperopt_result(result)
