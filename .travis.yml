@@ -156,8 +156,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh preload
-        # Explicitly sleep 60 seconds for logs to go through
-        - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
+        - . ./ci/travis/ci.sh run
       cache: false
 
     # Build MacOS wheels.
@@ -173,8 +172,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh preload
-        # Explicitly sleep 60 seconds for logs to go through
-        - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
+        - . ./ci/travis/ci.sh run
 
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux

@@ -60,7 +60,7 @@ install_miniconda() {
       ;;
   esac
   reload_env
-  python -m pip install --upgrade --quiet pip
+  python -m pip install --upgrade --quiet pip "wheel>=0.34.0"  # wheel: https://github.com/pypa/wheel/issues/327
 }
 
 install_nvm() {
@@ -142,7 +142,7 @@ install_dependencies() {
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
-    CC=gcc pip install -v "${pip_packages[@]}"
+    CC=gcc pip install "${pip_packages[@]}"
   elif [ "${LINT-}" = 1 ]; then
     install_miniconda
     pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0  # Python linters

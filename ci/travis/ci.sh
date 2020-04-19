@@ -43,6 +43,14 @@ reload_env() {
   # TODO: We should really just use a new login shell instead of doing this manually.
   # Otherwise we might source a script that isn't idempotent (e.g. one that blindly prepends to PATH).
 
+  if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
+    case "${GITHUB_PULL_REQUEST}" in
+      [1-9]*) TRAVIS_PULL_REQUEST="${GITHUB_PULL_REQUEST}";;
+      *) TRAVIS_PULL_REQUEST="false";;
+    esac
+    export TRAVIS_PULL_REQUEST
+  fi
+
   local definitions=() paths=()
 
   # Environment variables for all platforms
@@ -129,6 +137,13 @@ EOF1
   fi
 }
 
+configure_system() {
+  git config --global advice.detachedHead false
+  git config --global core.askpass ""
+  git config --global credential.helper ""
+  git config --global credential.modalprompt false
+}
+
 # Initializes the environment for the current job. Performs the following tasks:
 # - Calls 'exit 0' in this job step and all subsequent steps to quickly exit if provided a list of job names and
 #   none of them has been triggered.
@@ -141,6 +156,8 @@ EOF1
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
   preload
+
+  configure_system
 
   local wheels="${LINUX_WHEELS-}${MAC_WHEELS-}"
   if [ -z "${wheels}" ]; then  # NOT building wheels
@@ -171,26 +188,39 @@ build() {
     eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=stable bash)"
   fi
 
-  if [ "${LINUX_WHEELS-}" = 1 ]; then
-    # Mount bazel cache dir to the docker container.
-    # For the linux wheel build, we use a shared cache between all
-    # wheels, but not between different travis runs, because that
-    # caused timeouts in the past. See the "cache: false" line below.
-    local MOUNT_BAZEL_CACHE=(-v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}" -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}")
+  case "${OSTYPE}" in
+    linux*)
+      if [ "${LINUX_WHEELS-}" = 1 ]; then
+        # Mount bazel cache dir to the docker container.
+        # For the linux wheel build, we use a shared cache between all
+        # wheels, but not between different travis runs, because that
+        # caused timeouts in the past. See the "cache: false" line below.
+        local MOUNT_BAZEL_CACHE=(-v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}" -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}" -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}")
 
-    # This command should be kept in sync with ray/python/README-building-wheels.md,
-    # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-    suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -ti rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
-  fi
-
-  if [ "${MAC_WHEELS-}" = 1 ]; then
-    # This command should be kept in sync with ray/python/README-building-wheels.md.
-    suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-  fi
+        # This command should be kept in sync with ray/python/README-building-wheels.md,
+        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
+        suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+      fi
+      ;;
+    darwin*)      
+      if [ "${MAC_WHEELS-}" = 1 ]; then
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      fi
+      ;;
+    msys*)
+      if [ "${WINDOWS_WHEELS-}" = 1 ]; then
+        (
+          cd "${WORKSPACE_DIR}"/python
+          python setup.py --quiet bdist_wheel
+        )
+      fi
+      ;;
+  esac
 }
 
 run() {
-  local result=0
+  local result=0 flush_logs=0
   ##### BEGIN TASKS #####
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
@@ -205,7 +235,25 @@ run() {
     bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
   fi
 
+  local should_test_wheels=""
+  case "${OSTYPE}" in
+    linux*) should_test_wheels="${LINUX_WHEELS-}";;
+    darwin*) should_test_wheels="${MAC_WHEELS-}";;
+  esac
+  if [ "${should_test_wheels}" = 1 ]; then
+    "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+  fi
+
   ##### END TASKS #####
+  if [ 0 -ne "${flush_logs}" ]; then
+    local f
+    for f in /tmp/ray/session_latest/logs/*; do
+      if [ -f "$f" ]; then  # make sure the wildcard actually expanded to something valid
+        cat -- "$f"
+      fi
+    done
+    sleep 60  # Explicitly sleep 60 seconds for logs to go through
+  fi
   return "${result}"
 }
 
