@@ -159,7 +159,7 @@ def test_global_state_api(shutdown_only):
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+    assert job_table[0]["DriverIpAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we

@@ -415,7 +415,7 @@ class GlobalState:
             entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
             assert entry.job_id == job_id.binary()
             job_info["JobID"] = job_id.hex()
-            job_info["NodeManagerAddress"] = entry.node_manager_address
+            job_info["DriverIpAddress"] = entry.driver_ip_address
             job_info["DriverPid"] = entry.driver_pid
             if entry.is_dead:
                 job_info["StopTime"] = entry.timestamp
