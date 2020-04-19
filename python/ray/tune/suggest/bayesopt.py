@@ -20,8 +20,6 @@ class BayesOptSearch(Searcher):
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -29,8 +27,8 @@ class BayesOptSearch(Searcher):
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
+        max_concurrent: Deprecated.
+        use_early_stopped_trials: Deprecated.
 
     .. code-block:: python
 
@@ -41,9 +39,7 @@ class BayesOptSearch(Searcher):
             'width': (0, 20),
             'height': (-100, 100),
         }
-        algo = BayesOptSearch(
-            space, max_concurrent=4, metric="mean_loss", mode="min")
-
+        algo = BayesOptSearch(space, metric="mean_loss", mode="min")
         tune.run(my_func, algo=algo)
     """
     # bayes_opt.BayesianOptimization: Optimization object
@@ -53,10 +49,10 @@ class BayesOptSearch(Searcher):
                  space,
                  metric="episode_reward_mean",
                  mode="max",
-                 max_concurrent=10,
                  utility_kwargs=None,
                  random_state=1,
                  verbose=0,
+                 max_concurrent=None,
                  use_early_stopped_trials=None):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
@@ -108,9 +104,6 @@ class BayesOptSearch(Searcher):
         self.optimizer.register(
             params=self._live_trial_mapping[trial_id],
             target=self._metric_op * result[self._metric])
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = self.optimizer

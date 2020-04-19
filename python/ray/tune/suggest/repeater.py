@@ -1,10 +1,8 @@
 import copy
-import itertools
 import logging
 import numpy as np
 
 from ray.tune.suggest.suggestion import Searcher
-from ray.tune.experiment import convert_to_experiment_list
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +62,7 @@ class Repeater(Searcher):
     simultaneously.
 
     Args:
-        search_alg (Searcher): Searcher object that the
+        searcher (Searcher): Searcher object that the
             Repeater will optimize. Note that the Searcher
             will only see 1 trial among multiple repeated trials.
             The result/metric passed to the Searcher upon
@@ -77,21 +75,19 @@ class Repeater(Searcher):
 
     """
 
-    def __init__(self, search_alg, repeat=1, set_index=True):
-        self.search_alg = search_alg
+    def __init__(self, searcher, repeat=1, set_index=True):
+        self.searcher = searcher
         self._repeat = repeat
         self._set_index = set_index
         self._groups = []
         self._trial_id_to_group = {}
         self._current_group = None
         super(Repeater, self).__init__(
-            metric=self.search_alg.metric,
-            mode=self.search_alg.mode,
-            max_concurrent=float("inf"))
+            metric=self.searcher.metric, mode=self.searcher.mode)
 
     def suggest(self, trial_id):
         if self._current_group is None or self._current_group.full():
-            config = self.search_alg.suggest(trial_id)
+            config = self.searcher.suggest(trial_id)
             if config is None:
                 return config
             self._current_group = _TrialGroup(
@@ -108,7 +104,7 @@ class Repeater(Searcher):
         self._trial_id_to_group[trial_id] = self._current_group
         return config
 
-    def observe(self, trial_id, result=None, **kwargs):
+    def on_trial_complete(self, trial_id, result=None, **kwargs):
         """Stores the score for and keeps track of a completed trial.
 
         Stores the metric of a trial as nan if any of the following conditions
@@ -123,17 +119,17 @@ class Repeater(Searcher):
                          "Seen trials: {}".format(
                              trial_id, list(self._trial_id_to_group)))
         trial_group = self._trial_id_to_group[trial_id]
-        if not result or self.search_alg.metric not in result:
+        if not result or self.searcher.metric not in result:
             score = np.nan
         else:
-            score = result[self.search_alg.metric]
+            score = result[self.searcher.metric]
         trial_group.report(trial_id, score)
 
         if trial_group.finished_reporting():
             scores = trial_group.scores()
-            self.search_alg.on_trial_complete(
+            self.searcher.on_trial_complete(
                 trial_group.primary_trial_id,
-                result={self.search_alg.metric: np.nanmean(scores)},
+                result={self.searcher.metric: np.nanmean(scores)},
                 **kwargs)
 
     def save(self, path):

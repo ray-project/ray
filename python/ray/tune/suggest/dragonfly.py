@@ -23,8 +23,6 @@ class DragonflySearch(Searcher):
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided
             from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -69,15 +67,13 @@ class DragonflySearch(Searcher):
             domain_config.domain.list_of_domains[0])
         optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
 
-        algo = DragonflySearch(optimizer, max_concurrent=4,
-            metric="objective", mode="max")
+        algo = DragonflySearch(optimizer, metric="objective", mode="max")
 
         tune.run(my_func, algo=algo)
     """
 
     def __init__(self,
                  optimizer,
-                 max_concurrent=10,
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
@@ -95,7 +91,6 @@ class DragonflySearch(Searcher):
             self._opt.tell([(points_to_evaluate, evaluated_rewards)])
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
-        self._max_concurrent = max_concurrent
         self._metric = metric
         # Dragonfly internally maximizes, so "min" => -1
         if mode == "min":

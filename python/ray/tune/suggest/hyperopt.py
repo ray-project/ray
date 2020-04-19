@@ -33,8 +33,6 @@ class HyperOptSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm
@@ -49,6 +47,7 @@ class HyperOptSearch(Searcher):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
+        max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
     .. code-block:: python
@@ -64,7 +63,7 @@ class HyperOptSearch(Searcher):
             'activation': 0, # The index of "relu"
         }]
         algo = HyperOptSearch(
-            space, max_concurrent=4, metric="mean_loss", mode="min",
+            space, metric="mean_loss", mode="min",
             points_to_evaluate=current_best_params)
 
     """
@@ -74,11 +73,11 @@ class HyperOptSearch(Searcher):
             space,
             metric="episode_reward_mean",
             mode="max",
-            max_concurrent=10,
             points_to_evaluate=None,
             n_initial_points=20,
             random_state_seed=None,
             gamma=0.25,
+            max_concurrent=None,
             use_early_stopped_trials=None,
     ):
         assert hpo is not None, (

@@ -53,8 +53,6 @@ class SkOptSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         points_to_evaluate (list of lists): A list of points you'd like to run
             first before sampling from the optimiser, e.g. these could be
             parameter configurations you already know work well to help
@@ -66,6 +64,7 @@ class SkOptSearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
+        max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
     Example:
@@ -74,7 +73,6 @@ class SkOptSearch(Searcher):
         >>> current_best_params = [[10, 0], [15, -20]]
         >>> algo = SkOptSearch(optimizer,
         >>>     ["width", "height"],
-        >>>     max_concurrent=4,
         >>>     metric="mean_loss",
         >>>     mode="min",
         >>>     points_to_evaluate=current_best_params)
@@ -85,9 +83,9 @@ class SkOptSearch(Searcher):
                  parameter_names,
                  metric="episode_reward_mean",
                  mode="max",
-                 max_concurrent=10,
                  points_to_evaluate=None,
                  evaluated_rewards=None,
+                 max_concurrent=None,
                  use_early_stopped_trials=None):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
@@ -106,7 +104,6 @@ class SkOptSearch(Searcher):
             optimizer.tell(points_to_evaluate, evaluated_rewards)
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
-        self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         # Skopt internally minimizes, so "max" => -1
         if mode == "max":

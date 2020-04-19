@@ -14,6 +14,7 @@ class NevergradSearch(SuggestionAlgorithm):
     """A wrapper around Nevergrad to provide trial suggestions.
 
     Requires Nevergrad to be installed.
+
     Nevergrad is an open source tool from Facebook for derivative free
     optimization of parameters and/or hyperparameters. It features a wide
     range of optimizers in a standard ask and tell interface. More information
@@ -26,20 +27,19 @@ class NevergradSearch(SuggestionAlgorithm):
             the dimension of the optimizer output. Alternatively, set to None
             if the optimizer is already instrumented with kwargs
             (see nevergrad v0.2.0+).
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
+        use_early_stopped_trials (bool): Deprecated.
 
-    Example:
-        >>> from nevergrad.optimization import optimizerlib
-        >>> instrumentation = 1
-        >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
-        >>> algo = NevergradSearch(optimizer, ["lr"], max_concurrent=4,
-        >>>                        metric="mean_loss", mode="min")
+    .. code-block:: python
+
+        from nevergrad.optimization import optimizerlib
+
+        instrumentation = 1
+        optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
+        algo = NevergradSearch(
+            optimizer, ["lr"], metric="mean_loss", mode="min")
 
     Note:
         In nevergrad v0.2.0+, optimizers can be instrumented.
@@ -51,34 +51,21 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> lr = inst.var.Array(1).bounded(1, 2).asfloat()
         >>> instrumentation = inst.Instrumentation(lr=lr)
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
-        >>> algo = NevergradSearch(optimizer, None, max_concurrent=4,
-        >>>                        metric="mean_loss", mode="min")
+        >>> algo = NevergradSearch(
+                optimizer, None, metric="mean_loss", mode="min")
 
     """
 
     def __init__(self,
                  optimizer,
                  parameter_names,
-                 max_concurrent=10,
-                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
-        assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
-        self._max_concurrent = max_concurrent
         self._parameters = parameter_names
-        self._metric = metric
         # nevergrad.tell internally minimizes, so "max" => -1
         if mode == "max":
             self._metric_op = -1.
@@ -110,8 +97,6 @@ class NevergradSearch(SuggestionAlgorithm):
                              "dimension for non-instrumented optimizers")
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
         suggested_config = self._nevergrad_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,

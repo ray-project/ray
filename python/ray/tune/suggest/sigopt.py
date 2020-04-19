@@ -18,6 +18,8 @@ class SigOptSearch(SuggestionAlgorithm):
     Requires SigOpt to be installed. Requires user to store their SigOpt
     API key locally as an environment variable at `SIGOPT_KEY`.
 
+    This module manages its own concurrency.
+
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
