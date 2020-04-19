@@ -56,6 +56,8 @@ reload_env() {
   # Environment variables for all platforms
   definitions+=(
     PYTHON3_BIN_PATH=python
+    GOROOT="${HOME}/go"
+    GOPATH="${HOME}/go_dir"
   )
   # Environment variables for Windows
   test "${OSTYPE}" != msys || definitions+=(
@@ -103,8 +105,120 @@ prepend_PATH() {
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
     # Windows -- most tests won't work yet; just do the ones we know work
-    PYTHONPATH=python python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
+    PYTHONPATH=python python -m pytest --durations=5 --timeout=300 python/ray/tests/test_mini.py
   fi
+}
+
+build_sphinx_docs() {
+  (
+    cd "${WORKSPACE_DIR}"/doc
+    if [ "${OSTYPE}" = msys ]; then
+      echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
+    else
+      sphinx-build -q -W -E -T -b html source _build/html
+    fi
+  )
+}
+
+lint_readme() {
+  (
+    cd "${WORKSPACE_DIR}"/python
+    python setup.py check --restructuredtext --strict --metadata
+  )
+}
+
+lint_python() {
+  # ignore dict vs {} (C408), others are defaults
+  command -V python
+  python -m flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+  "${ROOT_DIR}"/format.sh --all
+}
+
+lint_bazel() {
+  local platform="" architecture="" suffix=".tar.gz"
+  case "${OSTYPE}" in
+    linux*) platform=linux;;
+    darwin*) platform=darwin;;
+    msys*) platform=windows; suffix=".zip";;
+  esac
+  case "${HOSTTYPE}" in
+    x86_64) architecture=amd64;;
+    i?86*) architecture=i386;;
+  esac
+  # Run buildifier without affecting external environment variables
+  (
+    # TODO: Move installing Go & building buildifier to the dependency installation step?
+    if [ ! -d "${GOROOT}" ]; then
+      local url="https://dl.google.com/go/go1.14.2.${platform}-${architecture}${suffix}"
+      local filename="${GOROOT%/*}/${url##*/}"
+      if [ "${suffix}" = ".zip" ]; then
+        curl -s -L "${url}" -o "${filename}"
+        unzip -q -d "${GOROOT%/*}" -- "${filename}"
+        rm -f -- "${filename}"
+      else
+        curl -s -L "${url}" | tar -C "${GOROOT%/*}" -xz
+      fi
+    fi
+    mkdir -p -- "${GOPATH}"
+    prepend_PATH "${GOPATH}/bin" "${GOROOT}/bin"
+
+    # Build buildifier
+    go get github.com/bazelbuild/buildtools/buildifier
+
+    # Now run buildifier
+    "${ROOT_DIR}"/bazel-format.sh
+  )
+}
+
+lint_web() {
+  if command -v npm > /dev/null; then
+    (
+      cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
+      set +x # suppress set -x since it'll get very noisy here
+      . "${HOME}/.nvm/nvm.sh"
+      install_npm_project
+      if [ -d node_modules ]; then
+        nvm use node
+        node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
+        node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+        node_modules/.bin/prettier --check public/index.html
+      else
+        { echo "WARNING: Skipping running web linters as NPM project was not built"; } 2> /dev/null
+      fi
+    )
+  else
+    { echo "WARNING: Skipping running web linters as NVM has not been installed"; } 2> /dev/null
+  fi
+}
+
+_lint() {
+  if [ -n "${TRAVIS_BRANCH-}" ]; then
+    "${ROOT_DIR}"/check-git-clang-format-output.sh
+  else
+    # TODO(mehrdadn): Implement this on GitHub Actions
+    echo "WARNING: Not running clang-format due to TRAVIS_BRANCH not being defined."
+  fi
+  # Run Python linting
+  lint_python
+  # Make sure that the README is formatted properly.
+  lint_readme
+  # Run Bazel linter Buildifier.
+  lint_bazel
+  # Run TypeScript and HTML linting.
+  lint_web
+}
+
+lint() {
+  # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
+  (
+    WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
+    ROOT_DIR="${WORKSPACE_DIR}"/ci/travis
+    git worktree add -q "${WORKSPACE_DIR}"
+    pushd "${WORKSPACE_DIR}"
+      . "${ROOT_DIR}"/ci.sh _lint
+    popd  # this is required so we can remove the worktree when we're done
+    git worktree remove --force "${WORKSPACE_DIR}"
+  )
 }
 
 preload() {
@@ -172,11 +286,18 @@ EOF
 }
 
 build() {
-  local wheels="${LINUX_WHEELS-}${MAC_WHEELS-}"
-  if [ -z "${wheels}" ]; then  # NOT building wheels
-    if [ "${LINT-}" != 1 ]; then  # NOT linting
-      bazel build -k "//:*"   # Do a full build first to ensure it passes
-      "${ROOT_DIR}"/install-ray.sh
+  local should_run_bazel_and_install=1
+  case "${OSTYPE}" in
+    linux*) if [ "${LINUX_WHEELS-}" = 1 ]; then should_run_bazel_and_install=0; fi;;
+    darwin*) if [ "${MAC_WHEELS-}" = 1 ]; then should_run_bazel_and_install=0; fi;;
+  esac
+
+  if [ "${should_run_bazel_and_install}" = 1 ]; then  # NOT building wheels
+    bazel build -k "//:*"   # Do a full build first to ensure it passes
+    "${ROOT_DIR}"/install-ray.sh
+    if [ "${LINT-}" = 1 ]; then
+      # Try generating Sphinx documentation. To do this, we need to install Ray first.
+      build_sphinx_docs
     fi
   fi
 
@@ -222,6 +343,10 @@ build() {
 run() {
   local result=0 flush_logs=0
   ##### BEGIN TASKS #####
+
+  if [ "${LINT-}" = 1 ]; then
+    lint
+  fi
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
     test_python

@@ -45,12 +45,15 @@ jobs:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         #LINUX_WHEELS: 1
+        LINT: 1
         #MAC_WHEELS: 1
         RAY_DEFAULT_BUILD: 1
         WINDOWS_WHEELS: 1
       run: |
         . ./ci/travis/ci.sh init
+        . ./ci/travis/ci.sh lint
         . ./ci/travis/ci.sh build
+        . ./ci/travis/ci.sh run
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'

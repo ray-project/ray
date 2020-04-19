@@ -123,6 +123,35 @@ run_npm() {
   npm ci
 }
 
+install_npm_project() {
+  if [ "${OSTYPE}" = msys ]; then
+    # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
+    { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
+  else
+    run_npm
+  fi
+}
+
+# Takes a list of pip requirements and prints the ones that don't have known incompatibilities with the current system.
+filter_compatible_pip_requirements() {
+  (
+    set +x  # this function gets noisy, so disable tracing
+    local req to_keep=()
+    for req in "$@"; do
+      req="${req// /}"
+      req="${req%%#*}"
+      local reqname="${req%%=*}"
+      reqname="${reqname%%<*}"
+      reqname="${reqname%%>*}"
+      case "${OSTYPE},${reqname}" in
+        msys,blist) ;;
+        *) to_keep+=("${req}");;
+      esac
+    done
+    printf "%s\n" "${to_keep[@]}"
+  )
+}
+
 install_dependencies() {
 
   install_base
@@ -143,19 +172,20 @@ install_dependencies() {
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
     CC=gcc pip install "${pip_packages[@]}"
-  elif [ "${LINT-}" = 1 ]; then
+  fi
+
+  if [ "${LINT-}" = 1 ]; then
     install_miniconda
-    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0  # Python linters
-    (
-      cd "${WORKSPACE_DIR}/python/ray/dashboard/client"  # TypeScript & HTML linters
-      install_node
-      if [ "${OSTYPE}" = msys ]; then
-        # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
-        { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
-      else
-        run_npm
-      fi
-    )
+    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0  # Python linters
+    # readthedocs has an antiquated build env.
+    # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
+    local filename
+    for filename in "${WORKSPACE_DIR}"/doc/requirements-rtd.txt "${WORKSPACE_DIR}"/doc/requirements-doc.txt; do
+      local requirements
+      requirements=($(sed -e "s/#.*//g" -e "s/[ ]*//g" -- "${filename}"))
+      requirements=($(filter_compatible_pip_requirements "${requirements[@]}"))
+      pip install "${requirements[@]}"
+    done
   fi
 
   # Install modules needed in all jobs.
@@ -172,7 +202,7 @@ install_dependencies() {
     pip install msgpack>=0.6.2
   fi
 
-  if [ -n "${PYTHON-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
     install_node
   fi
 
