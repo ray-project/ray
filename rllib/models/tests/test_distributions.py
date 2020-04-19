@@ -11,10 +11,9 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
     TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
     TorchMultiCategorical, TorchSquashedGaussian
-from ray.rllib.utils.framework import try_import_tf, \
-    try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
-    softmax, SMALL_NUMBER
+    softmax, SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
@@ -23,6 +22,47 @@ torch, _ = try_import_torch()
 
 class TestDistributions(unittest.TestCase):
     """Tests ActionDistribution classes."""
+
+    def _stability_test(self,
+                        distribution_cls,
+                        network_output_shape,
+                        fw,
+                        sess=None,
+                        bounds=None):
+        extreme_values = [
+            0.0,
+            float(LARGE_INTEGER),
+            -float(LARGE_INTEGER),
+            1.1e-34,
+            1.1e34,
+            -1.1e-34,
+            -1.1e34,
+            SMALL_NUMBER,
+            -SMALL_NUMBER,
+        ]
+        inputs = np.zeros(shape=network_output_shape, dtype=np.float32)
+        for batch_item in range(network_output_shape[0]):
+            for num in range(len(inputs[batch_item])):
+                inputs[batch_item][num] = np.random.choice(extreme_values)
+        dist = distribution_cls(inputs, {})
+        for _ in range(100):
+            sample = dist.sample()
+            if fw != "tf":
+                sample_check = sample.numpy()
+            else:
+                sample_check = sess.run(sample)
+            assert not np.any(np.isnan(sample_check))
+            assert np.all(np.isfinite(sample_check))
+            if bounds:
+                assert np.min(sample_check) >= bounds[0]
+                assert np.max(sample_check) <= bounds[1]
+            logp = dist.logp(sample)
+            if fw != "tf":
+                logp_check = logp.numpy()
+            else:
+                logp_check = sess.run(logp)
+            assert not np.any(np.isnan(logp_check))
+            assert np.all(np.isfinite(logp_check))
 
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
@@ -108,8 +148,14 @@ class TestDistributions(unittest.TestCase):
         input_space = Box(-2.0, 2.0, shape=(200, 10))
         low, high = -2.0, 1.0
 
-        for fw, sess in framework_iterator(session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf", "eager"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
+
+            # Do a stability test using extreme NN outputs to see whether
+            # sampling and logp'ing result in NaN or +/-inf values.
+            self._stability_test(
+                cls, input_space.shape, fw=fw, sess=sess, bounds=(low, high))
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
@@ -130,8 +176,8 @@ class TestDistributions(unittest.TestCase):
                 values = sess.run(values)
             else:
                 values = values.numpy()
-            self.assertTrue(np.max(values) < high)
-            self.assertTrue(np.min(values) > low)
+            self.assertTrue(np.max(values) <= high)
+            self.assertTrue(np.min(values) >= low)
 
             check(np.mean(values), expected.mean(), decimals=1)
 
@@ -148,11 +194,13 @@ class TestDistributions(unittest.TestCase):
             # Unsquash values, then get log-llh from regular gaussian.
             # atanh_in = np.clip((values - low) / (high - low) * 2.0 - 1.0,
             #   -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            atanh_in = (values - low) / (high - low) * 2.0 - 1.0
-            unsquashed_values = np.arctanh(atanh_in)
+            normed_values = (values - low) / (high - low) * 2.0 - 1.0
+            save_normed_values = np.clip(normed_values, -1.0 + SMALL_NUMBER,
+                                         1.0 - SMALL_NUMBER)
+            unsquashed_values = np.arctanh(save_normed_values)
             log_prob_unsquashed = np.sum(
-                np.log(
-                    norm.pdf(unsquashed_values, means, stds) + SMALL_NUMBER),
+                np.log(norm.pdf(unsquashed_values, means,
+                                stds)),
                 -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),

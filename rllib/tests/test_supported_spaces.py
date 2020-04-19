@@ -219,7 +219,7 @@ class ModelSupportedSpaces(unittest.TestCase):
 
     def test_ppo(self):
         config = {
-            "num_workers": 0,
+            "num_workers": 1,
             "num_sgd_iter": 1,
             "train_batch_size": 10,
             "rollout_fragment_length": 10,

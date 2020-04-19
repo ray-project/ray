@@ -8,7 +8,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
-#from ray.rllib.utils.space_utils import TupleActions
 from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
@@ -208,24 +207,33 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def logp(self, x):
+        # Unsquash values (from [low,high] to ]-inf,inf[)
         unsquashed_values = self._unsquash(x)
-        log_prob = torch.sum(self.dist.log_prob(unsquashed_values), dim=-1)
+        # Get log prob of unsquashed values from our Normal.
+        log_prob_gaussian = self.dist.log_prob(unsquashed_values)
+        # For safety reasons, clamp somehow, only then sum up.
+        log_prob_gaussian = torch.clamp(log_prob_gaussian, -100, 100)
+        log_prob_gaussian = torch.sum(log_prob_gaussian, dim=-1)
+        # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
-        log_prob -= torch.sum(
+        log_prob = log_prob_gaussian - torch.sum(
             torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
         return log_prob
 
     def _squash(self, raw_values):
-        # Make sure raw_values are not too high/low (such that tanh would
-        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
-        return (torch.clamp(
-            torch.tanh(raw_values),
-            -1.0 + SMALL_NUMBER,
-            1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
-                self.low
+        # Returned values are within [low, high] (including `low` and `high`).
+        squashed = ((torch.tanh(raw_values) + 1.0) / 2.0) * \
+            (self.high - self.low) + self.low
+        return torch.clamp(squashed, self.low, self.high)
 
     def _unsquash(self, values):
-        return atanh((values - self.low) / (self.high - self.low) * 2.0 - 1.0)
+        normed_values = (values - self.low) / (self.high - self.low) * 2.0 - \
+                        1.0
+        # Stabilize input to atanh.
+        save_normed_values = torch.clamp(normed_values, -1.0 + SMALL_NUMBER,
+                                         1.0 - SMALL_NUMBER)
+        unsquashed = atanh(save_normed_values)
+        return unsquashed
 
 
 class TorchBeta(TorchDistributionWrapper):

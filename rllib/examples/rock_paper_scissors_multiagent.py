@@ -8,7 +8,6 @@ This demonstrates running the following policies in competition:
 """
 
 import argparse
-import numpy as np
 import random
 from gym.spaces import Discrete
 
@@ -98,7 +97,7 @@ class AlwaysSameHeuristic(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        return np.array([state_batches[0]]), state_batches, {}
+        return tuple([state_batches[0]]), state_batches, {}
 
     def learn_on_batch(self, samples):
         pass
@@ -133,7 +132,7 @@ class BeatLastHeuristic(Policy):
             elif x[SCISSORS] == 1:
                 return ROCK
 
-        return np.array([successor(x) for x in obs_batch]), [], {}
+        return tuple([successor(x) for x in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         pass

@@ -1,8 +1,7 @@
-"""This test checks that ZOOpt is functional.
+"""This test checks that ZOOptSearch is functional.
 
 It also checks that it is usable with a separate scheduler.
 """
-
 import ray
 from ray.tune import run
 from ray.tune.suggest.zoopt import ZOOptSearch
@@ -39,7 +38,7 @@ if __name__ == "__main__":
     }
 
     config = {
-        "num_samples": 200 if args.smoke_test else 1000,
+        "num_samples": 10 if args.smoke_test else 1000,
         "config": {
             "iterations": 10,  # evaluation times
         },
