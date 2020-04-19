@@ -122,10 +122,7 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = suggested_config
         return dict(zip(self._parameters, suggested_config))
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with Skopt

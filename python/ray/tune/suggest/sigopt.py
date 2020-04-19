@@ -100,10 +100,7 @@ class SigOptSearch(SuggestionAlgorithm):
 
         return copy.deepcopy(suggestion.assignments)
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling

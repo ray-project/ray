@@ -38,10 +38,7 @@ class SearchAlgorithm:
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Arguments:

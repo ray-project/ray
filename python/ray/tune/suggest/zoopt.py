@@ -118,10 +118,7 @@ class ZOOptSearch(SuggestionAlgorithm):
             self._live_trial_mapping[trial_id] = new_trial
             return copy.deepcopy(new_trial)
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
             _solution = self.solution_dict[str(trial_id)]

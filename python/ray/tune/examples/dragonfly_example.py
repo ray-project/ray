@@ -73,8 +73,7 @@ if __name__ == "__main__":
     func_caller = EuclideanFunctionCaller(
         None, domain_config.domain.list_of_domains[0])
     optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-    algo = DragonflySearch(
-        optimizer, metric="objective", mode="max")
+    algo = DragonflySearch(optimizer, metric="objective", mode="max")
     scheduler = AsyncHyperBandScheduler(metric="objective", mode="max")
     run(objective,
         name="dragonfly_search",

@@ -85,10 +85,7 @@ class BayesOptSearch(Searcher):
 
         return copy.deepcopy(new_trial)
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
             self._process_result(trial_id, result)

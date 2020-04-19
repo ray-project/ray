@@ -83,10 +83,7 @@ class AxSearch(Searcher):
         self._live_index_mapping[trial_id] = trial_index
         return parameters
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Data of form key value dictionary of metric names and values.

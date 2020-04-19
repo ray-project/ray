@@ -132,7 +132,7 @@ class AutoInitTest(unittest.TestCase):
 
 class AbstractWarmStartTest:
     def setUp(self):
-        ray.init(local_mode=True)
+        ray.init(num_cpus=1, local_mode=True)
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -184,11 +184,7 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=loss)
 
         search_alg = HyperOptSearch(
-            space,
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            random_state_seed=5)
+            space, metric="loss", mode="min", random_state_seed=5)
         return search_alg, cost
 
 
@@ -201,7 +197,6 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = BayesOptSearch(
             space,
-            max_concurrent=1,
             metric="loss",
             mode="min",
             utility_kwargs={
@@ -223,7 +218,6 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = SkOptSearch(
             optimizer, ["width", "height"],
-            max_concurrent=1,
             metric="loss",
             mode="min",
             points_to_evaluate=previously_run_params,
@@ -242,11 +236,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
                 mean_loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = NevergradSearch(
-            optimizer,
-            parameter_names,
-            max_concurrent=1,
-            metric="mean_loss",
-            mode="min")
+            optimizer, parameter_names, metric="mean_loss", mode="min")
         return search_alg, cost
 
 
@@ -305,7 +295,6 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             algo="Asracos",  # only support ASRacos currently
             budget=200,
             dim_dict=dim_dict,
-            max_concurrent=1,
             metric="loss",
             mode="min")
 

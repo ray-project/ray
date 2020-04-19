@@ -101,7 +101,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
@@ -122,7 +122,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
@@ -147,7 +147,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
         runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
         runner.step()

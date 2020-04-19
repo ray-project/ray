@@ -104,10 +104,7 @@ class TuneBOHB(SuggestionAlgorithm):
             hbs_wrapper = self.to_wrapper(trial_id, result)
             self.bohber.new_result(hbs_wrapper)
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         del self.trial_to_params[trial_id]
         if trial_id in self.paused:
             self.paused.remove(trial_id)

@@ -110,10 +110,7 @@ class DragonflySearch(Searcher):
         self._live_trial_mapping[trial_id] = suggested_config
         return {"point": suggested_config}
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
