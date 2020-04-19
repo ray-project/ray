@@ -145,12 +145,6 @@ build() {
   fi
 }
 
-_main() {
-  if [ 0 -lt "$#" ]; then
-    "$@"
-  fi
-}
-
-_main "$@"
+"$@"
 
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
