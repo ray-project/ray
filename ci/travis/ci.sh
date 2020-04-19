@@ -9,6 +9,14 @@ set -eo pipefail && if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
+suppress_output() {
+  "${WORKSPACE_DIR}"/ci/suppress_output "$@"
+}
+
+keep_alive() {
+  "${WORKSPACE_DIR}"/ci/keep_alive "$@"
+}
+
 # If provided the names of one or more environment variables, returns success if any of them is triggered.
 # Usage: should_run_job [VAR_NAME]...
 should_run_job() {
@@ -128,15 +136,21 @@ build() {
 
     # This command should be kept in sync with ray/python/README-building-wheels.md,
     # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-    "${WORKSPACE_DIR}"/ci/suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -ti rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+    suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -ti rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
   fi
 
   if [ "${MAC_WHEELS-}" = 1 ]; then
     # This command should be kept in sync with ray/python/README-building-wheels.md.
-    "${WORKSPACE_DIR}"/ci/suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+    suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
   fi
 }
 
-"$@"
+_main() {
+  if [ 0 -lt "$#" ]; then
+    "$@"
+  fi
+}
+
+_main "$@"
 
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
