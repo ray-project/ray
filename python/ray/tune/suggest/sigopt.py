@@ -72,14 +72,6 @@ class SigOptSearch(SuggestionAlgorithm):
             "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
         self._max_concurrent = max_concurrent
         self._metric = metric
         if mode == "max":

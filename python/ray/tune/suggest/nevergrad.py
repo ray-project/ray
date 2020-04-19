@@ -30,7 +30,8 @@ class NevergradSearch(SuggestionAlgorithm):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        use_early_stopped_trials (bool): Deprecated.
+        use_early_stopped_trials: Deprecated.
+        max_concurrent: Deprecated.
 
     .. code-block:: python
 
@@ -126,9 +127,6 @@ class NevergradSearch(SuggestionAlgorithm):
         ng_trial_info = self._live_trial_mapping[trial_id]
         self._nevergrad_opt.tell(ng_trial_info,
                                  self._metric_op * result[self._metric])
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self._nevergrad_opt, self._parameters)
