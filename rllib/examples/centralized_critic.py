@@ -114,7 +114,7 @@ def centralized_critic_postprocessing(policy,
         sample_batch[OPPONENT_ACTION] = np.zeros_like(
             sample_batch[SampleBatch.ACTIONS])
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
-            sample_batch[SampleBatch.ACTIONS], dtype=np.float32)
+            sample_batch[SampleBatch.REWARDS], dtype=np.float32)
 
     completed = sample_batch["dones"][-1]
     if completed:
