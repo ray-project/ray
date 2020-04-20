@@ -34,7 +34,8 @@ def StandardMetricsReporting(
     """
 
     output_op = train_op \
-        .filter(OncePerTimeInterval(max(2, config["min_iter_time_s"]))) \
+        .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"])) \
+        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
         .for_each(CollectMetrics(
             workers, min_history=config["metrics_smoothing_episodes"],
             timeout_seconds=config["collect_metrics_timeout"],
@@ -127,8 +128,38 @@ class OncePerTimeInterval:
         self.last_called = 0
 
     def __call__(self, item):
+        if self.delay <= 0.0:
+            return True
         now = time.time()
         if now - self.last_called > self.delay:
+            self.last_called = now
+            return True
+        return False
+
+
+class OncePerTimestepsElapsed:
+    """Callable that returns True once per given number of timesteps.
+
+    This should be used with the .filter() operator to throttle / rate-limit
+    metrics reporting. For a higher-level API, consider using
+    StandardMetricsReporting instead.
+
+    Examples:
+        >>> throttled_op = train_op.filter(OncePerTimestepsElapsed(1000))
+        >>> next(throttled_op)
+        # will only return after 1000 steps have elapsed
+    """
+
+    def __init__(self, delay_steps):
+        self.delay_steps = delay_steps
+        self.last_called = 0
+
+    def __call__(self, item):
+        if self.delay_steps <= 0:
+            return True
+        metrics = LocalIterator.get_metrics()
+        now = metrics.counters[STEPS_SAMPLED_COUNTER]
+        if now - self.last_called > self.delay_steps:
             self.last_called = now
             return True
         return False
