@@ -60,7 +60,6 @@ class DurableTrainable(Trainable):
             if checkpoint_dir.starts_with(os.path.abspath(self.logdir)):
                 raise ValueError("`checkpoint_dir` must be `self.logdir`, or "
                                  "a sub-directory.")
-
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)
         self.storage_client.sync_up(self.logdir, self.remote_checkpoint_dir)
         self.storage_client.wait()
@@ -87,8 +86,9 @@ class DurableTrainable(Trainable):
         try:
             local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         except FileNotFoundError:
-            logger.warning("Trial %s: checkpoint path not found during "
-                           "garbage collection. See issue #6697.")
+            logger.warning(
+                "Trial %s: checkpoint path not found during "
+                "garbage collection. See issue #6697.", self.trial_id)
         else:
             self.storage_client.delete(self._storage_path(local_dirpath))
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
