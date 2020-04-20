@@ -745,9 +745,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt.reset_stats()
         return pbt, runner
 
-    def testPerturbationCheckpointConflict(self):
-        pbt, runner = self.basicSetup()
-
     def testCheckpointsMostPromisingTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
