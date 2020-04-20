@@ -160,10 +160,12 @@ def test_for_each(ray_start_regular_shared):
 
 def test_for_each_concur(ray_start_regular_shared):
     from time import sleep, perf_counter
+
     def task(x):
         print("In task")
         sleep(1)
         return x * 2
+
     start = perf_counter()
     it = from_range(8).for_each_concur(lambda x: x * 2, max_concur=2)
     assert repr(it) == "ParallelIterator[from_range[8, shards=2].for_each()]"
