@@ -17,6 +17,7 @@ def gen_streaming_java_deps():
             "org.testng:testng:6.9.10",
 	          "org.mockito:mockito-all:1.10.19",
 	          "org.powermock:powermock-module-testng:1.6.6",
+	          "org.powermock:powermock-core:1.6.6",
 	          "org.powermock:powermock-api-mockito:1.6.6",
 	          "org.projectlombok:lombok:1.16.20",
         ],
