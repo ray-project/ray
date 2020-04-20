@@ -147,28 +147,28 @@ class ChannelCreationParametersBuilder:
     wrap initial parameters needed by a streaming queue
     """
     _java_reader_async_function_descriptor = JavaFunctionDescriptor(
-        "org.ray.streaming.runtime.worker",
+        "io.ray.streaming.runtime.worker.JobWorker",
         "onReaderMessage", "([B)V")
     _java_reader_sync_function_descriptor = JavaFunctionDescriptor(
-            "org.ray.streaming.runtime.worker",
+            "io.ray.streaming.runtime.worker.JobWorker",
             "onReaderMessageSync", "([B)[B")
     _java_writer_async_function_descriptor = JavaFunctionDescriptor(
-            "org.ray.streaming.runtime.worker",
+            "io.ray.streaming.runtime.worker.JobWorker",
             "onWriterMessage", "([B)V")
     _java_writer_sync_function_descriptor = JavaFunctionDescriptor(
-            "org.ray.streaming.runtime.worker",
+            "io.ray.streaming.runtime.worker.JobWorker",
             "onWriterMessageSync", "([B)[B")
     _python_reader_async_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.core.worker",
+            "ray.streaming.runtime.worker",
             "on_reader_message", "JobWorker")
     _python_reader_sync_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.core.worker",
+            "ray.streaming.runtime.worker",
             "on_reader_message_sync", "JobWorker")
     _python_writer_async_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.core.worker",
+            "ray.streaming.runtime.worker",
             "on_writer_message", "JobWorker")
     _python_writer_sync_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.core.worker",
+            "ray.streaming.runtime.worker",
             "on_writer_message_sync", "JobWorker")
 
     def get_parameters(self):
