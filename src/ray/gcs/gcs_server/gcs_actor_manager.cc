@@ -111,14 +111,12 @@ void GcsActorManager::RegisterActor(
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end()) {
+  if (iter != registered_actors_.end() &&
+      iter->second->GetState() == rpc::ActorTableData::ALIVE) {
     // When the network fails, Driver/Worker is not sure whether GcsServer has received
     // the request of actor creation task, so Driver/Worker will try again and again until
-    // receiving the reply from GcsServer. If the actor is already records on the GCS
-    // Server side, the GCS Server will be responsible for creating or reconstructing the
-    // actor regardless of whether the Driver/Worker sends the request to create the actor
-    // again, so we just need fast reply OK to the Driver/Worker that the actor is already
-    // recorded by GCS Server.
+    // receiving the reply from GcsServer. If the actor has been created successfully then
+    // just reply to the caller.
     callback(iter->second);
     return;
   }
@@ -126,33 +124,18 @@ void GcsActorManager::RegisterActor(
   auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
   if (pending_register_iter != actor_to_register_callbacks_.end()) {
     // It is a duplicate message, just mark the callback as pending and invoke it after
-    // the related actor is flushed.
+    // the actor has been successfully created.
     pending_register_iter->second.emplace_back(std::move(callback));
     return;
   }
 
-  // Mark the callback as pending and invoke it after the related actor is flushed.
+  // Mark the callback as pending and invoke it after the actor has been successfully
+  // created.
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
 
   auto actor = std::make_shared<GcsActor>(request);
-  auto actor_table_data =
-      std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
-  // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
-      actor_id, actor_table_data, [this, actor](Status status) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
-        // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from
-        // actor_to_register_callbacks_.
-        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
-        for (auto &callback : iter->second) {
-          callback(actor);
-        }
-        actor_to_register_callbacks_.erase(iter);
-        gcs_actor_scheduler_->Schedule(actor);
-      }));
+  RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
+  gcs_actor_scheduler_->Schedule(actor);
 }
 
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
@@ -265,6 +248,16 @@ void GcsActorManager::OnActorCreateSuccess(std::shared_ptr<GcsActor> actor) {
       std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor_id, actor_table_data, nullptr));
+
+  // Invoke all callbacks for all registration requests of this actor (duplicated
+  // requests are included) and remove all of them from actor_to_register_callbacks_.
+  auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+  if (iter != actor_to_register_callbacks_.end()) {
+    for (auto &callback : iter->second) {
+      callback(actor);
+    }
+    actor_to_register_callbacks_.erase(iter);
+  }
 }
 
 void GcsActorManager::SchedulePendingActors() {

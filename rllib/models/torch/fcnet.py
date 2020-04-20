@@ -31,7 +31,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
 
         logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
         layers = []
-        prev_layer_size = int(np.product(obs_space.shape))
+        prev_layer_size = np.product(obs_space.shape)
         self._logits = None
 
         # Create layers 0 to second-last.

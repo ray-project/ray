@@ -8,25 +8,27 @@ RLlib Algorithms
 Feature Compatibility Matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=================== =======================  ==============  ===========  =====================
-Algorithm           Discrete Actions         Continuous      Multi-Agent  Model Support
-=================== =======================  ==============  ===========  =====================
-`A2C, A3C`_         **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
-`PPO`_, `APPO`_     **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
-`PG`_               **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
-`IMPALA`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_, `+autoreg`_
-`DQN`_, `Rainbow`_  **Yes** `+parametric`_   No              **Yes**
-`DDPG`_, `TD3`_     No                       **Yes**         **Yes**
-`APEX-DQN`_         **Yes** `+parametric`_   No              **Yes**
-`APEX-DDPG`_        No                       **Yes**         **Yes**
-`SAC`_              **Yes**                  **Yes**         **Yes**
-`ES`_               **Yes**                  **Yes**         No
-`ARS`_              **Yes**                  **Yes**         No
-`QMIX`_             **Yes**                  No              **Yes**      `+RNN`_
-`MARWIL`_           **Yes** `+parametric`_   **Yes**         **Yes**      `+RNN`_
-`LinUCB`_, `LinTS`_ **Yes** `+parametric`_   No              **Yes**
-`AlphaZero`_        **Yes** `+parametric`_   No              No
-=================== =======================  ==============  ===========  =====================
+=================== ========== ======================= ================== =========== =====================
+Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
+=================== ========== ======================= ================== =========== =====================
+`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`ARS`_              tf         **Yes**                 **Yes**            No
+`ES`_               tf + torch **Yes**                 **Yes**            No
+`DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
+`APEX-DDPG`_        tf         No                      **Yes**            **Yes**
+`DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
+`APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
+`IMPALA`_           tf         **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
+`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`QMIX`_             torch      **Yes**                 No                 **Yes**     `+RNN`_
+`SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
+------------------- ---------- ----------------------- ------------------ ----------- ---------------------
+`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
+`LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
+`MADDPG`_           tf         No                      **Yes**            **Yes**
+=================== ========== ======================= ================== =========== =====================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
@@ -233,7 +235,7 @@ SpaceInvaders  692                       ~600
 
 Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
 DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers, switching to AsyncGradientsOptimizer, or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
 
@@ -370,7 +372,7 @@ HalfCheetah    9664                       ~7700
 
 Soft Actor Critic (SAC)
 ------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/pdf/1801.01290>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
 
 .. figure:: dqn-arch.svg
@@ -420,7 +422,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Evolution Strategies
 --------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1703.03864>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/es/es.py>`__
 Code here is adapted from https://github.com/openai/evolution-strategies-starter to execute in the distributed setting with Ray.
 
@@ -476,7 +478,7 @@ Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/mad
 
 Advantage Re-Weighted Imitation Learning (MARWIL)
 -------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning. MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cartpole-marwil.yaml>`__

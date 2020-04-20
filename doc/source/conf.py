@@ -32,7 +32,8 @@ MOCK_MODULES = [
     "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
     "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
     "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
-    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed"
+    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
+    "zoopt"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()

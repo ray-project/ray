@@ -149,7 +149,7 @@ class HTTPProxy:
                 if not isinstance(result, ray.exceptions.RayActorError):
                     await Response(result).send(scope, receive, send)
                     break
-                logger.warning("Got RayActorError:", str(result))
+                logger.warning("Got RayActorError: {}".format(str(result)))
                 await asyncio.sleep(0.1)
             except Exception as e:
                 error_message = "Internal Error. Traceback: {}.".format(e)

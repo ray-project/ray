@@ -3,7 +3,7 @@ import logging
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
+from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
@@ -45,8 +45,15 @@ def build_sac_model(policy, obs_space, action_space, config):
     if config["use_state_preprocessor"]:
         num_outputs = 256  # Flatten last Conv2D to this many nodes.
     else:
-        config["model"]["fcnet_hiddens"] = []
         num_outputs = 0
+        # No state preprocessor: fcnet_hiddens should be empty.
+        if config["model"]["fcnet_hiddens"]:
+            logger.warning(
+                "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
+                " will be set to an empty list! Any hidden layer sizes are "
+                "defined via `policy_model.hidden_layer_sizes` and "
+                "`Q_model.hidden_layer_sizes`.")
+            config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"

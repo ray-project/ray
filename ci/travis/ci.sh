@@ -47,6 +47,20 @@ reload_env() {
   export PATH PYTHON3_BIN_PATH
 }
 
+preload() {
+  local job_names="${1-}"
+
+  local variable_definitions
+  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  if [ 0 -lt "${#variable_definitions[@]}" ]; then
+    export "${variable_definitions[@]}"
+  fi
+
+  if ! (set +x && should_run_job ${job_names//,/ }); then
+    exit 0
+  fi
+}
+
 # Initializes the environment for the current job. Performs the following tasks:
 # - Calls 'exit 0' to quickly exit if provided a list of job names and none of them has been triggered.
 # - Sets variables to indicate the job names that have been triggered.
@@ -57,15 +71,7 @@ reload_env() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  local job_names="${1-}"
-
-  local variable_definitions
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
-  { declare "${variable_definitions[@]}"; } > /dev/null 2> /dev/null
-
-  if ! (set +x && should_run_job ${job_names//,/ }); then
-    exit 0
-  fi
+  preload
 
   if [ "${OSTYPE}" = msys ]; then
     export USE_CLANG_CL=1
