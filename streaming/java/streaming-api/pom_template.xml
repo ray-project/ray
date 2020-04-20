@@ -22,6 +22,11 @@
             <artifactId>ray-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.ray</groupId>
+            <artifactId>ray-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         {generated_bzl_deps}
     </dependencies>
 </project>

@@ -8,6 +8,8 @@ from ray.streaming.collector import OutputCollector
 from ray.streaming.config import Config
 from ray.streaming.context import RuntimeContextImpl
 from ray.streaming.runtime.transfer import ChannelID, DataWriter, DataReader
+from ray.streaming.runtime import serialization
+from ray.streaming.runtime.serialization import PythonSerializer, CrossLangSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +33,7 @@ class StreamTask(ABC):
             self.worker.config.get(Config.CHANNEL_SIZE,
                                    Config.CHANNEL_SIZE_DEFAULT))
         channel_conf[Config.CHANNEL_SIZE] = channel_size
-        channel_conf[Config.TASK_JOB_ID] = ray.runtime_context.\
-            _get_runtime_context().current_driver_id
+        channel_conf[Config.TASK_JOB_ID] = ray.worker.global_worker.current_job_id
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
@@ -51,27 +52,29 @@ class StreamTask(ABC):
             if len(output_actors_map) > 0:
                 channel_ids = list(output_actors_map.keys())
                 target_actors = list(output_actors_map.values())
+                logger.info("Create DataWriter channel_ids {}, target_actors {}."
+                            .format(channel_ids, target_actors))
                 writer = DataWriter(channel_ids, target_actors, channel_conf)
-                logger.info("Create DataWriter succeed.")
                 self.writers[edge] = writer
                 collectors.append(
                     OutputCollector(writer, channel_ids, target_actors,
                                     edge.partition))
 
         # readers
-        input_actor_ids = {}
+        input_actor_map = {}
         for edge in execution_node.input_edges:
             task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
                 edge.src_node_id)
             for src_task_id, src_actor in task_id2_worker.items():
                 channel_name = ChannelID.gen_id(src_task_id, self.task_id,
                                                 execution_graph.build_time())
-                input_actor_ids[channel_name] = src_actor
-        if len(input_actor_ids) > 0:
-            channel_ids = list(input_actor_ids.keys())
-            from_actor_ids = list(input_actor_ids.values())
-            logger.info("Create DataReader, channels {}.".format(channel_ids))
-            self.reader = DataReader(channel_ids, from_actor_ids, channel_conf)
+                input_actor_map[channel_name] = src_actor
+        if len(input_actor_map) > 0:
+            channel_ids = list(input_actor_map.keys())
+            from_actors = list(input_actor_map.values())
+            logger.info("Create DataReader, channels {}, input_actors {}."
+                        .format(channel_ids, from_actors))
+            self.reader = DataReader(channel_ids, from_actors, channel_conf)
 
             def exit_handler():
                 # Make DataReader stop read data when MockQueue destructor
@@ -115,6 +118,8 @@ class InputStreamTask(StreamTask):
         self.read_timeout_millis = \
             int(worker.config.get(Config.READ_TIMEOUT_MS,
                                   Config.DEFAULT_READ_TIMEOUT_MS))
+        self.python_serializer = PythonSerializer()
+        self.cross_lang_serializer = CrossLangSerializer()
 
     def init(self):
         pass
@@ -124,7 +129,12 @@ class InputStreamTask(StreamTask):
             item = self.reader.read(self.read_timeout_millis)
             if item is not None:
                 msg_data = item.body()
-                msg = pickle.loads(msg_data)
+                type_id = msg_data[:1]
+                print("type id", type_id)
+                if (type_id == serialization._PYTHON_TYPE_ID):
+                    msg = self.python_serializer.deserialize(msg_data[1:])
+                else:
+                    msg = self.cross_lang_serializer.deserialize(msg_data[1:])
                 self.processor.process(msg)
         self.stopped = True
 

@@ -14,4 +14,4 @@ echo "build all_streaming_tests_deploy.jar"
 bazel build //streaming/java:all_streaming_tests_deploy.jar
 export CLASSPATH=$RAY_ROOT_DIR/bazel-bin/streaming/java/all_streaming_tests_deploy.jar
 
-python test_cross_lang_stream.py
+python test_hybrid_stream.py

@@ -146,13 +146,13 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   @Test(timeOut = 60000)
   public void testWordCount() {
     Ray.shutdown();
-    System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-
-    System.setProperty("ray.run-mode", "CLUSTER");
-    System.setProperty("ray.redirect-output", "true");
-    // ray init
-    Ray.init();
+//    System.setProperty("ray.resources", "CPU:4,RES-A:4");
+//    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+//
+//    System.setProperty("ray.run-mode", "CLUSTER");
+//    System.setProperty("ray.redirect-output", "true");
+//    // ray init
+//    Ray.init();
     LOGGER.info("testWordCount");
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
         System.getProperty("ray.run-mode"));

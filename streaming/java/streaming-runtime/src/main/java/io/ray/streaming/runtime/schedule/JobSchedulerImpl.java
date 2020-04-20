@@ -41,10 +41,6 @@ public class JobSchedulerImpl implements JobScheduler {
   public void schedule(JobGraph jobGraph, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
     this.jobGraph = jobGraph;
-    if (Ray.internal() == null) {
-      System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-      Ray.init();
-    }
 
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();

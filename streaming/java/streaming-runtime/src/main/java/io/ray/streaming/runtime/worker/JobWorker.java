@@ -54,7 +54,8 @@ public class JobWorker implements Serializable {
     this.nodeType = executionNode.getNodeType();
     this.streamProcessor = ProcessBuilder
       .buildProcessor(executionNode.getStreamOperator());
-    LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
+    LOGGER.info("Initializing StreamWorker, pid {}, taskId: {}, operator: {}.",
+        EnvUtil.getJvmPid(), taskId, streamProcessor);
 
     String channelType = (String) this.config.getOrDefault(
         Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);

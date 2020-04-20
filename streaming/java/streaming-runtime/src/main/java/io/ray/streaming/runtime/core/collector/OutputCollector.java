@@ -43,17 +43,6 @@ public class OutputCollector implements Collector<Record> {
         outputQueueIds, this.partition);
   }
 
-  private Serializer[] createSerializers(Collection<RayActor> targetActors) {
-    return targetActors.stream()
-        .map(actor -> {
-          if (actor instanceof RayPyActor) {
-            return new CrossLangSerializer();
-          } else {
-            return new JavaSerializer();
-          }
-        }).toArray(Serializer[]::new);
-  }
-
   @Override
   public void collect(Record record) {
     int[] partitions = this.partition.partition(record, outputQueues.length);

@@ -1,10 +1,12 @@
 package io.ray.streaming.api.context;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.Ray;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
 import io.ray.streaming.schedule.JobScheduler;
+import io.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,6 +56,16 @@ public class StreamingContext implements Serializable {
     this.jobGraph = jobGraphBuilder.build();
     jobGraph.printJobGraph();
 
+    if (Ray.internal() == null) {
+      if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
+        ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), true);
+      } else {
+        ClusterStarter.startCluster(true, false);
+      }
+
+      Runtime.getRuntime().addShutdownHook(new Thread(StreamingContext.this::stop));
+    }
+
     ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
     Iterator<JobScheduler> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
@@ -76,5 +88,11 @@ public class StreamingContext implements Serializable {
 
   public void withConfig(Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
+  }
+
+  public void stop() {
+    if (Ray.internal() != null) {
+      ClusterStarter.stopCluster(jobGraph.isCrossLanguageGraph());
+    }
   }
 }

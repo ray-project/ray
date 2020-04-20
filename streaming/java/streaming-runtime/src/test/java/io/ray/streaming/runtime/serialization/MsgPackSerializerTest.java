@@ -14,11 +14,17 @@ import org.testng.annotations.Test;
 public class MsgPackSerializerTest {
 
   @Test
-  public void testSerialize() {
+  public void testSerializeByte() {
     MsgPackSerializer serializer = new MsgPackSerializer();
 
     assertEquals(serializer.deserialize(
-        serializer.serialize(1)), (byte)1);
+        serializer.serialize((byte)1)), (byte)1);
+  }
+
+  @Test
+  public void testSerialize() {
+    MsgPackSerializer serializer = new MsgPackSerializer();
+
     assertEquals(serializer.deserialize
         (serializer.serialize(Short.MAX_VALUE)), Short.MAX_VALUE);
     assertEquals(serializer.deserialize(

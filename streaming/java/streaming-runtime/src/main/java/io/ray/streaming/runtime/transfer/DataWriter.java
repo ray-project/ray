@@ -51,6 +51,7 @@ public class DataWriter {
     boolean isMock = false;
     if (Config.MEMORY_CHANNEL.equals(channelType)) {
       isMock = true;
+      LOGGER.info("Using memory channel");
     }
     this.nativeWriterPtr = createWriterNative(
         initParameters,

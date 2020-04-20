@@ -5,11 +5,17 @@ import pytest
 
 
 def map_func1(x):
-    return str(x) + str(x)
+    print("HybridStreamTest map_func1", x)
+    return str(x)
 
 
 def filter_func1(x):
+    print("HybridStreamTest filter_func1", x)
     return "b" not in x
+
+
+def sink_func1(x):
+    print("HybridStreamTest sink_func1 value:", x)
 
 
 @pytest.mark.skip(
@@ -27,7 +33,7 @@ def test_data_stream():
         .filter("org.ray.streaming.runtime.demo.CrossLangStreamTest$Filter1") \
         .as_python() \
         .sink(print)
-    ctx.submit("cross_lang_word_count")
+    ctx.submit("hybrid_stream_test")
     import time
     time.sleep(3)
     ray.shutdown()

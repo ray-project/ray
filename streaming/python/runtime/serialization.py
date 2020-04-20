@@ -5,6 +5,9 @@ from ray.streaming import message
 
 _RECORD_TYPE_ID = 0
 _KEY_RECORD_TYPE_ID = 1
+_CROSS_LANG_TYPE_ID = b"0"
+_JAVA_TYPE_ID = b"1"
+_PYTHON_TYPE_ID = b"2"
 
 
 class Serializer(ABC):
@@ -50,4 +53,4 @@ class CrossLangSerializer(Serializer):
             key_record.stream = stream
             return key_record
         else:
-            raise Exception("Unsupported type id {}".format(fields[0]))
+            raise Exception("Unsupported type id {}, type {}".format(fields[0], type(fields[0])))
