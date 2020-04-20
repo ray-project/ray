@@ -65,7 +65,6 @@ void TaskSpecification::ComputeResources() {
       sched_cls_id_ = it->second;
     }
   }
-
 }
 
 // Task specification getter methods.
