@@ -8,6 +8,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils import try_import_tf
 
@@ -52,28 +53,23 @@ class ESTFPolicy:
     def __init__(self,
                  obs_space,
                  action_space,
-                 config,  # TODO(sven). Make exactly like torch signature.
-                 preprocessor,
-                 observation_filter,
-                 model_options,
-                 *,
-                 action_noise_std,
-                 single_threaded=False):
+                 config):
         self.action_space = action_space
-        self.action_noise_std = action_noise_std
-        self.preprocessor = preprocessor
-        self.observation_filter = get_filter(observation_filter,
-                                             self.preprocessor.shape)
-        self.sess = make_session(single_threaded=single_threaded)
+        self.action_noise_std = config["action_noise_std"]
+        self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
+        self.observation_filter = get_filter(
+             config["observation_filter"], self.preprocessor.shape)
+        self.single_threaded = config.get("single_threaded", False)
+        self.sess = make_session(single_threaded=self.single_threaded)
         self.inputs = tf.placeholder(tf.float32,
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, model_options, dist_type="deterministic")
+            self.action_space, config["model"], dist_type="deterministic")
         model = ModelCatalog.get_model({
-            "obs": self.inputs
-        }, obs_space, action_space, dist_dim, model_options)
+            SampleBatch.CUR_OBS: self.inputs
+        }, obs_space, action_space, dist_dim, config["model"])
         dist = dist_class(model.outputs, model)
         self.sampler = dist.sample()
 
@@ -95,14 +91,8 @@ class ESTFPolicy:
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
 
-    def set_weights(self, x):
+    def set_flat_weights(self, x):
         self.variables.set_flat(x)
 
-    def get_weights(self):
+    def get_flat_weights(self):
         return self.variables.get_flat()
-
-    #def get_filter(self):
-    #    return self.observation_filter
-
-    #def set_filter(self, observation_filter):
-    #    self.observation_filter = observation_filter
