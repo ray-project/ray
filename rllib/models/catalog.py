@@ -2,6 +2,7 @@ from functools import partial
 import gym
 import logging
 import numpy as np
+import tree
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
@@ -24,7 +25,8 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.space_utils import flatten_space
+from ray.rllib.utils.space_utils import flatten_space, \
+    get_base_struct_from_space
 
 tf = try_import_tf()
 
@@ -162,19 +164,17 @@ class ModelCatalog:
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
                 isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
-            flattened_action_space = flatten_space(action_space)
-            child_dist = []
-            input_lens = []
-            for action in flattened_action_space:
-                dist, action_size = ModelCatalog.get_action_dist(
-                    action, config, framework=framework)
-                child_dist.append(dist)
-                input_lens.append(action_size)
+            flat_action_space = flatten_space(action_space)
+            child_dists_and_in_lens = tree.map_structure(
+                lambda s: ModelCatalog.get_action_dist(
+                    s, config, framework=framework), flat_action_space)
+            child_dists = [e[0] for e in child_dists_and_in_lens]
+            input_lens = [e[1] for e in child_dists_and_in_lens]
             return partial(
                 (TorchMultiActionDistribution
                  if framework == "torch" else MultiActionDistribution),
                 action_space=action_space,
-                child_distributions=child_dist,
+                child_distributions=child_dists,
                 input_lens=input_lens), sum(input_lens)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):

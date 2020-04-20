@@ -89,6 +89,7 @@ if __name__ == "__main__":
     trainer = ppo.PPOTrainer(config=config)
     for _ in range(100):
         results = trainer.train()
+        print(results)
         if results["episode_reward_mean"] > args.stop:
             sys.exit(0)  # Learnt, exit gracefully.
     sys.exit(1)  # Done, but did not learn, exit with error.

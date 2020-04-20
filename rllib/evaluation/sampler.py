@@ -712,15 +712,15 @@ def _fetch_atari_metrics(base_env):
 def unbatch_actions(action_batches):
     """Converts action_batches from list of batches to batch of lists.
 
-    Input: Single list of batches:
-    e.g. [[int batch: 1, 2, 3], [float batch: 1.0, 2.0, 3.0],
-          [float batch [5.0, 6.0], [6.0, 7.0], [7.0, 8.0]]]
-    Output: Batch of lists (each of these lists representing a single action):
-    e.g. [
-      [1, 1.0, 5.0, 6.0],  <- action 1
-      [2, 2.0, 6.0, 7.0],  <- action 2
-      [3, 3.0, 7.0, 8.0],  <- action 3
-    ]
+    Input: Struct of batches:
+        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
+    Output: Batch (list) of structs (each of these structs representing a
+        single action):
+        [
+            {"a": 1, "b": (4, 7.0)},  <- action 1
+            {"a": 2, "b": (5, 8.0)},  <- action 2
+            {"a": 3, "b": (6, 9.0)},  <- action 3
+        ]
 
     Args:
         action_batches (any): The list of action-component batches. Each item
@@ -737,14 +737,19 @@ def unbatch_actions(action_batches):
     # True if a single action (no TupleAction, no flattened action) has been
     # passed in. In this case
     single_mode = False
-    if not isinstance(action_batches, (list, tuple)):
+    if not isinstance(action_batches, (list, tuple, dict)):
         single_mode = True
-        action_batches = force_list(action_batches)
+        #action_batches = force_list(action_batches)
+    flat_action_batches = tree.flatten(action_batches)
+    #def map_():
+    #    [action_batches[i][batch_pos] for i in range(len(action_batches))]
+    
+    #return tree.map_structure(map_, action_batches)
 
     out = []
-    for batch_pos in range(len(action_batches[0])):
+    for batch_pos in range(len(flat_action_batches[0])):
         out.append(
-            [action_batches[i][batch_pos] for i in range(len(action_batches))])
+            tree.unflatten_as(action_batches, [flat_action_batches[i][batch_pos] for i in range(len(flat_action_batches))]))
     return out[0] if single_mode else out
 
 

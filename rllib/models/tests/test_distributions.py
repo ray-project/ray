@@ -329,10 +329,10 @@ class TestDistributions(unittest.TestCase):
             ))
 
         low, high = -1.0, 1.0
-        values_space = Tuple([
+        value_space = Tuple([
             Box(0, 3, shape=(batch_size, ), dtype=np.int32),
-            Box(-2.0, 2.0, shape=(batch_size, 3)),
-            Dict({"a": Box(0.0, 1.0, shape=(batch_size, 2))}),
+            Box(-2.0, 2.0, shape=(batch_size, 3), dtype=np.float32),
+            Dict({"a": Box(0.0, 1.0, shape=(batch_size, 2), dtype=np.float32)})
         ])
 
         for fw, sess in framework_iterator(session=True):
@@ -341,21 +341,22 @@ class TestDistributions(unittest.TestCase):
                 child_distr_cls = [
                     TorchCategorical,
                     TorchDiagGaussian,
-                    dict(a=partial(TorchBeta, low=low, high=high))
+                    partial(TorchBeta, low=low, high=high)
                 ]
             else:
                 cls = MultiActionDistribution
                 child_distr_cls = [
                     Categorical,
                     DiagGaussian,
-                    dict(a=partial(Beta, low=low, high=high)),
+                    partial(Beta, low=low, high=high),
                 ]
 
             inputs = list(input_space.sample())
             distr = cls(
                 np.concatenate(
                     [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
-                {}, None,
+                model={},
+                action_space=value_space,
                 child_distributions=child_distr_cls,
                 input_lens=[4, 6, 4])
 
@@ -393,7 +394,8 @@ class TestDistributions(unittest.TestCase):
             distr = cls(
                 np.concatenate(
                     [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
-                {}, None,
+                model={},
+                action_space=value_space,
                 child_distributions=child_distr_cls,
                 input_lens=[4, 6, 4])
             expected_mean = [
@@ -433,11 +435,12 @@ class TestDistributions(unittest.TestCase):
             distr = cls(
                 np.concatenate(
                     [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
-                {}, None,
+                model={},
+                action_space=value_space,
                 child_distributions=child_distr_cls,
                 input_lens=[4, 6, 4])
             inputs[0] = softmax(inputs[0], -1)
-            values = list(values_space.sample())
+            values = list(value_space.sample())
             log_prob_beta = np.log(
                 beta.pdf(values[2]["a"], inputs[2]["a"][:, :2], inputs[2]["a"][:, 2:]))
             # Now do the up-scaling for [2] (beta values) to be between
@@ -458,7 +461,20 @@ class TestDistributions(unittest.TestCase):
             values[0] = np.expand_dims(values[0], -1)
             if fw == "torch":
                 values = tree.map_structure(lambda s: torch.Tensor(s), values)
+            # Test all flattened input.
+            concat = np.concatenate(tree.flatten(values), -1).astype(
+                np.float32)
+            out = distr.logp(concat)
+            if sess:
+                out = sess.run(out)
+            check(out, expected_log_llh, atol=15)
+            # Test structured input.
             out = distr.logp(values)
+            if sess:
+                out = sess.run(out)
+            check(out, expected_log_llh, atol=15)
+            # Test flattened input.
+            out = distr.logp(tree.flatten(values))
             if sess:
                 out = sess.run(out)
             check(out, expected_log_llh, atol=15)
