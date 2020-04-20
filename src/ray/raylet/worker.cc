@@ -27,19 +27,26 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, const Language &language,
-               const std::string &ip_address,
+               const std::string &ip_address, int port,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
       ip_address_(ip_address),
-      assigned_port_(-1),
-      port_(-1),
+      port_(port),
       connection_(connection),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {}
+      is_detached_actor_(false) {
+  if (port_ > 0) {
+    rpc::Address addr;
+    addr.set_ip_address(ip_address_);
+    addr.set_port(port_);
+    rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(addr, client_call_manager_));
+  }
+}
 
 void Worker::MarkDead() { dead_ = true; }
 
@@ -64,24 +71,7 @@ Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }
 
-int Worker::Port() const {
-  RAY_CHECK(port_ > 0);
-  return port_;
-}
-
-int Worker::AssignedPort() const { return assigned_port_; }
-
-void Worker::SetAssignedPort(int port) { assigned_port_ = port; };
-
-void Worker::Connect(int port) {
-  RAY_CHECK(port > 0);
-  port_ = port;
-  rpc::Address addr;
-  addr.set_ip_address(ip_address_);
-  addr.set_port(port_);
-  rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-      new rpc::CoreWorkerClient(addr, client_call_manager_));
-}
+int Worker::Port() const { return port_; }
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
