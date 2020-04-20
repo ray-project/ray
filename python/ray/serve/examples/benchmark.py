@@ -8,10 +8,13 @@ from tqdm import tqdm
 serve.init(blocking=True)
 
 
-@serve.route("/noop")
 def noop(_):
     return ""
 
+
+serve.create_endpoint("noop", "/noop")
+serve.create_backend(noop, "noop")
+serve.split("noop", {"noop": 1.0})
 
 url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
 while requests.get(url).status_code == 404:
