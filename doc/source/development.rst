@@ -329,6 +329,6 @@ components like the following:
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
-.. _`Temporary Files`: http://ray.readthedocs.io/en/latest/tempfile.html
+.. _`Temporary Files`: http://docs.ray.io/en/latest/tempfile.html
 .. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
 .. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis

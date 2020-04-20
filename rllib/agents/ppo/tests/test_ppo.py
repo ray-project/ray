@@ -165,11 +165,14 @@ class TestPPO(unittest.TestCase):
                 vars = policy.get_session().run(vars)
             expected_shared_out = fc(
                 train_batch[SampleBatch.CUR_OBS],
-                vars[0],
-                vars[1],
+                vars[0 if fw != "torch" else 2],
+                vars[1 if fw != "torch" else 3],
                 framework=fw)
             expected_logits = fc(
-                expected_shared_out, vars[2], vars[3], framework=fw)
+                expected_shared_out,
+                vars[2 if fw != "torch" else 0],
+                vars[3 if fw != "torch" else 1],
+                framework=fw)
             expected_value_outs = fc(
                 expected_shared_out, vars[4], vars[5], framework=fw)
 

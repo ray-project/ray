@@ -28,7 +28,6 @@ class DistributedTorchRunner(TorchRunner):
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         kwargs: Keyword arguments for TorchRunner.
-
     """
 
     def __init__(self,
