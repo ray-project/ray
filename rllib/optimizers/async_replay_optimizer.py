@@ -15,6 +15,7 @@ import ray
 from ray.exceptions import RayError
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -462,8 +463,11 @@ class LearnerThread(threading.Thread):
                 with self.grad_timer:
                     grad_out = self.local_worker.learn_on_batch(replay)
                     for pid, info in grad_out.items():
+                        td_error = info.get(
+                            "td_error",
+                            info[LEARNER_STATS_KEY].get("td_error"))
                         prio_dict[pid] = (replay.policy_batches[pid].data.get(
-                            "batch_indexes"), info.get("td_error"))
+                            "batch_indexes"), td_error)
                         self.stats[pid] = get_learner_stats(info)
                     self.grad_timer.push_units_processed(replay.count)
                 self.outqueue.put((ra, prio_dict, replay.count))

@@ -1,21 +1,24 @@
 package io.ray.streaming.runtime.master.resourcemanager;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.ray.api.Ray;
+import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.streaming.runtime.config.StreamingMasterConfig;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.config.types.SlotAssignStrategyType;
+import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.Resources;
 import io.ray.streaming.runtime.master.JobRuntimeContext;
-import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
-import io.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategyFactory;
-import java.util.ArrayList;
-import java.util.HashMap;
+import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
+import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategyFactory;
+import io.ray.streaming.runtime.util.RayUtils;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -41,160 +44,153 @@ public class ResourceManagerImpl implements ResourceManager {
   /**
    * Slot assign strategy.
    */
-  private SlotAssignStrategy slotAssignStrategy;
+  private ResourceAssignStrategy resourceAssignStrategy;
 
   /**
    * Resource description information.
    */
   private final Resources resources;
 
-  private final ScheduledExecutorService scheduledExecutorService;
+  /**
+   * Customized actor number for each container
+   */
+  private int actorNumPerContainer;
+
+  /**
+   * Timing resource updating thread
+   */
+  private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
+      new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
 
   public ResourceManagerImpl(JobRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
     StreamingMasterConfig masterConfig = runtimeContext.getConf().masterConfig;
 
     this.resourceConfig = masterConfig.resourceConfig;
-    this.resources = new Resources(resourceConfig);
+    this.resources = new Resources();
     LOG.info("ResourceManagerImpl begin init, conf is {}, resources are {}.",
         resourceConfig, resources);
 
-    SlotAssignStrategyType slotAssignStrategyType = SlotAssignStrategyType.PIPELINE_FIRST_STRATEGY;
+    // Init custom resource configurations
+    this.actorNumPerContainer = resourceConfig.actorNumPerContainer();
 
-    this.slotAssignStrategy = SlotAssignStrategyFactory.getStrategy(slotAssignStrategyType);
-    this.slotAssignStrategy.setResources(resources);
-    LOG.info("Slot assign strategy: {}.", slotAssignStrategy.getName());
+    ResourceAssignStrategyType resourceAssignStrategyType =
+        ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
+    this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
+      resourceAssignStrategyType);
+    LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
 
-    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
-    long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
-    this.scheduledExecutorService.scheduleAtFixedRate(
-        Ray.wrapRunnable(this::checkAndUpdateResources), 0, intervalSecond, TimeUnit.SECONDS);
+    //Init resource
+    initResource();
+
+    checkAndUpdateResourcePeriodically();
 
     LOG.info("ResourceManagerImpl init success.");
   }
 
   @Override
-  public Map<String, Double> allocateResource(final Container container,
-      final Map<String, Double> requireResource) {
-    LOG.info("Start to allocate resource for actor with container: {}.", container);
-
-    // allocate resource to actor
-    Map<String, Double> resources = new HashMap<>();
-    Map<String, Double> containResource = container.getAvailableResource();
-    for (Map.Entry<String, Double> entry : containResource.entrySet()) {
-      if (requireResource.containsKey(entry.getKey())) {
-        double availableResource = entry.getValue() - requireResource.get(entry.getKey());
-        entry.setValue(availableResource);
-        resources.put(entry.getKey(), requireResource.get(entry.getKey()));
-      }
-    }
-
-    LOG.info("Allocate resource: {} to container {}.", requireResource, container);
-    return resources;
+  public ResourceAssignmentView assignResource(List<Container> containers,
+      ExecutionGraph executionGraph) {
+    return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
 
   @Override
-  public void deallocateResource(final Container container,
-      final Map<String, Double> releaseResource) {
-    LOG.info("Deallocating resource for container {}.", container);
-
-    Map<String, Double> containResource = container.getAvailableResource();
-    for (Map.Entry<String, Double> entry : containResource.entrySet()) {
-      if (releaseResource.containsKey(entry.getKey())) {
-        double availableResource = entry.getValue() + releaseResource.get(entry.getKey());
-        LOG.info("Release source {}:{}", entry.getKey(), releaseResource.get(entry.getKey()));
-        entry.setValue(availableResource);
-      }
-    }
-
-    LOG.info("Deallocated resource for container {} success.", container);
+  public String getName() {
+    return resourceAssignStrategy.getName();
   }
 
   @Override
-  public List<Container> getRegisteredContainers() {
-    return new ArrayList<>(resources.getRegisterContainers());
-  }
-
-  @Override
-  public SlotAssignStrategy getSlotAssignStrategy() {
-    return slotAssignStrategy;
-  }
-
-  @Override
-  public Resources getResources() {
-    return this.resources;
+  public ImmutableList<Container> getRegisteredContainers() {
+    LOG.info("Current resource detail: {}.", resources.toString());
+    return resources.getRegisteredContainers();
   }
 
   /**
    * Check the status of ray cluster node and update the internal resource information of
    * streaming system.
    */
-  private void checkAndUpdateResources() {
-    // get all started nodes
-    List<NodeInfo> latestNodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
+  private void checkAndUpdateResource() {
+    //Get add&del nodes(node -> container)
+    Map<UniqueId, NodeInfo> latestNodeInfos = RayUtils.getAliveNodeInfoMap();
 
-    List<NodeInfo> addNodes = latestNodeInfos.stream().filter(nodeInfo -> {
-      for (Container container : resources.getRegisterContainers()) {
-        if (container.getNodeId().equals(nodeInfo.nodeId)) {
-          return false;
-        }
-      }
-      return true;
-    }).collect(Collectors.toList());
+    List<UniqueId> addNodes = latestNodeInfos.keySet().stream()
+        .filter(this::isAddedNode).collect(Collectors.toList());
 
-    List<Container> deleteContainers = resources.getRegisterContainers().stream()
-        .filter(container -> {
-          for (NodeInfo nodeInfo : latestNodeInfos) {
-            if (nodeInfo.nodeId.equals(container.getNodeId())) {
-              return false;
-            }
-          }
-          return true;
-        }).collect(Collectors.toList());
+    List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
+        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
     LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
-        latestNodeInfos, resources.getRegisterContainers(), addNodes, deleteContainers);
+        latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
-    //Register new nodes.
-    if (!addNodes.isEmpty()) {
-      for (NodeInfo node : addNodes) {
-        registerContainer(node);
-      }
+    if (!addNodes.isEmpty() || !deleteNodes.isEmpty()) {
+      LOG.info("Latest node infos from GCS: {}", latestNodeInfos);
+      LOG.info("Resource details: {}.", resources.toString());
+      LOG.info("Get add nodes info: {}, del nodes info: {}.", addNodes, deleteNodes);
+
+      // unregister containers
+      unregisterDeletedContainer(deleteNodes);
+
+      // register containers
+      registerNewContainers(addNodes.stream().map(latestNodeInfos::get)
+          .collect(Collectors.toList()));
     }
-    //Clear deleted nodes
-    if (!deleteContainers.isEmpty()) {
-      for (Container container : deleteContainers) {
-        unregisterContainer(container);
-      }
+  }
+
+  private void registerNewContainers(List<NodeInfo> nodeInfos) {
+    LOG.info("Start to register containers. new add node infos are: {}.", nodeInfos);
+
+    if (nodeInfos == null || nodeInfos.isEmpty()) {
+      LOG.info("NodeInfos is null or empty, skip registry.");
+      return;
+    }
+
+    for (NodeInfo nodeInfo : nodeInfos) {
+      registerContainer(nodeInfo);
     }
   }
 
   private void registerContainer(final NodeInfo nodeInfo) {
     LOG.info("Register container {}.", nodeInfo);
 
-    Container container =
-        new Container(nodeInfo.nodeId, nodeInfo.nodeAddress, nodeInfo.nodeHostname);
-    container.setAvailableResource(nodeInfo.resources);
+    Container container = Container.from(nodeInfo);
+
+    // failover case: container has already allocated actors
+    double availableCapacity = actorNumPerContainer - container.getAllocatedActorNum();
+
 
     //Create ray resource.
-    Ray.setResource(container.getNodeId(),
-        container.getName(),
-        resources.getMaxActorNumPerContainer());
+    Ray.setResource(container.getNodeId(), container.getName(), availableCapacity);
     //Mark container is already registered.
-    Ray.setResource(container.getNodeId(),
-        CONTAINER_ENGAGED_KEY, 1);
+    Ray.setResource(container.getNodeId(), CONTAINER_ENGAGED_KEY, 1);
+
+    // update container's available dynamic resources
+    container.getAvailableResources()
+      .put(container.getName(), availableCapacity);
 
     // update register container list
-    resources.getRegisterContainers().add(container);
+    resources.registerContainer(container);
   }
 
-  private void unregisterContainer(final Container container) {
-    LOG.info("Unregister container {}.", container);
-
-    // delete resource with capacity to 0
-    Ray.setResource(container.getNodeId(), container.getName(), 0);
-    Ray.setResource(container.getNodeId(), CONTAINER_ENGAGED_KEY, 0);
-
-    // remove from container map
-    resources.getRegisterContainers().remove(container);
+  private void unregisterDeletedContainer(List<UniqueId> deletedIds) {
+    LOG.info("Unregister container, deleted node ids are: {}.", deletedIds);
+    if (null == deletedIds || deletedIds.isEmpty()) {
+      return;
+    }
+    resources.unRegisterContainer(deletedIds);
   }
+
+  private void initResource() {
+    LOG.info("Init resource.");
+    checkAndUpdateResource();
+  }
+
+  private void checkAndUpdateResourcePeriodically() {
+    long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
+    this.resourceUpdater.scheduleAtFixedRate(
+        Ray.wrapRunnable(this::checkAndUpdateResource), 0, intervalSecond, TimeUnit.SECONDS);
+  }
+
+  private boolean isAddedNode(UniqueId uniqueId) {
+    return !resources.getRegisteredContainerMap().containsKey(uniqueId);
+  }
+
 }

@@ -10,34 +10,37 @@ extern "C" {
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    createDataReaderNative
- * Signature: ([[B[[B[J[JJZ[BZ)J
+ * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParametersBuilder;[[B[J[JJZ[BZ)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative
-  (JNIEnv *, jclass, jobjectArray, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray, jboolean);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
+    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlongArray, jlong, jboolean,
+    jbyteArray, jboolean);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    getBundleNative
  * Signature: (JJJJ)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative
-  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative(
+    JNIEnv *, jobject, jlong, jlong, jlong, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    stopReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(
+    JNIEnv *, jobject, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    closeReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *, jobject,
+                                                                    jlong);
 
 #ifdef __cplusplus
 }
