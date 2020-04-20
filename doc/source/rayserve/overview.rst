@@ -194,9 +194,8 @@ You can also have RayServe batch requests for performance. You'll configure this
   serve.create_endpoint("counter1", "/increment")
 
   config = BackendConfig(max_batch_size=5)
-  serve.create_backend(
-      BatchingExample, "counter:v11", backend_config=config)
-  serve.link("counter1", "counter:v11")
+  serve.create_backend(BatchingExample, "counter1", backend_config=config)
+  serve.link("counter1", "counter1")
 
 Other Resources
 ----------------
