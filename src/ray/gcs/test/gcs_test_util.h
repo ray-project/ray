@@ -30,7 +30,8 @@ namespace ray {
 
 struct Mocker {
   static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_reconstructions = 100) {
+                                                int max_reconstructions, bool detached,
+                                                const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
     ray::FunctionDescriptor empty_descriptor =
@@ -38,15 +39,24 @@ struct Mocker {
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
-                              TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions);
+                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
+    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
-                                                       int max_reconstructions = 100) {
+                                                       int max_reconstructions = 0,
+                                                       bool detached = false) {
     rpc::CreateActorRequest request;
-    auto actor_creation_task_spec = GenActorCreationTask(job_id, max_reconstructions);
+    rpc::Address owner_address;
+    if (owner_address.raylet_id().empty()) {
+      owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+      owner_address.set_ip_address("1234");
+      owner_address.set_port(5678);
+      owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    }
+    auto actor_creation_task_spec =
+        GenActorCreationTask(job_id, max_reconstructions, detached, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
