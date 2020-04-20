@@ -2,10 +2,7 @@
 
 FROM ray-project/base-deps
 
-# We install ray and boto3 to enable the ray autoscaler as
-# a test runner.
 RUN pip install -U pip
-RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 
 # We install this after the latest wheels -- this should not override the latest wheels.
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
@@ -18,6 +15,8 @@ RUN pip install -r requirements.txt
 # We port the source code in so that we run the most up-to-date stress tests.
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
-RUN python /ray/python/ray/setup-dev.py --yes
+RUN ./ray/ci/install-bazel.sh
+RUN cd /ray/python; pip install -e . --verbose
+RUN bazel clean --expunge
 
 WORKDIR /ray
