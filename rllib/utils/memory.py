@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import os
 
 import ray
 
@@ -7,6 +8,10 @@ FREE_DELAY_S = 10.0
 MAX_FREE_QUEUE_SIZE = 100
 _last_free_time = 0.0
 _to_free = []
+
+# TODO(ekl) remove this feature entirely. It's here for now just in case we
+# need to turn it on for debugging.
+RLLIB_DEBUG_EXPLICIT_FREE = bool(os.environ.get("RLLIB_DEBUG_EXPLICIT_FREE"))
 
 
 def ray_get_and_free(object_ids):
@@ -22,6 +27,9 @@ def ray_get_and_free(object_ids):
     Returns:
         The result of ray.get(object_ids).
     """
+
+    if not RLLIB_DEBUG_EXPLICIT_FREE:
+        return ray.get(object_ids)
 
     global _last_free_time
     global _to_free

@@ -214,7 +214,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (dict): Dict of custom debug callbacks.
+            callbacks (DefaultCallbacks): Custom training callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
             input_evaluation (list): How to evaluate the policy performance.
@@ -279,7 +279,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         env_context = EnvContext(env_config or {}, worker_index)
         self.policy_config = policy_config
-        self.callbacks = callbacks or {}
+        if callbacks:
+            self.callbacks = callbacks()
+        else:
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks = DefaultCallbacks()
         self.worker_index = worker_index
         self.num_workers = num_workers
         model_config = model_config or {}
@@ -444,6 +448,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         if sample_async:
             self.sampler = AsyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
@@ -462,6 +467,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
@@ -518,8 +524,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             batches.append(batch)
         batch = batches[0].concat_samples(batches)
 
-        if self.callbacks.get("on_sample_end"):
-            self.callbacks["on_sample_end"]({"worker": self, "samples": batch})
+        self.callbacks.on_sample_end(worker=self, samples=batch)
 
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
