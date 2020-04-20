@@ -3,7 +3,6 @@ package org.ray.api.options;
 import java.util.HashMap;
 import java.util.Map;
 import org.ray.api.Bundle;
-import org.ray.api.LifeCycleGroup;
 
 /**
  * The options for creating actor.
@@ -21,17 +20,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final Bundle bundle;
 
-  public final LifeCycleGroup lifeCycleGroup;
-
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               String jvmOptions, int maxConcurrency, Bundle bundle,
-                               LifeCycleGroup lifeCycleGroup) {
+                               String jvmOptions, int maxConcurrency, Bundle bundle) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
     this.bundle = bundle;
-    this.lifeCycleGroup = lifeCycleGroup;
   }
 
   /**
@@ -44,7 +39,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private String jvmOptions = null;
     private int maxConcurrency = 1;
     private Bundle bundle = null;
-    private LifeCycleGroup lifeCycleGroup = null;
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
@@ -79,14 +73,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setLifeCycleGroup(LifeCycleGroup lifeCycleGroup) {
-      this.lifeCycleGroup = lifeCycleGroup;
-      return this;
-    }
-
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, jvmOptions, maxConcurrency, bundle, lifeCycleGroup);
+          resources, maxReconstructions, jvmOptions, maxConcurrency, bundle);
     }
   }
 

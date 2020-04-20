@@ -130,15 +130,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Creating a life cycle group.
-   *
-   * @return A handle to the created life cycle group.
-   */
-  public static LifeCycleGroup createLifeCycleGroup() {
-    return runtime.createLifeCycleGroup();
-  }
-
-  /**
    * If users want to use Ray API in their own threads, call this method to get the async context
    * and then call {@link #setAsyncContext} at the beginning of the new thread.
    *

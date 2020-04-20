@@ -11,7 +11,7 @@ public class BundleOptions extends BaseTaskOptions {
   public final int unitCount;
 
   private BundleOptions(Map<String, Double> unitResources, int unitCount) {
-    super(unitResources, DEFAULT_USE_DIRECT_CALL);
+    super(unitResources);
     this.unitCount = unitCount;
   }
 

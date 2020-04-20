@@ -3,7 +3,6 @@ package org.ray.api.runtime;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.BaseActor;
-import org.ray.api.LifeCycleGroup;
 import org.ray.api.PlacementGroup;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -161,13 +160,6 @@ public interface RayRuntime {
    * @return A handle to the created placement group.
    */
   PlacementGroup createPlacementGroup(PlacementGroupOptions options);
-
-  /**
-   * Creating a life cycle group.
-   *
-   * @return A handle to the created life cycle group.
-   */
-  LifeCycleGroup createLifeCycleGroup();
 
   RuntimeContext getRuntimeContext();
 

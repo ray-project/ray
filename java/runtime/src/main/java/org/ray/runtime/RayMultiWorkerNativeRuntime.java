@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.BaseActor;
-import org.ray.api.LifeCycleGroup;
 import org.ray.api.PlacementGroup;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -185,12 +184,6 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
-    // TODO(yuyiming): impl
-    return null;
-  }
-
-  @Override
-  public LifeCycleGroup createLifeCycleGroup() {
     // TODO(yuyiming): impl
     return null;
   }

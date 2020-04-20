@@ -10,7 +10,6 @@ exports_files([
 all_modules = [
     "api",
     "runtime",
-    "lib-actor-group",
     "test",
     "tutorial",
 ]
@@ -82,14 +81,6 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:redis_clients_jedis",
     ],
-)
-
-define_java_module(
-    name = "lib-actor-group",
-    deps = [
-        ":org_ray_ray_api",
-    ],
-    visibility = ["//visibility:public"]
 )
 
 define_java_module(
@@ -215,7 +206,6 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:org_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:org_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:org_ray_ray_lib-actor-group_pom) "$$WORK_DIR/java/lib-actor-group/pom.xml"
         cp -f $(location //java:org_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
         cp -f $(location //java:org_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@
