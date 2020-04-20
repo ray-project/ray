@@ -1,3 +1,6 @@
+import asyncio
+from functools import wraps
+import inspect
 import json
 import logging
 import random
@@ -6,6 +9,7 @@ import time
 import io
 import os
 
+import ray
 import requests
 from pygments import formatters, highlight, lexers
 from ray.serve.context import FakeFlaskRequest, TaskContext
@@ -101,3 +105,57 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
 
 def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
+
+
+def async_retryable(cls):
+    """Make all actor method invocations on the class retryable.
+
+    Note: This will retry actor_handle.method_name.remote(), but it must
+    be invoked in an async context.
+
+    Usage:
+        @ray.remote(max_reconstructions=10000)
+        @async_retryable
+        class A:
+            pass
+    """
+    for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+
+        def decorate_with_retry(f):
+            @wraps(f)
+            async def retry_method(*args, **kwargs):
+                while True:
+                    result = await f(*args, **kwargs)
+                    if isinstance(result, ray.exceptions.RayActorError):
+                        logger.warning(
+                            "Actor method '{}' failed, retrying after 100ms.".
+                            format(name))
+                        await asyncio.sleep(0.1)
+                    else:
+                        return result
+
+            return retry_method
+
+        method.__ray_invocation_decorator__ = decorate_with_retry
+    return cls
+
+
+def retry_actor_failures(f, *args, **kwargs):
+    while True:
+        try:
+            return ray.get(f.remote(*args, **kwargs))
+        except ray.exceptions.RayActorError:
+            logger.warning(
+                "Actor method '{}' failed, retrying after 100ms".format("XXX"))
+            time.sleep(0.1)
+
+
+async def retry_actor_failures_async(f, *args, **kwargs):
+    while True:
+        result = await f.remote(*args, **kwargs)
+        if isinstance(result, ray.exceptions.RayActorError):
+            logger.warning(
+                "Actor method '{}' failed, retrying after 100ms".format("XXX"))
+            await asyncio.sleep(0.1)
+        else:
+            return result

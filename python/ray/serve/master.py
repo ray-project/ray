@@ -12,42 +12,9 @@ from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
-from ray.serve.utils import get_random_letters, logger
+from ray.serve.utils import async_retryable, get_random_letters, logger
 
 import numpy as np
-
-
-def async_retryable(cls):
-    """Make all actor method invocations on the class retryable.
-
-    Note: This will retry actor_handle.method_name.remote(), but it must
-    be invoked in an async context.
-
-    Usage:
-        @ray.remote(max_reconstructions=10000)
-        @async_retryable
-        class A:
-            pass
-    """
-    for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-
-        def decorate_with_retry(f):
-            @wraps(f)
-            async def retry_method(*args, **kwargs):
-                while True:
-                    result = await f(*args, **kwargs)
-                    if isinstance(result, ray.exceptions.RayActorError):
-                        logger.warning(
-                            "Actor method '{}' failed, retrying after 100ms.".
-                            format(name))
-                        await asyncio.sleep(0.1)
-                    else:
-                        return result
-
-            return retry_method
-
-        method.__ray_invocation_decorator__ = decorate_with_retry
-    return cls
 
 
 @ray.remote
@@ -163,9 +130,11 @@ class ServeMaster:
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
 
+        # TODO: push configs to router, proxy.
+
     def _kill_detached_actor(self, handle):
         worker = ray.worker.global_worker
-        # Set no_reconstruction=True so the actor won't be reconstructed.
+        # Set no_reconstruction=True.
         worker.core_worker.kill_actor(handle._ray_actor_id, True)
 
     def _list_replicas(self, backend_tag):
@@ -248,6 +217,8 @@ class ServeMaster:
                     [router] = self.get_router()
                     await router.remove_worker.remote(backend_tag,
                                                       worker_handle)
+
+                    self._kill_detached_actor(worker_handle)
                 except ValueError:
                     pass
 
@@ -276,9 +247,9 @@ class ServeMaster:
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self.replicas_to_start[backend_tag].append(replica_tag)
             # XXX
-            #asyncio.get_event_loop().create_task(
-            #self._start_pending_replicas())
-            await self._start_pending_replicas()
+            asyncio.get_event_loop().create_task(
+                self._start_pending_replicas())
+            #await self._start_pending_replicas()
 
         elif delta_num_replicas < 0:
             logger.debug("Removing {} replicas".format(-delta_num_replicas))
@@ -293,8 +264,8 @@ class ServeMaster:
 
                 self.replicas_to_stop[backend_tag].append(replica_tag)
             # XXX
-            #asyncio.get_event_loop().create_task(self._stop_pending_replicas())
-            await self._stop_pending_replicas()
+            asyncio.get_event_loop().create_task(self._stop_pending_replicas())
+            #await self._stop_pending_replicas()
 
         self._checkpoint()
 
@@ -319,6 +290,8 @@ class ServeMaster:
         ), "weights must sum to 1, currently it sums to {}".format(prob)
 
         self.traffic_policies[endpoint_name] = traffic_policy_dictionary
+
+        self._checkpoint()
 
         [router] = self.get_router()
         await router.set_traffic.remote(endpoint_name,

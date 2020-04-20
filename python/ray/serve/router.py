@@ -13,7 +13,7 @@ import blist
 
 import ray
 import ray.cloudpickle as pickle
-from ray.serve.utils import logger
+from ray.serve.utils import logger, retry_actor_failures
 
 
 class Query:
@@ -155,7 +155,8 @@ class Router:
         # can transparently recover from failure.
         ray.serve.init()
         master_actor = ray.serve.api._get_master_actor()
-        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+        backend_dict = retry_actor_failures(
+            master_actor.get_all_worker_handles)
         for backend, replica_dict in backend_dict.items():
             for worker in replica_dict.values():
                 await self.add_new_worker(backend, worker)

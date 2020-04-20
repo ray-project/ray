@@ -7,7 +7,7 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import parse_request_item
+from ray.serve.utils import parse_request_item, retry_actor_failures
 from ray.serve.exceptions import RayServeException
 from ray.async_compat import sync_to_async
 
@@ -36,8 +36,8 @@ def create_backend_worker(func_or_class):
 
             if router_handle is None:
                 master_actor = serve.api._get_master_actor()
-                [router_handle] = ray.get(
-                    master_actor.get_backend_worker_config.remote())
+                [router_handle] = retry_actor_failures(
+                    master_actor.get_backend_worker_config)
 
             self.backend = RayServeWorker(backend_tag, _callable,
                                           router_handle, is_function)
