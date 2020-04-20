@@ -15,6 +15,9 @@ import setuptools.command.build_ext as _build_ext
 # manually.
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
+
+# .pyd is the extension Python requires on Windows for shared libraries.
+# https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
