@@ -139,15 +139,11 @@ def init(
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
     master_actor = ServeMaster.options(
-        detached=True, name=SERVE_MASTER_NAME).remote(
-            kv_store_connector, recovering=False)
-
-    ray.get(
-        master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
-
-    ray.get(master_actor.start_metric_monitor.remote(gc_window_seconds))
-    if start_server:
-        ray.get(master_actor.start_http_proxy.remote(http_host, http_port))
+        detached=True,
+        name=SERVE_MASTER_NAME,
+        max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+    ).remote(kv_store_connector, queueing_policy.value, policy_kwargs,
+             start_server, http_host, http_port, gc_window_seconds)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(

@@ -19,6 +19,36 @@ def request_with_retries(endpoint, timeout=30):
             time.sleep(0.1)
 
 
+def test_master_failure(serve_instance):
+    serve.init()
+    serve.create_endpoint("master_failure", "/master_failure", methods=["GET"])
+
+    def function():
+        return "hello1"
+
+    serve.create_backend(function, "master_failure:v1")
+    serve.link("master_failure", "master_failure:v1")
+
+    assert request_with_retries(
+        "/master_failure", timeout=0.1).text == "hello1"
+
+    for _ in range(10):
+        response = request_with_retries("/master_failure", timeout=30)
+        assert response.text == "hello1"
+
+    ray.kill(serve.api._get_master_actor())
+
+    def function():
+        return "hello2"
+
+    serve.create_backend(function, "master_failure:v2")
+    serve.link("master_failure", "master_failure:v2")
+
+    for _ in range(10):
+        response = request_with_retries("/master_failure", timeout=30)
+        assert response.text == "hello2"
+
+
 def _kill_http_proxy():
     [http_proxy] = ray.get(
         serve.api._get_master_actor().get_http_proxy.remote())

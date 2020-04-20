@@ -25,7 +25,7 @@ def async_retryable(cls):
 
     Usage:
         @ray.remote(max_reconstructions=10000)
-        @retryable
+        @async_retryable
         class A:
             pass
     """
@@ -60,7 +60,9 @@ class ServeMaster:
         we need to initialize and store actor handles in a seperate actor.
     """
 
-    def __init__(self, kv_store_connector, recovering=True):
+    async def __init__(self, kv_store_connector, router_class, router_kwargs,
+                       start_http_proxy, http_proxy_host, http_proxy_port,
+                       metric_gc_window_s):
         self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
@@ -73,52 +75,93 @@ class ServeMaster:
         # endpoint -> traffic_dict
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
+        # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
+
         self.router = None
         self.http_proxy = None
         self.metric_monitor = None
 
-        if recovering:
-            self._recover_from_checkpoint()
+        self._get_or_start_router(router_class, router_kwargs)
+        if start_http_proxy:
+            self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
+        # self._get_or_start_metric_monitor(metric_gc_window_s)
+
+        await self._recover_from_checkpoint()
+
+    def _get_or_start_router(self, router_class, router_kwargs):
+        # TODO(edoakes): handle failures during initial setup.
+        try:
+            self.router = ray.util.get_actor(SERVE_ROUTER_NAME)
+            logger.info("Router already running")
+        except ValueError:
+            logger.info(
+                "Starting router with name '{}'".format(SERVE_ROUTER_NAME))
+            self.router = async_retryable(router_class).options(
+                detached=True,
+                name=SERVE_ROUTER_NAME,
+                max_concurrency=ASYNC_CONCURRENCY,
+                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            ).remote(**router_kwargs)
+
+    def _get_or_start_http_proxy(self, host, port):
+        """Start the HTTP proxy on the given host:port if not already started.
+
+        On startup (or restart), the HTTP proxy will fetch its config via
+        get_http_proxy_config.
+        """
+        try:
+            self.http_proxy = ray.util.get_actor(SERVE_PROXY_NAME)
+            logger.info("HTTP proxy already running")
+        except ValueError:
+            logger.info(
+                "Starting HTTP proxy with name '{}'".format(SERVE_PROXY_NAME))
+            self.http_proxy = async_retryable(HTTPProxyActor).options(
+                detached=True,
+                name=SERVE_PROXY_NAME,
+                max_concurrency=ASYNC_CONCURRENCY,
+                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            ).remote(host, port)
+
+    def _get_or_start_metric_monitor(self, gc_window_s):
+        try:
+            self.metric_monitor = ray.util.get_actor(SERVE_METRIC_MONITOR_NAME)
+            logger.info("Metric monitor already running")
+        except ValueError:
+            logger.info("Starting metric monitor with name '{}'".format(
+                SERVE_METRIC_MONITOR_NAME))
+            self.metric_monitor = MetricMonitor.options(
+                detached=True,
+                name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_seconds)
+            # TODO(edoakes): move these into the constructor.
+            start_metric_monitor_loop.remote(self.metric_monitor)
+            self.metric_monitor.add_target.remote(self.router)
 
     def _checkpoint(self):
-        # We need to checkpoint: tables, workers that we're removing, workers.
-        checkpoint = pickle.dumps((self.routes, self.backends, self.replicas,
-                                   self.traffic_policies))
+        logger.info("Master actor writing checkpoint")
+        checkpoint = pickle.dumps(
+            (self.routes, self.backends, self.traffic_policies, self.replicas,
+             self.replicas_to_start, self.replicas_to_stop))
         self.kv_store_client.put("checkpoint", checkpoint)
 
-    def _recover_from_checkpoint(self):
+    async def _recover_from_checkpoint(self):
+        checkpoint = self.kv_store_client.get("checkpoint")
+        if checkpoint is None:
+            logger.info("No checkpoint found.")
+            return
+
+        logger.info("Master actor recovering from checkpoint")
         # 1) Check "base components" - they might not have been started yet, in
         # which case we need to start them.
         # 2) Check workers - they might not have been started yet, in which
         # case we need to start them.
         # 3) Delete the workers that we're removing (take a new checkpoint?)
-        checkpoint = self.kv_store_client.get("checkpoint")
-        (self.routes, self.backends, self.replicas,
-         self.traffic_policies) = pickle.loads(checkpoint)
-        # On startup, check that all of the expected workers actually exist,
-        # create them if they don't.
-        workers = pickle.loads(checkpoint)
-        for backend, replicas in workers.items():
-            for replica in replicas:
-                self.workers[backend][replica] = ray.utils.get_actor(replica)
+        (self.routes, self.backends, self.traffic_policies, self.replicas,
+         self.replicas_to_start,
+         self.replicas_to_stop) = pickle.loads(checkpoint)
 
-        # Then, for workers that are pending deletion, delete them.
-        self.workers_to_kill = self.checkpoints.get("pending_deletion")
-        self._kill_pending_workers()
-
-        try:
-            self.router = ray.utils.get_actor(SERVE_ROUTER_NAME)
-        except ValueError:
-            self.router = None
-        try:
-            self.http_proxy = ray.utils.get_actor(SERVE_PROXY_NAME)
-        except ValueError:
-            self.http_proxy = None
-        try:
-            self.metric_monitor = ray.utils.get_actor(SERVE_PROXY_NAME)
-        except ValueError:
-            self.metric_monitor = None
+        await self._start_pending_replicas()
+        await self._stop_pending_replicas()
 
     def _kill_detached_actor(self, handle):
         worker = ray.worker.global_worker
@@ -131,32 +174,9 @@ class ServeMaster:
     def get_traffic_policy(self, endpoint):
         return self.traffic_policies[endpoint]
 
-    def start_router(self, router_class, init_kwargs):
-        assert self.router is None, "Router already started."
-        self.router = async_retryable(router_class).options(
-            name=SERVE_ROUTER_NAME,
-            max_concurrency=ASYNC_CONCURRENCY,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-        ).remote(**init_kwargs)
-
     def get_router(self):
         assert self.router is not None, "Router not started yet."
         return [self.router]
-
-    def start_http_proxy(self, host, port):
-        """Start the HTTP proxy on the given host:port.
-
-        On startup (or restart), the HTTP proxy will fetch its config via
-        get_http_proxy_config.
-        """
-        assert self.http_proxy is None, "HTTP proxy already started."
-        assert self.router is not None, (
-            "Router must be started before HTTP proxy.")
-        self.http_proxy = async_retryable(HTTPProxyActor).options(
-            name=SERVE_PROXY_NAME,
-            max_concurrency=ASYNC_CONCURRENCY,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-        ).remote(host, port)
 
     async def get_http_proxy_config(self):
         return self.routes, self.get_router()
@@ -164,14 +184,6 @@ class ServeMaster:
     def get_http_proxy(self):
         assert self.http_proxy is not None, "HTTP proxy not started yet."
         return [self.http_proxy]
-
-    def start_metric_monitor(self, gc_window_seconds):
-        assert self.metric_monitor is None, "Metric monitor already started."
-        self.metric_monitor = MetricMonitor.options(
-            name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_seconds)
-        # TODO(edoakes): this should be an actor method, not a separate task.
-        start_metric_monitor_loop.remote(self.metric_monitor)
-        self.metric_monitor.add_target.remote(self.router)
 
     def get_metric_monitor(self):
         assert self.metric_monitor is not None, (
@@ -189,6 +201,7 @@ class ServeMaster:
         backend_config = BackendConfig(**config_dict)
         init_args = [backend_tag, replica_tag, init_args]
         kwargs = backend_config.get_actor_creation_args(init_args)
+        kwargs["detached"] = True
         kwargs["name"] = replica_tag
         kwargs[
             "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
@@ -216,7 +229,7 @@ class ServeMaster:
                 await router.add_new_worker.remote(backend_tag, worker_handle)
 
                 # Register the worker with the metric monitor.
-                self.get_metric_monitor()[0].add_target.remote(worker_handle)
+                #self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
         self.replicas_to_start.clear()
 
@@ -227,8 +240,8 @@ class ServeMaster:
                 try:
                     worker_handle = ray.util.get_actor(replica_tag)
                     # Remove the replica from metric monitor.
-                    [monitor] = self.get_metric_monitor()
-                    await monitor.remove_target.remote(worker_handle)
+                    #[monitor] = self.get_metric_monitor()
+                    #await monitor.remove_target.remote(worker_handle)
 
                     # Remove the replica from router.
                     # This will also destroy the actor handle.
