@@ -248,6 +248,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                     optimizer_creator=multi_optimizer_creator,
                     loss_creator=nn.MSELoss,
                     scheduler_creator=multi_scheduler_creator,
+                    scheduler_step_freq="epoch",
                     training_operator_cls=_TestingOperator,
                     num_workers=num_workers,
                     config={

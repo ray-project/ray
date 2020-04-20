@@ -25,9 +25,8 @@ RESIZE_COOLDOWN_S = 10
 def _validate_scheduler_step_freq(scheduler_step_freq):
     """This validation check only happens if a scheduler is passed in."""
     if scheduler_step_freq not in VALID_SCHEDULER_STEP:
-        raise ValueError(
-            "Scheduler step freq must be in {}. Got {}".format(
-                VALID_SCHEDULER_STEP, scheduler_step_freq))
+        raise ValueError("Scheduler step freq must be in {}. Got {}".format(
+            VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
 def _remind_gpu_usage(use_gpu):
