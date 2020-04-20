@@ -50,15 +50,12 @@ def make_session(single_threaded):
 
 
 class ESTFPolicy:
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 config):
+    def __init__(self, obs_space, action_space, config):
         self.action_space = action_space
         self.action_noise_std = config["action_noise_std"]
         self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
-        self.observation_filter = get_filter(
-             config["observation_filter"], self.preprocessor.shape)
+        self.observation_filter = get_filter(config["observation_filter"],
+                                             self.preprocessor.shape)
         self.single_threaded = config.get("single_threaded", False)
         self.sess = make_session(single_threaded=self.single_threaded)
         self.inputs = tf.placeholder(tf.float32,

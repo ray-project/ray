@@ -57,7 +57,7 @@ def build_torch_policy(name,
             sampled action and its log-likelihood given some (obs and state)
             inputs.
         action_distribution_fn (Optional[callable]): A callable that takes
-            the Policy, Model, the observation batch, an explore-flag, a 
+            the Policy, Model, the observation batch, an explore-flag, a
             timestep, and an is_training flag and returns a tuple of
             a) distribution inputs (parameters), b) a dist-class to generate
             an action distribution object from, and c) internal-state outputs

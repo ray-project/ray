@@ -149,7 +149,8 @@ class ModelCatalog:
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic if framework == "tf" else TorchDeterministic
+                dist = Deterministic if framework == "tf" else \
+                    TorchDeterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical

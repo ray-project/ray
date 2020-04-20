@@ -2,7 +2,6 @@
 # https://github.com/openai/evolution-strategies-starter.
 
 import numpy as np
-from ray.rllib.utils import try_import_tf
 
 
 def compute_ranks(x):

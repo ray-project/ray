@@ -6,7 +6,6 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.es.es import DEFAULT_CONFIG
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -22,23 +21,22 @@ def before_init(policy, observation_space, action_space, config):
     policy.action_noise_std = config["action_noise_std"]
     policy.preprocessor = ModelCatalog.get_preprocessor_for_space(
         observation_space)
-    policy.observation_filter = get_filter(
-        config["observation_filter"], policy.preprocessor.shape)
+    policy.observation_filter = get_filter(config["observation_filter"],
+                                           policy.preprocessor.shape)
     policy.single_threaded = config.get("single_threaded", False)
 
     def _set_flat_weights(policy, theta):
-        #print("theta-shape={}".format(theta.shape))
         pos = 0
         theta_dict = policy.model.state_dict()
-        #print("state-dict in _set_flat_weights: {}".format(theta_dict))
+        new_theta_dict = {}
+
         for k in sorted(theta_dict.keys()):
-            #print("key={}".format(k))
             shape = policy.param_shapes[k]
-            #print("shape={}".format(shape))
             num_params = int(np.prod(shape))
-            theta_dict[k].data = torch.from_numpy(np.reshape(theta[pos:pos+num_params], shape))
+            new_theta_dict[k] = torch.from_numpy(
+                np.reshape(theta[pos:pos + num_params], shape))
             pos += num_params
-        policy.model.load_state_dict(theta_dict)
+        policy.model.load_state_dict(new_theta_dict)
 
     def _get_flat_weights(policy):
         # Get the parameter tensors.
@@ -57,10 +55,11 @@ def before_init(policy, observation_space, action_space, config):
         observation = policy.preprocessor.transform(obs_batch)
         observation = policy.observation_filter(
             observation[None], update=update)
-    
+
         observation = convert_to_torch_tensor(observation)
-        dist_inputs, _ = policy.model(
-            {SampleBatch.CUR_OBS: observation}, [], None)
+        dist_inputs, _ = policy.model({
+            SampleBatch.CUR_OBS: observation
+        }, [], None)
         dist = policy.dist_class(dist_inputs, policy.model)
         action = dist.sample().detach().numpy()
         action = _unbatch_tuple_actions(action)
@@ -72,15 +71,16 @@ def before_init(policy, observation_space, action_space, config):
 
 
 def after_init(policy, observation_space, action_space, config):
-    #policy.variables = policy.model.variables()
     state_dict = policy.model.state_dict()
-    policy.param_shapes = {k: tuple(state_dict[k].size()) for k in sorted(state_dict.keys())}
+    policy.param_shapes = {
+        k: tuple(state_dict[k].size())
+        for k in sorted(state_dict.keys())
+    }
     policy.num_params = sum(np.prod(s) for s in policy.param_shapes.values())
-    #print(policy.num_params)
 
 
-def make_model_and_action_dist(
-        policy, observation_space, action_space, config):
+def make_model_and_action_dist(policy, observation_space, action_space,
+                               config):
     # Policy network.
     dist_class, dist_dim = ModelCatalog.get_action_dist(
         action_space,
@@ -105,6 +105,4 @@ ESTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.es.es.DEFAULT_CONFIG,
     before_init=before_init,
     after_init=after_init,
-    #action_sampler_fn=action_sampler_fn,
-    make_model_and_action_dist=make_model_and_action_dist
-)
+    make_model_and_action_dist=make_model_and_action_dist)

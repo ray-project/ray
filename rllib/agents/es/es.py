@@ -73,7 +73,6 @@ class Worker:
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        #self.policy_params = policy_params
         self.config.update(policy_params)
         self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
@@ -85,11 +84,8 @@ class Worker:
             self.env, config["model"])
 
         policy_cls = get_policy_class(config)
-        self.policy = policy_cls(
-            self.env.observation_space, self.env.action_space, config)
-            #self.preprocessor, config["observation_filter"], config["model"],
-            #single_threaded=True)
-            #**policy_params)
+        self.policy = policy_cls(self.env.observation_space,
+                                 self.env.action_space, config)
 
     @property
     def filters(self):
@@ -182,19 +178,14 @@ class ESTrainer(Trainer):
     @override(Trainer)
     def _init(self, config, env_creator):
         policy_params = {"action_noise_std": 0.01}
-        config.update(policy_params)  # ["action_noise_std"] = 0.01
+        config.update(policy_params)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
-        #from ray.rllib import models
-        #preprocessor = models.ModelCatalog.get_preprocessor(env)
-
         policy_cls = get_policy_class(config)
         self.policy = policy_cls(
             obs_space=env.observation_space,
             action_space=env.action_space,
             config=config)
-            #, preprocessor,
-            #config["observation_filter"], config["model"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
         self.report_length = config["report_length"]
 
@@ -223,7 +214,6 @@ class ESTrainer(Trainer):
         assert len(theta.shape) == 1
 
         # Put the current policy weights in the object store.
-        #print("theta-shape before ray.put={}".format(theta.shape))
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
