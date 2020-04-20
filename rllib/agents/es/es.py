@@ -190,7 +190,9 @@ class ESTrainer(Trainer):
 
         policy_cls = get_policy_class(config)
         self.policy = policy_cls(
-            env.action_space, env.observation_space, config)
+            obs_space=env.observation_space,
+            action_space=env.action_space,
+            config=config)
             #, preprocessor,
             #config["observation_filter"], config["model"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
@@ -221,6 +223,7 @@ class ESTrainer(Trainer):
         assert len(theta.shape) == 1
 
         # Put the current policy weights in the object store.
+        #print("theta-shape before ray.put={}".format(theta.shape))
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.

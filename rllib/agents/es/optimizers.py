@@ -13,7 +13,7 @@ class Optimizer:
     def update(self, globalg):
         self.t += 1
         step = self._compute_step(globalg)
-        theta = self.pi.get_weights()
+        theta = self.pi.get_flat_weights()
         ratio = np.linalg.norm(step) / np.linalg.norm(theta)
         return theta + step, ratio
 

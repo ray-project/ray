@@ -13,6 +13,8 @@ class TestES(unittest.TestCase):
         """Test whether an ESTrainer can be built on all frameworks."""
         ray.init()
         config = es.DEFAULT_CONFIG.copy()
+        config["model"]["fcnet_hiddens"] = [5]
+        config["model"]["fcnet_activation"] = None
         num_iterations = 2
 
         for _ in framework_iterator(config, ("torch", "tf")):

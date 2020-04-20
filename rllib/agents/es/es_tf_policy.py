@@ -50,8 +50,9 @@ def make_session(single_threaded):
 
 class ESTFPolicy:
     def __init__(self,
-                 action_space,
                  obs_space,
+                 action_space,
+                 config,  # TODO(sven). Make exactly like torch signature.
                  preprocessor,
                  observation_filter,
                  model_options,
