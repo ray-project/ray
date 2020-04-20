@@ -40,10 +40,7 @@ install_toolchains() {
       local path
       for path in "${targetdir}\\bin"/*.exe; do
         local name="${path##*/}"
-        install /dev/stdin ~/bin/"${name%.*}" <<EOF
-#!/usr/bin/env bash
-exec "${path}" "\$@"
-EOF
+        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | install /dev/stdin ~/bin/"${name%.*}"
       done
     )
   else
