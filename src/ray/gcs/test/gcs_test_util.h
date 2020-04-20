@@ -15,6 +15,9 @@
 #ifndef RAY_GCS_TEST_UTIL_H
 #define RAY_GCS_TEST_UTIL_H
 
+#include <memory>
+#include <utility>
+
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
 #include "src/ray/common/test_util.h"
@@ -22,9 +25,6 @@
 #include "src/ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "src/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "src/ray/util/asio_util.h"
-
-#include <memory>
-#include <utility>
 
 namespace ray {
 
@@ -64,7 +64,7 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(std::time(nullptr));
-    job_table_data->set_node_manager_address("127.0.0.1");
+    job_table_data->set_driver_ip_address("127.0.0.1");
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }

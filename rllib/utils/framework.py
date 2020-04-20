@@ -192,7 +192,9 @@ def get_variable(value,
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
-        var_ = torch.from_numpy(value).to(device)
+        var_ = torch.from_numpy(value)
+        if device:
+            var_ = var_.to(device)
         var_.requires_grad = trainable
         return var_
     # torch or None: Return python primitive.
