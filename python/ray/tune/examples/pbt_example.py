@@ -108,6 +108,7 @@ if __name__ == "__main__":
         name="pbt_test",
         scheduler=pbt,
         reuse_actors=True,
+        checkpoint_freq=20,
         verbose=False,
         stop={
             "training_iteration": 2000,
