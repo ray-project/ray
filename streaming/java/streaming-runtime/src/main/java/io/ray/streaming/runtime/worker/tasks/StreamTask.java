@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class StreamTask implements Runnable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
@@ -41,8 +42,7 @@ public abstract class StreamTask implements Runnable {
     this.worker = worker;
     prepareTask();
 
-    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
-        + "-" + System.currentTimeMillis());
+    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
@@ -105,8 +105,7 @@ public abstract class StreamTask implements Runnable {
       reader = new DataReader(channelIDs, inputActors, queueConf);
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(
-        worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
+    RuntimeContext runtimeContext = new RayRuntimeContext(worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
 
     processor.open(collectors, runtimeContext);
 

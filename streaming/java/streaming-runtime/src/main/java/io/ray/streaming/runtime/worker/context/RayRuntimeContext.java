@@ -38,7 +38,7 @@ public class RayRuntimeContext implements RuntimeContext {
   private Map<String, String> config;
 
   public RayRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
-                           int parallelism) {
+      int parallelism) {
     this.taskId = executionTask.getTaskId();
     this.config = config;
     this.taskIndex = executionTask.getTaskIndex();
