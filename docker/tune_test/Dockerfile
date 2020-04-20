@@ -16,6 +16,8 @@ RUN pip install -r requirements.txt
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
 RUN ./ray/ci/install-bazel.sh
+RUN echo 'build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"' >> $HOME/.bashrc
+RUN echo 'build --remote_upload_local_results=false' >> $HOME/.bashrc
 RUN cd /ray/python; pip install -e . --verbose
 RUN bazel clean --expunge
 
