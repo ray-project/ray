@@ -194,7 +194,7 @@ The ``DragonflySearch`` is a SearchAlgorithm that is backed by `Dragonfly <https
 
 .. code-block:: bash
 
-    $ pip install dragonfly
+    $ pip install dragonfly-opt
 
 This algorithm requires using the `Dragonfly ask and tell interface <https://dragonfly-opt.readthedocs.io/en/master/getting_started_ask_tell/>`__. This interface requires using FunctionCallers and optimizers provided by Dragonfly. You can use `DragonflySearch` like follows:
 
@@ -283,6 +283,59 @@ You can use ``TuneBOHB`` in conjunction with ``HyperBandForBOHB`` as follows:
 Take a look at `an example here <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_. See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autoclass:: ray.tune.suggest.bohb.TuneBOHB
+    :show-inheritance:
+    :noindex:
+
+ZOOpt Search
+------------
+
+The ``ZOOptSearch`` is a SearchAlgorithm for derivative-free optimization. It is backed by the `ZOOpt <https://github.com/polixir/ZOOpt>`__ package. Currently, Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos) algorithm is implemented in Tune. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune’s default variant generation/search space declaration when using ZOOptSearch.
+
+In order to use this search algorithm, you will need to install the ZOOpt package **(>=0.4.0)** via the following command:
+
+.. code-block:: bash
+
+    $ pip install -U zoopt
+
+Keep in mind that zoopt only supports Python 3.
+
+This algorithm allows users to mix continuous dimensions and discrete dimensions, for example:
+
+.. code-block:: python
+
+    dim_dict = {
+        # for continuous dimensions: (continuous, search_range, precision)
+        "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
+        # for discrete dimensions: (discrete, search_range, has_order)
+        "width": (ValueType.DISCRETE, [-10, 10], False)
+    }
+
+    config = {
+        "num_samples": 200 if args.smoke_test else 1000,
+        "config": {
+            "iterations": 10,  # evaluation times
+        },
+        "stop": {
+            "timesteps_total": 10  # cumstom stop rules
+        }
+    }
+
+    zoopt_search = ZOOptSearch(
+        algo="Asracos",  # only support ASRacos currently
+        budget=config["num_samples"],
+        dim_dict=dim_dict,
+        max_concurrent=4,
+        metric="mean_loss",
+        mode="min")
+
+    run(my_objective,
+        search_alg=zoopt_search,
+        name="zoopt_search",
+        **config)
+
+An example of this can be found in `zoopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/zoopt_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
     :show-inheritance:
     :noindex:
 

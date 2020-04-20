@@ -22,6 +22,12 @@ parser.add_argument(
     type=int,
     help="the port of the worker's node")
 parser.add_argument(
+    "--raylet-ip-address",
+    required=False,
+    type=str,
+    default=None,
+    help="the ip address of the worker's raylet")
+parser.add_argument(
     "--redis-address",
     required=True,
     type=str,
@@ -89,8 +95,13 @@ if __name__ == "__main__":
                 internal_config[config_list[i]] = config_list[i + 1]
                 i += 2
 
+    raylet_ip_address = args.raylet_ip_address
+    if raylet_ip_address is None:
+        raylet_ip_address = args.node_ip_address
+
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
+        raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_password=args.redis_password,

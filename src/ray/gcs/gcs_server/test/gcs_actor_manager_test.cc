@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/gcs_server/test/gcs_test_util.h>
+#include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
 #include "gtest/gtest.h"
@@ -108,23 +108,24 @@ TEST_F(GcsActorManagerTest, TestNormalFlow) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request =
       Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/2);
-  std::vector<std::shared_ptr<gcs::GcsActor>> registered_actors;
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   gcs_actor_manager_->RegisterActor(
-      create_actor_request, [&registered_actors](std::shared_ptr<gcs::GcsActor> actor) {
-        registered_actors.emplace_back(actor);
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(actor);
       });
 
-  ASSERT_EQ(1, registered_actors.size());
+  ASSERT_EQ(0, finished_actors.size());
   ASSERT_EQ(1, gcs_actor_manager_->GetAllRegisteredActors().size());
   ASSERT_EQ(1, gcs_actor_manager_->GetAllPendingActors().size());
 
-  auto actor = registered_actors.front();
+  auto actor = gcs_actor_manager_->GetAllRegisteredActors().begin()->second;
   ASSERT_EQ(rpc::ActorTableData::PENDING, actor->GetState());
 
   // Add node_1 and then check if the actor is in state `ALIVE`
   auto node_1 = Mocker::GenNodeInfo();
   auto node_id_1 = ClientID::FromBinary(node_1->node_id());
   gcs_node_manager_->AddNode(node_1);
+  ASSERT_EQ(1, finished_actors.size());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
   ASSERT_EQ(0, gcs_actor_manager_->GetAllPendingActors().size());
   ASSERT_EQ(rpc::ActorTableData::ALIVE, actor->GetState());

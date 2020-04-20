@@ -1,13 +1,13 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
+from ray.rllib.utils.framework import check_framework, try_import_torch, \
     TensorType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 
-tf = try_import_tf()
+torch, nn = try_import_torch()
 
 
 @DeveloperAPI
@@ -37,6 +37,10 @@ class Exploration:
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
+        # The device on which the Model has been placed.
+        # This Exploration will be on the same device.
+        self.device = None if not isinstance(self.model, nn.Module) else \
+            next(self.model.parameters()).device
 
     @DeveloperAPI
     def before_compute_actions(self,

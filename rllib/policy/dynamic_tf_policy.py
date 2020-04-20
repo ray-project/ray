@@ -228,10 +228,10 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req = 1
 
         super().__init__(
-            obs_space,
-            action_space,
-            config,
-            sess,
+            observation_space=obs_space,
+            action_space=action_space,
+            config=config,
+            sess=sess,
             obs_input=obs,
             action_input=action_input,  # for logp calculations
             sampled_action=sampled_action,
