@@ -198,7 +198,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space, discrete_to_one_hot=True):
+    def get_action_shape(action_space, discrete_to_one_hot=False):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
@@ -242,12 +242,15 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(
-        action_space, name=None, discrete_to_one_hot=True):
+    def get_action_placeholder(action_space,
+                               name="action",
+                               discrete_to_one_hot=True):
         """Returns an action placeholder consistent with the action space
 
         Args:
             action_space (Space): Action space of the target gym env.
+            name (str): An optional string to name the placeholder by.
+                Default: "action".
             discrete_to_one_hot (bool): Whether to make placeholder one-hot
                 for discrete actions.
         Returns:
@@ -256,7 +259,7 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(
             action_space, discrete_to_one_hot=discrete_to_one_hot)
-        return tf.placeholder(dtype, shape=shape, name=(name or "action"))
+        return tf.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
     @DeveloperAPI

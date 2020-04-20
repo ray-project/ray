@@ -123,7 +123,7 @@ class DynamicTFPolicy(TFPolicy):
                 action_space, discrete_to_one_hot=False)
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
-                    action_space, name="prev_action", discrete_to_one_hot=True)
+                    action_space, name="prev_action", discrete_to_one_hot=False)
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
             explore = tf.placeholder_with_default(
