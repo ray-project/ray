@@ -184,8 +184,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
-    // TODO(yuyiming): impl
-    return null;
+    return getCurrentRuntime().createPlacementGroup(options);
   }
 
   @Override

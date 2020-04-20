@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.BaseActor;
-import org.ray.api.PlacementGroup;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -20,7 +19,6 @@ import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
-import org.ray.api.options.PlacementGroupOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
@@ -153,12 +151,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
-  @Override
-  public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
-    // TODO(yuyiming): impl
-    return null;
-  }
-
   private void checkPyArguments(Object[] args) {
     for (Object arg : args) {
       Preconditions.checkArgument(
@@ -212,6 +204,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
+    }
+    if (gcsClient != null) {
+      gcsClient.getGcsServer().placeActor(options);
     }
     BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;

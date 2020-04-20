@@ -9,16 +9,19 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
+import org.ray.api.PlacementGroup;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.PlacementGroupOptions;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import org.ray.runtime.generated.Gcs.GcsNodeInfo;
 import org.ray.runtime.generated.Gcs.TablePrefix;
+import org.ray.runtime.mockgcsserver.MockGcsServer;
 import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +36,8 @@ public class GcsClient {
   private RedisClient primary;
 
   private List<RedisClient> shards;
+
+  private MockGcsServer gcsServer;
 
   public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
@@ -50,6 +55,8 @@ public class GcsClient {
     shards = shardAddresses.stream().map((byte[] address) -> {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
+
+    gcsServer = new MockGcsServer(this);
   }
 
   public List<NodeInfo> getAllNodeInfo() {
@@ -177,4 +184,11 @@ public class GcsClient {
         shards.size()));
   }
 
+  public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
+    return gcsServer.createPlacementGroup(options);
+  }
+
+  public MockGcsServer getGcsServer() {
+    return gcsServer;
+  }
 }

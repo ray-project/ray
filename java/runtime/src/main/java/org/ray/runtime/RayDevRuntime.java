@@ -2,8 +2,10 @@ package org.ray.runtime;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.BaseActor;
+import org.ray.api.PlacementGroup;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.PlacementGroupOptions;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.LocalModeWorkerContext;
 import org.ray.runtime.functionmanager.FunctionManager;
@@ -51,6 +53,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public void killActor(BaseActor actor, boolean noReconstruction) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
+    return null;
   }
 
   @Override

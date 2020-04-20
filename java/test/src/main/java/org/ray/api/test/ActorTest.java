@@ -1,9 +1,11 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.ray.api.PlacementGroup;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -13,6 +15,11 @@ import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.PlacementGroupOptions;
+import org.ray.api.options.PlacementStrategy;
+import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.runtime.mockgcsserver.MockGcsServer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -148,5 +155,33 @@ public class ActorTest extends BaseTest {
     } catch (UnreconstructableException e) {
       Assert.assertEquals(value.getId(), e.objectId);
     }
+  }
+
+  public void testPlacementGroup() {
+    TestUtils.skipTestUnderSingleProcess();
+
+    PlacementGroupOptions placementGroupOptions = new PlacementGroupOptions.Builder()
+        .setName("TestOdpsProxy").setPlacementStrategy(PlacementStrategy.SPREAD)
+        .addBundle(ImmutableMap.of("CPU", 1.0), 2).addBundle(ImmutableMap.of("CPU", 2.0))
+        .createPlacementGroupOptions();
+    PlacementGroup group = Ray.createPlacementGroup(placementGroupOptions);
+
+    ActorCreationOptions actorCreationOptions1 = new ActorCreationOptions.Builder()
+        .setResources(ImmutableMap.of("CPU", 1.0)).setBundle(group.getBundles().get(0))
+        .createActorCreationOptions();
+    RayActor<Counter> actor1 = Ray.createActor(Counter::new, 1, actorCreationOptions1);
+
+    ActorCreationOptions actorCreationOptions2 = new ActorCreationOptions.Builder()
+        .setResources(ImmutableMap.of("CPU", 1.0)).setBundle(group.getBundles().get(1))
+        .createActorCreationOptions();
+    RayActor<Counter> actor2 = Ray.createActor(Counter::new, 2, actorCreationOptions2);
+
+    actor1.call(Counter::getValue).get();
+    actor2.call(Counter::getValue).get();
+    List<NodeInfo> nodes = Ray.internal().getRuntimeContext().getAllNodeInfo();
+    Assert.assertEquals(nodes.size(), 1);
+    NodeInfo node = nodes.get(0);
+    Assert.assertEquals(node.resources.get(node.nodeId.toString()),
+        MockGcsServer.LABEL_RESOURCE_AMOUNT - 2);
   }
 }

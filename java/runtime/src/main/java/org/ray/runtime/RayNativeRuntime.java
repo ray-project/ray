@@ -7,8 +7,10 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.ray.api.BaseActor;
+import org.ray.api.PlacementGroup;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.PlacementGroupOptions;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
 import org.ray.runtime.functionmanager.FunctionManager;
@@ -137,6 +139,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public void killActor(BaseActor actor, boolean noReconstruction) {
     nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes(), noReconstruction);
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
+    return gcsClient.createPlacementGroup(options);
   }
 
   @Override
