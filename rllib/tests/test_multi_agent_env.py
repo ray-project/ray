@@ -508,7 +508,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
-                return [0] * len(obs_batch), [], {}
+                return np.array([0] * len(obs_batch)), [], {}
 
         single_env = gym.make("CartPole-v0")
         obs_space = single_env.observation_space
