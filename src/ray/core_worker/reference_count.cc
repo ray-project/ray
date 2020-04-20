@@ -54,8 +54,8 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs[ray::ObjectID::FromBinary(ref.reference().object_id())] =
-        Reference::FromProto(ref);
+    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+                 Reference::FromProto(ref));
   }
   return refs;
 }
@@ -145,12 +145,11 @@ void ReferenceCounter::AddObjectRefStats(
   }
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
-                                      const std::vector<ObjectID> &inner_ids,
-                                      const TaskID &owner_id,
-                                      const rpc::Address &owner_address,
-                                      const std::string &call_site,
-                                      const int64_t object_size) {
+void ReferenceCounter::AddOwnedObject(
+    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+    const TaskID &owner_id, const rpc::Address &owner_address,
+    const std::string &call_site, const int64_t object_size, bool is_reconstructable,
+    const absl::optional<ClientID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -159,7 +158,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
   object_id_refs_.emplace(object_id,
-                          Reference(owner_id, owner_address, call_site, object_size));
+                          Reference(owner_id, owner_address, call_site, object_size,
+                                    is_reconstructable, pinned_at_raylet_id));
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -354,7 +354,8 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     }
     it->second.local_ref_count = 0;
     it->second.submitted_task_ref_count = 0;
-    if (distributed_ref_counting_enabled_ && !it->second.OutOfScope()) {
+    if (distributed_ref_counting_enabled_ &&
+        !it->second.OutOfScope(lineage_pinning_enabled_)) {
       RAY_LOG(ERROR)
           << "ray.internal.free does not currently work for objects that are still in "
              "scope when distributed reference "
@@ -387,7 +388,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     should_delete_value = true;
   }
 
-  if (it->second.OutOfScope()) {
+  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
     should_delete_value = true;
@@ -445,7 +446,7 @@ bool ReferenceCounter::SetDeleteCallback(
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
-  } else if (it->second.OutOfScope() &&
+  } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
              !it->second.ShouldDelete(lineage_pinning_enabled_)) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
@@ -486,7 +487,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
-    if (!it->second.OutOfScope()) {
+    if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       it->second.pinned_at_raylet_id = raylet_id;
     }
   }
@@ -789,7 +790,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
     // the object was zero. Also, we should have stripped all distributed ref
     // count information and returned it to the owner. Therefore, it should be
     // okay to delete the object, if it wasn't already deleted.
-    RAY_CHECK(it->second.OutOfScope());
+    RAY_CHECK(it->second.OutOfScope(lineage_pinning_enabled_));
   }
   // Send the owner information about any new borrowers.
   ReferenceTableToProto(borrowed_refs, reply->mutable_borrowed_refs());
