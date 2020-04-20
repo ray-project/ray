@@ -158,6 +158,21 @@ def test_for_each(ray_start_regular_shared):
     assert list(it.gather_sync()) == [0, 4, 2, 6]
 
 
+def test_for_each_concur(ray_start_regular_shared):
+    from time import sleep, perf_counter
+    def task(x):
+        print("In task")
+        sleep(1)
+        return x * 2
+    start = perf_counter()
+    it = from_range(8).for_each_concur(lambda x: x * 2, max_concur=2)
+    assert repr(it) == "ParallelIterator[from_range[8, shards=2].for_each()]"
+    assert list(it.gather_sync()) == [0, 8, 2, 10, 4, 12, 6, 14]
+    end = perf_counter()
+    elapsed = end - start
+    assert 2 < elapsed < 2.5
+
+
 def test_combine(ray_start_regular_shared):
     it = from_range(4, 1).combine(lambda x: [x, x])
     assert repr(it) == "ParallelIterator[from_range[4, shards=1].combine()]"
@@ -292,7 +307,7 @@ def test_gather_async(ray_start_regular_shared):
 
 def test_gather_async_queue(ray_start_regular_shared):
     it = from_range(100)
-    it = it.gather_async(async_queue_depth=4)
+    it = it.gather_async(pipeline_queue_depth=4)
     assert sorted(it) == list(range(100))
 
 
