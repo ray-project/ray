@@ -13,7 +13,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 =================== ========== ======================= ================== =========== =====================
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `ARS`_              tf         **Yes**                 **Yes**            No
-`ES`_               tf         **Yes**                 **Yes**            No
+`ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf         No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
@@ -422,7 +422,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Evolution Strategies
 --------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1703.03864>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/es/es.py>`__
 Code here is adapted from https://github.com/openai/evolution-strategies-starter to execute in the distributed setting with Ray.
 

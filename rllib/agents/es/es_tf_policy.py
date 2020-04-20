@@ -8,6 +8,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils import try_import_tf
 
@@ -30,7 +31,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac = policy.compute(observation, add_noise=add_noise)[0]
+        ac = policy.compute_actions(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
         rews.append(rew)
         t += 1
@@ -40,24 +41,32 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     return rews, t
 
 
-class GenericPolicy:
-    def __init__(self, sess, action_space, obs_space, preprocessor,
-                 observation_filter, model_options, action_noise_std):
-        self.sess = sess
+def make_session(single_threaded):
+    if not single_threaded:
+        return tf.Session()
+    return tf.Session(
+        config=tf.ConfigProto(
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
+
+
+class ESTFPolicy:
+    def __init__(self, obs_space, action_space, config):
         self.action_space = action_space
-        self.action_noise_std = action_noise_std
-        self.preprocessor = preprocessor
-        self.observation_filter = get_filter(observation_filter,
+        self.action_noise_std = config["action_noise_std"]
+        self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
+        self.observation_filter = get_filter(config["observation_filter"],
                                              self.preprocessor.shape)
+        self.single_threaded = config.get("single_threaded", False)
+        self.sess = make_session(single_threaded=self.single_threaded)
         self.inputs = tf.placeholder(tf.float32,
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, model_options, dist_type="deterministic")
+            self.action_space, config["model"], dist_type="deterministic")
         model = ModelCatalog.get_model({
-            "obs": self.inputs
-        }, obs_space, action_space, dist_dim, model_options)
+            SampleBatch.CUR_OBS: self.inputs
+        }, obs_space, action_space, dist_dim, config["model"])
         dist = dist_class(model.outputs, model)
         self.sampler = dist.sample()
 
@@ -69,7 +78,7 @@ class GenericPolicy:
             for _, variable in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
-    def compute(self, observation, add_noise=False, update=True):
+    def compute_actions(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
@@ -79,14 +88,8 @@ class GenericPolicy:
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
 
-    def set_weights(self, x):
+    def set_flat_weights(self, x):
         self.variables.set_flat(x)
 
-    def get_weights(self):
+    def get_flat_weights(self):
         return self.variables.get_flat()
-
-    def get_filter(self):
-        return self.observation_filter
-
-    def set_filter(self, observation_filter):
-        self.observation_filter = observation_filter

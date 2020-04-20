@@ -258,6 +258,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
+      core_worker_server_(WorkerTypeString(options_.worker_type),
+                          0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -301,6 +303,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             [this] { return local_raylet_client_->TaskDone(); }));
   }
 
+  // Start RPC server after all the task receivers are properly initialized.
+  core_worker_server_.RegisterService(grpc_service_);
+  core_worker_server_.Run();
+
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later
@@ -309,33 +315,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
-  int assigned_port;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       (options_.worker_type == ray::WorkerType::WORKER),
       worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
-      options_.node_ip_address, &assigned_port));
+      options_.node_ip_address, core_worker_server_.GetPort()));
   connected_ = true;
-
-  RAY_CHECK(assigned_port != -1)
-      << "Failed to allocate a port for the worker. Please specify a wider port range "
-         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
-         "start'.";
-
-  // Start RPC server after all the task receivers are properly initialized and we have
-  // our assigned port from the raylet.
-  core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
-      new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
-  core_worker_server_->RegisterService(grpc_service_);
-  core_worker_server_->Run();
-
-  // Tell the raylet the port that we are listening on.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
-  rpc_address_.set_port(core_worker_server_->GetPort());
+  rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
   RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
@@ -742,7 +732,9 @@ Status CoreWorker::Put(const RayObject &object,
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                     rpc_address_, CurrentCallSite(), object.GetSize());
+                                     rpc_address_, CurrentCallSite(), object.GetSize(),
+                                     /*is_reconstructable=*/false,
+                                     ClientID::FromBinary(rpc_address_.raylet_id()));
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -793,9 +785,10 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
-    reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                       rpc_address_, CurrentCallSite(),
-                                       data_size + metadata->Size());
+    reference_counter_->AddOwnedObject(
+        *object_id, contained_object_ids, GetCallerId(), rpc_address_, CurrentCallSite(),
+        data_size + metadata->Size(),
+        /*is_reconstructable=*/false, ClientID::FromBinary(rpc_address_.raylet_id()));
   }
   return Status::OK();
 }
@@ -1522,7 +1515,8 @@ Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
                                        /*inner_ids=*/{}, GetCallerId(), rpc_address_,
-                                       CurrentCallSite(), -1);
+                                       CurrentCallSite(), -1,
+                                       /*is_reconstructable=*/false);
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
