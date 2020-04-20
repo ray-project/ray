@@ -22,7 +22,6 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
-#from ray.rllib.utils.space_utils import TupleActions
 
 tf = try_import_tf()
 
@@ -78,7 +77,6 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        #TupleActions
         return tuple([a1, a2])
 
     def sample(self):
@@ -92,7 +90,6 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        #TupleActions
         return tuple([a1, a2])
 
     def logp(self, actions):

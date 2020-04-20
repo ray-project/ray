@@ -8,7 +8,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
-#from ray.rllib.utils.space_utils import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()

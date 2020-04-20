@@ -1120,7 +1120,8 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_spaces",
+    name = "tests/test_nested_observation_spaces",
+    main = "tests/test_nested_observation_spaces.py",
     tags = ["tests_dir", "tests_dir_N"],
     size = "small",
     srcs = ["tests/test_nested_observation_spaces.py"]

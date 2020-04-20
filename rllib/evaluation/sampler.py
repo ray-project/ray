@@ -15,10 +15,8 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-#from ray.rllib.utils.space_utils import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
@@ -644,12 +642,6 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
         actions = eval_results[policy_id][0]
 
-        # Force flatten all actions for further easy processing.
-        # TODO(sven): See, whether TupleActions can be retired.
-        #if isinstance(actions, TupleActions):
-        #    actions = actions.batches
-        #flat_actions = force_list(actions)
-
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
 
@@ -672,9 +664,6 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
-            ## Unflatten action.
-            #env_action = tree.unflatten_as(policy.action_space_struct,
-            #                               flat_action)
             actions_to_send[env_id][agent_id] = action
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
@@ -734,23 +723,13 @@ def unbatch_actions(action_batches):
         List[List[action-components]]: The list of action rows. Each item
             in the returned list represents a single (maybe complex) action.
     """
-    # True if a single action (no TupleAction, no flattened action) has been
-    # passed in. In this case
-    #single_mode = False
-    #if not isinstance(action_batches, (list, tuple, dict)):
-    #    single_mode = True
-    #    #action_batches = force_list(action_batches)
     flat_action_batches = tree.flatten(action_batches)
-    #def map_():
-    #    [action_batches[i][batch_pos] for i in range(len(action_batches))]
-    
-    #return tree.map_structure(map_, action_batches)
 
     out = []
     for batch_pos in range(len(flat_action_batches[0])):
         out.append(
             tree.unflatten_as(action_batches, [flat_action_batches[i][batch_pos] for i in range(len(flat_action_batches))]))
-    return out  #[0] if single_mode else out
+    return out
 
 
 def _to_column_format(rnn_state_rows):

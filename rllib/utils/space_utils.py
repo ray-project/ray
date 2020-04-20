@@ -1,15 +1,4 @@
 from gym.spaces import Tuple, Dict
-from collections import namedtuple
-
-
-#class TupleActions(namedtuple("TupleActions", ["batches"])):
-#    """Used to return tuple actions as a list of batches per tuple element."""
-
-#    def __new__(cls, batches):
-#        return super(TupleActions, cls).__new__(cls, batches)
-
-#    def numpy(self):
-#        return TupleActions([b.numpy() for b in self.batches])
 
 
 def flatten_space(space):
@@ -45,7 +34,7 @@ def get_base_struct_from_space(space):
 
     def _helper_struct(space_):
         if isinstance(space_, Tuple):
-            return [_helper_struct(s) for s in space_]
+            return tuple([_helper_struct(s) for s in space_])
         elif isinstance(space_, Dict):
             return {k: _helper_struct(space_[k]) for k in space_.spaces}
         else:

@@ -9,11 +9,9 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
-#from ray.rllib.utils import force_list
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import get_base_struct_from_space  #flatten_space, \
-    #get_base_struct_from_space  #, TupleActions
+from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 
@@ -104,9 +102,6 @@ class GenericPolicy:
         # `actions` is a list of (component) batches.
         actions = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        #if isinstance(actions, TupleActions):
-        #    actions = actions.batches
-        #flat_actions = force_list(actions)
         if add_noise:
             flat_actions = tree.map_structure(self._add_noise, actions,
                                               self.action_space_struct)

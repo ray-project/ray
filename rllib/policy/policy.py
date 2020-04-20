@@ -168,14 +168,8 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        #if isinstance(flat_action, TupleActions):
-        #    flat_action = flat_action.batches
-        #flat_action = force_list(flat_action)
-
         if clip_actions:
             action = clip_action(action, self.action_space_struct)
-
-        #env_action = tree.unflatten_as(self.action_space_struct, flat_action)
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
