@@ -4,17 +4,18 @@
 import gym
 import logging
 import numpy as np
-import tree
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +49,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
 
 class GenericPolicy:
     def __init__(self, sess, action_space, obs_space, preprocessor,
-                 observation_filter, model_options, action_noise_std):
+                 observation_filter, model_config, action_noise_std):
         self.sess = sess
         self.action_space = action_space
-        #self.flattened_action_space = flatten_space(action_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
@@ -62,10 +62,10 @@ class GenericPolicy:
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, model_options, dist_type="deterministic")
+            self.action_space, model_config, dist_type="deterministic")
         model = ModelCatalog.get_model({
             "obs": self.inputs
-        }, obs_space, action_space, dist_dim, model_options)
+        }, obs_space, action_space, dist_dim, model_config)
         dist = dist_class(model.outputs, model)
         self.sampler = dist.sample()
 
@@ -85,7 +85,7 @@ class GenericPolicy:
             self.sampler, feed_dict={self.inputs: observation})
         if add_noise:
             actions = tree.map_structure(self._add_noise, actions,
-                                              self.action_space_struct)
+                                         self.action_space_struct)
         # Convert `flat_actions` to a list of lists of action components
         # (list of single actions).
         actions = unbatch_actions(actions)
@@ -103,8 +103,8 @@ class GenericPolicy:
     def get_weights(self):
         return self.variables.get_flat()
 
+    def set_filter(self, obs_filter):
+        self.observation_filter = obs_filter
+
     def get_filter(self):
         return self.observation_filter
-
-    def set_filter(self, observation_filter):
-        self.observation_filter = observation_filter

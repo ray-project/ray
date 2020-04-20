@@ -1,10 +1,12 @@
 from collections import defaultdict
 import numpy as np
 import random
-import tree
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
+
+tree = try_import_tree()
 
 
 @DeveloperAPI

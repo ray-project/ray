@@ -1,9 +1,9 @@
 import functools
 from math import log
 import numpy as np
-import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -12,6 +12,7 @@ from ray.rllib.utils.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
+tree = try_import_tree()
 
 
 class TorchDistributionWrapper(ActionDistribution):
@@ -325,7 +326,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
                  input_lens,
                  action_space,
                  action_space_struct=None):
-    
+
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.Tensor(inputs)
         super().__init__(inputs, model)
@@ -335,8 +336,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             self.action_space_struct = get_base_struct_from_space(action_space)
         split_inputs = torch.split(inputs, input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model),
-            child_distributions, list(split_inputs))
+            lambda dist, input_: dist(input_, model), child_distributions,
+            list(split_inputs))
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -363,15 +364,17 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
         # Remove extra categorical dimension and take the logp of each
         # component.
-        flat_logps = tree.map_structure(
-            map_, split_x, self.flat_child_distributions)
+        flat_logps = tree.map_structure(map_, split_x,
+                                        self.flat_child_distributions)
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
     @override(ActionDistribution)
     def kl(self, other):
-        kl_list = [d.kl(o) for d, o in zip(
-            self.flat_child_distributions, other.flat_child_distributions)]
+        kl_list = [
+            d.kl(o) for d, o in zip(self.flat_child_distributions,
+                                    other.flat_child_distributions)
+        ]
         return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
@@ -381,16 +384,16 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions)
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
         return tree.map_structure(lambda s: s.sample(), child_distributions)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions)
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions)
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
+        return tree.map_structure(lambda s: s.deterministic_sample(),
+                                  child_distributions)
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):

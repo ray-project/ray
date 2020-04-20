@@ -15,17 +15,14 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-logger = logging.getLogger(__name__)
+tree = try_import_tree()
 
-try:
-    import tree
-except (ImportError, ModuleNotFoundError) as e:
-    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
-    raise e
+logger = logging.getLogger(__name__)
 
 PolicyEvalData = namedtuple("PolicyEvalData", [
     "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
@@ -657,8 +654,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         policy = _get_or_raise(policies, policy_id)
         # Clip if necessary (while action components are still batched).
         if clip_actions:
-            actions = clip_action(actions,
-                                  policy.action_space_struct)
+            actions = clip_action(actions, policy.action_space_struct)
         # Split action-component batches into single action rows.
         actions = unbatch_actions(actions)
         for i, action in enumerate(actions):
@@ -728,7 +724,10 @@ def unbatch_actions(action_batches):
     out = []
     for batch_pos in range(len(flat_action_batches[0])):
         out.append(
-            tree.unflatten_as(action_batches, [flat_action_batches[i][batch_pos] for i in range(len(flat_action_batches))]))
+            tree.unflatten_as(action_batches, [
+                flat_action_batches[i][batch_pos]
+                for i in range(len(flat_action_batches))
+            ]))
     return out
 
 

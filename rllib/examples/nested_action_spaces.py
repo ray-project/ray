@@ -3,14 +3,15 @@ import gym
 from gym.spaces import Dict, Tuple, Box, Discrete
 import numpy as np
 import sys
-import tree
 
 import ray
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

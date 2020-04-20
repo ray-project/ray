@@ -3,17 +3,18 @@
 
 import gym
 import numpy as np
-import tree
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
@@ -45,7 +46,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
     rewards = []
     t = 0
     observation = env.reset()
-    for _ in range(timestep_limit or 999999):
+    for _ in range(timestep_limit or max_timestep_limit):
         env_action = policy.compute_actions(
             observation, add_noise=add_noise, update=True)[0]
         observation, reward, done, _ = env.step(env_action)
@@ -69,7 +70,6 @@ class GenericPolicy:
                  action_noise_std=0.0):
         self.sess = sess
         self.action_space = action_space
-        #self.flattened_action_space = flatten_space(action_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
@@ -80,8 +80,7 @@ class GenericPolicy:
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            action_space, model_config, dist_type="deterministic")
-
+            self.action_space, model_config, dist_type="deterministic")
         model = ModelCatalog.get_model({
             "obs": self.inputs
         }, obs_space, action_space, dist_dim, model_config)
@@ -103,16 +102,12 @@ class GenericPolicy:
         actions = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
         if add_noise:
-            flat_actions = tree.map_structure(self._add_noise, actions,
-                                              self.action_space_struct)
+            actions = tree.map_structure(self._add_noise, actions,
+                                         self.action_space_struct)
         # Convert `flat_actions` to a list of lists of action components
         # (list of single actions).
-        flat_actions = unbatch_actions(flat_actions)
-        env_actions = [
-            tree.unflatten_as(self.action_space_struct, f)
-            for f in flat_actions
-        ]
-        return env_actions
+        actions = unbatch_actions(actions)
+        return actions
 
     def _add_noise(self, single_action, single_action_space):
         if isinstance(single_action_space, gym.spaces.Box):
@@ -123,11 +118,11 @@ class GenericPolicy:
     def set_weights(self, x):
         self.variables.set_flat(x)
 
+    def get_weights(self):
+        return self.variables.get_flat()
+
     def set_filter(self, obs_filter):
         self.observation_filter = obs_filter
 
     def get_filter(self):
         return self.observation_filter
-
-    def get_weights(self):
-        return self.variables.get_flat()

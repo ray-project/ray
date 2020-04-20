@@ -2,7 +2,6 @@ from functools import partial
 import gym
 import logging
 import numpy as np
-import tree
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
@@ -22,13 +21,13 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.space_utils import flatten_space, \
-    get_base_struct_from_space
+from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 

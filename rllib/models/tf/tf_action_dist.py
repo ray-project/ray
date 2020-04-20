@@ -1,16 +1,17 @@
 from math import log
 import numpy as np
 import functools
-import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
+from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
+    SMALL_NUMBER, try_import_tree
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 tfp = try_import_tfp()
+tree = try_import_tree()
 
 
 @DeveloperAPI
@@ -231,8 +232,8 @@ class DiagGaussian(TFActionDistribution):
         print()
         return -0.5 * tf.reduce_sum(
             tf.square((x - self.mean) / self.std), axis=1) - \
-               0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
-               tf.reduce_sum(self.log_std, axis=1)
+            0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
+            tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -421,8 +422,8 @@ class MultiActionDistribution(TFActionDistribution):
         input_lens = np.array(input_lens, dtype=np.int32)
         split_inputs = tf.split(inputs, input_lens, axis=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model),
-            child_distributions, split_inputs)
+            lambda dist, input_: dist(input_, model), child_distributions,
+            split_inputs)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -442,21 +443,22 @@ class MultiActionDistribution(TFActionDistribution):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, Categorical):
-                val = tf.cast(
-                    tf.squeeze(val, axis=-1), tf.int32)
+                val = tf.cast(tf.squeeze(val, axis=-1), tf.int32)
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each
         # component.
-        flat_logps = tree.map_structure(
-            map_, split_x, self.flat_child_distributions)
+        flat_logps = tree.map_structure(map_, split_x,
+                                        self.flat_child_distributions)
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
     @override(ActionDistribution)
     def kl(self, other):
-        kl_list = [d.kl(o) for d, o in zip(
-            self.flat_child_distributions, other.flat_child_distributions)]
+        kl_list = [
+            d.kl(o) for d, o in zip(self.flat_child_distributions,
+                                    other.flat_child_distributions)
+        ]
         return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
@@ -466,16 +468,16 @@ class MultiActionDistribution(TFActionDistribution):
 
     @override(ActionDistribution)
     def sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions)
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
         return tree.map_structure(lambda s: s.sample(), child_distributions)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions)
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions)
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
+        return tree.map_structure(lambda s: s.deterministic_sample(),
+                                  child_distributions)
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):

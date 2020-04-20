@@ -580,8 +580,6 @@ def build_eager_tf_policy(name,
 
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
-            #action_dtype, action_shape = ModelCatalog.get_action_shape(
-            #    self.action_space)
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
                     [self.observation_space.sample()]),

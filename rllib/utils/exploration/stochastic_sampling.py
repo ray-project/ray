@@ -1,8 +1,8 @@
-import tree
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
@@ -10,6 +10,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
 
 class StochasticSampling(Exploration):

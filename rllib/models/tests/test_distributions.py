@@ -2,7 +2,6 @@ from functools import partial
 import numpy as np
 from gym.spaces import Box, Dict, Tuple
 from scipy.stats import beta, norm
-import tree
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
@@ -11,6 +10,7 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
     TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
     TorchMultiCategorical, TorchSquashedGaussian
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     softmax, SMALL_NUMBER, LARGE_INTEGER
@@ -18,6 +18,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
 
 class TestDistributions(unittest.TestCase):
@@ -199,9 +200,7 @@ class TestDistributions(unittest.TestCase):
                                          1.0 - SMALL_NUMBER)
             unsquashed_values = np.arctanh(save_normed_values)
             log_prob_unsquashed = np.sum(
-                np.log(norm.pdf(unsquashed_values, means,
-                                stds)),
-                -1)
+                np.log(norm.pdf(unsquashed_values, means, stds)), -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
@@ -320,7 +319,9 @@ class TestDistributions(unittest.TestCase):
                 batch_size,
                 6,
             )),
-            Dict({"a": Box(-1.0, 1.0, shape=(batch_size, 4))}),
+            Dict({
+                "a": Box(-1.0, 1.0, shape=(batch_size, 4))
+            }),
         ])
         std_space = Box(
             -0.05, 0.05, shape=(
@@ -332,15 +333,16 @@ class TestDistributions(unittest.TestCase):
         value_space = Tuple([
             Box(0, 3, shape=(batch_size, ), dtype=np.int32),
             Box(-2.0, 2.0, shape=(batch_size, 3), dtype=np.float32),
-            Dict({"a": Box(0.0, 1.0, shape=(batch_size, 2), dtype=np.float32)})
+            Dict({
+                "a": Box(0.0, 1.0, shape=(batch_size, 2), dtype=np.float32)
+            })
         ])
 
         for fw, sess in framework_iterator(session=True):
             if fw == "torch":
                 cls = TorchMultiActionDistribution
                 child_distr_cls = [
-                    TorchCategorical,
-                    TorchDiagGaussian,
+                    TorchCategorical, TorchDiagGaussian,
                     partial(TorchBeta, low=low, high=high)
                 ]
             else:
@@ -353,8 +355,7 @@ class TestDistributions(unittest.TestCase):
 
             inputs = list(input_space.sample())
             distr = cls(
-                np.concatenate(
-                    [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
                 model={},
                 action_space=value_space,
                 child_distributions=child_distr_cls,
@@ -370,8 +371,8 @@ class TestDistributions(unittest.TestCase):
                 inputs[1][:, :3],  # [:3]=Mean values.
                 # Mean for a Beta distribution:
                 # 1 / [1 + (beta/alpha)] * range + low
-                (1.0 / (1.0 + inputs[2]["a"][:, 2:] / inputs[2]["a"][:, 0:2])) *
-                (high - low) + low,
+                (1.0 / (1.0 + inputs[2]["a"][:, 2:] / inputs[2]["a"][:, 0:2]))
+                * (high - low) + low,
             ]
             out = distr.deterministic_sample()
             if sess:
@@ -392,8 +393,7 @@ class TestDistributions(unittest.TestCase):
                                      -np.log(SMALL_NUMBER))
             inputs[2]["a"] = np.log(np.exp(inputs[2]["a"]) + 1.0) + 1.0
             distr = cls(
-                np.concatenate(
-                    [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
                 model={},
                 action_space=value_space,
                 child_distributions=child_distr_cls,
@@ -415,10 +415,7 @@ class TestDistributions(unittest.TestCase):
                 out[1] = out[1].numpy()
                 out[2]["a"] = out[2]["a"].numpy()
             check(np.mean(out[0]), expected_mean[0], decimals=1)
-            check(
-                np.mean(out[1], 0),
-                np.mean(expected_mean[1], 0),
-                decimals=1)
+            check(np.mean(out[1], 0), np.mean(expected_mean[1], 0), decimals=1)
             check(
                 np.mean(out[2]["a"], 0),
                 np.mean(expected_mean[2], 0),
@@ -433,8 +430,7 @@ class TestDistributions(unittest.TestCase):
                                      -np.log(SMALL_NUMBER))
             inputs[2]["a"] = np.log(np.exp(inputs[2]["a"]) + 1.0) + 1.0
             distr = cls(
-                np.concatenate(
-                    [inputs[0], inputs[1], inputs[2]["a"]], axis=1),
+                np.concatenate([inputs[0], inputs[1], inputs[2]["a"]], axis=1),
                 model={},
                 action_space=value_space,
                 child_distributions=child_distr_cls,
@@ -442,7 +438,8 @@ class TestDistributions(unittest.TestCase):
             inputs[0] = softmax(inputs[0], -1)
             values = list(value_space.sample())
             log_prob_beta = np.log(
-                beta.pdf(values[2]["a"], inputs[2]["a"][:, :2], inputs[2]["a"][:, 2:]))
+                beta.pdf(values[2]["a"], inputs[2]["a"][:, :2],
+                         inputs[2]["a"][:, 2:]))
             # Now do the up-scaling for [2] (beta values) to be between
             # low/high.
             values[2]["a"] = values[2]["a"] * (high - low) + low
@@ -462,8 +459,8 @@ class TestDistributions(unittest.TestCase):
             if fw == "torch":
                 values = tree.map_structure(lambda s: torch.Tensor(s), values)
             # Test all flattened input.
-            concat = np.concatenate(tree.flatten(values), -1).astype(
-                np.float32)
+            concat = np.concatenate(tree.flatten(values),
+                                    -1).astype(np.float32)
             out = distr.logp(concat)
             if sess:
                 out = sess.run(out)
