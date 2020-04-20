@@ -1,6 +1,7 @@
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.misc import flatten
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
 tf = try_import_tf()
@@ -12,6 +13,10 @@ class VisionNetwork(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        # Hard deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning(
+            "Model->VisionNetwork", "ModelV2->VisionNetwork", error=True)
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:

@@ -5,7 +5,8 @@ import gym
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -24,6 +25,9 @@ class Model:
                  options,
                  state_in=None,
                  seq_lens=None):
+        # Hard deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning("Model", "ModelV2", error=True)
         assert isinstance(input_dict, dict), input_dict
 
         # Default attribute values for the non-RNN case

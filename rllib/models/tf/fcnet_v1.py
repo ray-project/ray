@@ -1,6 +1,7 @@
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
 tf = try_import_tf()
@@ -17,6 +18,11 @@ class FullyConnectedNetwork(Model):
         Note that dict inputs will be flattened into a vector. To define a
         model that processes the components separately, use _build_layers_v2().
         """
+        # Hard deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning(
+            "Model->FullyConnectedNetwork", "ModelV2->FullyConnectedNetwork",
+            error=True)
 
         hiddens = options.get("fcnet_hiddens")
         activation = get_activation_fn(options.get("fcnet_activation"))
