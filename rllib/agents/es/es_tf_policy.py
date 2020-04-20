@@ -41,7 +41,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     rewards = []
     t = 0
     observation = env.reset()
-    for _ in range(timestep_limit or 999999):
+    for _ in range(timestep_limit or max_timestep_limit):
         ac = policy.compute_actions(
             observation, add_noise=add_noise, update=True)[0]
         observation, r, done, _ = env.step(ac)
