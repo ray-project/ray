@@ -11,7 +11,7 @@ RayServe: Scalable and Programmable Serving
 Overview
 --------
 
-RayServe is a scalable model-serving library built on Ray Core.
+RayServe is a scalable model-serving library built on Ray.
 
 For users RayServe is:
 
@@ -31,6 +31,19 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 .. note:: 
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
   and discuss in the #serve channel.
+
+RayServe in 90 Seconds
+~~~~~~~~~~~~~~~~~~~~~~
+
+Serve a stateless function:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_function.py
+
+Serve a stateful class:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
+
+See :ref:`serve-key-concepts` for more information about working with RayServe.
 
 Why RayServe?
 ~~~~~~~~~~~~~
@@ -53,6 +66,8 @@ When should I use Ray Serve?
 
 RayServe should be used when you need to deploy at least one model, preferrably many models.  
 RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
+
+.. _serve-key-concepts:
 
 Key Concepts
 ------------
@@ -77,7 +92,7 @@ model that you'll be serving. To create one, we'll simply specify the name, rout
 
 .. code-block:: python
 
-  serve.create_endpoint("my_endpoint", "/my_path", methods=["GET", "POST"])
+  serve.create_endpoint("simple_endpoint", "/simple")
 
 Backends
 ~~~~~~~~
@@ -106,8 +121,8 @@ It's important to note that RayServe places these backends in individual workers
     def __call__(self, flask_request):
         return self.msg
 
-  serve.create_backend(handle_request, "my_endpoint_backend")
-  serve.create_backend(RequestHandler, "my_endpoint_backend_class")
+  serve.create_backend(handle_request, "simple_backend")
+  serve.create_backend(RequestHandler, "simple_backend_class")
 
 Lastly, we need to link the particular backend to the server endpoint. 
 To do that we'll use the ``link`` capability.
@@ -117,7 +132,7 @@ For instance, you can route 50% of traffic to Model A and 50% of traffic to Mode
 
 .. code-block:: python
 
-  serve.link("my_endpoint_backend", "my_endpoint")
+  serve.link("simple_backend", "simple_endpoint")
 
 Once we've done that, we can now query our endpoint via HTTP (we use `requests` to make HTTP calls here).
 
