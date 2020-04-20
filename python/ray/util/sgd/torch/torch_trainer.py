@@ -459,7 +459,8 @@ class TorchTrainer:
                      dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
-        dataset.set_num_shards(len(self.remote_workers) + 1)
+        if dataset:
+            dataset.set_num_shards(len(self.remote_workers) + 1)
         for i, w in enumerate(self.remote_workers):
             params = dict(num_steps=num_steps, profile=profile, info=info)
             if dataset:
@@ -482,13 +483,9 @@ class TorchTrainer:
 
             raise err
 
-        print("Checking")
         success = check_for_failure(remote_worker_stats)
-        print("Success:", success)
         if success:
-            print("A")
             a, b = success, [local_worker_stats] + ray.get(remote_worker_stats)
-            print("B")
             return a, b
 
         return success, None

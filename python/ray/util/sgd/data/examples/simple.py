@@ -23,12 +23,19 @@ class Net(nn.Module):
         return x
 
 
+def to_mat(x):
+    return torch.tensor([[x]]).float()
+
+
 def model_creator(config):
     return Net()
 
 
+data = [i * 0.001 for i in range(3201)]
+
 def data_creator(config):
-    return torch.utils.data.DataLoader([(1, 1), (2, 2)])
+    l = list(map(lambda x: (to_mat(x), to_mat(x)), data))
+    return torch.utils.data.DataLoader(l)
 
 
 def optimizer_creator(model, config):
@@ -39,33 +46,30 @@ def loss_creator(config):
     return -nn.MSELoss(config)
 
 
-def to_mat(x):
-    return torch.tensor([[x]]).float()
-
 
 from ray.util.iter import *
 
 ray.init()
 
 
-p_iter = iter.from_items([i * 0.001 for i in range(10)], num_shards=1)
+p_iter = iter.from_items(data, num_shards=1)
 dataset = Dataset(
-    p_iter, download_func=(lambda x: (to_mat(x), to_mat(x))), max_concur=1)
+    p_iter, batch_size=32, max_concur=1, download_func=lambda x: (to_mat(x), to_mat(x)))
 
-# local_iter = p_iter.get_shard(0)
-# res = print_stuff.remote(local_iter)
-# print(ray.get(res))
-# list(local_iter.__iter__())
-# trainer = TorchTrainer(model_creator=model_creator,
-#                        data_creator=data_creator,
-#                        optimizer_creator=optimizer_creator,
-#                        loss_creator=torch.nn.MSELoss,
-#                        config={"batch_size": 32, "epoch": 10},
-#                        num_workers=3,
-# )
+trainer = TorchTrainer(model_creator=model_creator,
+                       data_creator=data_creator,
+                       optimizer_creator=optimizer_creator,
+                       loss_creator=torch.nn.MSELoss,
+                       config={"batch_size": 32, "epoch": 10},
+                       num_workers=2,
+)
 
-trainer.train(dataset=dataset)
-# for i in range(10):
-#     trainer.train(dataset=dataset)
-#     model = trainer.get_model()
-#     print(model(to_mat(0.5)))
+# trainer.train(dataset=dataset, num_steps=50)
+# model = trainer.get_model()
+# print("f(0.5)=",model(to_mat(0.5)))
+
+for i in range(10):
+    trainer.train(dataset=dataset, num_steps=50)
+    # trainer.train(dataset=dataset)
+    model = trainer.get_model()
+    print("f(0.5)=",model(to_mat(0.5)))
