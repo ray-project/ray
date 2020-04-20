@@ -31,9 +31,20 @@ def flatten_space(space):
 
 
 def get_base_struct_from_space(space):
+    """
+    Returns a Tuple/Dict Space as native (and equally structured) tuple/dict.
+
+    Args:
+        space (gym.Space): The Space to get the python struct for.
+
+    Returns:
+        Union[dict,tuple,gym.Space]: The struct equivalent to the given Space.
+            Note that the returned struct still contains all original
+            "primitive" Spaces (e.g. Box, Discrete).
+    """
     def _helper_struct(space_):
         if isinstance(space_, Tuple):
-            return tuple([_helper_struct(s) for s in space_])
+            return tuple(_helper_struct(s) for s in space_)
         elif isinstance(space_, Dict):
             return {k: _helper_struct(space_[k]) for k in space_.spaces}
         else:
