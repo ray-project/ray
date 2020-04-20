@@ -9,6 +9,7 @@ import shutil
 from unittest.mock import MagicMock
 
 import ray
+from ray import tune
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -1100,6 +1101,106 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt._exploit(runner.trial_executor, trials[1], trials[2])
         shutil.rmtree(tmpdir)
+
+
+class E2EPopulationBasedTestingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=4)
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def basicSetup(self,
+                   resample_prob=0.0,
+                   explore=None,
+                   perturbation_interval=10,
+                   log_config=False,
+                   hyperparams=None,
+                   hyperparam_mutations=None,
+                   step_once=True):
+        hyperparam_mutations = hyperparam_mutations or {
+            "float_factor": lambda: 100.0,
+            "int_factor": lambda: 10,
+            "id_factor": [100]
+        }
+        pbt = PopulationBasedTraining(
+            metric="mean_accuracy",
+            time_attr="training_iteration",
+            perturbation_interval=perturbation_interval,
+            resample_probability=resample_prob,
+            quantile_fraction=0.25,
+            hyperparam_mutations=hyperparam_mutations,
+            custom_explore_fn=explore,
+            log_config=log_config)
+        return pbt
+
+    def testCheckpointing(self):
+        pbt = self.basicSetup(perturbation_interval=2)
+
+        class train(tune.Trainable):
+            def _train(self):
+                return {"mean_accuracy": self.training_iteration}
+
+            def _save(self, path):
+                checkpoint = path + "/checkpoint"
+                with open(checkpoint, "w") as f:
+                    f.write("OK")
+                return checkpoint
+
+        trial_hyperparams = {
+            "float_factor": 2.0,
+            "const_factor": 3,
+            "int_factor": 10,
+            "id_factor": 0
+        }
+
+        analysis = tune.run(
+            train,
+            num_samples=3,
+            scheduler=pbt,
+            checkpoint_freq=3,
+            config=trial_hyperparams,
+            stop={"training_iteration": 30})
+
+        for trial in analysis.trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+    def testCheckpointDict(self):
+        pbt = self.basicSetup(perturbation_interval=2)
+
+        class train_dict(tune.Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1}
+
+            def _train(self):
+                return {"mean_accuracy": self.training_iteration}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        trial_hyperparams = {
+            "float_factor": 2.0,
+            "const_factor": 3,
+            "int_factor": 10,
+            "id_factor": 0
+        }
+
+        analysis = tune.run(
+            train_dict,
+            num_samples=3,
+            scheduler=pbt,
+            checkpoint_freq=3,
+            config=trial_hyperparams,
+            stop={"training_iteration": 30})
+
+        for trial in analysis.trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 class AsyncHyperBandSuite(unittest.TestCase):

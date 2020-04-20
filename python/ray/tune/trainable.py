@@ -555,6 +555,16 @@ class Trainable:
         """
         return self._iteration
 
+    @property
+    def training_iteration(self):
+        """Current training iteration (same as `self.iteration`).
+
+        This value is automatically incremented every time `train()` is called
+        and is automatically inserted into the training result dict.
+
+        """
+        return self._iteration
+
     def get_config(self):
         """Returns configuration passed in by Tune."""
         return self.config
