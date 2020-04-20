@@ -736,10 +736,10 @@ def unbatch_actions(action_batches):
     """
     # True if a single action (no TupleAction, no flattened action) has been
     # passed in. In this case
-    single_mode = False
-    if not isinstance(action_batches, (list, tuple, dict)):
-        single_mode = True
-        #action_batches = force_list(action_batches)
+    #single_mode = False
+    #if not isinstance(action_batches, (list, tuple, dict)):
+    #    single_mode = True
+    #    #action_batches = force_list(action_batches)
     flat_action_batches = tree.flatten(action_batches)
     #def map_():
     #    [action_batches[i][batch_pos] for i in range(len(action_batches))]
@@ -750,7 +750,7 @@ def unbatch_actions(action_batches):
     for batch_pos in range(len(flat_action_batches[0])):
         out.append(
             tree.unflatten_as(action_batches, [flat_action_batches[i][batch_pos] for i in range(len(flat_action_batches))]))
-    return out[0] if single_mode else out
+    return out  #[0] if single_mode else out
 
 
 def _to_column_format(rnn_state_rows):
