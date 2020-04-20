@@ -67,6 +67,12 @@ class FractionalResourceQuantity {
 /// GPUs, and custom labels.
 class ResourceSet {
  public:
+
+  static std::shared_ptr<ResourceSet> Nil() {
+    static auto nil = std::make_shared<ResourceSet>();
+    return nil;
+  }
+
   /// \brief empty ResourceSet constructor.
   ResourceSet();
 
