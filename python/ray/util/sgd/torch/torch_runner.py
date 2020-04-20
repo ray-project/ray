@@ -207,16 +207,11 @@ class TorchRunner:
                 def format_batch(batch):
                     features, targets = zip(*batch)
                     return torch.cat(features), torch.cat(targets)
+
                 iterator = map(format_batch, iterator)
-                # iterator = iter(iterator)
             if num_steps:
                 iterator = itertools.islice(iterator, num_steps)
-            temp = list(iterator)
-            print("Materialized iterator, length: ", len(temp))
-            train_stats = self.training_operator.train_epoch(
-                iter(temp), info)
-            # train_stats = self.training_operator.train_epoch(
-            #     iter(iterator), info)
+            train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
         # This is so that `epochs` is first in ordering.

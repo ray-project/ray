@@ -33,6 +33,7 @@ def model_creator(config):
 
 data = [i * 0.001 for i in range(3201)]
 
+
 def data_creator(config):
     l = list(map(lambda x: (to_mat(x), to_mat(x)), data))
     return torch.utils.data.DataLoader(l)
@@ -46,22 +47,27 @@ def loss_creator(config):
     return -nn.MSELoss(config)
 
 
-
 from ray.util.iter import *
 
 ray.init()
 
-
 p_iter = iter.from_items(data, num_shards=1)
 dataset = Dataset(
-    p_iter, batch_size=32, max_concur=1, download_func=lambda x: (to_mat(x), to_mat(x)))
+    p_iter,
+    batch_size=32,
+    max_concur=1,
+    download_func=lambda x: (to_mat(x), to_mat(x)))
 
-trainer = TorchTrainer(model_creator=model_creator,
-                       data_creator=data_creator,
-                       optimizer_creator=optimizer_creator,
-                       loss_creator=torch.nn.MSELoss,
-                       config={"batch_size": 32, "epoch": 10},
-                       num_workers=2,
+trainer = TorchTrainer(
+    model_creator=model_creator,
+    data_creator=data_creator,
+    optimizer_creator=optimizer_creator,
+    loss_creator=torch.nn.MSELoss,
+    config={
+        "batch_size": 32,
+        "epoch": 10
+    },
+    num_workers=2,
 )
 
 # trainer.train(dataset=dataset, num_steps=50)
@@ -72,4 +78,4 @@ for i in range(10):
     trainer.train(dataset=dataset, num_steps=50)
     # trainer.train(dataset=dataset)
     model = trainer.get_model()
-    print("f(0.5)=",model(to_mat(0.5)))
+    print("f(0.5)=", model(to_mat(0.5)))
