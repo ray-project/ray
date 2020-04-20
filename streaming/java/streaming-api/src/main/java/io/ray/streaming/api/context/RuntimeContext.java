@@ -1,13 +1,13 @@
 package io.ray.streaming.api.context;
 
+import io.ray.streaming.state.backend.KeyStateBackend;
+import io.ray.streaming.state.keystate.desc.ListStateDescriptor;
+import io.ray.streaming.state.keystate.desc.MapStateDescriptor;
+import io.ray.streaming.state.keystate.desc.ValueStateDescriptor;
+import io.ray.streaming.state.keystate.state.ListState;
+import io.ray.streaming.state.keystate.state.MapState;
+import io.ray.streaming.state.keystate.state.ValueState;
 import java.util.Map;
-import org.ray.streaming.state.backend.KeyStateBackend;
-import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
-import org.ray.streaming.state.keystate.desc.MapStateDescriptor;
-import org.ray.streaming.state.keystate.desc.ValueStateDescriptor;
-import org.ray.streaming.state.keystate.state.ListState;
-import org.ray.streaming.state.keystate.state.MapState;
-import org.ray.streaming.state.keystate.state.ValueState;
 
 /**
  * Encapsulate the runtime information of a streaming task.

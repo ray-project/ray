@@ -7,21 +7,12 @@ import io.ray.streaming.api.function.Function;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
 import java.util.List;
-<<<<<<< HEAD:streaming/java/streaming-api/src/main/java/io/ray/streaming/operator/StreamOperator.java
-=======
-import org.ray.streaming.api.Language;
-import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.StreamRuntimeContext;
-import org.ray.streaming.api.function.Function;
-import org.ray.streaming.message.KeyRecord;
-import org.ray.streaming.message.Record;
->>>>>>> add state module:streaming/java/streaming-api/src/main/java/org/ray/streaming/operator/StreamOperator.java
 
 public abstract class StreamOperator<F extends Function> implements Operator {
   protected String name;
   protected F function;
   protected List<Collector> collectorList;
-  protected StreamRuntimeContext runtimeContext;
+  protected RuntimeContext runtimeContext;
 
   public StreamOperator(F function) {
     this.name = getClass().getSimpleName();
@@ -29,7 +20,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public void open(List<Collector> collectorList, StreamRuntimeContext runtimeContext) {
+  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     this.collectorList = collectorList;
     this.runtimeContext = runtimeContext;
   }

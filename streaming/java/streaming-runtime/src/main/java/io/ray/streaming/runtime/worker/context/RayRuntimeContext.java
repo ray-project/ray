@@ -5,29 +5,24 @@ import static io.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
 import com.google.common.base.Preconditions;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
+import io.ray.streaming.state.backend.AbstractKeyStateBackend;
+import io.ray.streaming.state.backend.KeyStateBackend;
+import io.ray.streaming.state.backend.OperatorStateBackend;
+import io.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
+import io.ray.streaming.state.keystate.desc.ListStateDescriptor;
+import io.ray.streaming.state.keystate.desc.MapStateDescriptor;
+import io.ray.streaming.state.keystate.desc.ValueStateDescriptor;
+import io.ray.streaming.state.keystate.state.ListState;
+import io.ray.streaming.state.keystate.state.MapState;
+import io.ray.streaming.state.keystate.state.ValueState;
 import java.util.Map;
-import org.ray.streaming.state.backend.KeyStateBackend;
-import org.ray.streaming.state.backend.OperatorStateBackend;
-import org.ray.streaming.state.backend.AbstractKeyStateBackend;
-import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
-import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
-import org.ray.streaming.state.keystate.desc.MapStateDescriptor;
-import org.ray.streaming.state.keystate.desc.ValueStateDescriptor;
-import org.ray.streaming.state.keystate.state.ListState;
-import org.ray.streaming.state.keystate.state.MapState;
-import org.ray.streaming.state.keystate.state.ValueState;
 
 /**
  * Use Ray to implement RuntimeContext.
  */
 public class RayRuntimeContext implements RuntimeContext {
-  private int taskId;
-  private int taskIndex;
-  private int parallelism;
-  private Long checkpointId;
-  private final Long maxBatch;
-  private Map<String, String> config;
 
+  private final Long maxBatch;
   /**
    * Backend for keyed state. This might be empty if we're not on a keyed stream.
    */
@@ -36,9 +31,14 @@ public class RayRuntimeContext implements RuntimeContext {
    * Backend for operator state. This might be empty
    */
   protected transient OperatorStateBackend operatorStateBackend;
+  private int taskId;
+  private int taskIndex;
+  private int parallelism;
+  private Long checkpointId;
+  private Map<String, String> config;
 
   public RayRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
-      int parallelism) {
+                           int parallelism) {
     this.taskId = executionTask.getTaskId();
     this.config = config;
     this.taskIndex = executionTask.getTaskIndex();
