@@ -1750,8 +1750,8 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
 }
 
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
-                                rpc::CancelTaskReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) {
+                                  rpc::CancelTaskReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   bool success = main_thread_task_id_ == task_id;
