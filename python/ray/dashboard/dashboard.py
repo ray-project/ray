@@ -43,7 +43,6 @@ from ray.dashboard.metrics_exporter.client import MetricsExportClient
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
     from ray.tune import Analysis
-    from tensorboard import program
 except ImportError:
     Analysis = None
 
