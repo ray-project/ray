@@ -4,8 +4,8 @@ import socket
 import uvicorn
 
 import ray
-from ray.serve.constants import SERVE_MASTER_NAME
 from ray.serve.context import TaskContext
+from ray.serve.metric import PushCollector
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger
@@ -28,9 +28,19 @@ class HTTPProxy:
 
     async def fetch_config_from_master(self):
         assert ray.is_initialized()
-        master = ray.util.get_actor(SERVE_MASTER_NAME)
+
+        from ray.serve.api import init, _get_master_actor
+        init()
+        master = _get_master_actor()
         self.route_table, [self.router_handle
                            ] = await master.get_http_proxy_config.remote()
+        [self.metric_sink] = await master.get_metric_sink.remote()
+
+        self.metric_collector = PushCollector.connect_from_serve()
+        self.request_counter = self.metric_collector.new_counter(
+            "num_http_requests",
+            description="The number of requests processed",
+        )
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -89,6 +99,18 @@ class HTTPProxy:
 
         return sender
 
+    async def _handle_system_request(self, scope, receive, send):
+        current_path = scope["path"]
+        if current_path == "/-/routes":
+            await Response(self.route_table).send(scope, receive, send)
+        elif current_path == "/-/metrics":
+            prometheus_text = await self.metric_sink.get_metric_text.remote()
+            await Response(prometheus_text).send(scope, receive, send)
+        else:
+            await Response(
+                "System path {} not found".format(current_path),
+                status_code=404).send(scope, receive, send)
+
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
         #       https://asgi.readthedocs.io/en/latest/specs/index.html
@@ -103,8 +125,8 @@ class HTTPProxy:
             "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
-        if current_path == "/-/routes":
-            await Response(self.route_table).send(scope, receive, send)
+        if current_path.startswith("/-/"):
+            await self._handle_system_request(scope, receive, send)
             return
 
         try:

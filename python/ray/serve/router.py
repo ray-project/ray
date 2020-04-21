@@ -14,6 +14,7 @@ import blist
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.utils import logger
+from ray.serve.metric import PushCollector
 
 
 class Query:
@@ -159,23 +160,19 @@ class Router:
         for backend, replica_dict in backend_dict.items():
             for worker in replica_dict.values():
                 await self.add_new_worker(backend, worker)
+        self.metric_collector = PushCollector.connect_from_serve()
+        self.num_router_requests = self.metric_collector.new_counter(
+            "num_router_requests",
+            description="Number of requests from the router's view.")
 
     def is_ready(self):
         return True
-
-    def get_metrics(self):
-        return {
-            "backend_{}_queue_size".format(backend_name): {
-                "value": len(queue),
-                "type": "counter",
-            }
-            for backend_name, queue in self.buffer_queues.items()
-        }
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         service = request_meta.service
         logger.debug("Received a request for service {}".format(service))
+        self.num_router_requests.add()
 
         # check if the slo specified is directly the
         # wall clock time

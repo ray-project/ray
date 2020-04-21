@@ -1,157 +1,176 @@
-import time
+import enum
+import asyncio
+from typing import Dict, Optional, List, Tuple, Callable
 
-import numpy as np
-import pandas as pd
+from prometheus_client import (CollectorRegistry, Counter as PromCounter, Gauge
+                               as PromGauge, generate_latest)
 
 import ray
+from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
 
-@ray.remote(num_cpus=0)
-class MetricMonitor:
-    def __init__(self, gc_window_seconds=3600):
-        """Metric monitor scrapes metrics from ray serve actors
-        and allow windowed query operations.
+# This class is stateless and trivially reconstructable.
+class PrometheusSink:
+    def __init__(self):
+        self.metrics_cache = dict()
+        self.registry = CollectorRegistry()
 
-        Args:
-            gc_window_seconds(int): How long will we keep the metric data in
-                memory. Data older than the gc_window will be deleted.
-        """
-        #: Mapping actor ID (hex) -> actor handle
-        self.actor_handles = dict()
+    def get_metric_text(self):
+        return generate_latest(self.registry)
 
-        self.data_entries = []
-
-        self.gc_window_seconds = gc_window_seconds
-        self.latest_gc_time = time.time()
-
-    def is_ready(self):
-        return True
-
-    def add_target(self, target_handle):
-        hex_id = target_handle._actor_id.hex()
-        self.actor_handles[hex_id] = target_handle
-
-    def remove_target(self, target_handle):
-        hex_id = target_handle._actor_id.hex()
-        self.actor_handles.pop(hex_id)
-
-    def scrape(self):
-        # If expected gc time has passed, we will perform metric value GC.
-        expected_gc_time = self.latest_gc_time + self.gc_window_seconds
-        if expected_gc_time < time.time():
-            self._perform_gc()
-            self.latest_gc_time = time.time()
-
-        curr_time = time.time()
-        result = [
-            handle.get_metrics.remote()
-            for handle in self.actor_handles.values()
-        ]
-        # TODO(simon): handle the possibility that an actor_handle is removed
-        for handle_result in ray.get(result):
-            for metric_name, metric_info in handle_result.items():
-                data_entry = {
-                    "retrieved_at": curr_time,
-                    "name": metric_name,
-                    "type": metric_info["type"],
+    def get_metric_dict(self):
+        collected = dict()
+        for metric in self.registry.collect():
+            for sample in metric.samples:
+                collected[sample.name] = {
+                    "labels": sample.labels,
+                    "value": sample.value
                 }
+        return collected
 
-                if metric_info["type"] == "counter":
-                    data_entry["value"] = metric_info["value"]
-                    self.data_entries.append(data_entry)
+    async def push_batch(self, metadata, batch):
+        self._process_metadata(metadata)
+        self._process_batch(batch)
 
-                elif metric_info["type"] == "list":
-                    for metric_value in metric_info["value"]:
-                        new_entry = data_entry.copy()
-                        new_entry["value"] = metric_value
-                        self.data_entries.append(new_entry)
+    def _process_metadata(self, metadata):
+        for name, metadata in metadata.items():
+            if name not in self.metrics_cache:
+                constructor = metadata["type"].to_prometheus_class()
+                description = metadata["description"]
+                labels = metadata["labels"]
 
-    def _perform_gc(self):
-        curr_time = time.time()
-        earliest_time_allowed = curr_time - self.gc_window_seconds
+                metric_object = constructor(
+                    name,
+                    description,
+                    labelnames=tuple(labels.keys()),
+                    registry=self.registry)
+                if labels:
+                    metric_object = metric_object.labels(**labels)
+                self.metrics_cache[name] = metric_object
 
-        # If we don"t have any data at hand, no need to gc.
-        if len(self.data_entries) == 0:
-            return
-
-        df = pd.DataFrame(self.data_entries)
-        df = df[df["retrieved_at"] >= earliest_time_allowed]
-        self.data_entries = df.to_dict(orient="record")
-
-    def _get_dataframe(self):
-        return pd.DataFrame(self.data_entries)
-
-    def collect(self,
-                percentiles=[50, 90, 95],
-                agg_windows_seconds=[10, 60, 300, 600, 3600]):
-        """Collect and perform aggregation on all metrics.
-
-        Args:
-            percentiles(List[int]): The percentiles for aggregation operations.
-                Default is 50th, 90th, 95th percentile.
-            agg_windows_seconds(List[int]): The aggregation windows in seconds.
-                The longest aggregation window must be shorter or equal to the
-                gc_window_seconds.
-        """
-        result = {}
-        df = pd.DataFrame(self.data_entries)
-
-        if len(df) == 0:  # no metric to report
-            return {}
-
-        # Retrieve the {metric_name -> metric_type} mapping
-        metric_types = df[["name",
-                           "type"]].set_index("name").squeeze().to_dict()
-
-        for metric_name, metric_type in metric_types.items():
-            if metric_type == "counter":
-                result[metric_name] = df.loc[df["name"] == metric_name,
-                                             "value"].tolist()[-1]
-            if metric_type == "list":
-                result.update(
-                    self._aggregate(metric_name, percentiles,
-                                    agg_windows_seconds))
-        return result
-
-    def _aggregate(self, metric_name, percentiles, agg_windows_seconds):
-        """Perform aggregation over a metric.
-
-        Note:
-            This metric must have type `list`.
-        """
-        assert max(agg_windows_seconds) <= self.gc_window_seconds, (
-            "Aggregation window exceeds gc window. You should set a longer gc "
-            "window or shorter aggregation window.")
-
-        curr_time = time.time()
-        df = pd.DataFrame(self.data_entries)
-        filtered_df = df[df["name"] == metric_name]
-        if len(filtered_df) == 0:
-            return dict()
-
-        data_types = filtered_df["type"].unique().tolist()
-        assert data_types == [
-            "list"
-        ], ("Can't aggreagte over non-list type. {} has type {}".format(
-            metric_name, data_types))
-
-        aggregated_metric = {}
-        for window in agg_windows_seconds:
-            earliest_time = curr_time - window
-            windowed_df = filtered_df[
-                filtered_df["retrieved_at"] > earliest_time]
-            percentile_values = np.percentile(windowed_df["value"],
-                                              percentiles)
-            for percentile, value in zip(percentiles, percentile_values):
-                result_key = "{name}_{perc}th_perc_{window}_window".format(
-                    name=metric_name, perc=percentile, window=window)
-                aggregated_metric[result_key] = value
-
-        return aggregated_metric
+    def _process_batch(self, batch):
+        for event_type, name, value in batch:
+            assert name in self.metrics_cache, (
+                "Metrics {} was not registered.".format(name))
+            metric = self.metrics_cache[name]
+            if event_type == EventType.COUNTER:
+                metric.inc(value)
+            elif event_type == EventType.MEASURE:
+                metric.set(value)
+            else:
+                raise ValueError(
+                    "Unrecognized event type {}".format(event_type))
 
 
-@ray.remote(num_cpus=0)
-def start_metric_monitor_loop(monitor_handle, duration_s=5):
-    while True:
-        ray.get(monitor_handle.scrape.remote())
-        time.sleep(duration_s)
+@ray.remote
+class PrometheusSinkActor(PrometheusSink):
+    pass
+
+
+class Counter:
+    def __init__(self, collector, name):
+        self.collector = collector
+        self.name = name
+
+    def add(self, increment=1):
+        self.collector.push_event(EventType.COUNTER, self.name, increment)
+
+
+class Measure:
+    def __init__(self, collector, name):
+        self.collector = collector
+        self.name = name
+
+    def record(self, value):
+        self.collector.push_event(EventType.MEASURE, self.name, value)
+
+
+class EventType(enum.IntEnum):
+    COUNTER = 1
+    MEASURE = 2
+
+    def to_user_facing_class(self):
+        return {self.COUNTER: Counter, self.MEASURE: Measure}[self.value]
+
+    def to_prometheus_class(self):
+        return {self.COUNTER: PromCounter, self.MEASURE: PromGauge}[self.value]
+
+
+MetricMetadata = Dict[str, Dict]
+MetricEventBatch = List[Tuple[EventType, str, float]]
+
+
+class PushCollector:
+    def __init__(self,
+                 push_batch_callback: Callable[
+                     [MetricMetadata, MetricEventBatch], None],
+                 default_labels: Optional[Dict[str, str]] = None):
+        self.default_labels = default_labels or dict()
+
+        self.metric_metadata: MetricMetadata = dict()
+        self.metric_events: MetricEventBatch = []
+
+        self.push_batch_callback = push_batch_callback
+        self.push_task = asyncio.get_event_loop().create_task(
+            self.push_forever(METRIC_PUSH_INTERVAL_S))
+        self.new_metric_added = asyncio.Event()
+
+    @staticmethod
+    def connect_from_serve(default_labels=None):
+        from ray.serve.api import _get_master_actor
+
+        master_actor = _get_master_actor()
+        [metric_sink] = ray.get(master_actor.get_metric_sink.remote())
+        return PushCollector(
+            lambda *args: metric_sink.push_batch.remote(*args),
+            default_labels=default_labels)
+
+    def new_counter(self,
+                    name,
+                    *,
+                    description: Optional[str] = "",
+                    labels: Optional[Dict[str, str]] = None) -> Counter:
+        return self._new_metric(EventType.COUNTER, name, description, labels)
+
+    def new_measure(self,
+                    name,
+                    *,
+                    description: Optional[str] = "",
+                    labels: Optional[Dict[str, str]] = None) -> Measure:
+        return self._new_metric(EventType.MEASURE, name, description, labels)
+
+    def _new_metric(self,
+                    metric_type: EventType,
+                    name,
+                    description: Optional[str] = "",
+                    labels: Optional[Dict[str, str]] = None):
+        # Normalize Labels
+        labels = labels or dict()
+        merged_labels = self.default_labels.copy()
+        merged_labels.update(labels)
+
+        self.metric_metadata[name] = {
+            "type": metric_type,
+            "description": description,
+            "labels": merged_labels
+        }
+
+        metric_class = metric_type.to_user_facing_class()
+        return metric_class(collector=self, name=name)
+
+    def push_event(self, metric_type: EventType, name, value):
+        self.metric_events.append((metric_type, name, value))
+        self.new_metric_added.set()
+
+    async def push_once(self):
+        old_batch, self.metric_events = self.metric_events, []
+        self.new_metric_added.clear()
+        await self.push_batch_callback(self.metric_metadata, old_batch)
+
+    async def push_forever(self, interval_s):
+        while True:
+            await self.push_once()
+            await asyncio.wait(
+                [asyncio.sleep(interval_s),
+                 self.new_metric_added.wait()],
+                return_when=asyncio.FIRST_COMPLETED)

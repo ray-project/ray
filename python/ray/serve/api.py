@@ -71,7 +71,6 @@ def init(
             "object_store_memory": int(1e8),
             "num_cpus": max(cpu_count(), 8)
         },
-        gc_window_seconds=3600,
         queueing_policy=RoutePolicy.Random,
         policy_kwargs={},
 ):
@@ -141,10 +140,11 @@ def init(
     master_actor = ServeMaster.options(
         detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
 
+    ray.get(master_actor.start_metric_sink.remote())
+
     ray.get(
         master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
 
-    ray.get(master_actor.start_metric_monitor.remote(gc_window_seconds))
     if start_server:
         ray.get(master_actor.start_http_proxy.remote(http_host, http_port))
 
@@ -298,16 +298,7 @@ def get_handle(endpoint_name,
 
 
 @_ensure_connected
-def stat(percentiles=[50, 90, 95],
-         agg_windows_seconds=[10, 60, 300, 600, 3600]):
-    """Retrieve metric statistics about ray serve system.
-
-    Args:
-        percentiles(List[int]): The percentiles for aggregation operations.
-            Default is 50th, 90th, 95th percentile.
-        agg_windows_seconds(List[int]): The aggregation windows in seconds.
-            The longest aggregation window must be shorter or equal to the
-            gc_window_seconds.
-    """
-    [monitor] = ray.get(master_actor.get_metric_monitor.remote())
-    return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
+def stat():
+    """Retrieve metric statistics about ray serve system."""
+    [metric_sink] = ray.get(master_actor.get_metric_sink.remote())
+    return ray.get(metric_sink.get_metric_dict.remote())

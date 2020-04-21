@@ -10,7 +10,7 @@ from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
-from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
+from ray.serve.metric import PrometheusSinkActor
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import expand, get_random_letters, logger
 
@@ -70,7 +70,7 @@ class ServeMaster:
 
         self.router = None
         self.http_proxy = None
-        self.metric_monitor = None
+        self.metric_sink = None
 
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
@@ -109,17 +109,14 @@ class ServeMaster:
         assert self.http_proxy is not None, "HTTP proxy not started yet."
         return [self.http_proxy]
 
-    def start_metric_monitor(self, gc_window_seconds):
-        assert self.metric_monitor is None, "Metric monitor already started."
-        self.metric_monitor = MetricMonitor.remote(gc_window_seconds)
-        # TODO(edoakes): this should be an actor method, not a separate task.
-        start_metric_monitor_loop.remote(self.metric_monitor)
-        self.metric_monitor.add_target.remote(self.router)
+    def start_metric_sink(self):
+        assert self.metric_sink is None, "Metric sink already started."
+        # TODO: set max_reconstructions
+        self.metric_sink = PrometheusSinkActor.remote()
 
-    def get_metric_monitor(self):
-        assert self.metric_monitor is not None, (
-            "Metric monitor not started yet.")
-        return [self.metric_monitor]
+    def get_metric_sink(self):
+        assert self.metric_sink is not None, ("Metric sink not started yet.")
+        return [self.metric_sink]
 
     def _list_replicas(self, backend_tag):
         return self.backend_table.list_replicas(backend_tag)
@@ -186,9 +183,6 @@ class ServeMaster:
         [router] = self.get_router()
         await router.add_new_worker.remote(backend_tag, worker_handle)
 
-        # Register the worker with the metric monitor.
-        self.get_metric_monitor()[0].add_target.remote(worker_handle)
-
     async def _remove_backend_replica(self, backend_tag):
         assert (backend_tag in self.backend_table.list_backends()
                 ), "Backend {} is not registered.".format(backend_tag)
@@ -202,10 +196,6 @@ class ServeMaster:
         replica_handle = self.workers[backend_tag].pop(replica_tag)
         if len(self.workers[backend_tag]) == 0:
             del self.workers[backend_tag]
-
-        # Remove the replica from metric monitor.
-        [monitor] = self.get_metric_monitor()
-        await monitor.remove_target.remote(replica_handle)
 
         # Remove the replica from router.
         # This will also destroy the actor handle.

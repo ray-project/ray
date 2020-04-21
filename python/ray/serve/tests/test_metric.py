@@ -1,74 +1,67 @@
-import numpy as np
 import pytest
+import requests
 
-import ray
-from ray.serve.metric import MetricMonitor
+from ray import serve
+from ray.serve.metric import PushCollector, PrometheusSink
 
-
-@pytest.fixture(scope="session")
-def start_target_actor(ray_instance):
-    @ray.remote
-    class Target:
-        def __init__(self):
-            self.counter_value = 0
-
-        def get_metrics(self):
-            self.counter_value += 1
-            return {
-                "latency_list": {
-                    "type": "list",
-                    # Generate 0 to 100 inclusive.
-                    # This means total of 101 items.
-                    "value": np.arange(101).tolist()
-                },
-                "counter": {
-                    "type": "counter",
-                    "value": self.counter_value
-                }
-            }
-
-        def get_counter_value(self):
-            return self.counter_value
-
-    yield Target.remote()
+pytestmark = pytest.mark.asyncio
 
 
-def test_metric_gc(ray_instance, start_target_actor):
-    target_actor = start_target_actor
-    # this means when new scrapes are invoked, the
-    metric_monitor = MetricMonitor.remote(gc_window_seconds=0)
-    ray.get(metric_monitor.add_target.remote(target_actor))
+async def test_push_event():
+    sink = PrometheusSink()
+    collector = PushCollector(
+        push_batch_callback=lambda *args: sink.push_batch(*args),
+        default_labels={"a": "b"})
 
-    ray.get(metric_monitor.scrape.remote())
-    df = ray.get(metric_monitor._get_dataframe.remote())
-    assert len(df) == 102
+    counter = collector.new_counter(
+        "my_cnt", description="my_cnt help", labels={"b": "c"})
+    measure = collector.new_measure(
+        "latency", description="latency help", labels={"c": "d"})
+    counter.add()
+    counter.add(33)
+    measure.record(42)
 
-    # Old metric sould be cleared. So only 1 counter + 101 list values left.
-    ray.get(metric_monitor.scrape.remote())
-    df = ray.get(metric_monitor._get_dataframe.remote())
-    assert len(df) == 102
+    await collector.push_once()
+    assert len(sink.metrics_cache) == 2
 
+    text = sink.get_metric_text().decode()
+    assert "# HELP my_cnt_total my_cnt help" in text
+    assert "# TYPE my_cnt_total counter" in text
+    assert 'my_cnt_total{a="b",b="c"} 34.0' in text
+    assert 'latency{a="b",c="d"} 42.0' in text
 
-def test_metric_system(ray_instance, start_target_actor):
-    target_actor = start_target_actor
-
-    metric_monitor = MetricMonitor.remote()
-
-    ray.get(metric_monitor.add_target.remote(target_actor))
-
-    # Scrape once
-    ray.get(metric_monitor.scrape.remote())
-
-    percentiles = [50, 90, 95]
-    agg_windows_seconds = [60]
-    result = ray.get(
-        metric_monitor.collect.remote(percentiles, agg_windows_seconds))
-    real_counter_value = ray.get(target_actor.get_counter_value.remote())
-
-    expected_result = {
-        "counter": real_counter_value,
-        "latency_list_50th_perc_60_window": 50.0,
-        "latency_list_90th_perc_60_window": 90.0,
-        "latency_list_95th_perc_60_window": 95.0,
+    dict_data = sink.get_metric_dict()
+    assert dict_data["my_cnt_total"] == {
+        "labels": {
+            "a": "b",
+            "b": "c"
+        },
+        "value": 34.0
     }
-    assert result == expected_result
+
+    assert dict_data["latency"] == {
+        "labels": {
+            "a": "b",
+            "c": "d"
+        },
+        "value": 42.0
+    }
+
+
+async def test_system_metric_endpoints(serve_instance):
+    def test_error_counter(flask_request):
+        1 / 0
+
+    serve.create_backend(test_error_counter, "m:v1")
+    serve.create_endpoint("test_metrics", "/measure", methods=["GET", "POST"])
+    serve.link("test_metrics", "m:v1")
+
+    # Send one query
+    requests.get("http://127.0.0.1:8000/measure")
+
+    # Check metrics are exposed under http endpoint
+    metric_text = requests.get("http://127.0.0.1:8000/-/metrics").text
+    print(metric_text)
+    assert "num_http_requests_total" in metric_text
+    assert "num_router_requests_created" in metric_text
+    assert 'backend_error_counter_total{backend="m:v1"}' in metric_text

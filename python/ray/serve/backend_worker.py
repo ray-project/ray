@@ -1,4 +1,3 @@
-import time
 import traceback
 import inspect
 
@@ -9,6 +8,7 @@ from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.serve.utils import parse_request_item
 from ray.serve.exceptions import RayServeException
+from ray.serve.metric import PushCollector
 from ray.async_compat import sync_to_async
 
 
@@ -41,9 +41,6 @@ def create_backend_worker(func_or_class):
 
             self.backend = RayServeWorker(backend_tag, _callable,
                                           router_handle, is_function)
-
-        def get_metrics(self):
-            return self.backend.get_metrics()
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -82,24 +79,11 @@ class RayServeWorker:
         self.router_handle = router_handle
         self.is_function = is_function
 
-        self.error_counter = 0
-        self.latency_list = []
-
-    def get_metrics(self):
-        # Make a copy of the latency list and clear current list
-        latency_list = self.latency_list[:]
-        self.latency_list = []
-
-        return {
-            "{}_error_counter".format(self.name): {
-                "value": self.error_counter,
-                "type": "counter",
-            },
-            "{}_latency_s".format(self.name): {
-                "value": latency_list,
-                "type": "list",
-            },
-        }
+        self.metric_collector = PushCollector.connect_from_serve()
+        self.error_counter = self.metric_collector.new_counter(
+            "backend_error_counter",
+            description="Number of exceptions occurred in backend",
+            labels={"backend": self.name})
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -127,7 +111,6 @@ class RayServeWorker:
     async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
-        start_timestamp = time.time()
 
         method_to_call = self.get_runner_method(request_item)
         args = args if self.has_positional_args(method_to_call) else []
@@ -136,9 +119,8 @@ class RayServeWorker:
             result = await method_to_call(*args, **kwargs)
         except Exception as e:
             result = wrap_to_ray_error(e)
-            self.error_counter += 1
+            self.error_counter.add()
 
-        self.latency_list.append(time.time() - start_timestamp)
         return result
 
     async def invoke_batch(self, request_item_list):
@@ -202,10 +184,8 @@ class RayServeWorker:
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
 
-            start_timestamp = time.time()
             result_list = await call_method(*arg_list, **kwargs_list)
 
-            self.latency_list.append(time.time() - start_timestamp)
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
                 raise RayServeException("__call__ function "
@@ -216,7 +196,7 @@ class RayServeWorker:
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter += batch_size
+            self.error_counter.add(batch_size)
             return [wrapped_exception for _ in range(batch_size)]
 
     async def handle_request(self, request):
