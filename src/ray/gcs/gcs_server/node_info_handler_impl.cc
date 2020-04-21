@@ -181,9 +181,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Binary(),
                                          resource_change.SerializeAsString(), nullptr));
 
-      node_resource_mutex_.Lock();
-      nodes_resource_cache_[node_id].insert(resources.begin(), resources.end());
-      node_resource_mutex_.Unlock();
+      gcs_node_resource_manager_.UpdateNodeResources(node_id, resources);
       RAY_LOG(DEBUG) << "Finished updating node resources, node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -202,19 +200,12 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
 
-  node_resource_mutex_.Lock();
   gcs::NodeInfoAccessor::ResourceMap resources;
-  if (nodes_resource_cache_.count(node_id)) {
-    for (auto &resource_name : resource_names) {
-      auto it = nodes_resource_cache_[node_id].find(resource_name);
-      RAY_CHECK(it != nodes_resource_cache_[node_id].end());
-      resources[resource_name] = it->second;
-      nodes_resource_cache_[node_id].erase(resource_name);
-    }
-  }
-  node_resource_mutex_.Unlock();
+  bool is_cached =
+      gcs_node_resource_manager_.GetNodeResources(node_id, resource_names, &resources);
+  gcs_node_resource_manager_.DeleteNodeResources(node_id, resource_names);
 
-  if (!resources.empty()) {
+  if (is_cached) {
     DeleteResources(node_id, resource_names, resources, reply, send_reply_callback);
   } else {
     auto on_done =

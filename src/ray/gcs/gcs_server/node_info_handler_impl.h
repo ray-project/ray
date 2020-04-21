@@ -16,6 +16,7 @@
 #define RAY_GCS_NODE_INFO_HANDLER_IMPL_H
 
 #include "gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_resource_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -73,13 +74,8 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
 
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsNodeManager &gcs_node_manager_;
+  gcs::GcsNodeResourceManager gcs_node_resource_manager_;
   const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
-
-  /// Mutex to protect the nodes_cache_ field.
-  absl::Mutex node_resource_mutex_;
-  /// A mapping from node id to node resource.
-  std::unordered_map<ClientID, gcs::NodeInfoAccessor::ResourceMap> nodes_resource_cache_
-      GUARDED_BY(node_resource_mutex_);
 };
 
 }  // namespace rpc
