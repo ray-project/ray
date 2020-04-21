@@ -1,5 +1,4 @@
 import functools
-from math import log
 import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -238,54 +237,6 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         return unsquashed
 
 
-class TorchBeta(TorchDistributionWrapper):
-    """
-    A Beta distribution is defined on the interval [0, 1] and parameterized by
-    shape parameters alpha and beta (also called concentration parameters).
-
-    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
-        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
-        and Gamma(n) = (n - 1)!
-    """
-
-    def __init__(self, inputs, model, low=0.0, high=1.0):
-        super().__init__(inputs, model)
-        # Stabilize input parameters (possibly coming from a linear layer).
-        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER),
-                                  -log(SMALL_NUMBER))
-        self.inputs = torch.log(torch.exp(self.inputs) + 1.0) + 1.0
-        self.low = low
-        self.high = high
-        alpha, beta = torch.chunk(self.inputs, 2, dim=-1)
-        # Note: concentration0==beta, concentration1=alpha (!)
-        self.dist = torch.distributions.Beta(
-            concentration1=alpha, concentration0=beta)
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        self.last_sample = self._squash(self.dist.mean)
-        return self.last_sample
-
-    @override(TorchDistributionWrapper)
-    def sample(self):
-        # Use the reparameterization version of `dist.sample` to allow for
-        # the results to be backprop'able e.g. in a loss term.
-        normal_sample = self.dist.rsample()
-        self.last_sample = self._squash(normal_sample)
-        return self.last_sample
-
-    @override(ActionDistribution)
-    def logp(self, x):
-        unsquashed_values = self._unsquash(x)
-        return torch.sum(self.dist.log_prob(unsquashed_values), dim=-1)
-
-    def _squash(self, raw_values):
-        return raw_values * (self.high - self.low) + self.low
-
-    def _unsquash(self, values):
-        return (values - self.low) / (self.high - self.low)
-
-
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
@@ -312,31 +263,38 @@ class TorchDeterministic(TorchDistributionWrapper):
 
 
 class TorchMultiActionDistribution(TorchDistributionWrapper):
-    """Action distribution that operates for list of (flattened) actions.
-
-    Args:
-        inputs (Tensor list): A list of tensors from which to compute samples.
+    """Action distribution that operates on multiple, possibly nested actions.
     """
 
-    def __init__(self,
-                 inputs,
-                 model,
-                 *,
-                 child_distributions,
-                 input_lens,
-                 action_space,
-                 action_space_struct=None):
+    def __init__(self, inputs, model, *, child_distributions, input_lens,
+                 action_space):
+        """Initializes a TorchMultiActionDistribution object.
 
+        Args:
+            inputs (torch.Tensor): A single (super-flattened) torch tensor.
+            model (ModelV2): The ModelV2 object used to produce inputs for this
+                distribution.
+            child_distributions (any[torch.Tensor]): Any struct
+                that contains the child distribution classes to use to
+                instantiate the child distributions from `inputs`. This could
+                be an already flattened list or a struct according to
+                `action_space`.
+            input_lens (any[int]): A flat list or a nested struct of input
+                split lengths used to split `inputs`.
+            action_space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
+                and possibly nested action space.
+        """
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.Tensor(inputs)
         super().__init__(inputs, model)
 
-        self.action_space_struct = action_space_struct
-        if self.action_space_struct is None:
-            self.action_space_struct = get_base_struct_from_space(action_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        input_lens = tree.flatten(input_lens)
+        flat_child_distributions = tree.flatten(child_distributions)
         split_inputs = torch.split(inputs, input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model), child_distributions,
+            lambda dist, input_: dist(input_, model), flat_child_distributions,
             list(split_inputs))
 
     @override(ActionDistribution)
