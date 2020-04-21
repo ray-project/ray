@@ -18,6 +18,7 @@ def serve_instance():
     os.remove(new_db_path)
 
 
+@pytest.fixture
 def ray_instance():
     ray_already_initialized = ray.is_initialized()
     if not ray_already_initialized:
