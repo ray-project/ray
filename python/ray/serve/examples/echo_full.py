@@ -31,7 +31,7 @@ backend_config_v1 = serve.get_backend_config("echo:v1")
 
 # We can link an endpoint to a backend, the means all the traffic
 # goes to my_endpoint will now goes to echo:v1 backend.
-serve.link("my_endpoint", "echo:v1")
+serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
 
 print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).text)
 # The service will be reachable from http
@@ -51,7 +51,7 @@ serve.create_backend(echo_v2, "echo:v2")
 backend_config_v2 = serve.get_backend_config("echo:v2")
 
 # The two backend will now split the traffic 50%-50%.
-serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
+serve.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 # Observe requests are now split between two backends.
 for _ in range(10):

@@ -225,7 +225,7 @@ class ServeMaster:
     def get_all_backends(self):
         return self.backend_table.list_backends()
 
-    async def split_traffic(self, endpoint_name, traffic_policy_dictionary):
+    async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
         assert endpoint_name in self.get_all_endpoints(), \
             f"Attempted to assign traffic for an endpoint '{endpoint_name}'" \
             " that is not registered."

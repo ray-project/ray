@@ -113,7 +113,7 @@ Algorithms
 
 *  Derivative-free
 
-   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+   -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 

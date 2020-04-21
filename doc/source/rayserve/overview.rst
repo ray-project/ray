@@ -171,7 +171,7 @@ It's trivial to also split traffic, simply specify the endpoint and the backends
   serve.create_endpoint("endpoint_identifier_split", "/split", methods=["GET", "POST"])
 
   # splitting traffic 70/30
-  serve.split("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})
+  serve.set_traffic("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})
 
 
 Batching

@@ -33,7 +33,7 @@ def test_http_proxy_failure(serve_instance):
         return "hello1"
 
     serve.create_backend(function, "proxy_failure:v1")
-    serve.link("proxy_failure", "proxy_failure:v1")
+    serve.set_traffic("proxy_failure", {"proxy_failure:v1": 1.0})
 
     assert request_with_retries("/proxy_failure", timeout=0.1).text == "hello1"
 
@@ -47,7 +47,7 @@ def test_http_proxy_failure(serve_instance):
         return "hello2"
 
     serve.create_backend(function, "proxy_failure:v2")
-    serve.link("proxy_failure", "proxy_failure:v2")
+    serve.set_traffic("proxy_failure", {"proxy_failure:v2": 1.0})
 
     for _ in range(10):
         response = request_with_retries("/proxy_failure", timeout=30)
@@ -67,7 +67,7 @@ def test_router_failure(serve_instance):
         return "hello1"
 
     serve.create_backend(function, "router_failure:v1")
-    serve.link("router_failure", "router_failure:v1")
+    serve.set_traffic("router_failure", {"router_failure:v1": 1.0})
 
     assert request_with_retries("/router_failure", timeout=5).text == "hello1"
 
@@ -81,7 +81,7 @@ def test_router_failure(serve_instance):
         return "hello2"
 
     serve.create_backend(function, "router_failure:v2")
-    serve.link("router_failure", "router_failure:v2")
+    serve.set_traffic("router_failure", {"router_failure:v2": 1.0})
 
     for _ in range(10):
         response = request_with_retries("/router_failure", timeout=30)
@@ -106,7 +106,7 @@ def test_worker_restart(serve_instance):
             return os.getpid()
 
     serve.create_backend(Worker1, "worker_failure:v1")
-    serve.link("worker_failure", "worker_failure:v1")
+    serve.set_traffic("worker_failure", {"worker_failure:v1": 1.0})
 
     # Get the PID of the worker.
     old_pid = request_with_retries("/worker_failure", timeout=0.1).text
@@ -164,7 +164,7 @@ def test_worker_replica_failure(serve_instance):
     backend_config = serve.get_backend_config("replica_failure")
     backend_config.num_replicas = 2
     serve.set_backend_config("replica_failure", backend_config)
-    serve.link("replica_failure", "replica_failure")
+    serve.set_traffic("replica_failure", {"replica_failure": 1.0})
 
     # Wait until both replicas have been started.
     responses = set()
