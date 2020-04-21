@@ -52,7 +52,15 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
+  ray::Status CancelTask(
+      const rpc::CancelTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
+    kill_requests.push_front(request);
+    return Status::OK();
+  }
+
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  std::list<rpc::CancelTaskRequest> kill_requests;
 };
 
 class MockTaskFinisher : public TaskFinisherInterface {
@@ -74,6 +82,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_inlined_dependencies += inlined_dependency_ids.size();
     num_contained_ids += contained_ids.size();
   }
+
+  bool MarkTaskCanceled(const TaskID &task_id) override { return; }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -953,7 +963,9 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
 
   // Try force kill, exiting the worker
-  ASSERT_TRUE(submitter.KillTask(task, true).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
+            task.TaskId().Binary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -961,13 +973,16 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
 
   // Try non-force kill, worker returns normally
-  ASSERT_TRUE(submitter.KillTask(task2, false).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, false).ok());
   ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
+            task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -990,7 +1005,36 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_TRUE(submitter.KillTask(task, true).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  ASSERT_EQ(worker_client->kill_requests.size(), 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
+TEST(DirectTaskTransportTest, TestKillResolvingTask) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
+  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  auto data = GenerateRandomObject();
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);

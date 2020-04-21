@@ -17,7 +17,8 @@ class RayConnectionError(RayError):
 
 
 class RayCancellationError(RayError):
-    """Raised when this task or a dependency is cancelled
+    """Raised when this task is cancelled.
+
     Attributes:
         task_id (TaskID): The TaskID of the function that was directly
             cancelled.

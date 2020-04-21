@@ -184,14 +184,14 @@ message KillActorRequest {
 message KillActorReply {
 }
 
-message KillTaskRequest {
+message CancelTaskRequest {
   // ID of task that should be killed.
   bytes intended_task_id = 1; 
   // Whether to kill the worker.
   bool force_kill = 2; 
 }
 
-message KillTaskReply {
+message CancelTaskReply {
   // Whether the requested task is the currently running task. 
   bool attempt_succeeded = 1;
 }
@@ -294,7 +294,7 @@ service CoreWorkerService {
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
-  rpc KillTask(KillTaskRequest) returns (KillTaskReply);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.

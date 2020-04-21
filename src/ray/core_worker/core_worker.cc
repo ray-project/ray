@@ -429,7 +429,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
-          std::move(actor_create_callback)));
+          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -647,6 +647,9 @@ void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   }
 
   // Reset the timer from the previous expiration time to avoid drift.
+  // auto x = std::chrono::high_resolution_clock::now();
+  // auto r = x < death_check_timer_.expiry();
+  // RAY_LOG(ERROR) << "now is less than expire: " << r;
   death_check_timer_.expires_at(
       death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(
@@ -1199,15 +1202,18 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillTask(const ObjectID &object_id, bool force_kill) {
-  if (!object_id.CreatedByTask()) {
-    return Status::Invalid("Not created by a task.");
+Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
+  ActorHandle *h = nullptr;
+  if (!object_id.CreatedByTask() ||
+      GetActorHandle(object_id.TaskId().ActorId(), &h).ok()) {
+    return Status::Invalid("Actor task cancellation is not supported.");
   }
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return direct_task_submitter_->KillTask(task_spec.value(), force_kill);
+    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
+  } else {
+    return Status::Invalid("Task is not locally submitted.");
   }
-  return Status::Invalid("Task is not locally submitted.");
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
@@ -1743,8 +1749,8 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                                             owner_address, ref_removed_callback);
 }
 
-void CoreWorker::HandleKillTask(const rpc::KillTaskRequest &request,
-                                rpc::KillTaskReply *reply,
+void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
+                                rpc::CancelTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());

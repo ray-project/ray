@@ -271,8 +271,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     RAY_CHECK(it->second.pending)
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    num_retries_left =
-        error_type == rpc::ErrorType::TASK_CANCELLED ? 0 : it->second.num_retries_left;
+    num_retries_left = it->second.num_retries_left;
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
@@ -411,6 +410,15 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);
   }
+}
+
+bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it != submissible_tasks_.end()) {
+    it->second.num_retries_left = 0;
+  }
+  return it != submissible_tasks_.end();
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,

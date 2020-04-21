@@ -592,7 +592,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
   /// \param[in] force_kill Whether to force kill a task by killing the worker.
   /// \param[out] Status
-  Status KillTask(const ObjectID &object_id, bool force_kill);
+  Status CancelTask(const ObjectID &object_id, bool force_kill);
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -702,8 +702,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleKillTask(const rpc::KillTaskRequest &request, rpc::KillTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+  void HandleCancelTask(const rpc::CancelTaskRequest &request,
+                        rpc::CancelTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,

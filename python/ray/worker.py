@@ -1661,13 +1661,13 @@ def cancel(object_id, force=False):
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if isinstance(object_id, ray.ObjectID) and object_id.task_id().actor_id(
-    ).hex() not in ray.actors().keys():
-        if len(ray.wait([object_id], timeout=0)[1]) != 1:
-            return
-        return worker.core_worker.kill_task(object_id, force)
-    raise ValueError("ray.cancel() only supported for non-actor object IDs. "
-                     "Got: {}.".format(type(object_id)))
+    if not isinstance(object_id, ray.ObjectID):
+        raise ValueError(
+            "ray.cancel() only supported for non-actor object IDs. "
+            "Got: {}.".format(type(object_id)))
+    if len(ray.wait([object_id], timeout=0)[1]) != 1:
+        return
+    return worker.core_worker.cancel_task(object_id, force)
 
 
 def _mode(worker=global_worker):

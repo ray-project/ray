@@ -56,7 +56,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms,
       std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-          actor_create_callback = nullptr)
+          actor_create_callback = nullptr,
+      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         client_factory_(client_factory),
@@ -65,7 +66,8 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_create_callback_(std::move(actor_create_callback)) {}
+        actor_create_callback_(std::move(actor_create_callback)),
+        cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -75,7 +77,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Either remove a pending task or send an RPC to kill a running task
   ///
   /// \param[in] task_spec The task to kill.
-  Status KillTask(TaskSpecification task_spec, bool force_kill, int num_tries=3);
+  Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -190,7 +192,9 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_set<TaskID> cancelled_tasks_ GUARDED_BY(mu_);
 
   // Keeps track of where currently executing tasks are being run.
-  absl::flat_hash_map<TaskID, rpc::WorkerAddress> sent_tasks_ GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
+
+  absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 };
 
 };  // namespace ray

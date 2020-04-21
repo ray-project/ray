@@ -35,7 +35,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
-  RPC_SERVICE_HANDLER(CoreWorkerService, KillTask)                       \
+  RPC_SERVICE_HANDLER(CoreWorkerService, CancelTask)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
@@ -48,7 +48,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillTask)                       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)

@@ -455,22 +455,23 @@ cdef execute_task(
                 actor_title = "{}({}, {})".format(
                     class_name, repr(args), repr(kwargs))
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
-            # Ensure no previous signals are still around
-            check_signals()
             # Execute the task.
-            with ray.worker._changeproctitle(title, next_title):
-                with core_worker.profile_event(b"task:execute"):
-                    task_exception = True
-                    try:
+            with core_worker.profile_event(b"task:execute"):
+                task_exception = True
+                try:
+                    with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
-                        task_exception = False
-                    except KeyboardInterrupt as e:
-                        raise RayCancellationError(
-                                core_worker.get_current_task_id())
-                    if c_return_ids.size() == 1:
-                        outputs = (outputs,)
-                # Ensure no signals are still around
-            check_signals()
+                    task_exception = False
+                except KeyboardInterrupt as e:
+                    raise RayCancellationError(
+                            core_worker.get_current_task_id())
+                if c_return_ids.size() == 1:
+                    outputs = (outputs,)
+            # Check for late cancellation.
+            if not check_signals().ok():
+                task_exception = True
+                raise RayCancellationError(
+                            core_worker.get_current_task_id())
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -972,12 +973,12 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_reconstruction))
 
-    def kill_task(self, ObjectID object_id, c_bool force_kill):
+    def cancel_task(self, ObjectID object_id, c_bool force_kill):
         cdef:
             CObjectID c_object_id = object_id.native()
             CRayStatus status = CRayStatus.OK()
 
-        status = CCoreWorkerProcess.GetCoreWorker().KillTask(
+        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill)
 
         if not status.ok():
