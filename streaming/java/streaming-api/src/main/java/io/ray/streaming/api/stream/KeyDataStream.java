@@ -57,7 +57,7 @@ public class KeyDataStream<K, T> extends DataStream<T> {
    * The converted stream and this stream are the same logical stream, which has same stream id.
    * Changes in converted stream will be reflected in this stream and vice versa.
    */
-  public PythonKeyDataStream asPython() {
+  public PythonKeyDataStream asPythonStream() {
     return new PythonKeyDataStream(this);
   }
 

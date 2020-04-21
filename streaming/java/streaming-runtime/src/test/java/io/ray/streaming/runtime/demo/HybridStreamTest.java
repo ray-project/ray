@@ -35,10 +35,10 @@ public class HybridStreamTest {
         DataStreamSource.fromCollection(context, Arrays.asList("a", "b", "c"));
     streamSource
         .map(x -> x + x)
-        .asPython()
+        .asPythonStream()
         .map("ray.streaming.tests.test_hybrid_stream", "map_func1")
         .filter("ray.streaming.tests.test_hybrid_stream", "filter_func1")
-        .asJava()
+        .asJavaStream()
         .sink(x -> System.out.println("HybridStreamTest: " + x));
     context.execute("HybridStreamTestJob");
     TimeUnit.SECONDS.sleep(3);

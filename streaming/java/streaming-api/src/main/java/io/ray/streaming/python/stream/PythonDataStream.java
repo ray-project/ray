@@ -158,7 +158,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    * The converted stream and this stream are the same logical stream, which has same stream id.
    * Changes in converted stream will be reflected in this stream and vice versa.
    */
-  public DataStream<Object> asJava() {
+  public DataStream<Object> asJavaStream() {
     return new DataStream<>(this);
   }
 

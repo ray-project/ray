@@ -15,8 +15,8 @@ public class StreamTest {
   public void testReferencedDataStream() {
     DataStream dataStream = new DataStream(StreamingContext.buildContext(),
         new MapOperator(value -> null));
-    PythonDataStream pythonDataStream = dataStream.asPython();
-    DataStream javaStream = pythonDataStream.asJava();
+    PythonDataStream pythonDataStream = dataStream.asPythonStream();
+    DataStream javaStream = pythonDataStream.asJavaStream();
     assertEquals(dataStream.getId(), pythonDataStream.getId());
     assertEquals(dataStream.getId(), javaStream.getId());
     javaStream.setParallelism(10);
@@ -29,8 +29,8 @@ public class StreamTest {
     DataStream dataStream = new DataStream(StreamingContext.buildContext(),
         new MapOperator(value -> null));
     KeyDataStream keyDataStream = dataStream.keyBy(value -> null);
-    PythonKeyDataStream pythonKeyDataStream = keyDataStream.asPython();
-    KeyDataStream javaKeyDataStream = pythonKeyDataStream.asJava();
+    PythonKeyDataStream pythonKeyDataStream = keyDataStream.asPythonStream();
+    KeyDataStream javaKeyDataStream = pythonKeyDataStream.asJavaStream();
     assertEquals(keyDataStream.getId(), pythonKeyDataStream.getId());
     assertEquals(keyDataStream.getId(), javaKeyDataStream.getId());
     javaKeyDataStream.setParallelism(10);

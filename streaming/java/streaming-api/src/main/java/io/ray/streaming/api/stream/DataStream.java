@@ -167,7 +167,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * The converted stream and this stream are the same logical stream, which has same stream id.
    * Changes in converted stream will be reflected in this stream and vice versa.
    */
-  public PythonDataStream asPython() {
+  public PythonDataStream asPythonStream() {
     return new PythonDataStream(this);
   }
 

@@ -45,7 +45,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
    * The converted stream and this stream are the same logical stream, which has same stream id.
    * Changes in converted stream will be reflected in this stream and vice versa.
    */
-  public KeyDataStream<Object, Object> asJava() {
+  public KeyDataStream<Object, Object> asJavaStream() {
     return new KeyDataStream(this);
   }
 
