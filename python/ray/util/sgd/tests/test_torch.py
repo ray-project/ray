@@ -470,6 +470,7 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
+        scheduler_step_freq="manual",
         training_operator_cls=_TestingOperator)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
