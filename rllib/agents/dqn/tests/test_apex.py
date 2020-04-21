@@ -31,11 +31,12 @@ class TestApex(unittest.TestCase):
                 lambda p, _: p.get_exploration_info())
             eps = [i["cur_epsilon"] for i in infos]
             assert np.allclose(eps, [0.0, 0.4, 0.016190862, 0.00065536])
-            trainer.stop()
 
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+
+            trainer.stop()
 
 
 if __name__ == "__main__":
