@@ -219,7 +219,7 @@ class ServeMaster:
         return expand(
             self.route_table.list_service(include_headless=True).values())
 
-    async def split_traffic(self, endpoint_name, traffic_policy_dictionary):
+    async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
         assert endpoint_name in expand(
             self.route_table.list_service(include_headless=True).values())
 
