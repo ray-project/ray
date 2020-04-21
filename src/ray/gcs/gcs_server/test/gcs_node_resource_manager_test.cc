@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/test/gcs_test_util.h>
-
-#include <memory>
 #include "gtest/gtest.h"
 
 #include "ray/gcs/gcs_server/gcs_node_resource_manager.h"
 
 namespace ray {
+
 class GcsNodeResourceManagerTest : public ::testing::Test {};
 
 TEST_F(GcsNodeResourceManagerTest, TestApi) {
