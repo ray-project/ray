@@ -29,7 +29,7 @@ py_test(
 py_test(
     name = "test_nonblocking",
     size = "small",
-    srcs = glob(["tests/conftest.py", "tests/test_nonblocking.py"]),
+    srcs = glob(["tests/test_nonblocking.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
