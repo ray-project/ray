@@ -119,6 +119,7 @@ trainer = TorchTrainer(
     optimizer_creator=optimizer_creator,
     loss_creator=nn.MSELoss,
     scheduler_creator=scheduler_creator,
+    scheduler_step_freq="epoch",  # if scheduler_creator is set
     config={"lr": 0.001, "batch_size": 64})
 
 # __torch_trainer_end__
