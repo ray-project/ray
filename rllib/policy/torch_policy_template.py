@@ -24,6 +24,7 @@ def build_torch_policy(name,
                        after_init=None,
                        action_sampler_fn=None,
                        action_distribution_fn=None,
+                       make_model=None,
                        make_model_and_action_dist=None,
                        apply_gradients_fn=None,
                        mixins=None,
@@ -62,11 +63,16 @@ def build_torch_policy(name,
             a) distribution inputs (parameters), b) a dist-class to generate
             an action distribution object from, and c) internal-state outputs
             (empty list if not applicable).
+        make_model (Optional[callable]): Optional func that
+            takes the same arguments as Policy.__init__ and returns a model
+            instance. The distribution class will be determined automatically.
+            Note: Only one of `make_model` or `make_model_and_action_dist`
+            should be provided.
         make_model_and_action_dist (Optional[callable]): Optional func that
             takes the same arguments as Policy.__init__ and returns a tuple
-            of model instance and torch action distribution class. If not
-            specified, the default model and action dist from the catalog will
-            be used.
+            of model instance and torch action distribution class.
+            Note: Only one of `make_model` or `make_model_and_action_dist`
+            should be provided.
         apply_gradients_fn (Optional[callable]): Optional callable that
             takes a grads list and applies these to the Model's parameters.
         mixins (list): list of any class mixins for the returned policy class.
@@ -91,13 +97,18 @@ def build_torch_policy(name,
             if before_init:
                 before_init(self, obs_space, action_space, config)
 
-            if make_model_and_action_dist:
+            # Model is customized (use default action dist class).
+            if make_model:
+                assert make_model_and_action_dist is None
+                self.model = make_model(
+                    self, obs_space, action_space, config)
+                dist_class, _ = ModelCatalog.get_action_dist(
+                    action_space, self.config["model"], framework="torch")
+            # Model and action dist class are customized.
+            elif make_model_and_action_dist:
                 self.model, dist_class = make_model_and_action_dist(
                     self, obs_space, action_space, config)
-                # Make sure, we passed in a correct Model factory.
-                assert isinstance(self.model, TorchModelV2), \
-                    "ERROR: TorchPolicy::make_model_and_action_dist must " \
-                    "return a TorchModelV2 object!"
+            # Use default model and default action dist.
             else:
                 dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], framework="torch")
@@ -108,6 +119,10 @@ def build_torch_policy(name,
                     model_config=self.config["model"],
                     framework="torch",
                     **self.config["model"].get("custom_options", {}))
+
+            # Make sure, we passed in a correct Model factory.
+            assert isinstance(self.model, TorchModelV2), \
+                "ERROR: Generated Model must be a TorchModelV2 object!"
 
             TorchPolicy.__init__(
                 self,

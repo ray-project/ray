@@ -6,9 +6,10 @@ import numpy as np
 import logging
 import gym
 
-from ray.rllib.agents.impala import vtrace
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-    clip_gradients, validate_config, choose_optimizer
+    choose_optimizer
 from ray.rllib.agents.ppo.appo_tf_policy import add_values, build_appo_model, \
     postprocess_trajectory, POLICY_SCOPE, TARGET_POLICY_SCOPE
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
@@ -24,11 +25,6 @@ from ray.rllib.utils.torch_ops import global_norm, sequence_mask
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
-
-
-def build_appo_model_and_dist_class():
-    model = build_appo_model()
-    return model, TODO
 
 
 class PPOSurrogateLoss:
@@ -184,7 +180,7 @@ class VTraceSurrogateLoss:
             dist_class=dist_class,
             model=model,
             clip_rho_threshold=clip_rho_threshold.float(),
-            clip_pg_rho_threshold=clip_pg_rho_threshold.float()).to(CPU TODO)
+            clip_pg_rho_threshold=clip_pg_rho_threshold.float()).cpu()
 
         self.is_ratio = torch.clamp(
             torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
@@ -390,11 +386,10 @@ AsyncPPOTorchPolicy = build_torch_policy(
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     extra_action_out_fn=add_values,
-    gradients_fn=clip_gradients,
+    extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
-    before_init=validate_config,
     after_init=setup_mixins,
-    make_model_and_action_dist=build_appo_model_and_dist_class,
+    make_model=build_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin

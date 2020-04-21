@@ -89,9 +89,15 @@ def get_policy_class(config):
         return AsyncPPOTFPolicy
 
 
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
+
+
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=AsyncPPOTFPolicy,
     get_policy_class=get_policy_class,
     after_init=initialize_target,

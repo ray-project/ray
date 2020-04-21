@@ -34,7 +34,7 @@ class TestAPPO(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf", "eager")):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
