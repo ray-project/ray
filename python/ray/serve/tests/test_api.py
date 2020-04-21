@@ -53,6 +53,38 @@ def test_no_route(serve_instance):
     assert result == 1
 
 
+def test_reject_duplicate_backend_tag(serve_instance):
+    backend_name = "foo"
+    serve.create_backend(lambda foo: foo, backend_name)
+    with pytest.raises(AssertionError):
+        serve.create_backend(lambda foo: foo, backend_name)
+
+
+def test_reject_duplicate_route(serve_instance):
+    route = "/foo"
+    serve.create_endpoint("bar", route=route)
+    with pytest.raises(AssertionError):
+        serve.create_endpoint("foo", route=route)
+
+
+def test_reject_duplicate_endpoint(serve_instance):
+    endpoint_name = "foo"
+    serve.create_endpoint(endpoint_name, route="/ok")
+    with pytest.raises(AssertionError):
+        serve.create_endpoint(endpoint_name, route="/different")
+
+
+def test_reject_link_missing_data(serve_instance):
+    endpoint_name = "foobar"
+    backend_name = "foo_backend"
+    serve.create_endpoint(endpoint_name)
+    serve.create_backend(lambda: 5, backend_name)
+    with pytest.raises(AssertionError):
+        serve.link(endpoint_name, "nonexistant_backend")
+    with pytest.raises(AssertionError):
+        serve.link("nonexistant_endpoint_name", backend_name)
+
+
 def test_scaling_replicas(serve_instance):
     class Counter:
         def __init__(self):
@@ -105,10 +137,10 @@ def test_batching(serve_instance):
             batch_size = serve.context.batch_size
             return [self.count] * batch_size
 
-    serve.create_endpoint("counter1", "/increment")
+    serve.create_endpoint("counter1", "/increment2")
 
     # Keep checking the routing table until /increment is populated
-    while "/increment" not in requests.get(
+    while "/increment2" not in requests.get(
             "http://127.0.0.1:8000/-/routes").json():
         time.sleep(0.2)
 
