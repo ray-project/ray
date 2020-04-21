@@ -26,8 +26,8 @@ namespace rpc {
 class DefaultJobInfoHandler : public rpc::JobInfoHandler {
  public:
   explicit DefaultJobInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                 const std::shared_ptr<gcs::RedisClient> &redis_client)
-      : gcs_client_(gcs_client), gcs_pub_sub_(redis_client) {}
+                                 const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
 
   void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                     SendReplyCallback send_reply_callback) override;
@@ -38,7 +38,7 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
-  gcs::GcsPubSub gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace rpc

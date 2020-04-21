@@ -40,6 +40,9 @@ void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
 
+  /// Init gcs pub sub
+  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
+
   // Init gcs node_manager
   InitGcsNodeManager();
 

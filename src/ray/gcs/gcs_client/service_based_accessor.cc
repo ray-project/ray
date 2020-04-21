@@ -318,22 +318,20 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
-  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
-      request, [this, node_id, &promise](const Status &status,
+      request, [this, node_id](const Status &status,
                                          const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
-        promise.set_value(status);
       });
-  return promise.get_future().get();
+  return Status::OK();
 }
 
 const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
@@ -403,22 +401,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  auto on_subscribe = [this, subscribe](const std::string &id, const std::string &data) {
+  auto on_subscribe = [this](const std::string &id, const std::string &data) {
     GcsNodeInfo node_info;
     node_info.ParseFromString(data);
     HandleNotification(node_info);
   };
 
-  // Callback to request notifications from the client table once we've
-  // successfully subscribed.
-  auto on_done = [subscribe, done](const Status &status) {
-    if (done != nullptr) {
-      done(status);
-    }
-  };
-
   auto status =
-      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
+      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }

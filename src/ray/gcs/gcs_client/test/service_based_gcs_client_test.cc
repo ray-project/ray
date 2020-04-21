@@ -503,6 +503,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   ASSERT_TRUE(RegisterActor(actor_table_data));
   ASSERT_TRUE(GetActor(actor_id).state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  WaitPendingDone(actor_update_count, 1);
 
   // Cancel subscription to an actor.
   ASSERT_TRUE(UnsubscribeActor(actor_id));
@@ -513,7 +514,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
   ASSERT_TRUE(GetActor(actor_id).state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  WaitPendingDone(actor_update_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
@@ -603,7 +603,8 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Cancel registration of a node to GCS.
   ASSERT_TRUE(UnregisterNode(node2_id));
-  WaitPendingDone(unregister_count, 1);
+  RAY_LOG(INFO) << "unregister_count = " << unregister_count;
+  WaitPendingDone(unregister_count, 2);
 
   // Get information of all nodes from GCS.
   node_list = GetNodeInfoList();
