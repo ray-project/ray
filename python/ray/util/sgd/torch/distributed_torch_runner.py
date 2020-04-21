@@ -216,16 +216,14 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
 
         reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
 
-        if reserved_device == cuda_device:
-            logger.info("Devices match: %s and %s", reserved_device,
-                        cuda_device)
-            success = True
-            break
-        else:
+        if cuda_device and not reserved_device == cuda_device:
             logger.info("Devices don't match: %s and %s", reserved_device,
                         cuda_device)
             _dummy_actor.__ray_terminate__.remote()
             _dummy_actor = None
+        else:
+            success = True
+            break
 
     if not success:
         raise RuntimeError(
