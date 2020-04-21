@@ -29,11 +29,11 @@ def test_data_stream():
     ctx = StreamingContext.Builder().build()
     stream = ctx.from_values("a", "b", "c") \
         .as_java() \
-        .map("org.ray.streaming.runtime.demo.CrossLangStreamTest$Mapper1") \
-        .filter("org.ray.streaming.runtime.demo.CrossLangStreamTest$Filter1") \
+        .map("io.ray.streaming.runtime.demo.HybridStreamTest$Mapper1") \
+        .filter("io.ray.streaming.runtime.demo.HybridStreamTest$Filter1") \
         .as_python() \
-        .sink(print)
-    ctx.submit("hybrid_stream_test")
+        .sink(lambda x: print("HybridStreamTest", x))
+    ctx.submit("HybridStreamTest")
     import time
     time.sleep(3)
     ray.shutdown()

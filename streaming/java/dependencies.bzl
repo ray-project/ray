@@ -7,6 +7,7 @@ def gen_streaming_java_deps():
             "com.beust:jcommander:1.72",
             "com.google.guava:guava:27.0.1-jre",
             "com.google.code.findbugs:jsr305:3.0.2",
+            "com.google.code.gson:gson:2.8.5",
             "com.github.davidmoten:flatbuffers-java:1.9.0.1",
             "com.google.protobuf:protobuf-java:3.8.0",
             "org.apache.commons:commons-lang3:3.4",
