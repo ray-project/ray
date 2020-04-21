@@ -87,7 +87,6 @@ class DistributedTorchRunner(TorchRunner):
         self._wrap_dataloaders()
 
         training_models = self.models
-        print(device_ids)
         if self.wrap_ddp:
             # This needs to happen after apex
             training_models = [
@@ -219,12 +218,12 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
 
         if reserved_device == cuda_device:
             logger.info("Devices match: %s and %s", reserved_device,
-                         cuda_device)
+                        cuda_device)
             success = True
             break
         else:
             logger.info("Devices don't match: %s and %s", reserved_device,
-                         cuda_device)
+                        cuda_device)
             _dummy_actor.__ray_terminate__.remote()
             _dummy_actor = None
 
@@ -258,29 +257,41 @@ class LocalDistributedRunner(DistributedTorchRunner):
             preset_device = os.environ.get("CUDA_VISIBLE_DEVICES")
             if not preset_device:
                 if torch.cuda.is_initialized():
-                    # Once cuda is initialized, Torch ignores the os.env
-                    # so we have to set the right actual device.
                     device = reserve_cuda_device(num_gpus)
-                    self.set_cuda_device(device)
+                    # This needs to be set even if torch.cuda is already
+                    # initialized because the env var is used later when
+                    # starting the DDP setup.
+                    os.environ["CUDA_VISIBLE_DEVICES"] = device
+
+                    # Once cuda is initialized, torch.device ignores the os.env
+                    # so we have to set the right actual device.
+                    self._set_cuda_device(device)
+
                 else:
-                    # if CUDA is not initialized, we can set the os.env
+                    # if CUDA is not initialized, we can set the os.env.
+                    # and make Torch think it only sees 1 GPU.
                     device = reserve_cuda_device(num_gpus)
                     os.environ["CUDA_VISIBLE_DEVICES"] = device
-                    _init_cuda_context()
-                    self.set_cuda_device("0")
+                    self._set_cuda_device("0")
             else:
                 device = reserve_cuda_device(num_gpus, match_devices=True)
+                # This needs to be set even if torch.cuda is initialized
+                # because the env var is used later when starting the DDP setup
                 os.environ["CUDA_VISIBLE_DEVICES"] = device
-                _init_cuda_context()
-                print('setting a device')
-                self.set_cuda_device("0")
+                # Make Torch think it only sees 1 GPU.
+                self._set_cuda_device("0")
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def set_cuda_device(self, device_str):
+    def _set_cuda_device(self, device_str):
+        """Sets the CUDA device for this current local worker."""
         if self._is_set:
             raise Exception("should not be set twice..")
         self._is_set = True
+
+        # This is idempotent. We need to call it
+        # before we call 'set_device'.
+        _init_cuda_context()
         assert isinstance(device_str, str)
         self.local_device = device_str
         logger.info("Setting local device: %s", self.local_device)
