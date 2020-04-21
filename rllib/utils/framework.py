@@ -192,7 +192,9 @@ def get_variable(value,
             tf_name, initializer=value, dtype=dtype, trainable=trainable)
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
-        var_ = torch.from_numpy(value).to(device)
+        var_ = torch.from_numpy(value)
+        if device:
+            var_ = var_.to(device)
         var_.requires_grad = trainable
         return var_
     # torch or None: Return python primitive.
@@ -212,15 +214,15 @@ def get_activation_fn(name, framework="tf"):
             torch.nn.ReLU. Returns None for name="linear".
     """
     if framework == "torch":
-        _, nn = try_import_torch()
-        if name == "linear":
+        if name == "linear" or name is None:
             return None
-        elif name == "relu":
+        _, nn = try_import_torch()
+        if name == "relu":
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
     else:
-        if name == "linear":
+        if name == "linear" or name is None:
             return None
         tf = try_import_tf()
         fn = getattr(tf.nn, name, None)

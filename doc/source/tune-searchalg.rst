@@ -194,7 +194,7 @@ The ``DragonflySearch`` is a SearchAlgorithm that is backed by `Dragonfly <https
 
 .. code-block:: bash
 
-    $ pip install dragonfly
+    $ pip install dragonfly-opt
 
 This algorithm requires using the `Dragonfly ask and tell interface <https://dragonfly-opt.readthedocs.io/en/master/getting_started_ask_tell/>`__. This interface requires using FunctionCallers and optimizers provided by Dragonfly. You can use `DragonflySearch` like follows:
 
