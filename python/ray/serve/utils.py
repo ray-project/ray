@@ -146,7 +146,8 @@ def retry_actor_failures(f, *args, **kwargs):
             return ray.get(f.remote(*args, **kwargs))
         except ray.exceptions.RayActorError:
             logger.warning(
-                "Actor method '{}' failed, retrying after 100ms".format("XXX"))
+                "Actor method '{}' failed, retrying after 100ms".format(
+                    f._method_name))
             time.sleep(0.1)
 
 
@@ -155,7 +156,8 @@ async def retry_actor_failures_async(f, *args, **kwargs):
         result = await f.remote(*args, **kwargs)
         if isinstance(result, ray.exceptions.RayActorError):
             logger.warning(
-                "Actor method '{}' failed, retrying after 100ms".format("XXX"))
+                "Actor method '{}' failed, retrying after 100ms".format(
+                    f._method_name))
             await asyncio.sleep(0.1)
         else:
             return result
