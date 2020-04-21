@@ -67,6 +67,8 @@ class PrometheusSinkActor(PrometheusSink):
     pass
 
 
+# The metric types are inspired by OpenTelemetry spec:
+# https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/metrics/api.md#three-kinds-of-instrument
 class Counter:
     def __init__(self, collector, name):
         self.collector = collector
