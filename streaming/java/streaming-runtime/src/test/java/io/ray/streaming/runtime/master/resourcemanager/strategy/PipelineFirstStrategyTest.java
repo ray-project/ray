@@ -57,14 +57,11 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
   }
 
   @Test
-  public void testStrategyName() {
-    Assert
-        .assertEquals(ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
-  }
-
-  @Test
-  public void testAssignResource() {
+  public void testResourceAssignment() {
     strategy = new PipelineFirstStrategy();
+    Assert.assertEquals(
+        ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
+
     Map<String, String> jobConf = new HashMap<>();
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
