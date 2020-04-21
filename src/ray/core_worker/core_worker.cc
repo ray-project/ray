@@ -1086,10 +1086,9 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-Status CoreWorker::SubmitTask(const RayFunction &function,
-                              const std::vector<TaskArg> &args,
-                              const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids, int max_retries) {
+void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                            const TaskOptions &task_options,
+                            std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1104,11 +1103,13 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       task_options.resources, required_resources, return_ids);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
-    return ExecuteTaskLocalMode(task_spec);
+    ExecuteTaskLocalMode(task_spec);
   } else {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
                                   CurrentCallSite(), max_retries);
-    return direct_task_submitter_->SubmitTask(task_spec);
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+    });
   }
 }
 
@@ -1139,7 +1140,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   Status status;
   if (options_.is_local_mode) {
-    status = ExecuteTaskLocalMode(task_spec);
+    ExecuteTaskLocalMode(task_spec);
   } else {
     task_manager_->AddPendingTask(
         GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
@@ -1187,16 +1188,17 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
-    return ExecuteTaskLocalMode(task_spec, actor_id);
-  }
-  task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                CurrentCallSite());
-  if (actor_handle->IsDead()) {
-    auto status = Status::IOError("sent task to dead actor");
-    task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
-                                     &status);
+    ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite());
+    if (actor_handle->IsDead()) {
+      auto status = Status::IOError("sent task to dead actor");
+      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
+                                       &status);
+    } else {
+      status = direct_actor_submitter_->SubmitTask(task_spec);
+    }
   }
   return status;
 }
@@ -1507,8 +1509,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   return status;
 }
 
-Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
-                                        const ActorID &actor_id) {
+void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                                      const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
   auto return_objects = std::vector<std::shared_ptr<RayObject>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
@@ -1520,10 +1522,8 @@ Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  auto status = ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs);
+  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs));
   SetActorId(old_id);
-  // TODO(ilr): Maybe not necessary
-  return status;
 }
 
 Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
