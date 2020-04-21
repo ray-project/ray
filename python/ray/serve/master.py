@@ -72,6 +72,8 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_sink = None
 
+        self.start_metric_sink()
+
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
 
@@ -111,8 +113,10 @@ class ServeMaster:
 
     def start_metric_sink(self):
         assert self.metric_sink is None, "Metric sink already started."
-        # TODO: set max_reconstructions
-        self.metric_sink = PrometheusSinkActor.remote()
+        self.metric_sink = async_retryable(PrometheusSinkActor).options(
+            max_concurrency=ASYNC_CONCURRENCY,
+            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        ).remote()
 
     def get_metric_sink(self):
         assert self.metric_sink is not None, ("Metric sink not started yet.")

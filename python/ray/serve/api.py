@@ -140,8 +140,6 @@ def init(
     master_actor = ServeMaster.options(
         detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
 
-    ray.get(master_actor.start_metric_sink.remote())
-
     ray.get(
         master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
 
