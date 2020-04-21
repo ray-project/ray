@@ -26,6 +26,7 @@ Result = namedtuple("Result", [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    "action_noise_std": 0.01,
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
     "episodes_per_batch": 1000,
@@ -177,8 +178,6 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        policy_params = {"action_noise_std": 0.01}
-        config.update(policy_params)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
         policy_cls = get_policy_class(config)
@@ -197,8 +196,8 @@ class ESTrainer(Trainer):
         # Create the actors.
         logger.info("Creating actors.")
         self._workers = [
-            Worker.remote(config, policy_params, env_creator, noise_id,
-                          idx + 1) for idx in range(config["num_workers"])
+            Worker.remote(config, {}, env_creator, noise_id, idx + 1)
+            for idx in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0

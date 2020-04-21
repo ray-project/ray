@@ -12,7 +12,7 @@ Feature Compatibility Matrix
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 =================== ========== ======================= ================== =========== =====================
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
-`ARS`_              tf         **Yes**                 **Yes**            No
+`ARS`_              tf + torch **Yes**                 **Yes**            No
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf         No                      **Yes**            **Yes**
@@ -405,7 +405,7 @@ Derivative-free
 
 Augmented Random Search (ARS)
 -----------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.07055>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ars/ars.py>`__
 ARS is a random search method for training linear policies for continuous control problems. Code here is adapted from https://github.com/modestyachts/ARS to integrate with RLlib APIs.
 
