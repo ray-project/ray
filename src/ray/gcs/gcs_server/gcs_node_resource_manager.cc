@@ -33,24 +33,21 @@ void GcsNodeResourceManager::DeleteNodeResources(
   }
 }
 
-bool GcsNodeResourceManager::GetNodeResources(
-    const ClientID &node_id, const std::vector<std::string> &resource_names,
-    NodeInfoAccessor::ResourceMap *resources) {
+boost::optional<NodeInfoAccessor::ResourceMap> GcsNodeResourceManager::GetNodeResources(
+    const ClientID &node_id, const std::vector<std::string> &resource_names) {
   absl::MutexLock lock(&mutex_);
-  if (!nodes_resource_cache_.count(node_id)) {
-    return false;
-  }
-
-  NodeInfoAccessor::ResourceMap result;
-  for (auto &resource_name : resource_names) {
-    auto it = nodes_resource_cache_[node_id].find(resource_name);
-    if (it == nodes_resource_cache_[node_id].end()) {
-      return false;
+  if (nodes_resource_cache_.count(node_id)) {
+    NodeInfoAccessor::ResourceMap result;
+    for (auto &resource_name : resource_names) {
+      auto it = nodes_resource_cache_[node_id].find(resource_name);
+      if (it == nodes_resource_cache_[node_id].end()) {
+        return boost::none;
+      }
+      result[resource_name] = it->second;
     }
-    result[resource_name] = it->second;
+    return std::move(result);
   }
-  resources->insert(result.begin(), result.end());
-  return true;
+  return boost::none;
 }
 
 }  // namespace gcs

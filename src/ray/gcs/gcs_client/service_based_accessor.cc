@@ -318,17 +318,17 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().UnregisterNode(
-      request, [this, node_id](const Status &status,
-                                         const rpc::UnregisterNodeReply &reply) {
+      request,
+      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
+        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -417,14 +417,10 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const ClientID &node_id) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
-  auto found = (entry != node_cache_.end());
-
-  boost::optional<GcsNodeInfo> optional_node;
-  if (found) {
-    GcsNodeInfo node_info = entry->second;
-    optional_node = std::move(node_info);
+  if (entry != node_cache_.end()) {
+    return entry->second;
   }
-  return optional_node;
+  return boost::none;
 }
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()

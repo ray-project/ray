@@ -43,10 +43,9 @@ class GcsNodeResourceManager {
   ///
   /// \param node_id ID of the node to get the specified resource.
   /// \param resource_names The names of the resource to get.
-  /// \return Whether the resource is obtained successfully.
-  bool GetNodeResources(const ClientID &node_id,
-                        const std::vector<std::string> &resource_names,
-                        NodeInfoAccessor::ResourceMap *resources);
+  /// \return Node resource found.
+  boost::optional<NodeInfoAccessor::ResourceMap> GetNodeResources(
+      const ClientID &node_id, const std::vector<std::string> &resource_names);
 
  private:
   /// Mutex to protect the nodes_resource_cache_ field.

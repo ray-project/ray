@@ -36,16 +36,12 @@ TEST_F(GcsNodeResourceManagerTest, TestApi) {
   // Test GetNodeResources.
   std::vector<std::string> resource_names;
   resource_names.push_back(attr1);
-  gcs::NodeInfoAccessor::ResourceMap get_result;
-  ASSERT_TRUE(
-      node_resource_manager.GetNodeResources(node_id, resource_names, &get_result));
-  ASSERT_EQ(get_result.size(), 1);
-  get_result.clear();
+  auto get_result = node_resource_manager.GetNodeResources(node_id, resource_names);
+  ASSERT_EQ(get_result->size(), 1);
 
   // Test DeleteNodeResources.
   node_resource_manager.DeleteNodeResources(node_id, resource_names);
-  ASSERT_FALSE(
-      node_resource_manager.GetNodeResources(node_id, resource_names, &get_result));
+  ASSERT_TRUE(node_resource_manager.GetNodeResources(node_id, resource_names)->empty());
 }
 
 }  // namespace ray

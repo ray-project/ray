@@ -200,13 +200,11 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
 
-  gcs::NodeInfoAccessor::ResourceMap resources;
-  bool is_cached =
-      gcs_node_resource_manager_.GetNodeResources(node_id, resource_names, &resources);
+  auto resources = gcs_node_resource_manager_.GetNodeResources(node_id, resource_names);
   gcs_node_resource_manager_.DeleteNodeResources(node_id, resource_names);
 
-  if (is_cached) {
-    DeleteResources(node_id, resource_names, resources, reply, send_reply_callback);
+  if (resources) {
+    DeleteResources(node_id, resource_names, *resources, reply, send_reply_callback);
   } else {
     auto on_done =
         [this, node_id, resource_names, reply, send_reply_callback](
