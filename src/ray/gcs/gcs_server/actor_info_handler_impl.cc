@@ -77,8 +77,8 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_.Publish(ACTOR_CHANNEL, actor_id.Binary(),
-                                        actor_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                         actor_table_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
@@ -107,8 +107,8 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
     } else {
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
-      RAY_CHECK_OK(gcs_pub_sub_.Publish(ACTOR_CHANNEL, actor_id.Binary(),
-                                        actor_table_data->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                         actor_table_data->SerializeAsString(), nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

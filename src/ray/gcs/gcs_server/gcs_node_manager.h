@@ -38,7 +38,7 @@ class GcsNodeManager {
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor,
-                          std::shared_ptr<gcs::RedisClient> redis_client);
+                          const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub);
 
   /// Add an alive node.
   ///
@@ -132,7 +132,7 @@ class GcsNodeManager {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing heartbeat batch messages.
-  gcs::GcsPubSub gcs_pub_sub_;
+  const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace gcs

@@ -28,10 +28,10 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  public:
   explicit DefaultWorkerInfoHandler(gcs::RedisGcsClient &gcs_client,
                                     gcs::GcsActorManager &gcs_actor_manager,
-                                    const std::shared_ptr<gcs::RedisClient> &redis_client)
+                                    const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
       : gcs_client_(gcs_client),
         gcs_actor_manager_(gcs_actor_manager),
-        gcs_pub_sub_(redis_client) {}
+        gcs_pub_sub_(gcs_pub_sub) {}
 
   void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                  ReportWorkerFailureReply *reply,
@@ -44,7 +44,7 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
  private:
   gcs::RedisGcsClient &gcs_client_;
   gcs::GcsActorManager &gcs_actor_manager_;
-  gcs::GcsPubSub gcs_pub_sub_;
+  const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace rpc

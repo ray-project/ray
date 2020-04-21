@@ -38,7 +38,7 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
-  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
+  const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace rpc

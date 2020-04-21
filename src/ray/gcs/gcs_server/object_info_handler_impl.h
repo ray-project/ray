@@ -26,8 +26,8 @@ namespace rpc {
 class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
  public:
   explicit DefaultObjectInfoHandler(gcs::RedisGcsClient &gcs_client,
-                                    const std::shared_ptr<gcs::RedisClient> &redis_client)
-      : gcs_client_(gcs_client), gcs_pub_sub_(redis_client) {}
+                                    const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
 
   void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
                                 GetObjectLocationsReply *reply,
@@ -45,7 +45,7 @@ class DefaultObjectInfoHandler : public rpc::ObjectInfoHandler {
   ObjectChange GenObjectChange(const ClientID &node_id, bool is_add);
 
   gcs::RedisGcsClient &gcs_client_;
-  gcs::GcsPubSub gcs_pub_sub_;
+  const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace rpc

@@ -59,7 +59,7 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_sub_.Publish(
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Binary(),
           GenObjectChange(node_id, true).SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
@@ -88,7 +88,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_sub_.Publish(
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Binary(),
           GenObjectChange(node_id, false).SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "

@@ -23,12 +23,12 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
                                gcs::ErrorInfoAccessor &error_info_accessor,
-                               std::shared_ptr<gcs::RedisClient> redis_client)
+                               const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service),
-      gcs_pub_sub_(redis_client) {
+      gcs_pub_sub_(gcs_pub_sub) {
   Start();
 }
 
@@ -122,8 +122,8 @@ void GcsNodeManager::SendBatchedHeartbeat() {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
     RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, nullptr));
-    RAY_CHECK_OK(gcs_pub_sub_.Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Binary(),
-                                      batch->SerializeAsString(), nullptr));
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Binary(),
+                                       batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
   }
 }
