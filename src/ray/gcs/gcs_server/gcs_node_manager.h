@@ -24,6 +24,7 @@
 
 namespace ray {
 namespace gcs {
+
 /// GcsNodeManager is responsible for managing and monitoring nodes.
 /// This class is not thread-safe.
 class GcsNodeManager {
@@ -38,6 +39,13 @@ class GcsNodeManager {
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor);
 
+  /// Handle a heartbeat from a Raylet.
+  ///
+  /// \param node_id The client ID of the Raylet that sent the heartbeat.
+  /// \param heartbeat_data The heartbeat sent by the client.
+  void HandleHeartbeat(const ClientID &node_id,
+                       const rpc::HeartbeatTableData &heartbeat_data);
+
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
@@ -46,7 +54,9 @@ class GcsNodeManager {
   /// Remove from alive nodes.
   ///
   /// \param node_id The ID of the node to be removed.
-  void RemoveNode(const ClientID &node_id);
+  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
+  /// True.
+  void RemoveNode(const ClientID &node_id, bool is_intended = false);
 
   /// Get alive node by ID.
   ///
@@ -58,7 +68,9 @@ class GcsNodeManager {
   ///
   /// \return all alive nodes.
   const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-      &GetAllAliveNodes() const;
+      &GetAllAliveNodes() const {
+    return alive_nodes_;
+  }
 
   /// Add listener to monitor the remove action of nodes.
   ///
@@ -78,51 +90,78 @@ class GcsNodeManager {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Handle a heartbeat from a Raylet.
-  ///
-  /// \param node_id The client ID of the Raylet that sent the heartbeat.
-  /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &node_id,
-                       const rpc::HeartbeatTableData &heartbeat_data);
-
  protected:
-  /// Listen for heartbeats from Raylets and mark Raylets
-  /// that do not send a heartbeat within a given period as dead.
-  void Start();
+  class NodeFailureDetector {
+   public:
+    /// Create a NodeFailureDetector.
+    ///
+    /// \param io_service The event loop to run the monitor on.
+    /// \param node_info_accessor The node info accessor.
+    explicit NodeFailureDetector(boost::asio::io_service &io_service,
+                                 gcs::NodeInfoAccessor &node_info_accessor);
 
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
+    /// Register node to this detector.
+    /// Only if the node has registered, its heartbeat data will be accepted.
+    ///
+    /// \param node_id ID of the node to be registered.
+    void RegisterNode(const ClientID &node_id);
 
-  /// Check that if any raylet is inactive due to no heartbeat for a period of time.
-  /// If found any, mark it as dead.
-  void DetectDeadNodes();
+    /// Handle a heartbeat from a Raylet.
+    ///
+    /// \param node_id The client ID of the Raylet that sent the heartbeat.
+    /// \param heartbeat_data The heartbeat sent by the client.
+    void HandleHeartbeat(const ClientID &node_id,
+                         const rpc::HeartbeatTableData &heartbeat_data);
 
-  /// Send any buffered heartbeats as a single publish.
-  void SendBatchedHeartbeat();
+    /// Add listener to monitor the death of nodes.
+    ///
+    /// \param listener The handler which process the death of nodes.
+    void AddNodeDeadListener(std::function<void(const ClientID &)> listener) {
+      RAY_CHECK(listener);
+      node_dead_listeners_.emplace_back(std::move(listener));
+    }
 
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+   protected:
+    /// A periodic timer that fires on every heartbeat period. Raylets that have
+    /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
+    /// marked as dead in the client table.
+    void Tick();
+
+    /// Check that if any raylet is inactive due to no heartbeat for a period of time.
+    /// If found any, mark it as dead.
+    void DetectDeadNodes();
+
+    /// Send any buffered heartbeats as a single publish.
+    void SendBatchedHeartbeat();
+
+    /// Schedule another tick after a short time.
+    void ScheduleTick();
+
+   protected:
+    /// Node info accessor.
+    gcs::NodeInfoAccessor &node_info_accessor_;
+    /// The listeners to process the failure of node.
+    std::vector<std::function<void(const ClientID &)>> node_dead_listeners_;
+    /// The number of heartbeats that can be missed before a node is removed.
+    int64_t num_heartbeats_timeout_;
+    /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
+    boost::asio::deadline_timer detect_timer_;
+    /// For each Raylet that we receive a heartbeat from, the number of ticks
+    /// that may pass before the Raylet will be declared dead.
+    absl::flat_hash_map<ClientID, int64_t> heartbeats_;
+    /// A buffer containing heartbeats received from node managers in the last tick.
+    absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  };
 
  private:
-  /// Alive nodes.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Node info accessor.
   gcs::NodeInfoAccessor &node_info_accessor_;
   /// Error info accessor.
   gcs::ErrorInfoAccessor &error_info_accessor_;
-  /// The number of heartbeats that can be missed before a node is removed.
-  int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer heartbeat_timer_;
-  /// For each Raylet that we receive a heartbeat from, the number of ticks
-  /// that may pass before the Raylet will be declared dead.
-  absl::flat_hash_map<ClientID, int64_t> heartbeats_;
-  /// The Raylets that have been marked as dead in gcs.
-  absl::flat_hash_set<ClientID> dead_nodes_;
-  /// A buffer containing heartbeats received from node managers in the last tick.
-  absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  /// Detector to detect the failure of node.
+  std::unique_ptr<NodeFailureDetector> node_failure_detector_;
+  /// Alive nodes.
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;

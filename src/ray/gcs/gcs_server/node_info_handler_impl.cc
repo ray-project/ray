@@ -43,22 +43,10 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
     const rpc::UnregisterNodeRequest &request, rpc::UnregisterNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
-  gcs_node_manager_.RemoveNode(node_id);
-
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to unregister node info: " << status.ToString()
-                     << ", node id = " << node_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_client_.Nodes().AsyncUnregister(node_id, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
+  gcs_node_manager_.RemoveNode(node_id, /* is_intended = */ true);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
 }
 
 void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
@@ -101,6 +89,9 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
   heartbeat_data->CopyFrom(request.heartbeat());
   gcs_node_manager_.HandleHeartbeat(node_id, *heartbeat_data);
 
+  // TODO(Shanly): Remove it later.
+  // The heartbeat data is reported here because some python unit tests rely on the
+  // heartbeat data in redis.
   Status status = gcs_client_.Nodes().AsyncReportHeartbeat(heartbeat_data, on_done);
   if (!status.ok()) {
     on_done(status);

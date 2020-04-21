@@ -311,7 +311,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().UnregisterNode(
@@ -321,8 +321,8 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
+                      << ", node id = " << node_id;
       });
   return Status::OK();
 }
