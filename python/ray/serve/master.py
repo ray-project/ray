@@ -54,7 +54,6 @@ class ServeMaster:
         await self._recover_from_checkpoint()
 
     def _get_or_start_router(self, router_class, router_kwargs):
-        # TODO(edoakes): handle failures during initial setup.
         try:
             self.router = ray.util.get_actor(SERVE_ROUTER_NAME)
             logger.info("Router already running")
@@ -102,11 +101,15 @@ class ServeMaster:
             self.metric_monitor.add_target.remote(self.router)
 
     def _checkpoint(self):
-        logger.info("Master actor writing checkpoint")
+        logger.debug("Master actor writing checkpoint")
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
              self.replicas_to_start, self.replicas_to_stop))
         self.kv_store_client.put("checkpoint", checkpoint)
+        import random
+        import os
+        #if random.random() < 0.5:
+        #os._exit(0)
 
     async def _recover_from_checkpoint(self):
         checkpoint = self.kv_store_client.get("checkpoint")
@@ -124,15 +127,30 @@ class ServeMaster:
          self.replicas_to_start,
          self.replicas_to_stop) = pickle.loads(checkpoint)
 
+        # TODO(edoakes): should we make this a pull-only model for simplicity?
+        for endpoint, traffic_policy in self.traffic_policies.items():
+            self.router.set_traffic.remote(endpoint, traffic_policy)
+
+        for backend_tag, replica_dict in self.workers.items():
+            for replica_tag, worker in replica_dict.items():
+                self.router.add_new_worker(backend_tag, replica_tag, worker)
+
+        for backend, (_, _, backend_config_dict) in self.backends.items():
+            self.router.set_backend_config.remote(backend, backend_config_dict)
+
+        self.http_proxy.set_route_table.remote(self.routes)
+
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
 
-        # TODO: push configs to router, proxy.
+    def get_backend_configs(self):
+        backend_configs = {}
+        for backend, (_, _, backend_config_dict) in self.backends.items():
+            backend_configs[backend] = backend_config_dict
+        return backend_configs
 
-    def _kill_detached_actor(self, handle):
-        worker = ray.worker.global_worker
-        # Set no_reconstruction=True.
-        worker.core_worker.kill_actor(handle._ray_actor_id, True)
+    def get_traffic_policies(self):
+        return self.traffic_policies
 
     def _list_replicas(self, backend_tag):
         return self.replicas[backend_tag]
@@ -141,19 +159,15 @@ class ServeMaster:
         return self.traffic_policies[endpoint]
 
     def get_router(self):
-        assert self.router is not None, "Router not started yet."
         return [self.router]
 
     async def get_http_proxy_config(self):
         return self.routes, self.get_router()
 
     def get_http_proxy(self):
-        assert self.http_proxy is not None, "HTTP proxy not started yet."
         return [self.http_proxy]
 
     def get_metric_monitor(self):
-        assert self.metric_monitor is not None, (
-            "Metric monitor not started yet.")
         return [self.metric_monitor]
 
     async def get_backend_worker_config(self):
@@ -187,12 +201,9 @@ class ServeMaster:
                 self.replicas[backend_tag].append(replica_tag)
                 self.workers[backend_tag][replica_tag] = worker_handle
 
-                # Wait for the worker to start up.
-                await worker_handle.ready.remote()
-
                 # Register the worker with the router.
-                [router] = self.get_router()
-                await router.add_new_worker.remote(backend_tag, worker_handle)
+                self.router.add_new_worker.remote(backend_tag, replica_tag,
+                                                  worker_handle)
 
                 # Register the worker with the metric monitor.
                 #self.get_metric_monitor()[0].add_target.remote(worker_handle)
@@ -210,12 +221,10 @@ class ServeMaster:
                     #await monitor.remove_target.remote(worker_handle)
 
                     # Remove the replica from router.
-                    # This will also destroy the actor handle.
-                    [router] = self.get_router()
-                    await router.remove_worker.remote(backend_tag,
-                                                      worker_handle)
-
-                    self._kill_detached_actor(worker_handle)
+                    # This will also submit __ray_terminate__ on the worker.
+                    # We kill the worker from the router to guarantee that the
+                    # router won't submit any more requests on it.
+                    self.router.remove_worker.remote(backend_tag, replica_tag)
                 except ValueError:
                     pass
 
@@ -243,10 +252,6 @@ class ServeMaster:
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self.replicas_to_start[backend_tag].append(replica_tag)
-            # XXX
-            #asyncio.get_event_loop().create_task(
-            #self._start_pending_replicas())
-            await self._start_pending_replicas()
 
         elif delta_num_replicas < 0:
             logger.debug("Removing {} replicas".format(-delta_num_replicas))
@@ -260,12 +265,6 @@ class ServeMaster:
                     del self.workers[backend_tag]
 
                 self.replicas_to_stop[backend_tag].append(replica_tag)
-            # XXX
-            #asyncio.get_event_loop().create_task(
-            #self._stop_pending_replicas())
-            await self._stop_pending_replicas()
-
-        self._checkpoint()
 
     def get_all_worker_handles(self):
         return self.workers
@@ -291,9 +290,9 @@ class ServeMaster:
 
         self._checkpoint()
 
-        [router] = self.get_router()
-        await router.set_traffic.remote(endpoint_name,
-                                        traffic_policy_dictionary)
+        # XXX: comment that this should be separate
+        await self.router.set_traffic.remote(endpoint_name,
+                                             traffic_policy_dictionary)
 
     async def create_endpoint(self, route, endpoint, methods):
         logger.debug(
@@ -301,6 +300,8 @@ class ServeMaster:
                 route, endpoint, methods))
         # TODO(edoakes): reject existing routes.
         self.routes[route] = (endpoint, methods)
+
+        self._checkpoint()
 
         [http_proxy] = self.get_http_proxy()
         await http_proxy.set_route_table.remote(self.routes)
@@ -315,14 +316,18 @@ class ServeMaster:
         self.backends[backend_tag] = (backend_worker, actor_init_args,
                                       backend_config_dict)
 
-        # Set the backend config inside the router
-        # (particularly for max-batch-size).
-        [router] = self.get_router()
-        await router.set_backend_config.remote(backend_tag,
-                                               backend_config_dict)
-
         await self.scale_replicas(backend_tag,
                                   backend_config_dict["num_replicas"])
+
+        # XXX: comment that these should get placed on event loop
+        self._checkpoint()
+        await self._start_pending_replicas()
+        await self._stop_pending_replicas()
+
+        # Set the backend config inside the router
+        # (particularly for max-batch-size).
+        await self.router.set_backend_config.remote(backend_tag,
+                                                    backend_config_dict)
 
     async def set_backend_config(self, backend_tag, backend_config):
         assert (backend_tag in self.backends
@@ -343,9 +348,8 @@ class ServeMaster:
 
         # Inform the router about change in configuration
         # (particularly for setting max_batch_size).
-        [router] = self.get_router()
-        await router.set_backend_config.remote(backend_tag,
-                                               backend_config_dict)
+        await self.router.set_backend_config.remote(backend_tag,
+                                                    backend_config_dict)
 
         # Restart replicas if there is a change in the backend config related
         # to restart_configs.
@@ -359,6 +363,11 @@ class ServeMaster:
         # Scale the replicas with the new configuration.
         await self.scale_replicas(backend_tag,
                                   backend_config_dict["num_replicas"])
+
+        # XXX: comment that these should get placed on event loop
+        self._checkpoint()
+        await self._start_pending_replicas()
+        await self._stop_pending_replicas()
 
     def get_backend_config(self, backend_tag):
         assert (backend_tag in self.backends

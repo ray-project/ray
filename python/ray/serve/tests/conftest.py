@@ -6,6 +6,8 @@ import pytest
 import ray
 from ray import serve
 
+os.environ["RAY_GCS_SERVICE_ENABLED"] = "false"
+
 
 @pytest.fixture(scope="session")
 def serve_instance():

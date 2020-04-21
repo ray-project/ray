@@ -107,6 +107,10 @@ def test_router_failure(serve_instance):
 
     _kill_router()
 
+    for _ in range(10):
+        response = request_with_retries("/router_failure", timeout=30)
+        assert response.text == "hello1"
+
     def function():
         return "hello2"
 

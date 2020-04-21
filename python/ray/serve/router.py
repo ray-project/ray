@@ -138,6 +138,8 @@ class Router:
         self.traffic = defaultdict(dict)
         # backend_name -> backend_config
         self.backend_info = dict()
+        # replica tag -> worker_handle
+        self.replicas = dict()
 
         # -- Synchronization -- #
 
@@ -153,13 +155,25 @@ class Router:
         # Fetch the worker handles from the master actor. We use a "pull-based"
         # approach instead of pushing them from the master so that the router
         # can transparently recover from failure.
+        # XXX: fetch traffic policies, backend configs
         ray.serve.init()
         master_actor = ray.serve.api._get_master_actor()
+
+        traffic_policies = retry_actor_failures(
+            master_actor.get_traffic_policies)
+        for endpoint, traffic_policy in traffic_policies.items():
+            await self.set_traffic(endpoint, traffic_policy)
+
         backend_dict = retry_actor_failures(
             master_actor.get_all_worker_handles)
-        for backend, replica_dict in backend_dict.items():
-            for worker in replica_dict.values():
-                await self.add_new_worker(backend, worker)
+        for backend_tag, replica_dict in backend_dict.items():
+            for replica_tag, worker in replica_dict.items():
+                await self.add_new_worker(backend_tag, replica_tag, worker)
+
+        backend_configs = retry_actor_failures(
+            master_actor.get_backend_configs)
+        for backend, backend_config_dict in backend_configs.items():
+            await self.set_backend_config(backend, backend_config_dict)
 
     def is_ready(self):
         return True
@@ -200,28 +214,42 @@ class Router:
         result = await query.async_future
         return result
 
-    async def add_new_worker(self, backend, worker_handle):
-        logger.debug("New worker added for backend '{}'".format(backend))
-        await self.mark_worker_idle(backend, worker_handle)
+    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
+        backend_replica_tag = backend_tag + ":" + replica_tag
+        if backend_replica_tag in self.replicas:
+            return
+        self.replicas[backend_replica_tag] = worker_handle
 
-    async def mark_worker_idle(self, backend, worker_handle):
-        await self.worker_queues[backend].put(worker_handle)
+        logger.debug("New worker added for backend '{}'".format(backend_tag))
+        await worker_handle.ready.remote()
+        await self.mark_worker_idle(backend_tag, backend_replica_tag)
+
+    async def mark_worker_idle(self, backend_tag, backend_replica_tag):
+        if backend_replica_tag not in self.replicas:
+            return
+
+        await self.worker_queues[backend_tag].put(backend_replica_tag)
         await self.flush()
 
-    async def remove_worker(self, backend, worker_handle):
+    async def remove_worker(self, backend_tag, replica_tag):
+        backend_replica_tag = backend_tag + ":" + replica_tag
+        assert backend_replica_tag in self.replicas
+        worker_handle = self.replicas.pop(backend_replica_tag)
+
         # We need this lock because we modify worker_queue here.
         async with self.flush_lock:
-            old_queue = self.worker_queues[backend]
+            old_queue = self.worker_queues[backend_tag]
             new_queue = asyncio.Queue()
-            target_id = worker_handle._actor_id
 
             while not old_queue.empty():
-                worker_handle = await old_queue.get()
-                if worker_handle._actor_id != target_id:
-                    await new_queue.put(worker_handle)
+                curr_tag = await old_queue.get()
+                if curr_tag != backend_replica_tag:
+                    await new_queue.put(curr_tag)
 
-            self.worker_queues[backend] = new_queue
-            # TODO: consider awaiting this on a timeout or using ray.kill().
+            self.worker_queues[backend_tag] = new_queue
+            # We need to terminate the worker here instead of from the master
+            # so we can guarantee that the router won't submit any more tasks
+            # on it.
             worker_handle.__ray_terminate__.remote()
 
     async def link(self, service, backend):
@@ -298,11 +326,12 @@ class Router:
                 await self._assign_query_to_worker(
                     backend, buffer_queue, worker_queue, max_batch_size)
 
-    async def _do_query(self, backend, worker, req):
+    async def _do_query(self, backend, backend_replica_tag, req):
         # If the worker died, this will be a RayActorError. Just return it and
         # let the HTTP proxy handle the retry logic.
+        worker = self.replicas[backend_replica_tag]
         result = await worker.handle_request.remote(req)
-        await self.mark_worker_idle(backend, worker)
+        await self.mark_worker_idle(backend, backend_replica_tag)
         return result
 
     async def _assign_query_to_worker(self,
@@ -312,11 +341,11 @@ class Router:
                                       max_batch_size=None):
 
         while len(buffer_queue) and worker_queue.qsize():
-            worker = await worker_queue.get()
+            backend_replica_tag = await worker_queue.get()
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
                 future = asyncio.get_event_loop().create_task(
-                    self._do_query(backend, worker, request))
+                    self._do_query(backend, backend_replica_tag, request))
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
@@ -332,7 +361,7 @@ class Router:
 
                 for group in requests_group.values():
                     future = asyncio.get_event_loop().create_task(
-                        self._do_query(backend, worker, group))
+                        self._do_query(backend, backend_replica_tag, group))
                     future.add_done_callback(
                         _make_future_unwrapper(
                             client_futures=[req.async_future for req in group],
