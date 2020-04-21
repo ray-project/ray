@@ -125,8 +125,9 @@ class GcsActorManager {
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the meta info is flushed to the storage or be
-  /// invoked immediately if the meta info already exists.
+  /// \param callback Will be invoked after the actor is created successfully or be
+  /// invoked immediately if the actor is already registered to `registered_actors_` and
+  /// its state is `ALIVE`.
   void RegisterActor(const rpc::CreateActorRequest &request,
                      RegisterActorCallback callback);
 

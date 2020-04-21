@@ -28,48 +28,55 @@ def build_torch_policy(name,
                        apply_gradients_fn=None,
                        mixins=None,
                        get_batch_divisibility_req=None):
-    """Helper function for creating a torch policy at runtime.
+    """Helper function for creating a torch policy class at runtime.
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
-        loss_fn (func): function that returns a loss tensor as arguments
-            (policy, model, dist_class, train_batch)
-        get_default_config (func): optional function that returns the default
-            config to merge with any overrides
-        stats_fn (func): optional function that returns a dict of
-            values given the policy and batch input tensors
-        postprocess_fn (func): optional experience postprocessing function
-            that takes the same args as Policy.postprocess_trajectory()
-        extra_action_out_fn (func): optional function that returns
-            a dict of extra values to include in experiences
-        extra_grad_process_fn (func): optional function that is called after
-            gradients are computed and returns processing info
-        optimizer_fn (func): optional function that returns a torch optimizer
-            given the policy and config
-        before_init (func): optional function to run at the beginning of
-            policy init that takes the same arguments as the policy constructor
-        after_init (func): optional function to run at the end of policy init
-            that takes the same arguments as the policy constructor
-        action_sampler_fn (Optional[callable]): A callable returning a sampled
-            action and its log-likelihood given some (obs and state) inputs.
-        action_distribution_fn (Optional[callable]): A callable returning
-            distribution inputs (parameters), a dist-class to generate an
-            action distribution object from, and internal-state outputs (or an
-            empty list if not applicable).
-        make_model_and_action_dist (func): optional func that takes the same
-            arguments as policy init and returns a tuple of model instance and
-            torch action distribution class. If not specified, the default
-            model and action dist from the catalog will be used
-        apply_gradients_fn (Optional[callable]): An optional callable that
+        loss_fn (callable): Callable that returns a loss tensor as arguments
+            given (policy, model, dist_class, train_batch).
+        get_default_config (Optional[callable]): Optional callable that returns
+            the default config to merge with any overrides.
+        stats_fn (Optional[callable]): Optional callable that returns a dict of
+            values given the policy and batch input tensors.
+        postprocess_fn (Optional[callable]): Optional experience postprocessing
+            function that takes the same args as
+            Policy.postprocess_trajectory().
+        extra_action_out_fn (Optional[callable]): Optional callable that
+            returns a dict of extra values to include in experiences.
+        extra_grad_process_fn (Optional[callable]): Optional callable that is
+            called after gradients are computed and returns processing info.
+        optimizer_fn (Optional[callable]): Optional callable that returns a
+            torch optimizer given the policy and config.
+        before_init (Optional[callable]): Optional callable to run at the
+            beginning of `Policy.__init__` that takes the same arguments as
+            the Policy constructor.
+        after_init (Optional[callable]): Optional callable to run at the end of
+            policy init that takes the same arguments as the policy
+            constructor.
+        action_sampler_fn (Optional[callable]): Optional callable returning a
+            sampled action and its log-likelihood given some (obs and state)
+            inputs.
+        action_distribution_fn (Optional[callable]): A callable that takes
+            the Policy, Model, the observation batch, an explore-flag, a
+            timestep, and an is_training flag and returns a tuple of
+            a) distribution inputs (parameters), b) a dist-class to generate
+            an action distribution object from, and c) internal-state outputs
+            (empty list if not applicable).
+        make_model_and_action_dist (Optional[callable]): Optional func that
+            takes the same arguments as Policy.__init__ and returns a tuple
+            of model instance and torch action distribution class. If not
+            specified, the default model and action dist from the catalog will
+            be used.
+        apply_gradients_fn (Optional[callable]): Optional callable that
             takes a grads list and applies these to the Model's parameters.
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
-            precedence than the TorchPolicy class
+            precedence than the TorchPolicy class.
         get_batch_divisibility_req (Optional[callable]): Optional callable that
             returns the divisibility requirement for sample batches.
 
     Returns:
-        a TorchPolicy instance that uses the specified args
+        type: TorchPolicy child class constructed from the specified args.
     """
 
     original_kwargs = locals().copy()

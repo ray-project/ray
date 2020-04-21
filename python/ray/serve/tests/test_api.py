@@ -5,8 +5,6 @@ import requests
 from ray import serve
 from ray.serve import BackendConfig
 import ray
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
 
 
 def test_e2e(serve_instance):
@@ -33,28 +31,13 @@ def test_e2e(serve_instance):
         return {"method": flask_request.method}
 
     serve.create_backend(function, "echo:v1")
-    serve.link("endpoint", "echo:v1")
+    serve.set_traffic("endpoint", {"echo:v1": 1.0})
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
-
-
-def test_route_decorator(serve_instance):
-    @serve.route("/hello_world")
-    def hello_world(_):
-        return ""
-
-    assert isinstance(hello_world, RayServeHandle)
-
-    hello_world.scale(2)
-    assert serve.get_backend_config("hello_world:v0").num_replicas == 2
-
-    with pytest.raises(
-            RayServeException, match="method does not accept batching"):
-        hello_world.set_max_batch_size(2)
 
 
 def test_no_route(serve_instance):
@@ -64,7 +47,7 @@ def test_no_route(serve_instance):
         return 1
 
     serve.create_backend(func, "backend:1")
-    serve.link("noroute-endpoint", "backend:1")
+    serve.set_traffic("noroute-endpoint", {"backend:1": 1.0})
     service_handle = serve.get_handle("noroute-endpoint")
     result = ray.get(service_handle.remote(i=1))
     assert result == 1
@@ -88,7 +71,7 @@ def test_scaling_replicas(serve_instance):
 
     b_config = BackendConfig(num_replicas=2)
     serve.create_backend(Counter, "counter:v1", backend_config=b_config)
-    serve.link("counter", "counter:v1")
+    serve.set_traffic("counter", {"counter:v1": 1.0})
 
     counter_result = []
     for _ in range(10):
@@ -133,7 +116,7 @@ def test_batching(serve_instance):
     b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
         BatchingExample, "counter:v11", backend_config=b_config)
-    serve.link("counter1", "counter:v11")
+    serve.set_traffic("counter1", {"counter:v11": 1.0})
 
     future_list = []
     handle = serve.get_handle("counter1")
@@ -163,7 +146,7 @@ def test_batching_exception(serve_instance):
     b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
         NoListReturned, "exception:v1", backend_config=b_config)
-    serve.link("exception-test", "exception:v1")
+    serve.set_traffic("exception-test", {"exception:v1": 1.0})
 
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -192,8 +175,10 @@ def test_killing_replicas(serve_instance):
     serve.set_backend_config("simple:v1", bnew_config)
     new_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("simple:v1"))
-    new_all_tag_list = list(
-        ray.get(master_actor.get_all_worker_handles.remote()).keys())
+    new_all_tag_list = []
+    for worker_dict in ray.get(
+            master_actor.get_all_worker_handles.remote()).values():
+        new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
@@ -226,8 +211,10 @@ def test_not_killing_replicas(serve_instance):
     serve.set_backend_config("bsimple:v1", bnew_config)
     new_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("bsimple:v1"))
-    new_all_tag_list = list(
-        ray.get(master_actor.get_all_worker_handles.remote()).keys())
+    new_all_tag_list = []
+    for worker_dict in ray.get(
+            master_actor.get_all_worker_handles.remote()).values():
+        new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
     # and should be subset of all_tag_list

@@ -1031,12 +1031,12 @@ class TuneCollector(threading.Thread):
             if len(df) == 0 or "trial_id" not in df.columns:
                 continue
 
-            # start TensorBoard server if not started yet
-            if not self._tensor_board_started:
-                tb = program.TensorBoard()
-                tb.configure(argv=[None, "--logdir", self._logdir])
-                tb.launch()
-                self._tensor_board_started = True
+            # # start TensorBoard server if not started yet
+            # if not self._tensor_board_started:
+            #     tb = program.TensorBoard()
+            #     tb.configure(argv=[None, "--logdir", self._logdir])
+            #     tb.launch()
+            #     self._tensor_board_started = True
 
             self._available = True
 
