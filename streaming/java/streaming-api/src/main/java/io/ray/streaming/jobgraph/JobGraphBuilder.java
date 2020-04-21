@@ -45,12 +45,12 @@ public class JobGraphBuilder {
   }
 
   private void processStream(Stream stream) {
-    while (stream.isReferenceStream()) {
-      // Reference stream and referenced stream are the same logical stream, both refers to the
-      // same data flow transformation. We should skip reference stream to avoid applying same
+    while (stream.isProxyStream()) {
+      // Proxy stream and original stream are the same logical stream, both refer to the
+      // same data flow transformation. We should skip proxy stream to avoid applying same
       // transformation multiple times.
-      LOG.debug("Skip reference stream {} of id {}", stream, stream.getId());
-      stream = stream.getReferencedStream();
+      LOG.debug("Skip proxy stream {} of id {}", stream, stream.getId());
+      stream = stream.getOriginalStream();
     }
     StreamOperator streamOperator = stream.getOperator();
     Preconditions.checkArgument(stream.getLanguage() == streamOperator.getLanguage(),

@@ -24,7 +24,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   private final StreamOperator operator;
   private int parallelism = 1;
   private Partition<T> partition;
-  private Stream referencedStream;
+  private Stream originalStream;
 
   public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
     this(streamingContext, null, streamOperator,
@@ -61,15 +61,15 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Create a reference of referenced stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a proxy stream of original stream.
+   * Changes in new stream will be reflected in original stream and vice versa
    */
-  protected Stream(Stream referencedStream) {
-    this.referencedStream = referencedStream;
-    this.id = referencedStream.getId();
-    this.streamingContext = referencedStream.getStreamingContext();
-    this.inputStream = referencedStream.getInputStream();
-    this.operator = referencedStream.getOperator();
+  protected Stream(Stream originalStream) {
+    this.originalStream = originalStream;
+    this.id = originalStream.getId();
+    this.streamingContext = originalStream.getStreamingContext();
+    this.inputStream = originalStream.getInputStream();
+    this.operator = originalStream.getOperator();
   }
 
   @SuppressWarnings("unchecked")
@@ -107,12 +107,12 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   public int getParallelism() {
-    return referencedStream != null ? referencedStream.getParallelism() : parallelism;
+    return originalStream != null ? originalStream.getParallelism() : parallelism;
   }
 
   public S setParallelism(int parallelism) {
-    if (referencedStream != null) {
-      referencedStream.setParallelism(parallelism);
+    if (originalStream != null) {
+      originalStream.setParallelism(parallelism);
     } else {
       this.parallelism = parallelism;
     }
@@ -121,26 +121,26 @@ public abstract class Stream<S extends Stream<S, T>, T>
 
   @SuppressWarnings("unchecked")
   public Partition<T> getPartition() {
-    return referencedStream != null ? referencedStream.getPartition() : partition;
+    return originalStream != null ? originalStream.getPartition() : partition;
   }
 
   @SuppressWarnings("unchecked")
   protected S setPartition(Partition<T> partition) {
-    if (referencedStream != null) {
-      referencedStream.setPartition(partition);
+    if (originalStream != null) {
+      originalStream.setPartition(partition);
     } else {
       this.partition = partition;
     }
     return self();
   }
 
-  public boolean isReferenceStream() {
-    return referencedStream != null;
+  public boolean isProxyStream() {
+    return originalStream != null;
   }
 
-  public Stream getReferencedStream() {
-    Preconditions.checkArgument(isReferenceStream());
-    return referencedStream;
+  public Stream getOriginalStream() {
+    Preconditions.checkArgument(isProxyStream());
+    return originalStream;
   }
 
   public abstract Language getLanguage();
