@@ -311,33 +311,3 @@ def stat(percentiles=[50, 90, 95],
     """
     [monitor] = ray.get(master_actor.get_metric_monitor.remote())
     return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
-
-
-class route:
-    """Convient method to create a backend and link to service.
-
-    When called, the following will happen:
-    - An endpoint is created with the same of the function
-    - A backend is created and instantiate the function
-    - The endpoint and backend are linked together
-    - The handle is returned
-
-    .. code-block:: python
-
-        @serve.route("/path")
-        def my_handler(flask_request):
-            ...
-    """
-
-    def __init__(self, url_route):
-        self.route = url_route
-
-    def __call__(self, func_or_class):
-        name = func_or_class.__name__
-        backend_tag = "{}:v0".format(name)
-
-        create_backend(func_or_class, backend_tag)
-        create_endpoint(name, self.route)
-        set_traffic(name, {backend_tag: 1.0})
-
-        return get_handle(name)

@@ -103,7 +103,7 @@ py_test(
 py_test(
     name = "test_apex",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex.py"]
 )
 
