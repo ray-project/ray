@@ -37,6 +37,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./java/test.sh
 
     - os: linux
@@ -50,6 +51,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         # Streaming cpp test.
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
         - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
@@ -68,6 +70,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
         - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
         - ./java/test.sh
@@ -85,6 +88,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
@@ -96,6 +100,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/travis/check-git-clang-format-output.sh
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
@@ -116,8 +121,8 @@ matrix:
         - python setup.py check --restructuredtext --strict --metadata
         - cd ..
         # Run Bazel linter Buildifier.
-        - wget -q https://dl.google.com/go/go1.12.linux-amd64.tar.gz
-        - tar -xf go1.12.linux-amd64.tar.gz
+        - wget -q https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz
+        - tar -xf go1.14.2.linux-amd64.tar.gz
         - mkdir $HOME/go_dir
         - export GOROOT=`pwd`/go
         - export GOPATH="$HOME/go_dir"
@@ -144,6 +149,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         # Explicitly sleep 60 seconds for logs to go through
         - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
       cache: false
@@ -160,6 +166,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         # Explicitly sleep 60 seconds for logs to go through
         - ./ci/travis/test-wheels.sh || { cat /tmp/ray/session_latest/logs/* && sleep 60 && false; }
 
@@ -178,6 +185,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
@@ -196,6 +204,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
@@ -214,6 +223,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - travis_wait 60 bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
@@ -234,6 +244,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_A,examples_B rllib/...
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_C rllib/...
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_E,examples_L,examples_M,examples_P rllib/...
@@ -254,6 +265,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I rllib/...
 
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
@@ -271,6 +283,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
 
     # Cpp worker test
@@ -283,9 +296,11 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
+        - . ./ci/travis/ci.sh preload
         - bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
 
 script:
+  - . ./ci/travis/ci.sh preload
   # raylet integration tests
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
@@ -298,8 +313,8 @@ script:
 
   # ray operator tests
   - cd ./deploy/ray-operator/
-  - ../../ci/suppress_output go build
-  - ../../ci/suppress_output go test ./...
+  - CC=gcc ../../ci/suppress_output go build
+  - CC=gcc ../../ci/suppress_output go test ./...
   - cd ../..
 
   # random python tests TODO(ekl): these should be moved to bazel

@@ -84,6 +84,8 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
+  /// IP address of the raylet.
+  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// The stdout file of this process.
@@ -543,10 +545,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  /// \return Status error if task submission fails, likely due to raylet failure.
-  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                    int max_retries);
+  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                  int max_retries);
 
   /// Create an actor.
   ///
@@ -832,9 +833,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
   /// \param spec[in] task_spec Task specification.
-  /// \return Status.
-  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
-                              const ActorID &actor_id = ActorID::Nil());
+  void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                            const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),

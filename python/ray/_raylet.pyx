@@ -650,8 +650,8 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port, local_mode,
-                  driver_name, stdout_file, stderr_file):
+                  node_ip_address, node_manager_port, raylet_ip_address,
+                  local_mode, driver_name, stdout_file, stderr_file):
         self.is_driver = is_driver
         self.is_local_mode = local_mode
 
@@ -667,6 +667,7 @@ cdef class CoreWorker:
         options.install_failure_signal_handler = True
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
+        options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
         options.stdout_file = stdout_file
         options.stderr_file = stderr_file
@@ -888,9 +889,9 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries))
+                    max_retries)
 
             return VectorToObjectIDs(return_ids)
 

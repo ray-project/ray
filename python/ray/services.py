@@ -73,8 +73,14 @@ DEFAULT_JAVA_WORKER_CLASSPATH = [
 logger = logging.getLogger(__name__)
 
 ProcessInfo = collections.namedtuple("ProcessInfo", [
-    "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
-    "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
+    "process",
+    "stdout_file",
+    "stderr_file",
+    "use_valgrind",
+    "use_gdb",
+    "use_valgrind_profiler",
+    "use_perftools_profiler",
+    "use_tmux",
 ])
 
 
@@ -189,7 +195,7 @@ def get_address_info_from_redis_helper(redis_address,
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
         "raylet_socket_name": relevant_client["RayletSocketName"],
-        "node_manager_port": relevant_client["NodeManagerPort"]
+        "node_manager_port": relevant_client["NodeManagerPort"],
     }
 
 
@@ -430,9 +436,12 @@ def start_ray_process(command,
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
 
-    if sum(
-        [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
-         ]) > 1:
+    if sum([
+            use_gdb,
+            use_valgrind,
+            use_valgrind_profiler,
+            use_perftools_profiler,
+    ]) > 1:
         raise ValueError(
             "At most one of the 'use_gdb', 'use_valgrind', "
             "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
@@ -463,9 +472,12 @@ def start_ray_process(command,
 
     if use_valgrind:
         command = [
-            "valgrind", "--track-origins=yes", "--leak-check=full",
-            "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-            "--error-exitcode=1"
+            "valgrind",
+            "--track-origins=yes",
+            "--leak-check=full",
+            "--show-leak-kinds=all",
+            "--leak-check-heuristics=stdstring",
+            "--error-exitcode=1",
         ] + command
 
     if use_valgrind_profiler:
@@ -1023,9 +1035,11 @@ def start_log_monitor(redis_address,
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
     command = [
-        sys.executable, "-u", log_monitor_filepath,
+        sys.executable,
+        "-u",
+        log_monitor_filepath,
         "--redis-address={}".format(redis_address),
-        "--logs-dir={}".format(logs_dir)
+        "--logs-dir={}".format(logs_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1059,8 +1073,10 @@ def start_reporter(redis_address,
     reporter_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
-        sys.executable, "-u", reporter_filepath,
-        "--redis-address={}".format(redis_address)
+        sys.executable,
+        "-u",
+        reporter_filepath,
+        "--redis-address={}".format(redis_address),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1114,9 +1130,13 @@ def start_dashboard(require_webui,
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
-        "--port={}".format(port), "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir)
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
+        "--redis-address={}".format(redis_address),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1290,13 +1310,15 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path,
+        sys.executable,
+        worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
         "--raylet-name={}".format(raylet_name),
         "--redis-address={}".format(redis_address),
-        "--config-list={}".format(config_str), "--temp-dir={}".format(temp_dir)
+        "--config-list={}".format(config_str),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
@@ -1540,8 +1562,11 @@ def _start_plasma_store(plasma_store_memory,
         plasma_store_memory = int(plasma_store_memory)
 
     command = [
-        PLASMA_STORE_EXECUTABLE, "-s", socket_name, "-m",
-        str(plasma_store_memory)
+        PLASMA_STORE_EXECUTABLE,
+        "-s",
+        socket_name,
+        "-m",
+        str(plasma_store_memory),
     ]
     if plasma_directory is not None:
         command += ["-d", plasma_directory]
@@ -1617,6 +1642,7 @@ def start_worker(node_ip_address,
                  redis_address,
                  worker_path,
                  temp_dir,
+                 raylet_ip_address=None,
                  stdout_file=None,
                  stderr_file=None,
                  fate_share=None):
@@ -1631,6 +1657,8 @@ def start_worker(node_ip_address,
         worker_path (str): The path of the source code which the worker process
             will run.
         temp_dir (str): The path of the temp dir.
+        raylet_ip_address (str): The IP address of the worker's raylet. If not
+            provided, it defaults to the node_ip_address.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1640,12 +1668,17 @@ def start_worker(node_ip_address,
         ProcessInfo for the process that was started.
     """
     command = [
-        sys.executable, "-u", worker_path,
+        sys.executable,
+        "-u",
+        worker_path,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
         "--raylet-name=" + raylet_name,
-        "--redis-address=" + str(redis_address), "--temp-dir=" + temp_dir
+        "--redis-address=" + str(redis_address),
+        "--temp-dir=" + temp_dir,
     ]
+    if raylet_ip_address is not None:
+        command.append("--raylet-ip-address=" + raylet_ip_address)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_WORKER,
@@ -1678,8 +1711,10 @@ def start_monitor(redis_address,
     monitor_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "monitor.py")
     command = [
-        sys.executable, "-u", monitor_path,
-        "--redis-address=" + str(redis_address)
+        sys.executable,
+        "-u",
+        monitor_path,
+        "--redis-address=" + str(redis_address),
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))

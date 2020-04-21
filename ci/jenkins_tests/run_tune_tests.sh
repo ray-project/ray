@@ -51,9 +51,6 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     bash -c 'pip install -U tensorflow==1.14 && python /ray/python/ray/tune/tests/test_logger.py'
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    bash -c 'pip install -U tensorflow==1.12 && python /ray/python/ray/tune/tests/test_logger.py'
-
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 -e MPLBACKEND=Agg $DOCKER_SHA \
     python /ray/python/ray/tune/tests/tutorial.py
 
@@ -62,8 +59,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/hyperband_example.py \
-    --smoke-test
+    python /ray/python/ray/tune/examples/hyperband_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/async_hyperband_example.py \
@@ -127,6 +123,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/tune/examples/dragonfly_example.py \
     --smoke-test
 
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/zoopt_example.py \
+    --smoke-test
+
 # Commenting out because flaky
 # $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
 #     python /ray/python/ray/tune/examples/pbt_memnn_example.py \
@@ -141,9 +141,8 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 # uncomment once statsmodels is updated.
-# $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-#     python /ray/python/ray/tune/examples/bohb_example.py \
-#     --smoke-test
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/bohb_example.py
 
 # Moved to bottom because flaky
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
