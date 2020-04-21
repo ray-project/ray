@@ -18,6 +18,7 @@ def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # set the below if needed
     # print("NCCL DEBUG SET")

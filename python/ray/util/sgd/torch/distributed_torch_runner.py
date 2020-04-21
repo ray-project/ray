@@ -87,6 +87,7 @@ class DistributedTorchRunner(TorchRunner):
         self._wrap_dataloaders()
 
         training_models = self.models
+        print(device_ids)
         if self.wrap_ddp:
             # This needs to happen after apex
             training_models = [
@@ -217,11 +218,13 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
         reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
 
         if reserved_device == cuda_device:
-            logger.debug("Devices match: %s and %s", reserved_device,
+            logger.info("Devices match: %s and %s", reserved_device,
                          cuda_device)
             success = True
             break
         else:
+            logger.info("Devices don't match: %s and %s", reserved_device,
+                         cuda_device)
             _dummy_actor.__ray_terminate__.remote()
             _dummy_actor = None
 
@@ -247,6 +250,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
         self.local_device = "0"
+        self._is_set = False
         if num_gpus:
             assert num_gpus == 1, "Does not support multi-gpu workers"
         global _dummy_actor
@@ -257,25 +261,34 @@ class LocalDistributedRunner(DistributedTorchRunner):
                     # Once cuda is initialized, Torch ignores the os.env
                     # so we have to set the right actual device.
                     device = reserve_cuda_device(num_gpus)
-                    self.local_device = device
-                    try:
-                        torch.cuda.set_device(int(self.local_device))
-                    except RuntimeError:
-                        logger.error("Failed to set local device.")
-                        raise
+                    self.set_cuda_device(device)
                 else:
                     # if CUDA is not initialized, we can set the os.env
                     device = reserve_cuda_device(num_gpus)
                     os.environ["CUDA_VISIBLE_DEVICES"] = device
+                    _init_cuda_context()
+                    self.set_cuda_device("0")
             else:
-                reserve_cuda_device(num_gpus, match_devices=True)
-
-            _init_cuda_context()
-            self.local_device = "0"
-            torch.cuda.set_device(0)
-            logger.info("Setting local device: %s", self.local_device)
+                device = reserve_cuda_device(num_gpus, match_devices=True)
+                os.environ["CUDA_VISIBLE_DEVICES"] = device
+                _init_cuda_context()
+                print('setting a device')
+                self.set_cuda_device("0")
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
+
+    def set_cuda_device(self, device_str):
+        if self._is_set:
+            raise Exception("should not be set twice..")
+        self._is_set = True
+        assert isinstance(device_str, str)
+        self.local_device = device_str
+        logger.info("Setting local device: %s", self.local_device)
+        try:
+            torch.cuda.set_device(int(self.local_device))
+        except RuntimeError:
+            logger.error("Failed to set local device.")
+            raise
 
     def get_device_ids(self):
         return [int(self.local_device)]
