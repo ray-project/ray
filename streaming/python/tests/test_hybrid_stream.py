@@ -28,10 +28,10 @@ def test_data_stream():
                  }))
     ctx = StreamingContext.Builder().build()
     stream = ctx.from_values("a", "b", "c") \
-        .as_java() \
+        .as_java_stream() \
         .map("io.ray.streaming.runtime.demo.HybridStreamTest$Mapper1") \
         .filter("io.ray.streaming.runtime.demo.HybridStreamTest$Filter1") \
-        .as_python() \
+        .as_python_stream() \
         .sink(lambda x: print("HybridStreamTest", x))
     ctx.submit("HybridStreamTest")
     import time
