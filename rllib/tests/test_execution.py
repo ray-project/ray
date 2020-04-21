@@ -87,6 +87,7 @@ def test_metrics(ray_start_regular_shared):
     b = StandardMetricsReporting(
         a, workers, {
             "min_iter_time_s": 2.5,
+            "timesteps_per_iteration": 0,
             "metrics_smoothing_episodes": 10,
             "collect_metrics_timeout": 10,
         })
