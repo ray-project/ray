@@ -74,15 +74,15 @@ def test_reject_duplicate_endpoint(serve_instance):
         serve.create_endpoint(endpoint_name, route="/different")
 
 
-def test_reject_link_missing_data(serve_instance):
+def test_set_traffic_missing_data(serve_instance):
     endpoint_name = "foobar"
     backend_name = "foo_backend"
     serve.create_endpoint(endpoint_name)
     serve.create_backend(lambda: 5, backend_name)
     with pytest.raises(AssertionError):
-        serve.link(endpoint_name, "nonexistant_backend")
+        serve.set_traffic(endpoint_name, {"nonexistant_backend": 1.0})
     with pytest.raises(AssertionError):
-        serve.link("nonexistant_endpoint_name", backend_name)
+        serve.set_traffic("nonexistant_endpoint_name", {backend_name: 1.0})
 
 
 def test_scaling_replicas(serve_instance):
