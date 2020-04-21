@@ -14,6 +14,20 @@ except (ImportError, ModuleNotFoundError) as e:
     raise e
 
 
+def global_norm(tensors):
+    """Returns the LD2 norm over a list of tensors.
+
+    output = sqrt(SUM(t ** 2 for t in tensors)),
+        where SUM reduces over all tensors and over all elements in tensors.
+
+    Args:
+        tensors (List[torch.Tensor]): The list of tensors to calculate the
+            global norm over.
+    """
+    single_ld2 = [torch.sum(torch.pow(t, 2.0)) for t in tensors]
+    return torch.pow(sum(single_ld2), 0.5)
+
+
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return torch.where(
