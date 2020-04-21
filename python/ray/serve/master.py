@@ -1,7 +1,4 @@
-import asyncio
 from collections import defaultdict
-from functools import wraps
-import inspect
 
 import ray
 import ray.cloudpickle as pickle
@@ -99,7 +96,7 @@ class ServeMaster:
                 SERVE_METRIC_MONITOR_NAME))
             self.metric_monitor = MetricMonitor.options(
                 detached=True,
-                name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_seconds)
+                name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_s)
             # TODO(edoakes): move these into the constructor.
             start_metric_monitor_loop.remote(self.metric_monitor)
             self.metric_monitor.add_target.remote(self.router)
@@ -247,9 +244,9 @@ class ServeMaster:
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self.replicas_to_start[backend_tag].append(replica_tag)
             # XXX
-            asyncio.get_event_loop().create_task(
-                self._start_pending_replicas())
-            #await self._start_pending_replicas()
+            #asyncio.get_event_loop().create_task(
+            #self._start_pending_replicas())
+            await self._start_pending_replicas()
 
         elif delta_num_replicas < 0:
             logger.debug("Removing {} replicas".format(-delta_num_replicas))
@@ -264,8 +261,9 @@ class ServeMaster:
 
                 self.replicas_to_stop[backend_tag].append(replica_tag)
             # XXX
-            asyncio.get_event_loop().create_task(self._stop_pending_replicas())
-            #await self._stop_pending_replicas()
+            #asyncio.get_event_loop().create_task(
+            #self._stop_pending_replicas())
+            await self._stop_pending_replicas()
 
         self._checkpoint()
 
