@@ -67,7 +67,7 @@ def test_router_failure(serve_instance):
         return "hello1"
 
     serve.create_backend(function, "router_failure:v1")
-    serve.link("router_failure", "router_failure:v1")
+    serve.set_traffic("router_failure", {"router_failure:v1": 1.0})
 
     assert request_with_retries("/router_failure", timeout=5).text == "hello1"
 
@@ -81,7 +81,7 @@ def test_router_failure(serve_instance):
         return "hello2"
 
     serve.create_backend(function, "router_failure:v2")
-    serve.link("router_failure", "router_failure:v2")
+    serve.set_traffic("router_failure", {"router_failure:v2": 1.0})
 
     for _ in range(10):
         response = request_with_retries("/router_failure", timeout=30)
