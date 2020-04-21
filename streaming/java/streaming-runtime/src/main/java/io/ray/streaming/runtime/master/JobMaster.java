@@ -33,7 +33,7 @@ public class JobMaster {
   private RayActor jobMasterActor;
 
   public JobMaster(Map<String, String> confMap) {
-    LOG.info("Job master init with conf: {}.", confMap);
+    LOG.info("Creating job master with conf: {}.", confMap);
 
     StreamingConfig streamingConfig = new StreamingConfig(confMap);
     this.conf = streamingConfig.masterConfig;
@@ -41,32 +41,26 @@ public class JobMaster {
     // init runtime context
     runtimeContext = new JobRuntimeContext(streamingConfig);
 
-    LOG.info("Job master init success.");
+    LOG.info("Finished creating job master.");
   }
 
   /**
    * Init JobMaster. To initiate or recover other components(like metrics and extra coordinators).
    *
-   * @param isRecover if it is recover from state
    * @return init result
    */
-  public Boolean init(boolean isRecover) {
-    LOG.info("Start to init job master. Is recover: {}.", isRecover);
+  public Boolean init() {
+    LOG.info("Initializing job master.");
 
     if (this.runtimeContext.getExecutionGraph() == null) {
       LOG.error("Init job master failed. Job graphs is null.");
       return false;
     }
 
-    // recover from last checkpoint
-    if (isRecover) {
-      // TODO (lianxin)
-    }
-
     ExecutionGraph executionGraph = graphManager.getExecutionGraph();
     Preconditions.checkArgument(executionGraph != null, "no execution graph");
 
-    LOG.info("Finish to init job master.");
+    LOG.info("Finished initializing job master.");
     return true;
   }
 
@@ -83,7 +77,7 @@ public class JobMaster {
    * @return submit result
    */
   public boolean submitJob(RayActor<JobMaster> jobMasterActor, JobGraph jobGraph) {
-    LOG.info("Start to submit job using logical plan: {}.", jobGraph);
+    LOG.info("Begin submitting job using logical plan: {}.", jobGraph);
 
     this.jobMasterActor = jobMasterActor;
 

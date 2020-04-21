@@ -51,20 +51,16 @@ public class WorkerLifecycleController {
         .createActorCreationOptions();
 
     RayActor<JobWorker> actor = null;
-    if (Language.JAVA == language) {
-      // TODO (datayjz)
-    } else {
-      // TODO (datayjz)
-    }
-    
-    if (null == actor) {
+    // TODO (datayjz)
+
+      if (null == actor) {
       LOG.error("Create worker actor failed.");
       return false;
     }
 
     executionVertex.setWorkerActor(actor);
 
-    LOG.info("Create worker actor succeeded, actor: {}, vertex: {}.",
+    LOG.info("Worker actor created, actor: {}, vertex: {}.",
         executionVertex.getWorkerActorId(), executionVertex.getVertexName());
     return true;
   }
@@ -78,7 +74,7 @@ public class WorkerLifecycleController {
    */
   public boolean initWorkers(
       Map<ExecutionVertex, JobWorkerContext> vertexToContextMap, int timeout) {
-    LOG.info("Start to init workers: {}.", vertexToContextMap);
+    LOG.info("Begin initiating workers: {}.", vertexToContextMap);
     long startTime = System.currentTimeMillis();
 
     Map<RayObject<Boolean>, ActorId> rayObjects = new HashMap<>();
@@ -90,15 +86,15 @@ public class WorkerLifecycleController {
 
     List<RayObject<Boolean>> rayObjectList = new ArrayList<>(rayObjects.keySet());
 
-    LOG.info("Start to wait for workers' initialization.");
+    LOG.info("Waiting for workers' initialization.");
     WaitResult<Boolean> result = Ray.wait(rayObjectList, rayObjectList.size(), timeout);
     if (result.getReady().size() != rayObjectList.size()) {
-      LOG.error("Initialize workers timeout[{} ms].", timeout);
+      LOG.error("Initializing workers timeout[{} ms].", timeout);
       return false;
     }
 
-    LOG.info("Finish waiting workers' initialization.");
-    LOG.info("Finish initializing workers. Cost {} ms.", System.currentTimeMillis() - startTime);
+    LOG.info("Finished waiting workers' initialization.");
+    LOG.info("Workers initialized. Cost {} ms.", System.currentTimeMillis() - startTime);
     return true;
   }
 
@@ -110,7 +106,7 @@ public class WorkerLifecycleController {
    * @return starting result
    */
   public boolean startWorkers(ExecutionGraph executionGraph, int timeout) {
-    LOG.info("Start to start workers.");
+    LOG.info("Begin starting workers.");
     long startTime = System.currentTimeMillis();
     List<RayObject<Boolean>> rayObjects = new ArrayList<>();
 
@@ -124,11 +120,11 @@ public class WorkerLifecycleController {
 
     WaitResult<Boolean> result = Ray.wait(rayObjects, rayObjects.size(), timeout);
     if (result.getReady().size() != rayObjects.size()) {
-      LOG.error("Start workers timeout[{} ms].", timeout);
+      LOG.error("Starting workers timeout[{} ms].", timeout);
       return false;
     }
 
-    LOG.info("Start workers succeeded. Cost {} ms.", System.currentTimeMillis() - startTime);
+    LOG.info("Workers started. Cost {} ms.", System.currentTimeMillis() - startTime);
     return true;
   }
 
@@ -144,7 +140,7 @@ public class WorkerLifecycleController {
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
     RayActor rayActor = executionVertex.getWorkerActor();
-    LOG.info("Start to destroy worker[vertex={}, actor={}].",
+    LOG.info("Begin destroying worker[vertex={}, actor={}].",
         executionVertex.getVertexName(), rayActor.getId());
 
     boolean destroyResult = RemoteCallWorker.shutdownWithoutReconstruction(rayActor);
@@ -155,7 +151,7 @@ public class WorkerLifecycleController {
       return false;
     }
 
-    LOG.info("Destroy JobWorker succeeded, actor: {}.", rayActor);
+    LOG.info("Worker destroyed, actor: {}.", rayActor);
     return true;
   }
 

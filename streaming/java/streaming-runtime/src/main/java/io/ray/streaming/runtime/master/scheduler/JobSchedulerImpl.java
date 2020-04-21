@@ -38,12 +38,12 @@ public class JobSchedulerImpl implements JobScheduler {
     this.workerLifecycleController = new WorkerLifecycleController();
     this.jobConf = jobMaster.getRuntimeContext().getConf();
 
-    LOG.info("Scheduler init success.");
+    LOG.info("Scheduler initiated.");
   }
 
   @Override
   public boolean scheduleJob(ExecutionGraph executionGraph) {
-    LOG.info("Start to schedule job: {}.", executionGraph.getJobName());
+    LOG.info("Begin scheduling. Job: {}.", executionGraph.getJobName());
 
     // Allocate resource then create workers
     prepareResourceAndCreateWorker(executionGraph);
@@ -105,10 +105,10 @@ public class JobSchedulerImpl implements JobScheduler {
         .createWorkers(executionGraph.getAllAddedExecutionVertices());
 
     if (createResult) {
-      LOG.info("Finish creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
+      LOG.info("Finished creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
       return true;
     } else {
-      LOG.info("Failed creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
+      LOG.error("Failed to create workers. Cost {} ms.", System.currentTimeMillis() - startTs);
       return false;
     }
   }
@@ -195,7 +195,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private void initMaster() {
-    jobMaster.init(false);
+    jobMaster.init();
   }
 
 }
