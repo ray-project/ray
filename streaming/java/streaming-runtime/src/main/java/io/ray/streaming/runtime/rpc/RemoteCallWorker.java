@@ -27,7 +27,7 @@ public class RemoteCallWorker {
     LOG.info("Call worker to init, actor: {}, context: {}.", actor.getId(), ctx);
     RayObject<Boolean> result = null;
 
-    // TODO (datayjz)
+    // TODO (datayjz): ray call worker to initiate
 
     LOG.info("Finished calling worker to init.");
     return result;
@@ -43,7 +43,7 @@ public class RemoteCallWorker {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
     RayObject<Boolean> result = null;
 
-    // TODO (datayjz)
+    // TODO (datayjz): ray call worker to start
 
     LOG.info("Finished calling worker to start.");
     return result;
@@ -60,7 +60,7 @@ public class RemoteCallWorker {
         actor.getId());
     Boolean result = false;
 
-    // TODO (datayjz)
+    // TODO (datayjz): ray call worker to destroy
 
     LOG.info("Finished calling wk shutdownWithoutReconstruction, result is {}.", result);
     return result;
