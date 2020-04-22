@@ -22,12 +22,12 @@ def train_and_save_model():
     # Train a simple neural net model
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(128, activation="relu"),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(10)
     ])
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-    model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
+    model.compile(optimizer="adam", loss=loss_fn, metrics=["accuracy"])
     model.fit(x_train, y_train, epochs=1)
 
     model.evaluate(x_test, y_test, verbose=2)
@@ -51,7 +51,7 @@ class TFMnistModel:
 
     def __call__(self, flask_request):
         # Step 1: transform HTTP request -> tensorflow input
-        # Here we define the request schema to be a json array with length 28*28.
+        # Here we define the request schema to be a json array.
         input_array = np.array(flask_request.json["array"])
         reshaped_array = input_array.reshape((1, 28, 28))
 
@@ -80,7 +80,7 @@ resp = requests.get(
     json={"array": np.random.randn(28 * 28).tolist()})
 print(resp.json())
 # {
-#  'prediction': [[-1.504277229309082, ..., -6.793371200561523]],
-#  'file': '/tmp/mnist_model.h5'
+#  "prediction": [[-1.504277229309082, ..., -6.793371200561523]],
+#  "file": "/tmp/mnist_model.h5"
 # }
 # __doc_query_end__
