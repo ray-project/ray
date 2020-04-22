@@ -30,9 +30,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   void Disconnect() override;
 
-  GcsPubSub &GetGcsPubSub() {
-    return *gcs_pub_sub_;
-  }
+  GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 

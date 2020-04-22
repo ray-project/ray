@@ -603,7 +603,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Cancel registration of a node to GCS.
   ASSERT_TRUE(UnregisterNode(node2_id));
-  RAY_LOG(INFO) << "unregister_count = " << unregister_count;
   WaitPendingDone(unregister_count, 2);
 
   // Get information of all nodes from GCS.
