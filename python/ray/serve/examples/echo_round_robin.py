@@ -31,7 +31,7 @@ serve.create_backend(echo_v1, "echo:v1")
 serve.create_backend(echo_v2, "echo:v2")
 
 # link and split the service to two backends
-serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
+serve.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo").json()
