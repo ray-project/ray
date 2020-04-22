@@ -139,12 +139,12 @@ class FixedPackingPolicyQueue(Router):
 
     """
 
-    def __init__(self, packing_num=3):
+    async def __init__(self, packing_num=3):
         # Saves the information about last assigned
         # backend for every service
         self.fixed_packing_iterator_map = {}
         self.packing_num = packing_num
-        super().__init__()
+        await super().__init__()
 
     async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,

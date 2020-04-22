@@ -103,7 +103,7 @@ py_test(
 py_test(
     name = "test_apex",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex.py"]
 )
 
@@ -1318,6 +1318,14 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_metrics_and_callbacks_legacy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
     args = ["--num-iters=2"]
 )
 

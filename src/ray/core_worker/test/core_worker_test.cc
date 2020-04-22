@@ -376,8 +376,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(
-          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0);
 
       ASSERT_EQ(return_ids.size(), 1);
 

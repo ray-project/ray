@@ -65,7 +65,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     // PushTaskReply.
     reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                        /*inner_ids=*/{}, caller_id, caller_address,
-                                       call_site, -1);
+                                       call_site, -1, /*is_reconstructable=*/true);
   }
 
   {
