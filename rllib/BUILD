@@ -152,7 +152,7 @@ py_test(
 py_test(
     name = "test_appo",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
 
