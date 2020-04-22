@@ -1452,7 +1452,7 @@ genrule(
             tmpdir="redis.tmp" &&
             path=$(location @com_github_antirez_redis//:file) &&
             cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
-            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" V=0 &&
             mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
             mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
