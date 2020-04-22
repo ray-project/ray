@@ -32,6 +32,17 @@ install_toolchains() {
     install /dev/stdin "${target}"
     7z x -bsp0 -bso0 "${target}" -o"${targetdir}"
     rm -f -- "${target}"
+    (
+      # Add Clang/LLVM binaries to somewhere that's in already PATH
+      # (don't change PATH itself, to avoid invalidating Bazel's cache or having to manage environment variables)
+      mkdir -p -- ~/bin
+      set +x
+      local path
+      for path in "${targetdir}\\bin"/*.exe; do
+        local name="${path##*/}"
+        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | install /dev/stdin ~/bin/"${name%.*}"
+      done
+    )
   else
     sudo tar -x -J --strip-components=1 -C "${targetdir}"
     command -V clang 1>&2
