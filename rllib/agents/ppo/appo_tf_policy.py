@@ -6,7 +6,7 @@ import numpy as np
 import logging
 import gym
 
-import ray.rllib.agents.impala.vtrace_tf as vtrace
+from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, validate_config, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing

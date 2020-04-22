@@ -24,8 +24,8 @@ from gym.spaces import Box
 import numpy as np
 import unittest
 
-import ray.rllib.agents.impala.vtrace_tf as vtrace_tf
-import ray.rllib.agents.impala.vtrace_torch as vtrace_torch
+from ray.rllib.agents.impala import vtrace_tf as vtrace_tf
+from ray.rllib.agents.impala import vtrace_torch as vtrace_torch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.test_utils import check, framework_iterator
