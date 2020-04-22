@@ -27,10 +27,9 @@ def test_master_failure(serve_instance):
         return "hello1"
 
     serve.create_backend(function, "master_failure:v1")
-    serve.link("master_failure", "master_failure:v1")
+    serve.set_traffic("master_failure", {"master_failure:v1": 1.0})
 
-    assert request_with_retries(
-        "/master_failure", timeout=0.1).text == "hello1"
+    assert request_with_retries("/master_failure", timeout=1).text == "hello1"
 
     for _ in range(10):
         response = request_with_retries("/master_failure", timeout=30)
@@ -42,7 +41,7 @@ def test_master_failure(serve_instance):
         return "hello2"
 
     serve.create_backend(function, "master_failure:v2")
-    serve.link("master_failure", "master_failure:v2")
+    serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
 
     for _ in range(10):
         response = request_with_retries("/master_failure", timeout=30)
@@ -65,7 +64,7 @@ def test_http_proxy_failure(serve_instance):
     serve.create_backend(function, "proxy_failure:v1")
     serve.set_traffic("proxy_failure", {"proxy_failure:v1": 1.0})
 
-    assert request_with_retries("/proxy_failure", timeout=0.1).text == "hello1"
+    assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
 
     for _ in range(10):
         response = request_with_retries("/proxy_failure", timeout=30)
@@ -143,7 +142,7 @@ def test_worker_restart(serve_instance):
     serve.set_traffic("worker_failure", {"worker_failure:v1": 1.0})
 
     # Get the PID of the worker.
-    old_pid = request_with_retries("/worker_failure", timeout=0.1).text
+    old_pid = request_with_retries("/worker_failure", timeout=1).text
 
     # Kill the worker.
     handles = _get_worker_handles("worker_failure:v1")
@@ -203,8 +202,7 @@ def test_worker_replica_failure(serve_instance):
     # Wait until both replicas have been started.
     responses = set()
     while len(responses) == 1:
-        responses.add(
-            request_with_retries("/replica_failure", timeout=0.1).text)
+        responses.add(request_with_retries("/replica_failure", timeout=1).text)
         time.sleep(0.1)
 
     # Kill one of the replicas.
