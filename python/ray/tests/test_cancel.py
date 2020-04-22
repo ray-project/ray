@@ -17,7 +17,6 @@ def valid_exceptions(use_force):
 
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
-    """A helper method for chain of events tests"""
     signaler = SignalActor.remote()
 
     @ray.remote
@@ -59,7 +58,6 @@ def test_cancel_chain(ray_start_regular, use_force):
 
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_multiple_dependents(ray_start_regular, use_force):
-    """A helper method for multiple waiters on events tests"""
     signaler = SignalActor.remote()
 
     @ray.remote
@@ -197,26 +195,35 @@ def test_stress(shutdown_only, use_force):
 
 @pytest.mark.parametrize("use_force", [True, False])
 def test_fast(shutdown_only, use_force):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=2)
 
     @ray.remote
     def fast(y):
         return y
 
+    signaler = SignalActor.remote()
     ids = list()
     for _ in range(100):
         x = fast.remote("a")
         ray.cancel(x)
         ids.append(x)
 
-    for _ in range(100):
-        x = fast.remote("a")
-        ids.append(x)
-        ray.cancel(x)
+    @ray.remote
+    def wait_for(y):
+        return y
 
+    sig = signaler.wait.remote()
+    for _ in range(5000):
+        x = wait_for.remote(sig)
+        ids.append(x)
+
+    for idx in range(100, 5100):
+        if random.random() > 0.95:
+            ray.cancel(ids[idx])
+    signaler.send.remote()
     for obj_id in ids:
         try:
-            ray.get(obj_id, 0.1)
+            ray.get(obj_id, 5)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
 

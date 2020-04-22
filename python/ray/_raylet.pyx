@@ -467,7 +467,8 @@ cdef execute_task(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
-            # Check for late cancellation.
+            # Check for a cancellation that was called when the function
+            # was exiting and was raised after the except block.
             if not check_signals().ok():
                 task_exception = True
                 raise RayCancellationError(
@@ -983,7 +984,7 @@ cdef class CoreWorker:
                                             c_object_id, force_kill)
 
         if not status.ok():
-            raise ValueError(status.message().decode())
+            raise TypeError(status.message().decode())
 
     def resource_ids(self):
         cdef:

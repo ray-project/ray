@@ -321,7 +321,6 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             task_queues_.erase(scheduling_key);
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          // Try to cancel the lease requests.
           task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                             rpc::ErrorType::TASK_CANCELLED);
           return Status::OK();
@@ -347,23 +346,24 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
-  RAY_UNUSED(client->CancelTask(
-      request, [this, task_spec, force_kill](const Status &status,
+  RAY_UNUSED(client->CancelTask(request, [this, task_spec, force_kill](
+                                             const Status &status,
                                              const rpc::CancelTaskReply &reply) {
-        absl::MutexLock lock(&mu_);
-        cancelled_tasks_.erase(task_spec.TaskId());
-        if (!reply.attempt_succeeded()) {
-          if (cancel_retry_timer_.has_value()) {
-            if (cancel_retry_timer_.value().expiry() <=
-                std::chrono::high_resolution_clock::now()) {
-              cancel_retry_timer_.value().expires_after(boost::asio::chrono::milliseconds(
-                  RayConfig::instance().cancellation_retry_ms()));
-            }
-            cancel_retry_timer_.value().async_wait(boost::bind(
-                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
-          }
+    absl::MutexLock lock(&mu_);
+    cancelled_tasks_.erase(task_spec.TaskId());
+    if (status.ok() && !reply.attempt_succeeded()) {
+      if (cancel_retry_timer_.has_value()) {
+        if (cancel_retry_timer_->expiry() <= std::chrono::high_resolution_clock::now()) {
+          cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
+              RayConfig::instance().cancellation_retry_ms()));
         }
-      }));
+        cancel_retry_timer_->async_wait(boost::bind(
+            &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
+      }
+    }
+    // Retry is not attempted if !status.ok() because force-kill may kill the worker
+    // before the reply is sent.
+  }));
   return Status::OK();
 }
 };  // namespace ray

@@ -1682,7 +1682,7 @@ def cancel(object_id, force=False):
     worker.check_connected()
 
     if not isinstance(object_id, ray.ObjectID):
-        raise ValueError(
+        raise TypeError(
             "ray.cancel() only supported for non-actor object IDs. "
             "Got: {}.".format(type(object_id)))
     if len(ray.wait([object_id], timeout=0)[1]) != 1:

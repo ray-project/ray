@@ -647,9 +647,6 @@ void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   }
 
   // Reset the timer from the previous expiration time to avoid drift.
-  // auto x = std::chrono::high_resolution_clock::now();
-  // auto r = x < death_check_timer_.expiry();
-  // RAY_LOG(ERROR) << "now is less than expire: " << r;
   death_check_timer_.expires_at(
       death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(

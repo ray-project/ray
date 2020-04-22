@@ -77,6 +77,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Either remove a pending task or send an RPC to kill a running task
   ///
   /// \param[in] task_spec The task to kill.
+  /// \param[in] force_kill Whether to kill the worker executing the task.
   Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
  private:
@@ -194,6 +195,7 @@ class CoreWorkerDirectTaskSubmitter {
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
 
+  // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 };
 
