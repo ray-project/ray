@@ -7,20 +7,6 @@ from ray.serve import BackendConfig
 import ray
 
 
-def test_nonblocking(ray_instance):
-    serve.init(http_port=8001)
-    serve.create_endpoint("endpoint", "/api")
-
-    def function(flask_request):
-        return {"method": flask_request.method}
-
-    serve.create_backend(function, "echo:v1")
-    serve.link("endpoint", "echo:v1")
-
-    resp = requests.get("http://127.0.0.1:8001/api").json()["method"]
-    assert resp == "GET"
-
-
 def test_e2e(serve_instance):
     serve.init()
     serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
