@@ -165,6 +165,61 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
+        "free_objects_period_milliseconds": -1,
+    })
+    cluster = Cluster()
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"node2": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address, _internal_config=config)
+
+    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    obj = ray.put(np.zeros(10**7, dtype=np.uint8))
+    result = dependent_task.options(resources={"node1": 1}).remote(obj)
+    ray.get(result)
+    del obj
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
+
+    for _ in range(20):
+        ray.put(np.zeros(10**7, dtype=np.uint8))
+
+    if reconstruction_enabled:
+        ray.get(result)
+    else:
+        with pytest.raises(ray.exceptions.UnreconstructableError):
+            ray.get(result)
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,

@@ -214,15 +214,15 @@ def get_activation_fn(name, framework="tf"):
             torch.nn.ReLU. Returns None for name="linear".
     """
     if framework == "torch":
-        _, nn = try_import_torch()
-        if name == "linear":
+        if name == "linear" or name is None:
             return None
-        elif name == "relu":
+        _, nn = try_import_torch()
+        if name == "relu":
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
     else:
-        if name == "linear":
+        if name == "linear" or name is None:
             return None
         tf = try_import_tf()
         fn = getattr(tf.nn, name, None)

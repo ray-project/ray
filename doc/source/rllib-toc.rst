@@ -101,7 +101,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+   -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
@@ -109,13 +109,13 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
+   -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+   -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| :ref:`Evolution Strategies <es>`
+   -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
 *  Multi-agent specific
 
@@ -124,7 +124,7 @@ Algorithms
 
 *  Offline
 
-   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+   -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 *  Contextual bandits
 

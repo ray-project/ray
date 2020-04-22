@@ -121,8 +121,8 @@ matrix:
         - python setup.py check --restructuredtext --strict --metadata
         - cd ..
         # Run Bazel linter Buildifier.
-        - wget -q https://dl.google.com/go/go1.12.linux-amd64.tar.gz
-        - tar -xf go1.12.linux-amd64.tar.gz
+        - wget -q https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz
+        - tar -xf go1.14.2.linux-amd64.tar.gz
         - mkdir $HOME/go_dir
         - export GOROOT=`pwd`/go
         - export GOPATH="$HOME/go_dir"
@@ -313,8 +313,8 @@ script:
 
   # ray operator tests
   - cd ./deploy/ray-operator/
-  - ../../ci/suppress_output go build
-  - ../../ci/suppress_output go test ./...
+  - CC=gcc ../../ci/suppress_output go build
+  - CC=gcc ../../ci/suppress_output go test ./...
   - cd ../..
 
   # random python tests TODO(ekl): these should be moved to bazel
