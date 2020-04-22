@@ -9,7 +9,6 @@ import ray
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
 
-# This class is stateless and trivially reconstructable.
 class PrometheusSink:
     def __init__(self):
         self.metrics_cache = dict()
@@ -172,7 +171,4 @@ class PushCollector:
     async def push_forever(self, interval_s):
         while True:
             await self.push_once()
-            await asyncio.wait(
-                [asyncio.sleep(interval_s),
-                 self.new_metric_added.wait()],
-                return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.sleep(interval_s)
