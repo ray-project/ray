@@ -114,6 +114,13 @@ class MemoryMonitor:
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
                           "rb") as f:
                     used_gb = int(f.read()) / (1024**3)
+                # Exclude the page cache
+                with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
+                    for line in f.readlines():
+                        if line.split(" ")[0] == "cache":
+                            used_gb = \
+                                used_gb - int(line.split(" ")[1]) / (1024**3)
+                assert used_gb >= 0
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,
