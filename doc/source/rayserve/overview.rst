@@ -8,6 +8,8 @@ RayServe: Scalable and Programmable Serving
     :height: 250px
     :width: 400px
 
+.. _rayserve-overview:
+
 Overview
 --------
 

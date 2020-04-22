@@ -287,7 +287,7 @@ Getting Involved
    :caption: RayServe
 
    rayserve/overview.rst
-   rayserve/tensorflow.rst
+   rayserve/tensorflow-tutorial.rst
 
 .. toctree::
    :maxdepth: -1
