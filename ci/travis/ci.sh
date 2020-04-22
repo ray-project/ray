@@ -295,6 +295,10 @@ build() {
   if [ "${should_run_bazel_and_install}" = 1 ]; then  # NOT building wheels
     bazel build -k "//:*"   # Do a full build first to ensure it passes
     "${ROOT_DIR}"/install-ray.sh
+    # Let's do a super-quick vitals test after the build, just to make sure things didn't go catastrophically wrong. (Leave the real testing for later.)
+    (PYTHONPATH=python GLOG_logtostderr=1 GLOG_minloglevel=1 RAY_BACKEND_LOG_LEVEL=warning \
+      suppress_output python -c "import colorama; colorama.init(); import pytest, ray; pytest.main()" \
+      -q --full-trace python/ray/tests/test_mini.py)
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
