@@ -7,7 +7,7 @@ In particular, we show:
 - How to load the model from file system in your RayServe definition
 - How to parse the JSON request and evaluated in Tensorflow
 
-This tutorial requires tensorflow 2. Please make sure you have tensorflow 2 installed.
+This tutorial requires Tensorflow 2. Please make sure you have Tensorflow 2 installed.
 
 .. code-block:: bash
    
