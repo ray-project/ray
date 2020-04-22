@@ -83,7 +83,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  bool MarkTaskCanceled(const TaskID &task_id) override { return; }
+  bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -1012,6 +1012,8 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 }
 
 TEST(DirectTaskTransportTest, TestKillResolvingTask) {

@@ -319,6 +319,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
           if (scheduled_tasks->second.empty()) {
             task_queues_.erase(scheduling_key);
+            CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           // Try to cancel the lease requests.
           task_finisher_->PendingTaskFailed(task_spec.TaskId(),
