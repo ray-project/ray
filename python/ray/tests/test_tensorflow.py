@@ -4,6 +4,8 @@ import tensorflow.compat.v1 as tf
 import ray
 import ray.experimental.tf_utils
 
+tf.disable_eager_execution()
+
 
 def make_linear_network(w_name=None, b_name=None):
     # Define the inputs.
