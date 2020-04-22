@@ -14,7 +14,7 @@ public class JobMasterTest {
     Assert.assertNull(jobMaster.getGraphManager());
     Assert.assertNull(jobMaster.getResourceManager());
     Assert.assertNull(jobMaster.getJobMasterActor());
-    Assert.assertFalse(jobMaster.init(false));
+    Assert.assertFalse(jobMaster.init());
   }
 
 }
