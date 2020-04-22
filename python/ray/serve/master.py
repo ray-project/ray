@@ -227,8 +227,8 @@ class ServeMaster:
 
     async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
         assert endpoint_name in self.get_all_endpoints(), \
-            f"Attempted to assign traffic for an endpoint '{endpoint_name}'" \
-            " that is not registered."
+            "Attempted to assign traffic for an endpoint '{}'" \
+            " that is not registered.".format(endpoint_name)
 
         assert isinstance(traffic_policy_dictionary,
                           dict), "Traffic policy must be dictionary"
@@ -237,12 +237,12 @@ class ServeMaster:
         for backend, weight in traffic_policy_dictionary.items():
             prob += weight
             assert backend in existing_backends, \
-                f"Attempted to assign traffic to a backend '{backend}' that " \
-                "is not registered"
+                "Attempted to assign traffic to a backend '{}' that " \
+                "is not registered.".format(backend)
 
-            assert np.isclose(
-                prob, 1, atol=0.02
-            ), "weights must sum to 1, currently they sum to {}".format(prob)
+        assert np.isclose(
+            prob, 1, atol=0.02
+        ), "weights must sum to 1, currently they sum to {}".format(prob)
 
         self.policy_table.register_traffic_policy(endpoint_name,
                                                   traffic_policy_dictionary)
@@ -254,9 +254,10 @@ class ServeMaster:
     async def create_endpoint(self, route, endpoint_name, methods):
         err_prefix = "Cannot create endpoint. "
         assert route not in self.get_all_routes(), \
-            f"{err_prefix} Route '{route}' is already registered."
+            "{} Route '{}' is already registered.".format(err_prefix, route)
         assert endpoint_name not in self.get_all_endpoints(), \
-            f"{err_prefix} Endpoint '{endpoint_name}' is already registered."
+            "{} Endpoint '{}' is already registered.".format(err_prefix,
+                                                             endpoint_name)
         self.route_table.register_service(
             route, endpoint_name, methods=methods)
         [http_proxy] = self.get_http_proxy()
@@ -271,8 +272,8 @@ class ServeMaster:
         backend_worker = create_backend_worker(func_or_class)
 
         assert backend_tag not in self.get_all_backends(), \
-            f"Cannot create backend '{backend_tag}' because a backend" \
-            "with that name already exists."
+            "Cannot create backend '{}' because a backend" \
+            "with that name already exists.".format(backend_tag)
 
         # Save creator which starts replicas.
         self.backend_table.register_backend(backend_tag, backend_worker)
