@@ -13,7 +13,7 @@ py_library(
 py_test(
     name = "test_serve",
     size = "medium",
-    srcs = glob(["tests/*.py"]),
+    srcs = glob(["tests/*.py"], exclude=["tests/test_nonblocking.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
@@ -24,6 +24,14 @@ py_test(
     srcs = glob(["examples/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
+)
+
+py_test(
+    name = "test_nonblocking",
+    size = "small",
+    srcs = glob(["tests/test_nonblocking.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested

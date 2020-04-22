@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.schedule.strategy;
+package io.ray.streaming.runtime.master.resourcemanager.strategy;
 
 import io.ray.api.id.UniqueId;
 import io.ray.streaming.jobgraph.JobGraph;
@@ -8,12 +8,11 @@ import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.graph.ExecutionGraphTest;
+import io.ray.streaming.runtime.core.graph.ExecutionGraphTest;
 import io.ray.streaming.runtime.master.JobRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceAssignmentView;
-import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.impl.PipelineFirstStrategy;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -58,14 +57,11 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
   }
 
   @Test
-  public void testStrategyName() {
-    Assert
-        .assertEquals(ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
-  }
-
-  @Test
-  public void testAssignResource() {
+  public void testResourceAssignment() {
     strategy = new PipelineFirstStrategy();
+    Assert.assertEquals(
+        ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
+
     Map<String, String> jobConf = new HashMap<>();
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
