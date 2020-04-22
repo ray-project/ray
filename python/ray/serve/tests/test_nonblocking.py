@@ -12,7 +12,7 @@ def test_nonblocking():
         return {"method": flask_request.method}
 
     serve.create_backend(function, "echo:v1")
-    serve.link("endpoint", "echo:v1")
+    serve.set_traffic("endpoint", {"echo:v1": 1.0})
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
