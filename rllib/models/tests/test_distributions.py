@@ -1,14 +1,14 @@
 import numpy as np
 from gym.spaces import Box, Tuple
-from scipy.stats import norm
+from scipy.stats import norm, beta
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     DiagGaussian, GumbelSoftmax, MultiActionDistribution, MultiCategorical, \
     SquashedGaussian
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDiagGaussian, TorchMultiActionDistribution, \
-    TorchMultiCategorical, TorchSquashedGaussian
+from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical, \
+    TorchSquashedGaussian, TorchBeta, TorchCategorical, \
+    TorchMultiActionDistribution, TorchDiagGaussian
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
@@ -235,6 +235,52 @@ class TestDistributions(unittest.TestCase):
             if sess:
                 outs = sess.run(outs)
             check(outs, log_prob, decimals=4)
+
+    def test_beta(self):
+        input_space = Box(-2.0, 1.0, shape=(200, 10))
+        low, high = -1.0, 2.0
+        plain_beta_value_space = Box(0.0, 1.0, shape=(200, 5))
+
+        for fw, sess in framework_iterator(frameworks="torch", session=True):
+            cls = TorchBeta
+            inputs = input_space.sample()
+            beta_distribution = cls(inputs, {}, low=low, high=high)
+
+            inputs = beta_distribution.inputs
+            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+
+            # Mean for a Beta distribution: 1 / [1 + (beta/alpha)]
+            expected = (1.0 / (1.0 + beta_ / alpha)) * (high - low) + low
+            # Sample n times, expect always mean value (deterministic draw).
+            out = beta_distribution.deterministic_sample()
+            check(out, expected, rtol=0.01)
+
+            # Batch of size=n and non-deterministic -> expect roughly the mean.
+            values = beta_distribution.sample()
+            if sess:
+                values = sess.run(values)
+            else:
+                values = values.numpy()
+            self.assertTrue(np.max(values) <= high)
+            self.assertTrue(np.min(values) >= low)
+
+            check(np.mean(values), expected.mean(), decimals=1)
+
+            # Test log-likelihood outputs (against scipy).
+            inputs = input_space.sample()
+            beta_distribution = cls(inputs, {}, low=low, high=high)
+            inputs = beta_distribution.inputs
+            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+
+            values = plain_beta_value_space.sample()
+            values_scaled = values * (high - low) + low
+            out = beta_distribution.logp(torch.Tensor(values_scaled))
+            check(
+                out,
+                np.sum(np.log(beta.pdf(values, alpha, beta_)), -1),
+                rtol=0.001)
+
+            # TODO(sven): Test entropy outputs (against scipy).
 
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""

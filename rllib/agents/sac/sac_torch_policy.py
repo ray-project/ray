@@ -10,7 +10,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian)
+    TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
@@ -30,7 +30,8 @@ def get_dist_class(config, action_space):
         return TorchCategorical
     else:
         if config["normalize_actions"]:
-            return TorchSquashedGaussian
+            return TorchSquashedGaussian if \
+                not config["_use_beta_distribution"] else TorchBeta
         else:
             return TorchDiagGaussian
 

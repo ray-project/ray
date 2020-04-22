@@ -101,6 +101,9 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
+    assert config["_use_beta_distribution"] is False, \
+        "Beta-distr. not supported for tf!"
+
     if isinstance(action_space, Discrete):
         action_dist_class = Categorical
     else:
