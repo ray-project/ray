@@ -39,29 +39,28 @@ class AsyncClient {
   /// \param ip The ip that the rpc server is listening on.
   /// \param port The port that the rpc server is listening on.
   /// \param timeout_ms The maximum wait time in milliseconds.
+  /// \param is_timeout Whether connection timeout.
   /// \param error_code Set to indicate what error occurred, if any.
   /// \return Whether the connection is successful.
-  bool Connect(const std::string &ip, int port, int64_t timeout_ms,
+  bool Connect(const std::string &ip, int port, int64_t timeout_ms, bool *is_timeout,
                boost::system::error_code *error_code = nullptr) {
     try {
       auto endpoint =
           boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
 
       bool is_connected = false;
-      bool is_timeout = false;
+      *is_timeout = false;
       socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this,
                                                   boost::asio::placeholders::error,
                                                   boost::ref(is_connected)));
 
       // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
-      timer_.async_wait(boost::bind(&AsyncClient::TimerHandle, this,
-                                    boost::asio::placeholders::error,
-                                    boost::ref(is_timeout)));
+      timer_.async_wait(boost::bind(&AsyncClient::TimerHandle, this, is_timeout));
 
       do {
         io_service_.run_one();
-      } while (!is_timeout && !is_connected);
+      } while (!(*is_timeout) && !is_connected);
 
       timer_.cancel();
 
@@ -89,12 +88,9 @@ class AsyncClient {
     }
   }
 
-  void TimerHandle(boost::system::error_code error_code, bool &is_timeout) {
-    error_code_ = error_code;
-    if (!error_code) {
-      socket_.close();
-      is_timeout = true;
-    }
+  void TimerHandle(bool *is_timeout) {
+    socket_.close();
+    *is_timeout = true;
   }
 
   boost::asio::io_service io_service_;
@@ -116,13 +112,14 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   AsyncClient async_client;
   boost::system::error_code error_code;
   std::string address;
+  bool is_timeout;
   if (async_client.Connect(kPublicDNSServerIp, kPublicDNSServerPort, timeout_ms,
-                           &error_code)) {
+                           &is_timeout, &error_code)) {
     address = async_client.GetLocalIPAddress();
   } else {
     address = "127.0.0.1";
 
-    if (error_code == boost::system::errc::host_unreachable) {
+    if (is_timeout || error_code == boost::system::errc::host_unreachable) {
       boost::asio::ip::detail::endpoint primary_endpoint;
       boost::asio::io_context io_context;
       boost::asio::ip::tcp::resolver resolver(io_context);
@@ -140,8 +137,8 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
             primary_endpoint.port(ep.port());
 
             AsyncClient client;
-            if (client.Connect(primary_endpoint.address().to_string(), port,
-                               timeout_ms)) {
+            if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
+                               &is_timeout)) {
               break;
             }
           }
