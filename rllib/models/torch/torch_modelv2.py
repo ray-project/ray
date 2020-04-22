@@ -6,7 +6,7 @@ _, nn = try_import_torch()
 
 
 @PublicAPI
-class TorchModel(ModelV2):
+class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -89,6 +89,3 @@ class TorchModel(ModelV2):
                 if v.requires_grad
             }
         return [v for v in self.variables() if v.requires_grad]
-
-# Alias
-TorchModelV2 = TorchModel

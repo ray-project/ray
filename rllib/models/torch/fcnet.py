@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 
-from ray.rllib.models.torch.torch_model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn
@@ -12,12 +12,12 @@ _, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModel, nn.Module):
+class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        TorchModel.__init__(self, obs_space, action_space, num_outputs,
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
 
@@ -86,7 +86,7 @@ class FullyConnectedNetwork(TorchModel, nn.Module):
         # Holds the current value output.
         self._cur_value = None
 
-    @override(TorchModel)
+    @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         obs = input_dict["obs_flat"]
         features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
@@ -94,7 +94,7 @@ class FullyConnectedNetwork(TorchModel, nn.Module):
         self._cur_value = self._value_branch(features).squeeze(1)
         return logits, state
 
-    @override(TorchModel)
+    @override(TorchModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value

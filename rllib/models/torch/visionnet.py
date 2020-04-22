@@ -1,4 +1,4 @@
-from ray.rllib.models.torch.torch_model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
@@ -9,12 +9,12 @@ from ray.rllib.utils import try_import_torch
 _, nn = try_import_torch()
 
 
-class VisionNetwork(TorchModel, nn.Module):
+class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        TorchModel.__init__(self, obs_space, action_space, num_outputs,
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
 
@@ -60,14 +60,14 @@ class VisionNetwork(TorchModel, nn.Module):
             out_channels, 1, initializer=normc_initializer())
         self._cur_value = None
 
-    @override(TorchModel)
+    @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         features = self._hidden_layers(input_dict["obs"].float())
         logits = self._logits(features)
         self._cur_value = self._value_branch(features).squeeze(1)
         return logits, state
 
-    @override(TorchModel)
+    @override(TorchModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value

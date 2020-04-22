@@ -1,6 +1,10 @@
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.model import restore_original_dimensions, flatten
-from ray.rllib.utils.annotations import PublicAPI
+#from ray.rllib.models.model import restore_original_dimensions, flatten
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 @PublicAPI
@@ -267,3 +271,45 @@ class NullContextManager:
 
     def __exit__(self, *args):
         pass
+
+
+@DeveloperAPI
+def flatten(obs, framework):
+    """Flatten the given tensor."""
+    if framework == "tf":
+        return tf.layers.flatten(obs)
+    elif framework == "torch":
+        assert torch is not None
+        return torch.flatten(obs, start_dim=1)
+    else:
+        raise NotImplementedError("flatten", framework)
+
+
+@DeveloperAPI
+def restore_original_dimensions(obs, obs_space, tensorlib=tf):
+    """Unpacks Dict and Tuple space observations into their original form.
+
+    This is needed since we flatten Dict and Tuple observations in transit.
+    Before sending them to the model though, we should unflatten them into
+    Dicts or Tuples of tensors.
+
+    Arguments:
+        obs: The flattened observation tensor.
+        obs_space: The flattened obs space. If this has the `original_space`
+            attribute, we will unflatten the tensor to that shape.
+        tensorlib: The library used to unflatten (reshape) the array/tensor.
+
+    Returns:
+        single tensor or dict / tuple of tensors matching the original
+        observation space.
+    """
+
+    if hasattr(obs_space, "original_space"):
+        if tensorlib == "tf":
+            tensorlib = tf
+        elif tensorlib == "torch":
+            assert torch is not None
+            tensorlib = torch
+        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs

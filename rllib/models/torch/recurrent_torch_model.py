@@ -1,7 +1,7 @@
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -10,7 +10,7 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentTorchModel(TorchModel, nn.Module):
+class RecurrentTorchModel(TorchModelV2, nn.Module):
     """Helper class to simplify implementing RNN models with TorchModel.
 
     Instead of implementing forward(), you can implement forward_rnn() which
@@ -53,7 +53,7 @@ class RecurrentTorchModel(TorchModel, nn.Module):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        TorchModel.__init__(self, obs_space, action_space, num_outputs,
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
 
