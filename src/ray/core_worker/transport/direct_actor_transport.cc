@@ -250,59 +250,68 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects,
-                                reply->mutable_borrowed_refs());
 
-    bool objects_valid = return_objects.size() == num_returns;
-    if (objects_valid) {
-      for (size_t i = 0; i < return_objects.size(); i++) {
-        auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::ForTaskReturn(
-            task_spec.TaskId(), /*index=*/i + 1,
-            /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-        return_object->set_object_id(id.Binary());
+    // SANG-TODO Store the callback_on_completion to the map
+    auto on_accept_complete = [this, reply, send_reply_callback, task_spec, num_returns](
+                                  std::vector<std::shared_ptr<RayObject>> &return_objects,
+                                  Status status) {
+      bool objects_valid = return_objects.size() == num_returns;
+      if (objects_valid) {
+        for (size_t i = 0; i < return_objects.size(); i++) {
+          auto return_object = reply->add_return_objects();
+          ObjectID id = ObjectID::ForTaskReturn(
+              task_spec.TaskId(), /*index=*/i + 1,
+              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+          return_object->set_object_id(id.Binary());
 
-        // The object is nullptr if it already existed in the object store.
-        const auto &result = return_objects[i];
-        return_object->set_size(result->GetSize());
-        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
-          return_object->set_in_plasma(true);
-        } else {
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
-          }
-          for (const auto &nested_id : result->GetNestedIds()) {
-            return_object->add_nested_inlined_ids(nested_id.Binary());
+          // The object is nullptr if it already existed in the object store.
+          const auto &result = return_objects[i];
+          return_object->set_size(result->GetSize());
+          if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
+            for (const auto &nested_id : result->GetNestedIds()) {
+              return_object->add_nested_inlined_ids(nested_id.Binary());
+            }
           }
         }
+        if (task_spec.IsActorCreationTask()) {
+          RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
+                        << ", actor_id: " << task_spec.ActorCreationId();
+          // Tell raylet that an actor creation task has finished execution, so that
+          // raylet can publish actor creation event to GCS, and mark this worker as
+          // actor, thus if this worker dies later raylet will reconstruct the actor.
+          RAY_CHECK_OK(task_done_());
+        }
       }
-      if (task_spec.IsActorCreationTask()) {
-        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                      << ", actor_id: " << task_spec.ActorCreationId();
-        // Tell raylet that an actor creation task has finished execution, so that
-        // raylet can publish actor creation event to GCS, and mark this worker as
-        // actor, thus if this worker dies later raylet will reconstruct the actor.
-        RAY_CHECK_OK(task_done_());
-      }
-    }
-    if (status.IsSystemExit()) {
-      // Don't allow the worker to be reused, even though the reply status is OK.
-      // The worker will be shutting down shortly.
-      reply->set_worker_exiting(true);
-      if (objects_valid) {
-        // This happens when max_calls is hit. We still need to return the objects.
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+      if (status.IsSystemExit()) {
+        // Don't allow the worker to be reused, even though the reply status is OK.
+        // The worker will be shutting down shortly.
+        reply->set_worker_exiting(true);
+        if (objects_valid) {
+          // This happens when max_calls is hit. We still need to return the objects.
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        } else {
+          send_reply_callback(status, nullptr, nullptr);
+        }
       } else {
+        RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
         send_reply_callback(status, nullptr, nullptr);
       }
-    } else {
-      RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
-      send_reply_callback(status, nullptr, nullptr);
-    }
+    };
+    // SANG-EXPLAIN Register accept callback completion function, so that it can be called
+    // after task_handler_ is done..
+    on_accept_complete_map_.emplace(task_spec.TaskId(), on_accept_complete);
+    RAY_UNUSED(task_handler_(task_spec, resource_ids, &return_objects,
+                             reply->mutable_borrowed_refs()));
   };
 
   // Run actor creation task immediately on the main thread, without going
@@ -369,6 +378,20 @@ void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
   RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
   waiter_->OnWaitComplete(request.tag());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorkerDirectTaskReceiver::CompleteAcceptRequest(
+    const TaskID task_id, std::vector<std::shared_ptr<RayObject>> &return_objects,
+    Status status) {
+  OnAcceptComplete on_accept_complete;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = on_accept_complete_map_.find(task_id);
+    RAY_CHECK(it != on_accept_complete_map_.end());
+    on_accept_complete = it->second;
+    on_accept_complete_map_.erase(task_id);
+  }
+  on_accept_complete(return_objects, status);
 }
 
 }  // namespace ray

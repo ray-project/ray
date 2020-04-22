@@ -256,6 +256,10 @@ class CoreWorkerProcess {
 /// Python, etc) workers.
 class CoreWorker : public rpc::CoreWorkerServiceHandler {
  public:
+  // SANG-TODO Write a better description.
+  /// Callback that is called after task handler finishes.
+  using OnExecuteTaskCompletionCallback = std::function<void(const Status status)>;
+
   /// Construct a CoreWorker instance.
   ///
   /// \param[in] options The various initialization options.
@@ -716,6 +720,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
 
+  /// Callback to be called after executeTask is done.
+  void OnExecuteTaskCompletion(const TaskID task_id, const Status status);
+
   /// The callback expected to be implemented by the client.
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
@@ -1034,6 +1041,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
+
+  std::unordered_map<TaskID, OnExecuteTaskCompletionCallback>
+      on_excute_task_completion_map;
 
   friend class CoreWorkerTest;
 };

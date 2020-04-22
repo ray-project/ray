@@ -1444,69 +1444,102 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // worker ID for the current thread.
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
+  // This completion callback is called after worker executes its task.
+  auto on_execute_task_completion = [this, return_objects, task_spec, borrowed_ids,
+                                     return_ids, borrowed_refs](Status status) {
+    // SANG-TODO Make this part callback. Call it only when the worker context is not an
+    // async worker. I can find the info from worker_context->isasyncactor. If it is an
+    // async actor, don't do anything.
+    absl::optional<rpc::Address> caller_address(
+        options_.is_local_mode ? absl::optional<rpc::Address>()
+                               : worker_context_.GetCurrentTask()->CallerAddress());
+    for (size_t i = 0; i < return_objects->size(); i++) {
+      // The object is nullptr if it already existed in the object store.
+      if (!return_objects->at(i)) {
+        continue;
+      }
+      if (return_objects->at(i)->GetData() != nullptr &&
+          return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+        if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
+          RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
+                         << return_ids[i] << " in store: " << status.message();
+        }
+      }
+    }
+
+    // Get the reference counts for any IDs that we borrowed during this task and
+    // return them to the caller. This will notify the caller of any IDs that we
+    // (or a nested task) are still borrowing. It will also any new IDs that were
+    // contained in a borrowed ID that we (or a nested task) are now borrowing.
+    if (!borrowed_ids.empty()) {
+      reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+    }
+    // Unpin the borrowed IDs.
+    std::vector<ObjectID> deleted;
+    for (const auto &borrowed_id : borrowed_ids) {
+      RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
+      reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
+    }
+    if (options_.ref_counting_enabled) {
+      memory_store_->Delete(deleted);
+    }
+
+    if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
+      RAY_LOG(DEBUG)
+          << "There were " << reference_counter_->NumObjectIDsInScope()
+          << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
+          << ". This is either caused by keeping references to ObjectIDs in Python "
+             "between "
+             "tasks (e.g., in global variables) or indicates a problem with Ray's "
+             "reference counting, and may cause problems in the object store.";
+    }
+
+    if (!options_.is_local_mode) {
+      SetCurrentTaskId(TaskID::Nil());
+      worker_context_.ResetCurrentTask(task_spec);
+    }
+    {
+      absl::MutexLock lock(&mutex_);
+      current_task_ = TaskSpecification();
+    }
+    RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
+
+    if (status.IsSystemExit()) {
+      Exit(status.IsIntentionalSystemExit());
+    }
+
+    // SANG-TODO: Call receiver->run_accept_callback_on_completion(taskID)
+    if (!options_.is_local_mode) {
+      // Local Mode doesn't require accept callback.
+      direct_task_receiver_->CompleteAcceptRequest(task_spec.TaskId(), *return_objects,
+                                                   status);
+    }
+  };
+
+  {
+    absl::MutexLock lock(&mutex_);
+    // SAGN-TODO Add completion callback so that it can be used to finish up the task.
+    on_excute_task_completion_map.emplace(task_spec.TaskId(), on_execute_task_completion);
+  }
   status = options_.task_execution_callback(
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects);
+  OnExecuteTaskCompletion(task_spec.TaskId(), status);
+  // SANG-TODO Returned status is only used by Raylet path.
+  // We should change the function signature once raylet path is removed.
+  return status;
+}
 
-  absl::optional<rpc::Address> caller_address(
-      options_.is_local_mode ? absl::optional<rpc::Address>()
-                             : worker_context_.GetCurrentTask()->CallerAddress());
-  for (size_t i = 0; i < return_objects->size(); i++) {
-    // The object is nullptr if it already existed in the object store.
-    if (!return_objects->at(i)) {
-      continue;
-    }
-    if (return_objects->at(i)->GetData() != nullptr &&
-        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
-                       << return_ids[i] << " in store: " << status.message();
-      }
-    }
-  }
-
-  // Get the reference counts for any IDs that we borrowed during this task and
-  // return them to the caller. This will notify the caller of any IDs that we
-  // (or a nested task) are still borrowing. It will also any new IDs that were
-  // contained in a borrowed ID that we (or a nested task) are now borrowing.
-  if (!borrowed_ids.empty()) {
-    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
-  }
-  // Unpin the borrowed IDs.
-  std::vector<ObjectID> deleted;
-  for (const auto &borrowed_id : borrowed_ids) {
-    RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
-  }
-  if (options_.ref_counting_enabled) {
-    memory_store_->Delete(deleted);
-  }
-
-  if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
-    RAY_LOG(DEBUG)
-        << "There were " << reference_counter_->NumObjectIDsInScope()
-        << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
-        << ". This is either caused by keeping references to ObjectIDs in Python "
-           "between "
-           "tasks (e.g., in global variables) or indicates a problem with Ray's "
-           "reference counting, and may cause problems in the object store.";
-  }
-
-  if (!options_.is_local_mode) {
-    SetCurrentTaskId(TaskID::Nil());
-    worker_context_.ResetCurrentTask(task_spec);
-  }
+void CoreWorker::OnExecuteTaskCompletion(const TaskID task_id, const Status status) {
+  OnExecuteTaskCompletionCallback on_execute_task_completion;
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = TaskSpecification();
+    auto it = on_excute_task_completion_map.find(task_id);
+    RAY_CHECK(it != on_excute_task_completion_map.end());
+    on_execute_task_completion = it->second;
+    on_excute_task_completion_map.erase(task_id);
   }
-  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
-
-  if (status.IsSystemExit()) {
-    Exit(status.IsIntentionalSystemExit());
-  }
-
-  return status;
+  on_execute_task_completion(status);
 }
 
 void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,

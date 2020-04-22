@@ -332,6 +332,7 @@ cdef execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
 
+    # SANG-EXPLAIN Register actors if it is actor creation task
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
@@ -465,6 +466,7 @@ cdef execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
         except Exception as error:
+            # SANG-TODO this should be passed.
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
 
@@ -472,6 +474,7 @@ cdef execute_task(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
+                # SANG-TODO This should be given.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause_cls, proctitle=title)
             else:
@@ -509,7 +512,6 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
-
     with gil:
         try:
             try:
@@ -535,8 +537,18 @@ cdef CRayStatus task_execution_handler(
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
-
     return CRayStatus.OK()
+
+
+cdef complete_task_handler(const CRayStatus status):
+    cdef:
+        TaskID current_task_id
+    worker = ray.worker.global_worker
+    current_task_id = worker.core_worker.get_current_task_id()
+    CCoreWorkerProcess.GetCoreWorker().OnExecuteTaskCompletion(
+        current_task_id.native(),
+        status)
+
 
 cdef void async_plasma_callback(CObjectID object_id,
                                 int64_t data_size,
@@ -1243,6 +1255,7 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CClientID.FromBinary(client_id.binary()))
+
 
 cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
                                     CObjectID object_id,

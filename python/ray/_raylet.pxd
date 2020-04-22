@@ -15,12 +15,14 @@ from libcpp.memory cimport (
 
 from ray.includes.common cimport (
     CBuffer,
-    CRayObject
+    CRayObject,
+    CRayStatus
 )
 from ray.includes.libcoreworker cimport CFiberEvent
 from ray.includes.unique_ids cimport (
     CObjectID,
-    CActorID
+    CActorID,
+    CTaskID
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,

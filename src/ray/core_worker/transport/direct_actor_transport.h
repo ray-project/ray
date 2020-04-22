@@ -427,6 +427,9 @@ class CoreWorkerDirectTaskReceiver {
 
   using OnTaskDone = std::function<ray::Status()>;
 
+  using OnAcceptComplete = std::function<void(
+      std::vector<std::shared_ptr<RayObject>> &return_objects, Status status)>;
+
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
@@ -458,6 +461,11 @@ class CoreWorkerDirectTaskReceiver {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  // SANG_MODIFY
+  void CompleteAcceptRequest(const TaskID task_id,
+                             std::vector<std::shared_ptr<RayObject>> &return_objects,
+                             Status status);
+
  private:
   // Worker context.
   WorkerContext &worker_context_;
@@ -478,6 +486,14 @@ class CoreWorkerDirectTaskReceiver {
   std::unordered_map<TaskID,
                      std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>>
       scheduling_queue_;
+
+  /// Protects access to the counters below.
+  absl::Mutex mu_;
+
+  /// Queue to register request accept callback.
+  /// This is used to complete request accept callback.
+  /// NOTE: This must be guarded when used by core worker.
+  std::unordered_map<TaskID, OnAcceptComplete> on_accept_complete_map_;
 };
 
 }  // namespace ray
