@@ -2,6 +2,12 @@ package io.ray.streaming.runtime.python;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Primitives;
+import io.ray.streaming.api.context.StreamingContext;
+import io.ray.streaming.python.PythonFunction;
+import io.ray.streaming.python.PythonPartition;
+import io.ray.streaming.python.stream.PythonStreamSource;
+import io.ray.streaming.runtime.serialization.MsgPackSerializer;
+import io.ray.streaming.runtime.util.ReflectionUtils;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -10,12 +16,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import io.ray.streaming.api.context.StreamingContext;
-import io.ray.streaming.python.PythonFunction;
-import io.ray.streaming.python.PythonPartition;
-import io.ray.streaming.python.stream.PythonStreamSource;
-import io.ray.streaming.runtime.serialization.MsgPackSerializer;
-import io.ray.streaming.runtime.util.ReflectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

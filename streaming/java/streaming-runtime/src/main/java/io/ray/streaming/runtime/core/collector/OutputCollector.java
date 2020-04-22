@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.core.collector;
 
 import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
 import io.ray.api.RayPyActor;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.collector.Collector;

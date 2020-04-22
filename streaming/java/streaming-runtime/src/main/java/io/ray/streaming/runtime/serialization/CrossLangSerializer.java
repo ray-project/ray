@@ -1,9 +1,9 @@
 package io.ray.streaming.runtime.serialization;
 
-import java.util.Arrays;
-import java.util.List;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * A serializer for cross-lang serialization between java/python.

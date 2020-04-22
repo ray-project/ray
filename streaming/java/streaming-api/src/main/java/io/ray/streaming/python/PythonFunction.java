@@ -1,8 +1,8 @@
 package io.ray.streaming.python;
 
 import com.google.common.base.Preconditions;
-import org.apache.commons.lang3.StringUtils;
 import io.ray.streaming.api.function.Function;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Represents a user defined python function.

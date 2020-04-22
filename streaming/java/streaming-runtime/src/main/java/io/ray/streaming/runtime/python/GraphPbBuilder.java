@@ -10,10 +10,10 @@ import io.ray.streaming.runtime.core.graph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
-import io.ray.streaming.runtime.serialization.MsgPackSerializer;
-import java.util.Arrays;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.generated.Streaming;
+import io.ray.streaming.runtime.serialization.MsgPackSerializer;
+import java.util.Arrays;
 
 public class GraphPbBuilder {
 
