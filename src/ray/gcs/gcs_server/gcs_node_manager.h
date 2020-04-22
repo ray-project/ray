@@ -33,7 +33,8 @@ class GcsNodeManager {
   ///
   /// \param io_service The event loop to run the monitor on.
   /// \param node_info_accessor The node info accessor.
-  /// \param error_info_accessor The error info accessor, which is used to report error
+  /// \param error_info_accessor The error info accessor, which is used to report error.
+  /// \param gcs_pub_sub A publisher for publishing heartbeat batch messages.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,

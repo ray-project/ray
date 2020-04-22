@@ -69,6 +69,7 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
                                  gcs::ActorInfoAccessor &actor_info_accessor,
                                  gcs::GcsNodeManager &gcs_node_manager,
+                                 const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
                                  LeaseClientFactoryFn lease_client_factory,
                                  rpc::ClientFactoryFn client_factory)
     : actor_info_accessor_(actor_info_accessor),
@@ -86,7 +87,8 @@ GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
           [this](std::shared_ptr<GcsActor> actor) {
             OnActorCreateSuccess(std::move(actor));
           },
-          std::move(lease_client_factory), std::move(client_factory))) {
+          std::move(lease_client_factory), std::move(client_factory))),
+      gcs_pub_sub_(gcs_pub_sub) {
   RAY_LOG(INFO) << "Initializing GcsActorManager.";
   gcs_node_manager.AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
@@ -199,6 +201,7 @@ void GcsActorManager::ReconstructActorsOnNode(const ClientID &node_id) {
 void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
                                        bool need_reschedule) {
   RAY_CHECK(actor != nullptr);
+  auto actor_id = actor->GetActorID();
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
@@ -218,18 +221,25 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data,
-                                                  [this, actor](Status status) {
-                                                    RAY_CHECK_OK(status);
-                                                    gcs_actor_scheduler_->Schedule(actor);
-                                                  }));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+        actor_id, actor_table_data, [this, actor, actor_table_data](Status status) {
+          RAY_CHECK_OK(status);
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Binary(),
+                                             actor_table_data->SerializeAsString(),
+                                             nullptr));
+          gcs_actor_scheduler_->Schedule(actor);
+        }));
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(
-        actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                             actor_table_data->SerializeAsString(),
+                                             nullptr));
+        }));
   }
 }
 
@@ -247,7 +257,12 @@ void GcsActorManager::OnActorCreateSuccess(std::shared_ptr<GcsActor> actor) {
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor_id, actor_table_data, nullptr));
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Binary(),
+                                           actor_table_data->SerializeAsString(),
+                                           nullptr));
+      }));
 
   // Invoke all callbacks for all registration requests of this actor (duplicated
   // requests are included) and remove all of them from actor_to_register_callbacks_.

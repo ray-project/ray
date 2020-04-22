@@ -1259,6 +1259,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
+      RAY_LOG(INFO) << "99999999999999999999: actor id = " << actor_id;
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
       } else if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
@@ -1292,6 +1293,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                     << ClientID::FromBinary(actor_data.address().raylet_id());
     };
 
+    RAY_LOG(INFO) << "AsyncSubscribe...............: actor id = " << actor_id;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
 

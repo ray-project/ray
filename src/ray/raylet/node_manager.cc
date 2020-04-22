@@ -219,6 +219,7 @@ ray::Status NodeManager::RegisterGcs() {
   const auto &resources_changed =
       [this](const ClientID &id,
              const gcs::ResourceChangeNotification &resource_notification) {
+        RAY_LOG(INFO) << "Subscribe to resource changes....................";
         if (resource_notification.IsAdded()) {
           ResourceSet resource_set;
           for (auto &entry : resource_notification.GetData()) {
@@ -554,7 +555,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
-  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
+  RAY_LOG(INFO) << "[NodeRemoved] Received callback from client id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -649,7 +650,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
 
 void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
                                         const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
+  RAY_LOG(INFO) << "[ResourceCreateUpdated] received callback from client id "
                  << client_id << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
 
@@ -670,7 +671,8 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
                                                       new_resource_capacity);
     }
   }
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
+  RAY_LOG(INFO) << "[ResourceCreateUpdated] Updated cluster_resource_map, size = " << cluster_resource_map_.size()
+    << ", self_node_id_ = " << self_node_id_;
 
   if (client_id == self_node_id_) {
     // The resource update is on the local node, check if we can reschedule tasks.
@@ -729,11 +731,16 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableData &heartbeat_data) {
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
+  RAY_LOG(INFO) << "[HeartbeatAdded]: begining...............client id = " << client_id;
+  RAY_LOG(INFO) << "[HeartbeatAdded]: cluster_resource_map_ size = " << cluster_resource_map_.size();
   auto it = cluster_resource_map_.find(client_id);
   if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
-                  << client_id;
+                  << client_id << ", size = " << cluster_resource_map_.size();
+    for (auto item : cluster_resource_map_) {
+      RAY_LOG(INFO) << "[HeartbeatAdded]: item = " << item.first;
+    }
     return;
   }
   // Trigger local GC at the next heartbeat interval.
@@ -788,9 +795,12 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   // Update load information provided by each heartbeat.
+  RAY_LOG(INFO) << "HeartbeatBatchAdded begining, self node id = " << self_node_id_
+    << "........, batch size = " << heartbeat_batch.batch().size();
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == self_node_id_) {
+      RAY_LOG(INFO) << "HeartbeatBatchAdded skip............" << client_id;
       // Skip heartbeats from self.
       continue;
     }

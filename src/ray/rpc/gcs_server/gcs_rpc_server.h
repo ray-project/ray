@@ -106,6 +106,10 @@ class ActorInfoGcsServiceHandler {
                                        RegisterActorInfoReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
+                                     GetAllActorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
                                      UpdateActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
@@ -141,6 +145,7 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);
@@ -179,6 +184,10 @@ class NodeInfoGcsServiceHandler {
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllResources(const GetAllResourcesRequest &request,
+                                     GetAllResourcesReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
                                      UpdateResourcesReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
@@ -209,6 +218,7 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
   }

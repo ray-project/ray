@@ -137,7 +137,7 @@ void GcsServer::InitGcsNodeManager() {
 void GcsServer::InitGcsActorManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_);
+      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_, gcs_pub_sub_);
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

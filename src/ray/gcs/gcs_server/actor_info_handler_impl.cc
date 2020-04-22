@@ -63,12 +63,22 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   }
 }
 
+void DefaultActorInfoHandler::HandleGetAllActorInfo(
+    const GetAllActorInfoRequest &request, GetAllActorInfoReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all actor info.";
+  // TODO(ffbin): get all actor info.
+  Status status = Status::OK();
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  RAY_LOG(DEBUG) << "Finished getting all actor info.";
+}
+
 void DefaultActorInfoHandler::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
-  RAY_LOG(DEBUG) << "Registering actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
+  RAY_LOG(INFO) << "Registering actor info, job id = " << actor_id.JobId()
+                << ", actor id = " << actor_id;
   auto actor_table_data = std::make_shared<ActorTableData>();
   actor_table_data->CopyFrom(request.actor_table_data());
   auto on_done = [this, actor_id, actor_table_data, reply,
@@ -79,8 +89,8 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Binary(),
                                          actor_table_data->SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
+      RAY_LOG(INFO) << "Finished registering actor info, job id = " << actor_id.JobId()
+                    << ", actor id = " << actor_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

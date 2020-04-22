@@ -511,7 +511,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing node resources change.";
+  RAY_LOG(INFO) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::ResourceChange resource_change;
@@ -527,7 +527,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
   };
   auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
                                                           on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
+  RAY_LOG(INFO) << "Finished subscribing node resources change.";
   return status;
 }
 
@@ -585,7 +585,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
-  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+    ClientID node_id = ClientID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   auto entry = node_cache_.find(node_id);
   bool is_notif_new;

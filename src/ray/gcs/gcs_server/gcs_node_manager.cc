@@ -91,8 +91,13 @@ void GcsNodeManager::DetectDeadNodes() {
             }
           }
           if (!marked) {
+            auto node_info = GetNode(node_id);
             RemoveNode(node_id);
-            RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
+            RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, [this, node_id, node_info](Status status) {
+              RAY_LOG(INFO) << "node_info status ======================" << node_info->state();
+              RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Binary(),
+                                                 node_info->SerializeAsString(), nullptr));
+            }));
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.
@@ -121,9 +126,10 @@ void GcsNodeManager::SendBatchedHeartbeat() {
     for (const auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
-    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, nullptr));
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Binary(),
-                                       batch->SerializeAsString(), nullptr));
+    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, [this, batch](Status status) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Binary(),
+                                         batch->SerializeAsString(), nullptr));
+    }));
     heartbeat_buffer_.clear();
   }
 }

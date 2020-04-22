@@ -108,6 +108,7 @@ class GcsActorManager {
   /// \param actor_info_accessor Used to flush actor data to storage.
   /// \param gcs_node_manager The actor manager needs to listen to the node change events
   /// inside gcs_node_manager.
+  /// \param gcs_pub_sub A publisher for publishing actor messages.
   /// \param lease_client_factory Factory to create remote lease client, it will be passed
   /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
   /// default factory inside itself if it is not set.
@@ -117,6 +118,7 @@ class GcsActorManager {
   explicit GcsActorManager(boost::asio::io_context &io_context,
                            gcs::ActorInfoAccessor &actor_info_accessor,
                            gcs::GcsNodeManager &gcs_node_manager,
+                           const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
                            LeaseClientFactoryFn lease_client_factory = nullptr,
                            rpc::ClientFactoryFn client_factory = nullptr);
 
@@ -186,6 +188,8 @@ class GcsActorManager {
   gcs::ActorInfoAccessor &actor_info_accessor_;
   /// The scheduler to schedule all registered actors.
   std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
+  /// A publisher for publishing actor messages.
+  const std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace gcs

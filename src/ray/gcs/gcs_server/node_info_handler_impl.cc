@@ -155,11 +155,21 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
   }
 }
 
+void DefaultNodeInfoHandler::HandleGetAllResources(
+    const GetAllResourcesRequest &request, GetAllResourcesReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all resources.";
+  // TODO(ffbin): get all resources.
+  Status status = Status::OK();
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  RAY_LOG(DEBUG) << "Finished getting all resources.";
+}
+
 void DefaultNodeInfoHandler::HandleUpdateResources(
     const UpdateResourcesRequest &request, UpdateResourcesReply *reply,
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
+  RAY_LOG(INFO) << "Updating node resources, node id = " << node_id;
 
   gcs::NodeInfoAccessor::ResourceMap resources;
   for (auto resource : request.resources()) {
@@ -182,7 +192,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
                                          resource_change.SerializeAsString(), nullptr));
 
       gcs_node_resource_manager_.UpdateNodeResources(node_id, resources);
-      RAY_LOG(DEBUG) << "Finished updating node resources, node id = " << node_id;
+      RAY_LOG(INFO) << "Finished updating node resources, node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

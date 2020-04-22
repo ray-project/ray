@@ -59,6 +59,15 @@ message GetActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
+message GetAllActorInfoRequest {
+}
+
+message GetAllActorInfoReply {
+  GcsStatus status = 1;
+  // Data of all actors.
+  repeated ActorTableData actor_data_list = 2;
+}
+
 message RegisterActorInfoRequest {
   // Data of actor.
   ActorTableData actor_table_data = 1;
@@ -112,6 +121,8 @@ service ActorInfoGcsService {
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+  // Get all actor data from GCS Service.
+  rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Register an actor to GCS Service.
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.
@@ -176,6 +187,19 @@ message GetResourcesReply {
   map<string, ResourceTableData> resources = 2;
 }
 
+message GetAllResourcesRequest {
+}
+
+message NodeResources {
+  bytes node_id = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
+message GetAllResourcesReply {
+  GcsStatus status = 1;
+  repeated NodeResources resources_list = 2;
+}
+
 message UpdateResourcesRequest {
   bytes node_id = 1;
   map<string, ResourceTableData> resources = 2;
@@ -206,6 +230,8 @@ service NodeInfoGcsService {
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Get all node's resources from GCS Service.
+  rpc GetAllResources(GetAllResourcesRequest) returns (GetAllResourcesReply);
   // Update resources of a node in GCS Service.
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
