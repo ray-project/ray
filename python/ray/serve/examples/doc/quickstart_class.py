@@ -14,7 +14,7 @@ class Counter:
 
 serve.create_endpoint("counter", "/counter")
 serve.create_backend(Counter, "counter")
-serve.split("counter", {"counter": 1.0})
+serve.set_traffic("counter", {"counter": 1.0})
 
 requests.get("http://127.0.0.1:8000/counter").json()
 # > {"current_counter": self.count}

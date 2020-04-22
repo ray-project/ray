@@ -44,7 +44,7 @@ class TorchRunner:
                  use_fp16=False,
                  use_tqdm=False,
                  apex_args=None,
-                 scheduler_step_freq="batch"):
+                 scheduler_step_freq=None):
         self.model_creator = model_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
