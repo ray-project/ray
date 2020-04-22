@@ -246,28 +246,12 @@ def create_backend(func_or_class,
 
 
 @_ensure_connected
-def link(endpoint_name, backend_tag):
-    """Associate a service endpoint with backend tag.
-
-    Example:
-
-    >>> serve.link("service-name", "backend:v1")
-
-    Note:
-    This is equivalent to
-
-    >>> serve.split("service-name", {"backend:v1": 1.0})
-    """
-    split(endpoint_name, {backend_tag: 1.0})
-
-
-@_ensure_connected
-def split(endpoint_name, traffic_policy_dictionary):
+def set_traffic(endpoint_name, traffic_policy_dictionary):
     """Associate a service endpoint with traffic policy.
 
     Example:
 
-    >>> serve.split("service-name", {
+    >>> serve.set_traffic("service-name", {
         "backend:v1": 0.5,
         "backend:v2": 0.5
     })
@@ -278,8 +262,8 @@ def split(endpoint_name, traffic_policy_dictionary):
             to their traffic weights. The weights must sum to 1.
     """
     ray.get(
-        master_actor.split_traffic.remote(endpoint_name,
-                                          traffic_policy_dictionary))
+        master_actor.set_traffic.remote(endpoint_name,
+                                        traffic_policy_dictionary))
 
 
 @_ensure_connected

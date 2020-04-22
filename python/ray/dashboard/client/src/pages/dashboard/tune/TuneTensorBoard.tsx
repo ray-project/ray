@@ -47,8 +47,8 @@ class TuneTensorBoard extends React.Component<
       <div className={classes.root}>
         {error === "TypeError: Failed to fetch" && (
           <Typography className={classes.warning} color="textSecondary">
-            Warning: Tensorboard server closed. View Tensorboard by running
-            "tensorboard --logdir" if not displaying below.
+            Warning: Tensorboard is currently not available. View Tensorboard by
+            running "tensorboard --logdir" if not displaying below.
           </Typography>
         )}
         <iframe
