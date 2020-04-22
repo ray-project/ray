@@ -53,24 +53,17 @@ def test_no_route(serve_instance):
     assert result == 1
 
 
-def test_reject_duplicate_backend_tag(serve_instance):
-    backend_name = "foo"
-    serve.create_backend(lambda foo: foo, backend_name)
-    with pytest.raises(AssertionError):
-        serve.create_backend(lambda foo: foo, backend_name)
-
-
 def test_reject_duplicate_route(serve_instance):
     route = "/foo"
     serve.create_endpoint("bar", route=route)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.create_endpoint("foo", route=route)
 
 
 def test_reject_duplicate_endpoint(serve_instance):
     endpoint_name = "foo"
     serve.create_endpoint(endpoint_name, route="/ok")
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.create_endpoint(endpoint_name, route="/different")
 
 
