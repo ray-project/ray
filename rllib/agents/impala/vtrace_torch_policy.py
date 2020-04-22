@@ -21,20 +21,20 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
         res: A tensor with swapped axes or a list of tensors with
         swapped axes.
     """
-    if isinstance(tensor, list):
+    if isinstance(tensor, (list, tuple)):
         return [
             make_time_major(policy, seq_lens, t, drop_last) for t in tensor
         ]
 
     if policy.is_recurrent():
-        B = seq_lens.size()[0]
-        T = tensor.size()[0] // B
+        B = seq_lens.shape[0]
+        T = tensor.shape[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
         # boundaries. TODO(ekl) this is kind of a hack
         T = policy.config["rollout_fragment_length"]
-        B = tensor.shape()[0] // T
-    rs = torch.reshape(tensor, torch.cat([[B, T], tensor.size()[1:]], dim=0))
+        B = tensor.shape[0] // T
+    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
 
     # Swap B and T axes.
     res = torch.transpose(rs, 1, 0)

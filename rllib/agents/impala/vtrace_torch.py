@@ -29,12 +29,11 @@ multi_from_logits method accepts lists of tensors instead of just
 tensors.
 """
 
-import numpy as np
-
 from ray.rllib.agents.impala.vtrace_tf import VTraceFromLogitsReturns, \
     VTraceReturns
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -195,13 +194,13 @@ def multi_from_logits(behaviour_policy_logits,
             target policy action probabilities (log \pi(a_t)).
     """
 
-    for i in range(len(behaviour_policy_logits)):
-        behaviour_policy_logits[i] = torch.from_numpy(
-            behaviour_policy_logits[i]).float()
-        target_policy_logits[i] = torch.from_numpy(
-            target_policy_logits[i]).float()
-        actions[i] = torch.from_numpy(actions[i]).float()
+    behaviour_policy_logits = convert_to_torch_tensor(
+        behaviour_policy_logits, device="cpu")
+    target_policy_logits = convert_to_torch_tensor(
+        target_policy_logits, device="cpu")
+    actions = convert_to_torch_tensor(actions, device="cpu")
 
+    for i in range(len(behaviour_policy_logits)):
         # Make sure tensor ranks are as expected.
         # The rest will be checked by from_action_log_probs.
         assert len(behaviour_policy_logits[i].size()) == 3
@@ -286,12 +285,11 @@ def from_importance_weights(log_rhos,
         pg_advantages: A float32 tensor of shape [T, B]. Can be used as the
             advantage in the calculation of policy gradients.
     """
-    if isinstance(log_rhos, np.ndarray):
-        log_rhos = torch.from_numpy(log_rhos).float()
-    discounts = torch.from_numpy(discounts).float()
-    rewards = torch.from_numpy(rewards).float()
-    values = torch.from_numpy(values).float()
-    bootstrap_value = torch.from_numpy(bootstrap_value).float()
+    log_rhos = convert_to_torch_tensor(log_rhos, device="cpu")
+    discounts = convert_to_torch_tensor(discounts, device="cpu")
+    rewards = convert_to_torch_tensor(rewards, device="cpu")
+    values = convert_to_torch_tensor(values, device="cpu")
+    bootstrap_value = convert_to_torch_tensor(bootstrap_value, device="cpu")
 
     # Make sure tensor ranks are consistent.
     rho_rank = len(log_rhos.size())  # Usually 2.

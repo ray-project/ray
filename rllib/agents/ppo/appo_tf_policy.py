@@ -210,6 +210,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         config["model"],
         name=POLICY_SCOPE,
         framework="torch" if config["use_pytorch"] else "tf")
+    policy.model_variables = policy.model.variables()
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -218,6 +219,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         config["model"],
         name=TARGET_POLICY_SCOPE,
         framework="torch" if config["use_pytorch"] else "tf")
+    policy.target_model_variables = policy.target_model.variables()
 
     return policy.model
 

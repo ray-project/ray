@@ -20,14 +20,20 @@ class TestAPPO(unittest.TestCase):
     def test_appo_compilation(self):
         """Test whether an APPOTrainer can be built with both frameworks."""
         config = ppo.appo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config["num_workers"] = 1
         num_iterations = 2
 
-        for _ in framework_iterator(
-                config, frameworks=("torch", "tf", "eager")):
-            trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            _config = config.copy()
+            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
-                trainer.train()
+                print(trainer.train())
+
+            _config = config.copy()
+            _config["vtrace"] = True
+            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                print(trainer.train())
 
 
 if __name__ == "__main__":

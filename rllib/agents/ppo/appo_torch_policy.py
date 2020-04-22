@@ -10,9 +10,10 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
-from ray.rllib.agents.ppo.appo_tf_policy import add_values, build_appo_model, \
+from ray.rllib.agents.ppo.appo_tf_policy import build_appo_model, \
     postprocess_trajectory
-from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
+from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin, \
+    KLCoeffMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -179,8 +180,8 @@ class VTraceSurrogateLoss:
             bootstrap_value=bootstrap_value,
             dist_class=dist_class,
             model=model,
-            clip_rho_threshold=clip_rho_threshold.float(),
-            clip_pg_rho_threshold=clip_pg_rho_threshold.float()).cpu()
+            clip_rho_threshold=clip_rho_threshold,
+            clip_pg_rho_threshold=clip_pg_rho_threshold)
 
         self.is_ratio = torch.clamp(
             torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
@@ -241,10 +242,10 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     old_policy_behaviour_logits = target_model_out.detach()
 
     unpacked_behaviour_logits = torch.split(
-        behaviour_logits, output_hidden_shape, axis=1)
+        behaviour_logits, output_hidden_shape, dim=1)
     unpacked_old_policy_behaviour_logits = torch.split(
-        old_policy_behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = torch.split(model_out, output_hidden_shape, axis=1)
+        old_policy_behaviour_logits, output_hidden_shape, dim=1)
+    unpacked_outputs = torch.split(model_out, output_hidden_shape, dim=1)
     old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
@@ -278,7 +279,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=_make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=torch.mean(mean_kl, axis=0)
+            action_kl=torch.mean(mean_kl, dim=0)
             if is_multidiscrete else mean_kl,
             actions_entropy=_make_time_major(
                 action_dist.multi_entropy(), drop_last=True),
@@ -312,7 +313,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=_make_time_major(prev_action_dist.logp(actions)),
             actions_logp=_make_time_major(action_dist.logp(actions)),
-            action_kl=torch.mean(mean_kl, axis=0)
+            action_kl=torch.mean(mean_kl, dim=0)
             if is_multidiscrete else mean_kl,
             actions_entropy=_make_time_major(action_dist.multi_entropy()),
             values=_make_time_major(values),
@@ -345,7 +346,8 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
+            torch.reshape(values_batched, [-1]),
+            framework="torch"),
     }
 
     if policy.config["vtrace"]:
@@ -374,8 +376,18 @@ class TargetNetworkMixin:
         self.update_target = do_update
 
 
-def setup_mixins(policy, obs_space, action_space, config):
+def add_values(policy, input_dict, state_batches, model, action_dist):
+    out = {}
+    if not policy.config["vtrace"]:
+        out[SampleBatch.VF_PREDS] = policy.model.value_function()
+    return out
+
+
+def setup_early_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+def setup_late_mixins(policy, obs_space, action_space, config):
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
@@ -389,7 +401,8 @@ AsyncPPOTorchPolicy = build_torch_policy(
     extra_action_out_fn=add_values,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
-    after_init=setup_mixins,
+    before_init=setup_early_mixins,
+    after_init=setup_late_mixins,
     make_model=build_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
