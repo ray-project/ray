@@ -19,6 +19,7 @@
 #include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
+#include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 
@@ -27,7 +28,7 @@ namespace gcs {
 
 /// GcsNodeManager is responsible for managing and monitoring nodes.
 /// This class is not thread-safe.
-class GcsNodeManager {
+class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
@@ -39,12 +40,33 @@ class GcsNodeManager {
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor);
 
-  /// Handle a heartbeat from a Raylet.
-  ///
-  /// \param node_id The client ID of the Raylet that sent the heartbeat.
-  /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &node_id,
-                       const rpc::HeartbeatTableData &heartbeat_data);
+  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+                          rpc::RegisterNodeReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
+                            rpc::UnregisterNodeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+                            rpc::GetAllNodeInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
+                             rpc::ReportHeartbeatReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetResources(const rpc::GetResourcesRequest &request,
+                          rpc::GetResourcesReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
+                             rpc::UpdateResourcesReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
+                             rpc::DeleteResourcesReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Add an alive node.
   ///
@@ -56,7 +78,8 @@ class GcsNodeManager {
   /// \param node_id The ID of the node to be removed.
   /// \param is_intended False if this is triggered by `node_failure_detector_`, else
   /// True.
-  void RemoveNode(const ClientID &node_id, bool is_intended = false);
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const ClientID &node_id,
+                                               bool is_intended = false);
 
   /// Get alive node by ID.
   ///
@@ -104,7 +127,7 @@ class GcsNodeManager {
     /// Only if the node has registered, its heartbeat data will be accepted.
     ///
     /// \param node_id ID of the node to be registered.
-    void RegisterNode(const ClientID &node_id);
+    void AddNode(const ClientID &node_id);
 
     /// Handle a heartbeat from a Raylet.
     ///
