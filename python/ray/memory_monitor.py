@@ -92,10 +92,10 @@ class MemoryMonitor:
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / (1024**3)
         if not psutil:
-            print("WARNING: Not monitoring node memory since `psutil` is not "
-                  "installed. Install this with `pip install psutil` "
-                  "(or ray[debug]) to enable debugging of memory-related "
-                  "crashes.")
+            logger.warn("WARNING: Not monitoring node memory since `psutil` "
+                        "is not installed. Install this with "
+                        "`pip install psutil` (or ray[debug]) to enable "
+                        "debugging of memory-related crashes.")
 
     def set_heap_limit(self, worker_name, limit_bytes):
         self.heap_limit = limit_bytes
