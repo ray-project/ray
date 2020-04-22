@@ -1,7 +1,9 @@
 Tensorflow Guide
 ================
 
-In this guide, we will train and deploy a simple Tensorflow neural net. In particular, we shows:
+In this guide, we will train and deploy a simple Tensorflow neural net. 
+In particular, we show:
+
 - How to load the model from file system in your RayServe definition
 - How to parse the JSON request and evaluated in Tensorflow
 
