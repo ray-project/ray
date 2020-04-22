@@ -20,7 +20,7 @@ Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
 """
 
-from gym.spaces import Box, Discrete
+from gym.spaces import Box
 import numpy as np
 import unittest
 
@@ -29,7 +29,6 @@ import ray.rllib.agents.impala.vtrace_torch as vtrace_torch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
 torch, nn = try_import_torch()
@@ -67,9 +66,10 @@ def _ground_truth_calculation(vtrace, discounts, log_rhos, rewards, values,
     for s in range(seq_len):
         v_s = np.copy(values[s])  # Very important copy.
         for t in range(s, seq_len):
-            v_s += (np.prod(discounts[s:t], axis=0) * np.prod(cs[s:t], axis=0)
-                    * clipped_rhos[t] * (rewards[t] + discounts[t] *
-                                         values_t_plus_1[t] - values[t]))
+            v_s += (
+                np.prod(discounts[s:t], axis=0) * np.prod(
+                    cs[s:t], axis=0) * clipped_rhos[t] *
+                (rewards[t] + discounts[t] * values_t_plus_1[t] - values[t]))
         vs.append(v_s)
     vs = np.stack(vs, axis=0)
     pg_advantages = (clipped_pg_rhos * (rewards + discounts * np.concatenate(
@@ -85,8 +85,8 @@ class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
         num_actions = 3
         batch_size = 4
 
-        for fw, sess in framework_iterator(frameworks=("torch", "tf"),
-                                           session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf"), session=True):
             vtrace = vtrace_tf if fw == "tf" else vtrace_torch
             policy_logits = Box(-1.0, 1.0, (seq_len, batch_size, num_actions),
                                 np.float32).sample()
@@ -102,20 +102,20 @@ class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
                 action_log_probs_tensor = \
                     vtrace.log_probs_from_logits_and_actions(
                         policy_logits, actions)
-    
+
             # Ground Truth
             # Using broadcasting to create a mask that indexes action logits
             action_index_mask = actions[..., None] == np.arange(num_actions)
-    
+
             def index_with_mask(array, mask):
                 return array[mask].reshape(*array.shape[:-1])
-    
+
             # Note: Normally log(softmax) is not a good idea because it's not
             # numerically stable. However, in this test we have well-behaved
             # values.
             ground_truth_v = index_with_mask(
                 np.log(softmax(policy_logits)), action_index_mask)
-    
+
             if sess:
                 action_log_probs_tensor = sess.run(action_log_probs_tensor)
             check(action_log_probs_tensor, ground_truth_v)
@@ -147,13 +147,13 @@ class VtraceTest(unittest.TestCase):
             "clip_pg_rho_threshold": 2.2,
         }
 
-        for fw, sess in framework_iterator(frameworks=("torch", "tf"),
-                                           session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf"), session=True):
             vtrace = vtrace_tf if fw == "tf" else vtrace_torch
             output = vtrace.from_importance_weights(**values)
             if sess:
                 output = sess.run(output)
-    
+
             ground_truth_v = _ground_truth_calculation(vtrace, **values)
             check(output, ground_truth_v)
 
@@ -165,18 +165,24 @@ class VtraceTest(unittest.TestCase):
         clip_rho_threshold = None  # No clipping.
         clip_pg_rho_threshold = None  # No clipping.
         space = Box(-1.0, 1.0, (seq_len, batch_size, num_actions))
-        action_space = Box(0, num_actions - 1, (seq_len, batch_size, ),
-                           dtype=np.int32)
-        space_w_time = Box(-1.0, 1.0, (seq_len, batch_size, ))
+        action_space = Box(
+            0, num_actions - 1, (
+                seq_len,
+                batch_size,
+            ), dtype=np.int32)
+        space_w_time = Box(-1.0, 1.0, (
+            seq_len,
+            batch_size,
+        ))
         space_only_batch = Box(-1.0, 1.0, (batch_size, ))
 
-        for fw, sess in framework_iterator(frameworks=("torch", "tf"),
-                                           session=True):
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf"), session=True):
             vtrace = vtrace_tf if fw == "tf" else vtrace_torch
 
             if fw == "tf":
-                # Intentionally leaving shapes unspecified to test if V-trace can
-                # deal with that.
+                # Intentionally leaving shapes unspecified to test if V-trace
+                # can deal with that.
                 inputs_ = {
                     # T, B, NUM_ACTIONS
                     "behaviour_policy_logits": tf.placeholder(
@@ -184,11 +190,16 @@ class VtraceTest(unittest.TestCase):
                     # T, B, NUM_ACTIONS
                     "target_policy_logits": tf.placeholder(
                         dtype=tf.float32, shape=[None, None, None]),
-                    "actions": tf.placeholder(dtype=tf.int32, shape=[None, None]),
-                    "discounts": tf.placeholder(dtype=tf.float32, shape=[None, None]),
-                    "rewards": tf.placeholder(dtype=tf.float32, shape=[None, None]),
-                    "values": tf.placeholder(dtype=tf.float32, shape=[None, None]),
-                    "bootstrap_value": tf.placeholder(dtype=tf.float32, shape=[None]),
+                    "actions": tf.placeholder(
+                        dtype=tf.int32, shape=[None, None]),
+                    "discounts": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None]),
+                    "rewards": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None]),
+                    "values": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None]),
+                    "bootstrap_value": tf.placeholder(
+                        dtype=tf.float32, shape=[None]),
                 }
             else:
                 inputs_ = {
@@ -196,7 +207,7 @@ class VtraceTest(unittest.TestCase):
                     "behaviour_policy_logits": space.sample(),
                     # T, B, NUM_ACTIONS
                     "target_policy_logits": space.sample(),
-                    "actions": torch.from_numpy(action_space.sample()),
+                    "actions": action_space.sample(),
                     "discounts": space_w_time.sample(),
                     "rewards": space_w_time.sample(),
                     "values": space_w_time.sample(),
@@ -206,48 +217,57 @@ class VtraceTest(unittest.TestCase):
                 clip_rho_threshold=clip_rho_threshold,
                 clip_pg_rho_threshold=clip_pg_rho_threshold,
                 **inputs_)
-    
-            target_log_probs = vtrace.log_probs_from_logits_and_actions(
-                inputs_["target_policy_logits"], inputs_["actions"])
-            behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
-                inputs_["behaviour_policy_logits"], inputs_["actions"])
+
+            if fw == "tf":
+                target_log_probs = vtrace.log_probs_from_logits_and_actions(
+                    inputs_["target_policy_logits"], inputs_["actions"])
+                behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
+                    inputs_["behaviour_policy_logits"], inputs_["actions"])
+            else:
+                target_log_probs = vtrace.log_probs_from_logits_and_actions(
+                    torch.from_numpy(inputs_["target_policy_logits"]),
+                    torch.from_numpy(inputs_["actions"]))
+                behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
+                    torch.from_numpy(inputs_["behaviour_policy_logits"]),
+                    torch.from_numpy(inputs_["actions"]))
             log_rhos = target_log_probs - behaviour_log_probs
             ground_truth = (log_rhos, behaviour_log_probs, target_log_probs)
 
-            values = {
-                "behaviour_policy_logits": space.sample(),
-                "target_policy_logits": space.sample(),
-                "actions": action_space.sample(),
-                "discounts": space_w_time.sample(),  #np.array(  # T, B where B_i: [0.9 / (i+1)] * T
-                    #[[0.9 / (b + 1) for b in range(batch_size)]
-                    #for _ in range(seq_len)]),
-                "rewards": space_w_time.sample(),
-                "values": space_w_time.sample() / batch_size,
-                "bootstrap_value": space_only_batch.sample() + 1.0,
-            }
-    
             if sess:
+                values = {
+                    "behaviour_policy_logits": space.sample(),
+                    "target_policy_logits": space.sample(),
+                    "actions": action_space.sample(),
+                    "discounts": space_w_time.sample(),
+                    "rewards": space_w_time.sample(),
+                    "values": space_w_time.sample() / batch_size,
+                    "bootstrap_value": space_only_batch.sample() + 1.0,
+                }
                 feed_dict = {inputs_[k]: v for k, v in values.items()}
                 from_logits_output = sess.run(
                     from_logits_output, feed_dict=feed_dict)
-                #(ground_truth_log_rhos, ground_truth_behaviour_action_log_probs,
-                # ground_truth_target_action_log_probs) = sess.run(
-                #     ground_truth, feed_dict=feed_dict)
                 log_rhos, behaviour_log_probs, target_log_probs = sess.run(
                     ground_truth, feed_dict=feed_dict)
 
-            # Calculate V-trace using the ground truth logits.
-            from_iw = vtrace.from_importance_weights(
-                log_rhos=log_rhos,
-                discounts=values["discounts"],
-                rewards=values["rewards"],
-                values=values["values"],
-                bootstrap_value=values["bootstrap_value"],
-                clip_rho_threshold=clip_rho_threshold,
-                clip_pg_rho_threshold=clip_pg_rho_threshold)
-
-            if sess:
+                # Calculate V-trace using the ground truth logits.
+                from_iw = vtrace.from_importance_weights(
+                    log_rhos=log_rhos,
+                    discounts=values["discounts"],
+                    rewards=values["rewards"],
+                    values=values["values"],
+                    bootstrap_value=values["bootstrap_value"],
+                    clip_rho_threshold=clip_rho_threshold,
+                    clip_pg_rho_threshold=clip_pg_rho_threshold)
                 from_iw = sess.run(from_iw)
+            else:
+                from_iw = vtrace.from_importance_weights(
+                    log_rhos=log_rhos,
+                    discounts=inputs_["discounts"],
+                    rewards=inputs_["rewards"],
+                    values=inputs_["values"],
+                    bootstrap_value=inputs_["bootstrap_value"],
+                    clip_rho_threshold=clip_rho_threshold,
+                    clip_pg_rho_threshold=clip_pg_rho_threshold)
 
             check(from_iw.vs, from_logits_output.vs)
             check(from_iw.pg_advantages, from_logits_output.pg_advantages)
@@ -258,35 +278,62 @@ class VtraceTest(unittest.TestCase):
 
     def test_higher_rank_inputs_for_importance_weights(self):
         """Checks support for additional dimensions in inputs."""
-        placeholders = {
-            "log_rhos": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 1]),
-            "discounts": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 1]),
-            "rewards": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 42]),
-            "values": tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
-            "bootstrap_value": tf.placeholder(
-                dtype=tf.float32, shape=[None, 42])
-        }
-        output = vtrace.from_importance_weights(**placeholders)
-        self.assertEqual(output.vs.shape.as_list()[-1], 42)
+        for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
+            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            if fw == "tf":
+                inputs_ = {
+                    "log_rhos": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 1]),
+                    "discounts": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 1]),
+                    "rewards": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 42]),
+                    "values": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 42]),
+                    "bootstrap_value": tf.placeholder(
+                        dtype=tf.float32, shape=[None, 42])
+                }
+            else:
+                inputs_ = {
+                    "log_rhos": Box(-1.0, 1.0, (8, 10, 1)).sample(),
+                    "discounts": Box(-1.0, 1.0, (8, 10, 1)).sample(),
+                    "rewards": Box(-1.0, 1.0, (8, 10, 42)).sample(),
+                    "values": Box(-1.0, 1.0, (8, 10, 42)).sample(),
+                    "bootstrap_value": Box(-1.0, 1.0, (10, 42)).sample()
+                }
+            output = vtrace.from_importance_weights(**inputs_)
+            check(int(output.vs.shape[-1]), 42)
 
     def test_inconsistent_rank_inputs_for_importance_weights(self):
         """Test one of many possible errors in shape of inputs."""
-        placeholders = {
-            "log_rhos": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 1]),
-            "discounts": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 1]),
-            "rewards": tf.placeholder(
-                dtype=tf.float32, shape=[None, None, 42]),
-            "values": tf.placeholder(dtype=tf.float32, shape=[None, None, 42]),
-            # Should be [None, 42].
-            "bootstrap_value": tf.placeholder(dtype=tf.float32, shape=[None])
-        }
-        with self.assertRaisesRegexp(ValueError, "must have rank 2"):
-            vtrace.from_importance_weights(**placeholders)
+        for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
+            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            if fw == "tf":
+                inputs_ = {
+                    "log_rhos": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 1]),
+                    "discounts": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 1]),
+                    "rewards": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 42]),
+                    "values": tf.placeholder(
+                        dtype=tf.float32, shape=[None, None, 42]),
+                    # Should be [None, 42].
+                    "bootstrap_value": tf.placeholder(
+                        dtype=tf.float32, shape=[None])
+                }
+            else:
+                inputs_ = {
+                    "log_rhos": Box(-1.0, 1.0, (7, 15, 1)).sample(),
+                    "discounts": Box(-1.0, 1.0, (7, 15, 1)).sample(),
+                    "rewards": Box(-1.0, 1.0, (7, 15, 42)).sample(),
+                    "values": Box(-1.0, 1.0, (7, 15, 42)).sample(),
+                    # Should be [15, 42].
+                    "bootstrap_value": Box(-1.0, 1.0, (7, )).sample()
+                }
+            with self.assertRaisesRegexp((ValueError, AssertionError),
+                                         "must have rank 2"):
+                vtrace.from_importance_weights(**inputs_)
 
 
 if __name__ == "__main__":

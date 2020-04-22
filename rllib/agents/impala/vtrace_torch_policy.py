@@ -7,7 +7,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def _make_time_major(policy, seq_lens, tensor, drop_last=False):
+def make_time_major(policy, seq_lens, tensor, drop_last=False):
     """Swaps batch and trajectory axis.
 
     Arguments:
@@ -23,7 +23,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     """
     if isinstance(tensor, list):
         return [
-            _make_time_major(policy, seq_lens, t, drop_last) for t in tensor
+            make_time_major(policy, seq_lens, t, drop_last) for t in tensor
         ]
 
     if policy.is_recurrent():
@@ -42,3 +42,16 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     if drop_last:
         return res[:-1]
     return res
+
+
+def choose_optimizer(policy, config):
+    if policy.config["opt_type"] == "adam":
+        return torch.optim.Adam(
+            params=policy.model.parameters(), lr=policy.cur_lr)
+    else:
+        return torch.optim.RMSProp(
+            params=policy.model.parameters(),
+            lr=policy.cur_lr,
+            weight_decay=config["decay"],
+            momentum=config["momentum"],
+            eps=config["epsilon"])

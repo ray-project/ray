@@ -8,10 +8,10 @@ import gym
 
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
-from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
+from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
 from ray.rllib.agents.ppo.appo_tf_policy import add_values, build_appo_model, \
-    postprocess_trajectory, POLICY_SCOPE, TARGET_POLICY_SCOPE
+    postprocess_trajectory
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -172,7 +172,7 @@ class VTraceSurrogateLoss:
         self.vtrace_returns = vtrace.multi_from_logits(
             behaviour_policy_logits=behaviour_logits,
             target_policy_logits=old_policy_behaviour_logits,
-            actions=tf.unstack(actions, axis=2),
+            actions=torch.unbind(actions, dim=2),
             discounts=(1.0 - dones.float()) * discount,
             rewards=rewards,
             values=values,
@@ -184,8 +184,8 @@ class VTraceSurrogateLoss:
 
         self.is_ratio = torch.clamp(
             torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
-        logp_ratio = self.is_ratio * torch.exp(
-            actions_logp - prev_actions_logp)
+        logp_ratio = self.is_ratio * torch.exp(actions_logp -
+                                               prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages
         surrogate_loss = torch.min(
@@ -228,9 +228,9 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         is_multidiscrete = False
         output_hidden_shape = 1
 
-    def make_time_major(*args, **kw):
-        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
-                                **kw)
+    def _make_time_major(*args, **kw):
+        return make_time_major(policy, train_batch.get("seq_lens"), *args,
+                               **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -267,34 +267,34 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
             actions, dim=1)
 
         # Prepare KL for Loss
-        mean_kl = make_time_major(
+        mean_kl = _make_time_major(
             old_policy_action_dist.multi_kl(action_dist), drop_last=True)
 
         policy.loss = VTraceSurrogateLoss(
-            actions=make_time_major(loss_actions, drop_last=True),
-            prev_actions_logp=make_time_major(
+            actions=_make_time_major(loss_actions, drop_last=True),
+            prev_actions_logp=_make_time_major(
                 prev_action_dist.logp(actions), drop_last=True),
-            actions_logp=make_time_major(
+            actions_logp=_make_time_major(
                 action_dist.logp(actions), drop_last=True),
-            old_policy_actions_logp=make_time_major(
+            old_policy_actions_logp=_make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
             action_kl=torch.mean(mean_kl, axis=0)
             if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(
+            actions_entropy=_make_time_major(
                 action_dist.multi_entropy(), drop_last=True),
-            dones=make_time_major(dones, drop_last=True),
-            behaviour_logits=make_time_major(
+            dones=_make_time_major(dones, drop_last=True),
+            behaviour_logits=_make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
-            old_policy_behaviour_logits=make_time_major(
+            old_policy_behaviour_logits=_make_time_major(
                 unpacked_old_policy_behaviour_logits, drop_last=True),
-            target_logits=make_time_major(unpacked_outputs, drop_last=True),
+            target_logits=_make_time_major(unpacked_outputs, drop_last=True),
             discount=policy.config["gamma"],
-            rewards=make_time_major(rewards, drop_last=True),
-            values=make_time_major(values, drop_last=True),
-            bootstrap_value=make_time_major(values)[-1],
+            rewards=_make_time_major(rewards, drop_last=True),
+            values=_make_time_major(values, drop_last=True),
+            bootstrap_value=_make_time_major(values)[-1],
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=policy.model,
-            valid_mask=make_time_major(mask, drop_last=True),
+            valid_mask=_make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
@@ -307,18 +307,19 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         logger.debug("Using PPO surrogate loss (vtrace=False)")
 
         # Prepare KL for Loss
-        mean_kl = make_time_major(prev_action_dist.multi_kl(action_dist))
+        mean_kl = _make_time_major(prev_action_dist.multi_kl(action_dist))
 
         policy.loss = PPOSurrogateLoss(
-            prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
-            actions_logp=make_time_major(action_dist.logp(actions)),
+            prev_actions_logp=_make_time_major(prev_action_dist.logp(actions)),
+            actions_logp=_make_time_major(action_dist.logp(actions)),
             action_kl=torch.mean(mean_kl, axis=0)
             if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(action_dist.multi_entropy()),
-            values=make_time_major(values),
-            valid_mask=make_time_major(mask),
-            advantages=make_time_major(train_batch[Postprocessing.ADVANTAGES]),
-            value_targets=make_time_major(
+            actions_entropy=_make_time_major(action_dist.multi_entropy()),
+            values=_make_time_major(values),
+            valid_mask=_make_time_major(mask),
+            advantages=_make_time_major(
+                train_batch[Postprocessing.ADVANTAGES]),
+            value_targets=_make_time_major(
                 train_batch[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
@@ -330,7 +331,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
 
 
 def stats(policy, train_batch):
-    values_batched = _make_time_major(
+    values_batched = make_time_major(
         policy,
         train_batch.get("seq_lens"),
         policy.model.value_function(),
