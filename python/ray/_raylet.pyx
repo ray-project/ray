@@ -868,9 +868,9 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries))
+                    max_retries)
 
             return VectorToObjectIDs(return_ids)
 
