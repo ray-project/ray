@@ -2,7 +2,6 @@
 # https://github.com/openai/evolution-strategies-starter.
 
 import gym
-import logging
 import numpy as np
 
 import ray
@@ -17,8 +16,6 @@ from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 tree = try_import_tree()
-
-logger = logging.getLogger(__name__)
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
@@ -48,17 +45,18 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        env_action = policy.compute_actions(
+        ac = policy.compute_actions(
             observation, add_noise=add_noise, update=True)[0]
-        observation, reward, done, _ = env.step(env_action)
+        observation, r, done, _ = env.step(ac)
         if offset != 0.0:
-            reward -= np.abs(offset)
-        rewards.append(reward)
+            r -= np.abs(offset)
+        rewards.append(r)
         t += 1
         if done:
             break
     rewards = np.array(rewards, dtype=np.float32)
     return rewards, t
+
 
 def make_session(single_threaded):
     if not single_threaded:
