@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include <functional>
-#include "ray/util/logging.h"
 
 namespace ray {
 
