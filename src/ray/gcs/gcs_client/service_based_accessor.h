@@ -165,6 +165,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   using NodeChangeCallback =
       std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
 
+  void AsyncGetAllResources(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe);
+
   /// Handle a client table notification.
   void HandleNotification(const GcsNodeInfo &node_info);
 

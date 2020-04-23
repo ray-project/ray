@@ -407,8 +407,20 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     HandleNotification(node_info);
   };
 
+  auto on_done = [this, subscribe, done](const Status &status) {
+    // Get nodes from GCS Service.
+    auto callback = [subscribe](const Status &status,
+                                const std::vector<GcsNodeInfo> &node_info_list) {
+      for (auto &node_info : node_info_list) {
+        subscribe(ClientID::FromBinary(node_info.node_id()), node_info);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+    done(status);
+  };
+
   auto status =
-      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, done);
+      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }
@@ -525,8 +537,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     gcs::ResourceChangeNotification notification(change_mode, resource_map);
     subscribe(ClientID::FromBinary(id), notification);
   };
+
+  auto on_done = [this, subscribe, done](const Status &status) {
+    // Get resources from GCS Service.
+    AsyncGetAllResources(subscribe);
+    done(status);
+  };
   auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
-                                                          on_subscribe, done);
+                                                          on_subscribe, on_done);
   RAY_LOG(INFO) << "Finished subscribing node resources change.";
   return status;
 }
@@ -584,8 +602,29 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
   return status;
 }
 
+void ServiceBasedNodeInfoAccessor::AsyncGetAllResources(
+    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe) {
+  rpc::GetAllResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllResources(
+      request, [subscribe](const Status &status, const rpc::GetAllResourcesReply &reply) {
+        std::vector<rpc::NodeResources> node_resources_list =
+            VectorFromProtobuf(reply.resources_list());
+        for (auto &node_resources : node_resources_list) {
+          std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+              resources_map;
+          for (auto resource : node_resources.resources()) {
+            resources_map[resource.first] =
+                std::make_shared<rpc::ResourceTableData>(resource.second);
+          }
+          ResourceChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                  resources_map);
+          subscribe(ClientID::FromBinary(node_resources.node_id()), notification);
+        }
+      });
+}
+
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
-    ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  ClientID node_id = ClientID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   auto entry = node_cache_.find(node_id);
   bool is_notif_new;
