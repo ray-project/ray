@@ -312,31 +312,38 @@ class TorchDeterministic(TorchDistributionWrapper):
 
 
 class TorchMultiActionDistribution(TorchDistributionWrapper):
-    """Action distribution that operates for list of (flattened) actions.
-
-    Args:
-        inputs (Tensor list): A list of tensors from which to compute samples.
+    """Action distribution that operates on multiple, possibly nested actions.
     """
 
-    def __init__(self,
-                 inputs,
-                 model,
-                 *,
-                 child_distributions,
-                 input_lens,
-                 action_space,
-                 action_space_struct=None):
+    def __init__(self, inputs, model, *, child_distributions, input_lens,
+                 action_space):
+        """Initializes a TorchMultiActionDistribution object.
 
+        Args:
+            inputs (torch.Tensor): A single tensor of shape [BATCH, size].
+            model (ModelV2): The ModelV2 object used to produce inputs for this
+                distribution.
+            child_distributions (any[torch.Tensor]): Any struct
+                that contains the child distribution classes to use to
+                instantiate the child distributions from `inputs`. This could
+                be an already flattened list or a struct according to
+                `action_space`.
+            input_lens (any[int]): A flat list or a nested struct of input
+                split lengths used to split `inputs`.
+            action_space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
+                and possibly nested action space.
+        """
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.Tensor(inputs)
         super().__init__(inputs, model)
 
-        self.action_space_struct = action_space_struct
-        if self.action_space_struct is None:
-            self.action_space_struct = get_base_struct_from_space(action_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        input_lens = tree.flatten(input_lens)
+        flat_child_distributions = tree.flatten(child_distributions)
         split_inputs = torch.split(inputs, input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model), child_distributions,
+            lambda dist, input_: dist(input_, model), flat_child_distributions,
             list(split_inputs))
 
     @override(ActionDistribution)

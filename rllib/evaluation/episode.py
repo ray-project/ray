@@ -5,6 +5,7 @@ import random
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 tree = try_import_tree()
 
@@ -112,10 +113,11 @@ class MultiAgentEpisode:
         """Returns the last action for the specified agent, or zeros."""
 
         if agent_id in self._agent_to_last_action:
-            return _flatten_action(self._agent_to_last_action[agent_id])
+            return flatten_to_single_ndarray(
+                self._agent_to_last_action[agent_id])
         else:
             policy = self._policies[self.policy_for(agent_id)]
-            flat = _flatten_action(policy.action_space.sample())
+            flat = flatten_to_single_ndarray(policy.action_space.sample())
             return np.zeros_like(flat)
 
     @DeveloperAPI
@@ -123,7 +125,8 @@ class MultiAgentEpisode:
         """Returns the previous action for the specified agent."""
 
         if agent_id in self._agent_to_prev_action:
-            return _flatten_action(self._agent_to_prev_action[agent_id])
+            return flatten_to_single_ndarray(
+                self._agent_to_prev_action[agent_id])
         else:
             # We're at t=0, so return all zeros.
             return np.zeros_like(self.last_action_for(agent_id))
@@ -188,14 +191,3 @@ class MultiAgentEpisode:
             self._agent_to_index[agent_id] = self._next_agent_index
             self._next_agent_index += 1
         return self._agent_to_index[agent_id]
-
-
-def _flatten_action(action):
-    # Concatenate any action into single, flat tensor.
-    if isinstance(action, (list, tuple, dict)):
-        flat_action = tree.flatten(action)
-        expanded = []
-        for a in flat_action:
-            expanded.append(np.reshape(a, [-1]))
-        return np.concatenate(expanded, axis=0).flatten()
-    return action

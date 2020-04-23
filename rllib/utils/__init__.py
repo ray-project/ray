@@ -71,8 +71,6 @@ __all__ = [
     "add_mixins",
     "check",
     "check_framework",
-    "convert_to_non_torch_type",
-    "convert_to_torch_tensor",
     "deprecation_warning",
     "fc",
     "force_list",
@@ -92,7 +90,7 @@ __all__ = [
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
-    "try_import_tree",  # TODO(sven): remove at some point
+    "try_import_tree",
     "ConstantSchedule",
     "DeveloperAPI",
     "ExponentialSchedule",

@@ -9,6 +9,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
@@ -20,11 +21,22 @@ tree = try_import_tree()
 logger = logging.getLogger(__name__)
 
 
-def rollout(policy, env, timestep_limit=None, add_noise=False):
+def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
+
+    Args:
+        policy (Policy): Rllib Policy from which to draw actions.
+        env (gym.Env): Environment from which to draw rewards, done, and
+            next state.
+        timestep_limit (Optional[int]): Steps after which to end the rollout.
+            If None, use `env.spec.max_episode_steps` or 999999.
+        add_noise (bool): Indicates whether exploratory action noise should be
+            added.
+        offset (float): Value to subtract from the reward (e.g. survival bonus
+            from humanoid).
     """
     max_timestep_limit = 999999
     env_timestep_limit = env.spec.max_episode_steps if (
@@ -37,8 +49,10 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         env_action = policy.compute_actions(
-            observation, add_noise=add_noise)[0]
+            observation, add_noise=add_noise, update=True)[0]
         observation, reward, done, _ = env.step(env_action)
+        if offset != 0.0:
+            reward -= np.abs(offset)
         rewards.append(reward)
         t += 1
         if done:
@@ -46,26 +60,33 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     rewards = np.array(rewards, dtype=np.float32)
     return rewards, t
 
+def make_session(single_threaded):
+    if not single_threaded:
+        return tf.Session()
+    return tf.Session(
+        config=tf.ConfigProto(
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
 
-class GenericPolicy:
-    def __init__(self, sess, action_space, obs_space, preprocessor,
-                 observation_filter, model_config, action_noise_std):
-        self.sess = sess
+
+class ESTFPolicy:
+    def __init__(self, obs_space, action_space, config):
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
-        self.action_noise_std = action_noise_std
-        self.preprocessor = preprocessor
-        self.observation_filter = get_filter(observation_filter,
+        self.action_noise_std = config["action_noise_std"]
+        self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
+        self.observation_filter = get_filter(config["observation_filter"],
                                              self.preprocessor.shape)
+        self.single_threaded = config.get("single_threaded", False)
+        self.sess = make_session(single_threaded=self.single_threaded)
         self.inputs = tf.placeholder(tf.float32,
                                      [None] + list(self.preprocessor.shape))
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, model_config, dist_type="deterministic")
+            self.action_space, config["model"], dist_type="deterministic")
         model = ModelCatalog.get_model({
-            "obs": self.inputs
-        }, obs_space, action_space, dist_dim, model_config)
+            SampleBatch.CUR_OBS: self.inputs
+        }, obs_space, action_space, dist_dim, config["model"])
         dist = dist_class(model.outputs, model)
         self.sampler = dist.sample()
 
@@ -97,14 +118,8 @@ class GenericPolicy:
                 self.action_noise_std
         return single_action
 
-    def set_weights(self, x):
+    def set_flat_weights(self, x):
         self.variables.set_flat(x)
 
-    def get_weights(self):
+    def get_flat_weights(self):
         return self.variables.get_flat()
-
-    def set_filter(self, obs_filter):
-        self.observation_filter = obs_filter
-
-    def get_filter(self):
-        return self.observation_filter

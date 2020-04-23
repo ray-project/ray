@@ -8,7 +8,8 @@ import time
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
-from ray.rllib.agents.es import optimizers, policies, utils
+from ray.rllib.agents.es import optimizers, utils
+from ray.rllib.agents.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
@@ -25,6 +26,7 @@ Result = namedtuple("Result", [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    "action_noise_std": 0.01,
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
     "episodes_per_batch": 1000,
@@ -72,7 +74,8 @@ class Worker:
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.policy_params = policy_params
+        self.config.update(policy_params)
+        self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
@@ -81,15 +84,13 @@ class Worker:
         self.preprocessor = models.ModelCatalog.get_preprocessor(
             self.env, config["model"])
 
-        self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.env.observation_space,
-            self.preprocessor, config["observation_filter"], config["model"],
-            **policy_params)
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(self.env.observation_space,
+                                 self.env.action_space, config)
 
     @property
     def filters(self):
-        return {DEFAULT_POLICY_ID: self.policy.get_filter()}
+        return {DEFAULT_POLICY_ID: self.policy.observation_filter}
 
     def sync_filters(self, new_filters):
         for k in self.filters:
@@ -104,7 +105,7 @@ class Worker:
         return return_filters
 
     def rollout(self, timestep_limit, add_noise=True):
-        rollout_rewards, rollout_fragment_length = policies.rollout(
+        rollout_rewards, rollout_fragment_length = rollout(
             self.policy,
             self.env,
             timestep_limit=timestep_limit,
@@ -113,7 +114,7 @@ class Worker:
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
-        self.policy.set_weights(params)
+        self.policy.set_flat_weights(params)
 
         noise_indices, returns, sign_returns, lengths = [], [], [], []
         eval_returns, eval_lengths = [], []
@@ -125,7 +126,7 @@ class Worker:
 
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
-                self.policy.set_weights(params)
+                self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
                 eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
@@ -138,10 +139,10 @@ class Worker:
 
                 # These two sampling steps could be done in parallel on
                 # different actors letting us update twice as frequently.
-                self.policy.set_weights(params + perturbation)
+                self.policy.set_flat_weights(params + perturbation)
                 rewards_pos, lengths_pos = self.rollout(timestep_limit)
 
-                self.policy.set_weights(params - perturbation)
+                self.policy.set_flat_weights(params - perturbation)
                 rewards_neg, lengths_neg = self.rollout(timestep_limit)
 
                 noise_indices.append(noise_index)
@@ -160,6 +161,15 @@ class Worker:
             eval_lengths=eval_lengths)
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.es.es_torch_policy import ESTorchPolicy
+        policy_cls = ESTorchPolicy
+    else:
+        policy_cls = ESTFPolicy
+    return policy_cls
+
+
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
@@ -168,22 +178,13 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        # PyTorch check.
-        if config["use_pytorch"]:
-            raise ValueError(
-                "ES does not support PyTorch yet! Use tf instead.")
-
-        policy_params = {"action_noise_std": 0.01}
-
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
-        from ray.rllib import models
-        preprocessor = models.ModelCatalog.get_preprocessor(env)
-
-        self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, env.observation_space, preprocessor,
-            config["observation_filter"], config["model"], **policy_params)
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(
+            obs_space=env.observation_space,
+            action_space=env.action_space,
+            config=config)
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
         self.report_length = config["report_length"]
 
@@ -195,8 +196,8 @@ class ESTrainer(Trainer):
         # Create the actors.
         logger.info("Creating actors.")
         self._workers = [
-            Worker.remote(config, policy_params, env_creator, noise_id,
-                          idx + 1) for idx in range(config["num_workers"])
+            Worker.remote(config, {}, env_creator, noise_id, idx + 1)
+            for idx in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0
@@ -207,8 +208,9 @@ class ESTrainer(Trainer):
     def _train(self):
         config = self.config
 
-        theta = self.policy.get_weights()
+        theta = self.policy.get_flat_weights()
         assert theta.dtype == np.float32
+        assert len(theta.shape) == 1
 
         # Put the current policy weights in the object store.
         theta_id = ray.put(theta)
@@ -264,14 +266,14 @@ class ESTrainer(Trainer):
         theta, update_ratio = self.optimizer.update(-g +
                                                     config["l2_coeff"] * theta)
         # Set the new weights in the local copy of the policy.
-        self.policy.set_weights(theta)
+        self.policy.set_flat_weights(theta)
         # Store the rewards
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
 
         # Now sync the filters
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self._workers)
 
         info = {
@@ -325,15 +327,15 @@ class ESTrainer(Trainer):
 
     def __getstate__(self):
         return {
-            "weights": self.policy.get_weights(),
-            "filter": self.policy.get_filter(),
+            "weights": self.policy.get_flat_weights(),
+            "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_weights(state["weights"])
-        self.policy.set_filter(state["filter"])
+        self.policy.set_flat_weights(state["weights"])
+        self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self._workers)
