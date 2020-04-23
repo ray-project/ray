@@ -712,7 +712,7 @@ class LocalIterator(Generic[T]):
             name=self.name + ".for_each()")
 
     def for_each_concur(self, fn: Callable[[T], U],
-                    max_concur=2) -> "LocalIterator[U]":
+                        max_concur=2) -> "LocalIterator[U]":
         def apply_foreach_concur(it):
             cur = []
             remote_fn = ray.remote(fn).remote
