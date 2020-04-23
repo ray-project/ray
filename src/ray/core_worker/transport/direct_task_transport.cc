@@ -346,24 +346,25 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
-  RAY_UNUSED(client->CancelTask(request, [this, task_spec, force_kill](
-                                             const Status &status,
+  RAY_UNUSED(client->CancelTask(
+      request, [this, task_spec, force_kill](const Status &status,
                                              const rpc::CancelTaskReply &reply) {
-    absl::MutexLock lock(&mu_);
-    cancelled_tasks_.erase(task_spec.TaskId());
-    if (status.ok() && !reply.attempt_succeeded()) {
-      if (cancel_retry_timer_.has_value()) {
-        if (cancel_retry_timer_->expiry() <= std::chrono::high_resolution_clock::now()) {
-          cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-              RayConfig::instance().cancellation_retry_ms()));
+        absl::MutexLock lock(&mu_);
+        cancelled_tasks_.erase(task_spec.TaskId());
+        if (status.ok() && !reply.attempt_succeeded()) {
+          if (cancel_retry_timer_.has_value()) {
+            if (cancel_retry_timer_->expiry().time_since_epoch() <=
+                std::chrono::high_resolution_clock::now().time_since_epoch()) {
+              cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
+                  RayConfig::instance().cancellation_retry_ms()));
+            }
+            cancel_retry_timer_->async_wait(boost::bind(
+                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
+          }
         }
-        cancel_retry_timer_->async_wait(boost::bind(
-            &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
-      }
-    }
-    // Retry is not attempted if !status.ok() because force-kill may kill the worker
-    // before the reply is sent.
-  }));
+        // Retry is not attempted if !status.ok() because force-kill may kill the worker
+        // before the reply is sent.
+      }));
   return Status::OK();
 }
 };  // namespace ray
