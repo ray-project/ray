@@ -27,8 +27,8 @@ class ServeMaster:
     """
 
     async def __init__(self, kv_store_connector, router_class, router_kwargs,
-                 start_http_proxy, http_proxy_host, http_proxy_port,
-                 metric_gc_window_s):
+                       start_http_proxy, http_proxy_host, http_proxy_port,
+                       metric_gc_window_s):
         self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
@@ -146,11 +146,12 @@ class ServeMaster:
 
         for backend_tag, replica_dict in self.workers.items():
             for replica_tag, worker in replica_dict.items():
-                await self.router.add_new_worker.remote(backend_tag, replica_tag,
-                                                        worker)
+                await self.router.add_new_worker.remote(
+                    backend_tag, replica_tag, worker)
 
         for backend, (_, _, backend_config_dict) in self.backends.items():
-            await self.router.set_backend_config.remote(backend, backend_config_dict)
+            await self.router.set_backend_config.remote(
+                backend, backend_config_dict)
 
         await self.http_proxy.set_route_table.remote(self.routes)
 
@@ -222,8 +223,8 @@ class ServeMaster:
                 self.workers[backend_tag][replica_tag] = worker_handle
 
                 # Register the worker with the router.
-                await self.router.add_new_worker.remote(backend_tag, replica_tag,
-                                                  worker_handle)
+                await self.router.add_new_worker.remote(
+                    backend_tag, replica_tag, worker_handle)
 
                 # Register the worker with the metric monitor.
                 #self.get_metric_monitor()[0].add_target.remote(worker_handle)
@@ -244,7 +245,8 @@ class ServeMaster:
                     # This will also submit __ray_terminate__ on the worker.
                     # We kill the worker from the router to guarantee that the
                     # router won't submit any more requests on it.
-                    await self.router.remove_worker.remote(backend_tag, replica_tag)
+                    await self.router.remove_worker.remote(
+                        backend_tag, replica_tag)
                 except ValueError:
                     pass
 
@@ -311,7 +313,7 @@ class ServeMaster:
             self._checkpoint()
 
             await self.router.set_traffic.remote(endpoint_name,
-                                           traffic_policy_dictionary)
+                                                 traffic_policy_dictionary)
 
     async def create_endpoint(self, route, endpoint, methods):
         async with self.write_lock:
@@ -328,12 +330,14 @@ class ServeMaster:
                 if self.routes[route] == (endpoint, methods):
                     return
                 else:
-                    raise ValueError("{} Route '{}' is already registered.".format(
-                        err_prefix, route))
+                    raise ValueError(
+                        "{} Route '{}' is already registered.".format(
+                            err_prefix, route))
 
             if endpoint in self.get_all_endpoints():
-                raise ValueError("{} Endpoint '{}' is already registered.".format(err_prefix,
-                    endpoint))
+                raise ValueError(
+                    "{} Endpoint '{}' is already registered.".format(
+                        err_prefix, endpoint))
 
             logger.debug(
                 "Registering route {} to endpoint {} with methods {}.".format(
@@ -347,7 +351,7 @@ class ServeMaster:
             await http_proxy.set_route_table.remote(self.routes)
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
-                       actor_init_args):
+                             actor_init_args):
         async with self.write_lock:
             backend_config_dict = dict(backend_config)
             backend_worker = create_backend_worker(func_or_class)
@@ -357,7 +361,8 @@ class ServeMaster:
             self.backends[backend_tag] = (backend_worker, actor_init_args,
                                           backend_config_dict)
 
-            self._scale_replicas(backend_tag, backend_config_dict["num_replicas"])
+            self._scale_replicas(backend_tag,
+                                 backend_config_dict["num_replicas"])
 
             self._checkpoint()
 
@@ -366,7 +371,8 @@ class ServeMaster:
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
-            await self.router.set_backend_config.remote(backend_tag, backend_config_dict)
+            await self.router.set_backend_config.remote(
+                backend_tag, backend_config_dict)
 
     async def set_backend_config(self, backend_tag, backend_config):
         async with self.write_lock:
@@ -396,13 +402,15 @@ class ServeMaster:
                 self._scale_replicas(backend_tag, 0)
 
             # Scale the replicas with the new configuration.
-            self._scale_replicas(backend_tag, backend_config_dict["num_replicas"])
+            self._scale_replicas(backend_tag,
+                                 backend_config_dict["num_replicas"])
 
             self._checkpoint()
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await self.router.set_backend_config.remote(backend_tag, backend_config_dict)
+            await self.router.set_backend_config.remote(
+                backend_tag, backend_config_dict)
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
