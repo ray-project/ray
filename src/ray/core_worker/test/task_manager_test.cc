@@ -200,6 +200,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
+  manager_.MarkTaskCanceled(spec.TaskId());
   auto error = rpc::ErrorType::TASK_CANCELLED;
   manager_.PendingTaskFailed(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
