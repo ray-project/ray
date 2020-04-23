@@ -6,13 +6,16 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
+from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
@@ -66,6 +69,7 @@ def make_session(single_threaded):
 class ESTFPolicy:
     def __init__(self, obs_space, action_space, config):
         self.action_space = action_space
+        self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = config["action_noise_std"]
         self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
         self.observation_filter = get_filter(config["observation_filter"],
@@ -95,12 +99,22 @@ class ESTFPolicy:
     def compute_actions(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
-        action = self.sess.run(
+        # `actions` is a list of (component) batches.
+        actions = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        action = _unbatch_tuple_actions(action)
-        if add_noise and isinstance(self.action_space, gym.spaces.Box):
-            action += np.random.randn(*action.shape) * self.action_noise_std
-        return action
+        if add_noise:
+            actions = tree.map_structure(self._add_noise, actions,
+                                         self.action_space_struct)
+        # Convert `flat_actions` to a list of lists of action components
+        # (list of single actions).
+        actions = unbatch_actions(actions)
+        return actions
+
+    def _add_noise(self, single_action, single_action_space):
+        if isinstance(single_action_space, gym.spaces.Box):
+            single_action += np.random.randn(*single_action.shape) * \
+                self.action_noise_std
+        return single_action
 
     def set_flat_weights(self, x):
         self.variables.set_flat(x)
