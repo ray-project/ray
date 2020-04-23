@@ -21,8 +21,10 @@ namespace ray {
 namespace gcs {
 
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
-    boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor)
+    boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+    std::function<void(const ClientID &)> on_node_death_callback)
     : node_info_accessor_(node_info_accessor),
+      on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service) {
   Tick();
@@ -60,8 +62,8 @@ void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
       RAY_LOG(WARNING) << "Node timed out: " << node_id;
       heartbeats_.erase(current);
       heartbeat_buffer_.erase(node_id);
-      for (auto &listener : node_dead_listeners_) {
-        listener(node_id);
+      if (on_node_death_callback_) {
+        on_node_death_callback_(node_id);
       }
     }
   }
@@ -99,7 +101,13 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::ErrorInfoAccessor &error_info_accessor)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
-      node_failure_detector_(new NodeFailureDetector(io_service, node_info_accessor)) {
+      node_failure_detector_(new NodeFailureDetector(
+          io_service, node_info_accessor, [this](const ClientID &node_id) {
+            if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
+              // TODO(Shanly): Remove node resources from resource table.
+            }
+          })) {
   // TODO(Shanly): Load node info list from storage synchronously.
   const auto lookup_callback =
       [this](Status status, const std::vector<rpc::GcsNodeInfo> &node_info_list) {
@@ -111,11 +119,6 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
       };
   RAY_CHECK_OK(node_info_accessor_.AsyncGetAll(lookup_callback));
   // TODO(Shanly): Load cluster resources from storage synchronously.
-  node_failure_detector_->AddNodeDeadListener([this](const ClientID &node_id) {
-    if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
-      RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
-    }
-  });
 }
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -123,10 +126,10 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id;
-  auto on_done = [this, node_id, request, reply, send_reply_callback](Status status) {
+  AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+  auto on_done = [node_id, reply, send_reply_callback](Status status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id;
-    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(node_info_accessor_.AsyncRegister(request.node_info(), on_done));
@@ -144,6 +147,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
   };
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
+    // TODO(Shanly): Remove node resources from resource table.
   }
 }
 
@@ -192,32 +196,31 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
-  if (cluster_resources_.count(node_id) != 0) {
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
+  auto iter = cluster_resources_.find(node_id);
+  if (iter != cluster_resources_.end()) {
     auto to_be_updated_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
     for (auto resource : request.resources()) {
       (*to_be_updated_resources)[resource.first] =
           std::make_shared<rpc::ResourceTableData>(resource.second);
     }
-
-    auto on_done = [this, node_id, to_be_updated_resources, reply,
+    for (auto &entry : *to_be_updated_resources) {
+      iter->second[entry.first] = entry.second;
+    }
+    auto on_done = [node_id, to_be_updated_resources, reply,
                     send_reply_callback](Status status) {
       RAY_CHECK_OK(status);
-      // We need to check if the node is still in the cluster map as the callback is
-      // asynchronously.
-      auto iter = cluster_resources_.find(node_id);
-      if (iter != cluster_resources_.end()) {
-        for (auto &entry : *to_be_updated_resources) {
-          iter->second[entry.first] = entry.second;
-        }
-      }
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
 
     RAY_CHECK_OK(node_info_accessor_.AsyncUpdateResources(
         node_id, *to_be_updated_resources, on_done));
+  } else {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
+                   << " is not registered.";
   }
-  RAY_LOG(DEBUG) << "Finished updating node resources, node id = " << node_id;
 }
 
 void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
@@ -237,8 +240,10 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
     };
     RAY_CHECK_OK(
         node_info_accessor_.AsyncDeleteResources(node_id, resource_names, on_done));
+  } else {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
-  RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
@@ -257,7 +262,8 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
     // Add an empty resources for this node.
-    cluster_resources_.emplace(node_id, gcs::NodeInfoAccessor::ResourceMap());
+    RAY_CHECK(
+        cluster_resources_.emplace(node_id, gcs::NodeInfoAccessor::ResourceMap()).second);
     // Register this node to the `node_failure_detector_` which will start monitoring it.
     node_failure_detector_->AddNode(node_id);
     // Notify all listeners.

@@ -120,8 +120,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     ///
     /// \param io_service The event loop to run the monitor on.
     /// \param node_info_accessor The node info accessor.
-    explicit NodeFailureDetector(boost::asio::io_service &io_service,
-                                 gcs::NodeInfoAccessor &node_info_accessor);
+    explicit NodeFailureDetector(
+        boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+        std::function<void(const ClientID &)> on_node_death_callback);
 
     /// Register node to this detector.
     /// Only if the node has registered, its heartbeat data will be accepted.
@@ -135,14 +136,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param heartbeat_data The heartbeat sent by the client.
     void HandleHeartbeat(const ClientID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
-
-    /// Add listener to monitor the death of nodes.
-    ///
-    /// \param listener The handler which process the death of nodes.
-    void AddNodeDeadListener(std::function<void(const ClientID &)> listener) {
-      RAY_CHECK(listener);
-      node_dead_listeners_.emplace_back(std::move(listener));
-    }
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -163,8 +156,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
    protected:
     /// Node info accessor.
     gcs::NodeInfoAccessor &node_info_accessor_;
-    /// The listeners to process the failure of node.
-    std::vector<std::function<void(const ClientID &)>> node_dead_listeners_;
+    /// The callback of node death.
+    std::function<void(const ClientID &)> on_node_death_callback_;
     /// The number of heartbeats that can be missed before a node is removed.
     int64_t num_heartbeats_timeout_;
     /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
