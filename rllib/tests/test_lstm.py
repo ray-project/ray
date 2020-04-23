@@ -5,11 +5,11 @@ import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences, \
-    add_time_dimension
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.misc import linear, normc_initializer
-from ray.rllib.models.model import Model
+from ray.rllib.models.tf.misc import normc_initializer
+from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+#from ray.rllib.models.model import Model
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 
@@ -91,18 +91,16 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual(seq_lens.tolist(), [1, 2])
 
 
-class RNNSpyModel(Model):
+class RNNSpyModel(RecurrentTFModelV2):
     capture_index = 0
+    cell_size = 3
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        # Previously, a new class object was created during
-        # deserialization and this `capture_index`
-        # variable would be refreshed between class instantiations.
-        # This behavior is no longer the case, so we manually refresh
-        # the variable.
-        RNNSpyModel.capture_index = 0
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
 
-        def spy(sequences, state_in, state_out, seq_lens):
+        def spy(sequences, state_in_c, state_in_h, state_out_c, state_out_h):  #, seq_lens):
             if len(sequences) == 1:
                 return 0  # don't capture inference inputs
             # TF runs this function in an isolated context, so we have to use
@@ -111,62 +109,110 @@ class RNNSpyModel(Model):
                 "rnn_spy_in_{}".format(RNNSpyModel.capture_index),
                 pickle.dumps({
                     "sequences": sequences,
-                    "state_in": state_in,
-                    "state_out": state_out,
-                    "seq_lens": seq_lens
+                    "state_in": [state_in_c, state_in_h],
+                    "state_out": [state_out_c, state_out_h],
+                    #"seq_lens": seq_lens
                 }),
                 overwrite=True)
             RNNSpyModel.capture_index += 1
             return 0
 
-        features = input_dict["obs"]
-        cell_size = 3
-        last_layer = add_time_dimension(features, self.seq_lens)
-
+        # Create a keras LSTM model.
+        self.lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+            RNNSpyModel.cell_size, state_is_tuple=True)
+        inputs = tf.keras.layers.Input(shape=(None, ) + obs_space.shape,
+                                       name="input")
         # Setup the LSTM cell
-        lstm = tf.nn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        self.state_init = [
-            np.zeros(lstm.state_size.c, np.float32),
-            np.zeros(lstm.state_size.h, np.float32)
+        #state_init = self.get_initial_state()
+        state_in = [
+            tf.keras.layers.Input(
+                shape=(self.lstm_cell.state_size.c, ), name="state_in_c"),
+            tf.keras.layers.Input(
+                shape=(self.lstm_cell.state_size.h, ), name="state_in_h"),
         ]
+        #seq_lens = tf.keras.layers.Input(shape=(), dtype=tf.int32,
+        #                                 name="seq_lens")
+        #last_layer = inputs
 
         # Setup LSTM inputs
-        if self.state_in:
-            c_in, h_in = self.state_in
-        else:
-            c_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.c], name="c")
-            h_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.h], name="h")
-        self.state_in = [c_in, h_in]
+        #if state:  #self.state_in:
+        #    c_in, h_in = self.state_in
+        #else:
+        #    c_in = tf.placeholder(
+        #        tf.float32, [None, self.lstm.state_size.c], name="c")
+        #    h_in = tf.placeholder(
+        #        tf.float32, [None, self.lstm.state_size.h], name="h")
+        #self.state_in = [c_in, h_in]
+        #c_in, h_in = state
 
         # Setup LSTM outputs
-        state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(
-            lstm,
-            last_layer,
-            initial_state=state_in,
-            sequence_length=self.seq_lens,
+        state_in_tuple = tf.nn.rnn_cell.LSTMStateTuple(state_in[0], state_in[1])
+        lstm_out, state_out_c, state_out_h = tf.keras.layers.RNN(
+            self.lstm_cell,
             time_major=False,
-            dtype=tf.float32)
+            return_sequences=True,
+            return_state=True
+            )(inputs, state_in_tuple)
+            #inputs,
+            #initial_state=state_in,
+            #sequence_length=seq_lens,
+            #dtype=tf.float32)
 
-        self.state_out = list(lstm_state)
-        spy_fn = tf.py_func(
-            spy, [
-                last_layer,
-                self.state_in,
-                self.state_out,
-                self.seq_lens,
-            ],
-            tf.int64,
-            stateful=True)
+        def lambda_(x, state_in_c, state_in_h, state_out_c, state_out_h):
+            spy_fn = tf.py_function(
+                spy, [
+                    x,
+                    state_in_c,
+                    state_in_h,
+                    state_out_c,
+                    state_out_h,
+                    #seq_lens,
+                ],
+                tf.int64)
+                #stateful=True)
+    
+            # Compute outputs
+            with tf.control_dependencies([spy_fn]):
+                last_layer = tf.reshape(lstm_out, [-1, RNNSpyModel.cell_size])
+                logits = tf.keras.layers.Dense(
+                    units=self.num_outputs,
+                    kernel_initializer=normc_initializer(0.01))(last_layer)
+    
+                return last_layer, logits
 
-        # Compute outputs
-        with tf.control_dependencies([spy_fn]):
-            last_layer = tf.reshape(lstm_out, [-1, cell_size])
-            logits = linear(last_layer, num_outputs, "action",
-                            normc_initializer(0.01))
-        return logits, last_layer
+        last_layer, logits = tf.keras.layers.Lambda(lambda_, arguments=dict(
+            state_in_c=state_in_tuple.c, state_in_h=state_in_tuple.h, state_out_c=state_out_c, state_out_h=state_out_h
+        ))(inputs)
+
+        value_out = tf.keras.layers.Dense(
+            units=1, kernel_initializer=normc_initializer(1.0))(last_layer)
+
+        self.base_model = tf.keras.Model(
+            [inputs, state_in], [logits, state_out_c, state_out_h, value_out])
+
+        self.register_variables(self.base_model.variables)
+
+    def forward_rnn(self, inputs, state, seq_lens):
+        # Previously, a new class object was created during
+        # deserialization and this `capture_index`
+        # variable would be refreshed between class instantiations.
+        # This behavior is no longer the case, so we manually refresh
+        # the variable.
+        RNNSpyModel.capture_index = 0
+        out, state_out_c, state_out_h, value_out = self.base_model([inputs, state])
+        self.value_out = value_out
+        return out, [state_out_c, state_out_h]
+        #features = inputs  #["obs"]
+        #last_layer = add_time_dimension(features, seq_lens)
+
+    def value_function(self):
+        return self.value_out
+
+    def get_initial_state(self):
+        return [
+            np.zeros(self.lstm_cell.state_size.c, np.float32),
+            np.zeros(self.lstm_cell.state_size.h, np.float32)
+        ]
 
 
 class DebugCounterEnv(gym.Env):
@@ -254,6 +300,7 @@ class TestRNNSequencing(unittest.TestCase):
         ppo = PPOTrainer(
             env="counter",
             config={
+                #"eager": True,
                 "shuffle_sequences": False,  # for deterministic testing
                 "num_workers": 0,
                 "rollout_fragment_length": 20,
