@@ -320,7 +320,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         """Initializes a TorchMultiActionDistribution object.
 
         Args:
-            inputs (torch.Tensor): A single (super-flattened) torch tensor.
+            inputs (torch.Tensor): A single tensor of shape [BATCH, size].
             model (ModelV2): The ModelV2 object used to produce inputs for this
                 distribution.
             child_distributions (any[torch.Tensor]): Any struct
