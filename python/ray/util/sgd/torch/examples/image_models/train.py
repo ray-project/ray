@@ -84,11 +84,11 @@ def data_creator(config):
 
             for i in range(total_imgs):
                 random_img = random.randint(per_img * i, per_img * i + per_img)
-                file = join(
-                    sub_dir, "ILSVRC2012_val_{:08d}.JPEG".format(random_img))
+                file = join(sub_dir,
+                            "ILSVRC2012_val_{:08d}.JPEG".format(random_img))
 
-                PIL.Image.fromarray(
-                    np.zeros((375, 500, 3), dtype=np.uint8)).save(file)
+                PIL.Image.fromarray(np.zeros((375, 500, 3),
+                                             dtype=np.uint8)).save(file)
 
         existing_train_cls = len(os.listdir(train_dir))
         for i in range(existing_train_cls, total_classes):
