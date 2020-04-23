@@ -41,7 +41,7 @@ serve.create_endpoint("magic_counter", "/counter")
 b_config = BackendConfig(max_batch_size=5)
 serve.create_backend(
     MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
-serve.link("magic_counter", "counter:v1")
+serve.set_traffic("magic_counter", {"counter:v1": 1.0})
 
 print("Sending ten queries via HTTP")
 for i in range(10):

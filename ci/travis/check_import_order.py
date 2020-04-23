@@ -9,6 +9,7 @@ some/file/path.py:23 import psutil without explicitly import ray before it.
 """
 
 import argparse
+import io
 import re
 import sys
 from pathlib import Path
@@ -23,7 +24,7 @@ def check_import(file):
         "import setproctitle": -1
     }
 
-    with open(file) as f:
+    with io.open(file, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
             for check in check_to_lines.keys():
                 # This regex will match the following case

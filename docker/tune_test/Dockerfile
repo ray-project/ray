@@ -13,7 +13,7 @@ RUN pip install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pyto
 RUN pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow_cpu-2.1.0-cp36-cp36m-manylinux2010_x86_64.whl
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt 
+RUN pip install -r requirements.txt
 
 # We port the source code in so that we run the most up-to-date stress tests.
 ADD ray.tar /ray

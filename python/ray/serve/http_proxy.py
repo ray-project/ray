@@ -26,11 +26,11 @@ class HTTPProxy:
     # blocks forever
     """
 
-    def __init__(self):
+    async def fetch_config_from_master(self):
         assert ray.is_initialized()
         master = ray.util.get_actor(SERVE_MASTER_NAME)
-        self.route_table, [self.router_handle] = ray.get(
-            master.get_http_proxy_config.remote())
+        self.route_table, [self.router_handle
+                           ] = await master.get_http_proxy_config.remote()
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -149,7 +149,7 @@ class HTTPProxy:
                 if not isinstance(result, ray.exceptions.RayActorError):
                     await Response(result).send(scope, receive, send)
                     break
-                logger.warning("Got RayActorError:", str(result))
+                logger.warning("Got RayActorError: {}".format(str(result)))
                 await asyncio.sleep(0.1)
             except Exception as e:
                 error_message = "Internal Error. Traceback: {}.".format(e)
@@ -163,8 +163,9 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    def __init__(self, host, port):
+    async def __init__(self, host, port):
         self.app = HTTPProxy()
+        await self.app.fetch_config_from_master()
         self.host = host
         self.port = port
 
