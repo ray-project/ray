@@ -81,6 +81,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
     return redis_client_->GetPrimaryContext();
   }
 
+  std::shared_ptr<RedisClient> GetRedisClient() { return redis_client_; }
+
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.
   LogBasedActorTable &log_based_actor_table();
@@ -113,7 +115,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   // might be used, if available.
   CommandType command_type_{CommandType::kUnknown};
 
-  std::unique_ptr<RedisClient> redis_client_;
+  std::shared_ptr<RedisClient> redis_client_;
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
