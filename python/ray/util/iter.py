@@ -203,8 +203,14 @@ class ParallelIterator(Generic[T]):
                         fn: Callable[[T], U],
                         max_concur=2,
                         resources=None) -> "ParallelIterator[U]":
-        """Remotely apply fn to each item in this iterator.
-        At most max_concur at a time
+        """Remotely apply fn to each item in this iterator, at most max_concur at a
+        time.
+
+        A performance note: This function maintains its own internal buffer. If
+        async_queue_depth is `n` and max_concur is `k` then the total number of
+        buffered objects could be up to `n + k - 1`
+
+
 
         Args:
             fn (func): function to apply to each item.
@@ -213,6 +219,7 @@ class ParallelIterator(Generic[T]):
         Examples:
             >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
+
         """
         return self._with_transform(
             lambda local_it: local_it.for_each_concur(

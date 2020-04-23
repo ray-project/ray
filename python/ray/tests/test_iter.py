@@ -178,7 +178,7 @@ def test_for_each_concur(ray_start_regular_shared):
 
     assert repr(
         it) == "ParallelIterator[from_range[8, shards=2].for_each_concur()]"
-    assert set(result) == set([0, 8, 2, 10, 4, 12, 6, 14])
+    assert result == [0, 8, 2, 10, 4, 12, 6, 14]
     assert 6 < elapsed < 6.5
 
 
