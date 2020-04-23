@@ -167,7 +167,8 @@ def test_for_each_concur(ray_start_regular_shared):
 
     it = from_range(8)
     # Make sure there are enough warm workers
-    ray.get([ray.remote(task).options(num_cpus=0.1).remote(1) for _ in range(4)])
+    ray.get(
+        [ray.remote(task).options(num_cpus=0.1).remote(1) for _ in range(4)])
 
     start = perf_counter()
     it = it.for_each_concur(task, max_concur=2, resources={"num_cpus": 0.1})
@@ -175,7 +176,8 @@ def test_for_each_concur(ray_start_regular_shared):
     end = perf_counter()
     elapsed = end - start
 
-    assert repr(it) == "ParallelIterator[from_range[8, shards=2].for_each_concur()]"
+    assert repr(
+        it) == "ParallelIterator[from_range[8, shards=2].for_each_concur()]"
     assert set(result) == set([0, 8, 2, 10, 4, 12, 6, 14])
     assert 6 < elapsed < 6.5
 
