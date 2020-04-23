@@ -108,6 +108,21 @@ void QueueMessageHandler::Stop() {
   }
 }
 
+void UpstreamQueueMessageHandler::Start() {
+  STREAMING_LOG(INFO) << "UpstreamQueueMessageHandler::Start";
+  QueueMessageHandler::Start();
+  handle_service_thread_ = std::thread([this] { handler_service_.run(); });
+}
+
+void UpstreamQueueMessageHandler::Stop() {
+  STREAMING_LOG(INFO) << "UpstreamQueueMessageHandler::Stop";
+  handler_service_.stop();
+  if (handle_service_thread_.joinable()) {
+    handle_service_thread_.join();
+  }
+  QueueMessageHandler::Stop();
+}
+
 std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::CreateService(
     const ActorID &actor_id) {
   if (nullptr == upstream_handler_) {
@@ -213,6 +228,13 @@ void UpstreamQueueMessageHandler::DispatchMessageInternal(
   } else if (msg->Type() ==
              queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType) {
     STREAMING_CHECK(false) << "Should not receive StreamingQueueCheckRspMsg";
+  } else if (msg->Type() == 
+            queue::protobuf::StreamingQueueMessageType::StreamingQueuePullRequestMsgType) {
+    STREAMING_CHECK(callback) << "StreamingQueuePullRequestMsg "
+                              << " qid: " << msg->QueueId() << " actorid "
+                              << msg->ActorId()
+                              << " peer actorid: " << msg->PeerActorId();
+    OnPullRequest(std::dynamic_pointer_cast<PullRequestMessage>(msg), callback);
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
                            << queue::protobuf::StreamingQueueMessageType_Name(
@@ -232,6 +254,25 @@ void UpstreamQueueMessageHandler::OnNotify(
     return;
   }
   queue->OnNotify(notify_msg);
+}
+
+void UpstreamQueueMessageHandler::OnPullRequest(
+    std::shared_ptr<PullRequestMessage> pull_msg,
+    std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) {
+  STREAMING_LOG(INFO) << "OnPullRequest";
+  auto queue = upstream_queues_.find(pull_msg->QueueId());
+  if (queue == upstream_queues_.end()) {
+    STREAMING_LOG(INFO) << "Can not find queue " << pull_msg->QueueId();
+    PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
+                            pull_msg->QueueId(), QUEUE_INVALID_SEQ_ID,
+                            QUEUE_INVALID_SEQ_ID,
+                            queue::protobuf::StreamingQueueError::QUEUE_NOT_EXIST, false);
+    std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
+    callback(std::move(buffer));
+    return;
+  }
+
+  queue->second->OnPull(pull_msg, handler_service_, callback);
 }
 
 void UpstreamQueueMessageHandler::ReleaseAllUpQueues() {
@@ -272,6 +313,27 @@ std::shared_ptr<ReaderQueue> DownstreamQueueMessageHandler::CreateDownstreamQueu
           queue_id, actor_id_, peer_actor_id, GetOutTransport(queue_id)));
   downstream_queues_[queue_id] = queue;
   return queue;
+}
+
+StreamingQueueStatus DownstreamQueueMessageHandler::PullQueue(
+    const ObjectID &queue_id, uint64_t start_msg_id, bool &is_upstream_first_pull,
+    uint64_t timeout_ms) {
+  STREAMING_LOG(INFO) << "PullQueue queue_id: "
+                      << queue_id
+                      // << " actor_id: " << actor_id
+                      // << " peer_actor_id: " << peer_actor_id
+                      << " start_msg_id: " << start_msg_id
+                      << " is_upstream_first_pull: " << is_upstream_first_pull;
+  uint64_t start_time = current_time_ms();
+  uint64_t current_time = start_time;
+  StreamingQueueStatus st = StreamingQueueStatus::OK;
+  while (current_time < start_time + timeout_ms &&
+         (st = PullPeerAsync(queue_id, start_msg_id, is_upstream_first_pull,
+                             timeout_ms)) == StreamingQueueStatus::Timeout) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    current_time = current_time_ms();
+  }
+  return st;
 }
 
 std::shared_ptr<streaming::ReaderQueue> DownstreamQueueMessageHandler::GetDownQueue(
@@ -344,6 +406,52 @@ void DownstreamQueueMessageHandler::OnData(std::shared_ptr<DataMessage> msg) {
 
   QueueItem item(msg);
   queue->OnData(item);
+}
+
+StreamingQueueStatus DownstreamQueueMessageHandler::PullPeerAsync(
+    const ObjectID &queue_id, uint64_t start_msg_id, bool &is_upstream_first_pull,
+    uint64_t timeout_ms) {
+  STREAMING_LOG(INFO) << "PullPeerAsync queue_id: " << queue_id
+                      << " start_msg_id: " << start_msg_id;
+  auto queue = GetDownQueue(queue_id);
+  STREAMING_CHECK(queue != nullptr);
+  PullRequestMessage msg(queue->GetActorID(), queue->GetPeerActorID(), queue_id,
+                         start_msg_id);
+  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
+
+  auto transport_it = GetOutTransport(queue_id);
+  STREAMING_CHECK(transport_it != nullptr);
+  std::shared_ptr<LocalMemoryBuffer> result_buffer =
+      transport_it->SendForResultWithRetry(std::move(buffer), 1, timeout_ms);
+  if (result_buffer == nullptr) {
+    return StreamingQueueStatus::Timeout;
+  }
+
+  std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
+  STREAMING_CHECK(result_msg->Type() ==
+                  queue::protobuf::StreamingQueueMessageType::StreamingQueuePullResponseMsgType);
+  std::shared_ptr<PullResponseMessage> response_msg =
+      std::dynamic_pointer_cast<PullResponseMessage>(result_msg);
+
+  STREAMING_LOG(INFO) << "PullPeerAsync error: "
+                      << queue::protobuf::StreamingQueueError_Name(
+                             response_msg->Error())
+                      << " start_msg_id: " << start_msg_id;
+
+  is_upstream_first_pull = response_msg->IsUpstreamFirstPull();
+  if (response_msg->Error() == queue::protobuf::StreamingQueueError::OK) {
+    STREAMING_LOG(INFO) << "Set queue " << queue_id << " expect_seq_id to "
+                        << response_msg->SeqId();
+    return StreamingQueueStatus::OK;
+  } else if (response_msg->Error() ==
+             queue::protobuf::StreamingQueueError::DATA_LOST) {
+    return StreamingQueueStatus::DataLost;
+  } else if (response_msg->Error() ==
+             queue::protobuf::StreamingQueueError::NO_VALID_DATA) {
+    return StreamingQueueStatus::NoValidData;
+  } else {  // QUEUE_NOT_EXIST
+    return StreamingQueueStatus::Timeout;
+  }
 }
 
 }  // namespace streaming

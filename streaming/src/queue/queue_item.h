@@ -32,8 +32,8 @@ class QueueItem {
   /// \param[in] timestamp the time when this QueueItem created.
   /// \param[in] raw whether the data content is raw bytes, only used in some tests.
   QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
-            bool raw = false)
-      : seq_id_(seq_id),
+            uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false)
+      : seq_id_(seq_id), msg_id_start_(msg_id_start), msg_id_end_(msg_id_end),
         timestamp_(timestamp),
         raw_(raw),
         /*COPY*/ buffer_(std::make_shared<LocalMemoryBuffer>(data, data_size, true)) {}
@@ -71,11 +71,16 @@ class QueueItem {
 
   virtual ~QueueItem() = default;
 
-  uint64_t SeqId() { return seq_id_; }
-  bool IsRaw() { return raw_; }
-  uint64_t TimeStamp() { return timestamp_; }
-  size_t DataSize() { return buffer_->Size(); }
-  std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
+  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t MsgIdStart() { return msg_id_start_; }
+  inline uint64_t MsgIdEnd() { return msg_id_end_; }
+  inline bool InItem(uint64_t msg_id) {
+    return msg_id >= msg_id_start_ && msg_id <= msg_id_end_;
+  }
+  inline bool IsRaw() { return raw_; }
+  inline uint64_t TimeStamp() { return timestamp_; }
+  inline size_t DataSize() { return buffer_->Size(); }
+  inline std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
   /// Get max message id in this item.
   /// \return max message id.
@@ -89,6 +94,8 @@ class QueueItem {
 
  protected:
   uint64_t seq_id_;
+  uint64_t msg_id_start_;
+  uint64_t msg_id_end_;
   uint64_t timestamp_;
   bool raw_;
 
@@ -97,7 +104,8 @@ class QueueItem {
 
 class InvalidQueueItem : public QueueItem {
  public:
-  InvalidQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0) {}
+  InvalidQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0, QUEUE_INVALID_SEQ_ID,
+                  QUEUE_INVALID_SEQ_ID) {}
 
  private:
   uint8_t data_[1];

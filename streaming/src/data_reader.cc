@@ -77,8 +77,8 @@ StreamingStatus DataReader::InitChannel() {
     }
 
     channel_map_.emplace(input_channel, channel);
-    StreamingStatus status = channel->CreateTransferChannel();
-    if (StreamingStatus::OK != status) {
+    TransferCreationStatus status = channel->CreateTransferChannel();
+    if (TransferCreationStatus::PullOk != status) {
       STREAMING_LOG(ERROR) << "Initialize queue failed, id => " << input_channel;
     }
   }

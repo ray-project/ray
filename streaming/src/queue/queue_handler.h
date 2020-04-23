@@ -12,6 +12,21 @@
 namespace ray {
 namespace streaming {
 
+enum class StreamingQueueStatus : uint32_t {
+  OK = 0,
+  Timeout = 1,
+  DataLost = 2,  // The data in upstream has been evicted when downstream try to pull data
+                 // from upstream.
+  NoValidData = 3,  // There is no data written into queue, or start_msg_id is bigger than
+                    // all items in queue now.
+};
+
+static inline std::ostream &operator<<(std::ostream &os,
+                                       const StreamingQueueStatus &status) {
+  os << static_cast<std::underlying_type<StreamingQueueStatus>::type>(status);
+  return os;
+}
+
 /// Base class of UpstreamQueueMessageHandler and DownstreamQueueMessageHandler.
 /// A queue service manages a group of queues, upstream queues or downstream queues of
 /// the current actor. Each queue service holds a boost.asio io_service, to handle
@@ -72,11 +87,11 @@ class QueueMessageHandler {
   /// Release all queues in current queue service.
   void Release();
 
- private:
+ protected:
   /// Start asio service
-  void Start();
+  virtual void Start();
   /// Stop asio service
-  void Stop();
+  virtual void Stop();
   /// The callback function of internal thread.
   void QueueThreadCallback() { queue_service_.run(); }
 
@@ -103,7 +118,8 @@ class QueueMessageHandler {
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id) {}
+  UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id),
+  handler_service_dummy_worker_(handler_service_) {}
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -121,6 +137,9 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
                   std::vector<ObjectID> &failed_queues);
   /// Handle notify message from corresponded downstream queue.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
+  /// Handle pull request message from corresponded downstream queue.
+  void OnPullRequest(std::shared_ptr<PullRequestMessage> pull_msg,
+                     std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
   /// Obtain upstream queue specified by queue_id.
   std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID &queue_id);
   /// Release all upstream queues
@@ -133,13 +152,17 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
   static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(
       const ActorID &actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
-
+  virtual void Start() override;
  private:
   bool CheckQueueSync(const ObjectID &queue_ids);
+  virtual void Stop() override;
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
   static std::shared_ptr<UpstreamQueueMessageHandler> upstream_handler_;
+  boost::asio::io_service handler_service_;
+  boost::asio::io_service::work handler_service_dummy_worker_;
+  std::thread handle_service_thread_;
 };
 
 /// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
@@ -149,6 +172,9 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
       : QueueMessageHandler(actor_id) {}
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
+  StreamingQueueStatus PullQueue(const ObjectID &queue_id, uint64_t start_msg_id,
+                                 bool &is_upstream_first_pull,
+                                 uint64_t timeout_ms = 2000);
   bool DownstreamQueueExists(const ObjectID &queue_id);
 
   void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
@@ -168,6 +194,10 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
   static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
       const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
+
+ private:
+  StreamingQueueStatus PullPeerAsync(const ObjectID &queue_id, uint64_t start_msg_id,
+                                     bool &is_upstream_first_pull, uint64_t timeout_ms);
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>>

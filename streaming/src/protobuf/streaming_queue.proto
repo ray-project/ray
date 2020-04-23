@@ -9,12 +9,16 @@ enum StreamingQueueMessageType {
   StreamingQueueNotificationMsgType = 3;
   StreamingQueueTestInitMsgType = 4;
   StreamingQueueTestCheckStatusRspMsgType = 5;
+  StreamingQueuePullRequestMsgType = 6;
+  StreamingQueuePullResponseMsgType = 7;
+  StreamingQueueResendDataMsgType = 8;
 }
 
 enum StreamingQueueError {
   OK = 0;
   QUEUE_NOT_EXIST = 1;
-  NO_VALID_DATA_TO_PULL = 2;
+  DATA_LOST = 2;
+  NO_VALID_DATA = 3;
 }
 
 message StreamingQueueDataMsg {
@@ -67,4 +71,34 @@ message StreamingQueueTestInitMsg {
 message StreamingQueueTestCheckStatusRspMsg {
   string test_name = 1;
   bool status = 2;
+}
+
+message StreamingQueuePullRequestMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  uint64 msg_id = 4;
+}
+
+message StreamingQueuePullResponseMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  uint64 seq_id = 4;
+  uint64 msg_id = 5;
+  StreamingQueueError err_code = 6;
+  bool is_upstream_first_pull = 7;
+}
+
+message StreamingQueueResendDataMsg {
+  bytes src_actor_id = 1;
+  bytes dst_actor_id = 2;
+  bytes queue_id = 3;
+  uint64 first_seq_id = 4;
+  uint64 last_seq_id = 5;
+  uint64 seq_id = 6;
+  uint64 msg_id_start = 7;
+  uint64 msg_id_end = 8;
+  uint64 length = 9;
+  bool raw = 10;
 }
