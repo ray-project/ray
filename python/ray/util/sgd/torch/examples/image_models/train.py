@@ -7,8 +7,12 @@
 # Note: other authors MUST include themselves in the above copyright notice
 #       in order to abide by the terms of the Apache license
 
+import random
+import os
 from os.path import join
 
+import numpy as np
+import PIL
 from tqdm import trange
 
 import torch.nn as nn
@@ -57,6 +61,42 @@ def data_creator(config):
     # torch.manual_seed(args.seed + torch.distributed.get_rank())
 
     args = config["args"]
+
+    train_dir = join(args.data, "train")
+    val_dir = join(args.data, "val")
+
+    if args.mock_data:
+        os.makedirs(train_dir, exist_ok=True)
+        os.makedirs(val_dir, exist_ok=True)
+
+        max_cls_n = 99999999
+        total_classes = 3
+        per_cls = max_cls_n // total_classes
+
+        max_img_n = 99999999
+        total_imgs = 3
+        per_img = max_img_n // total_imgs
+
+        def mock_class(base, n):
+            random_cls = random.randint(per_cls * n, per_cls * n + per_cls)
+            sub_dir = join(base, "n{:08d}".format(random_cls))
+            os.makedirs(sub_dir, exist_ok=True)
+
+            for i in range(total_imgs):
+                random_img = random.randint(per_img * i, per_img * i + per_img)
+                file = join(
+                    sub_dir, "ILSVRC2012_val_{:08d}.JPEG".format(random_img))
+
+                PIL.Image.fromarray(
+                    np.zeros((375, 500, 3), dtype=np.uint8)).save(file)
+
+        existing_train_cls = len(os.listdir(train_dir))
+        for i in range(existing_train_cls, total_classes):
+            mock_class(train_dir, i)
+
+        existing_val_cls = len(os.listdir(val_dir))
+        for i in range(existing_val_cls, total_classes):
+            mock_class(val_dir, i)
 
     # todo: verbose should depend on rank
     data_config = resolve_data_config(vars(args), verbose=True)
@@ -137,14 +177,19 @@ def main():
         },
         num_workers=args.ray_num_workers)
 
+    if args.smoke_test:
+        args.epochs = 1
+
     pbar = trange(args.epochs, unit="epoch")
     for i in pbar:
-        trainer.train()
+        trainer.train(num_steps=1 if args.smoke_test else None)
 
         val_stats = trainer.validate()
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
+    print('Done')
     trainer.shutdown()
+    print('Shutdown')
 
 
 if __name__ == "__main__":

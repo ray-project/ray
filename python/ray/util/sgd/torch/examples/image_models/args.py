@@ -438,6 +438,16 @@ parser.add_argument(
     default=1,
     metavar="N",
     help="Number of Ray replicas to use. [default=1]")
+parser.add_argument(
+    "--mock-data",
+    action="store_true",
+    default=False,
+    help="Use mocked data for testing. [default=False]")
+parser.add_argument(
+    "--smoke-test",
+    action="store_true",
+    default=False,
+    help="Only run one step for testing. [default=False]")
 
 
 def parse_args():
