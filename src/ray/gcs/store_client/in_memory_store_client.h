@@ -15,8 +15,6 @@
 #ifndef RAY_GCS_STORE_CLIENT_IN_MEMORY_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_IN_MEMORY_STORE_CLIENT_H
 
-#include <memory>
-#include <unordered_set>
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/protobuf/gcs.pb.h"
