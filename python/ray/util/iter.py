@@ -2,7 +2,6 @@ from contextlib import contextmanager
 import collections
 import random
 import threading
-import time
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
@@ -207,7 +206,7 @@ class ParallelIterator(Generic[T]):
         time.
 
         A performance note: This function maintains its own internal buffer. If
-        async_queue_depth is `n` and max_concur is `k` then the total number of
+        `async_queue_depth` is `n` and max_concur is `k` then the total number of
         buffered objects could be up to `n + k - 1`
 
 
@@ -311,8 +310,7 @@ class ParallelIterator(Generic[T]):
                 shuffle_buffer_size,
                 str(seed) if seed is not None else "None"))
 
-    def repartition(self, num_partitions: int,
-                    batch_time: int = 10) -> "ParallelIterator[T]":
+    def repartition(self, num_partitions: int) -> "ParallelIterator[T]":
         """Returns a new ParallelIterator instance with num_partitions shards.
 
         The new iterator contains the same data in this instance except with
@@ -322,9 +320,6 @@ class ParallelIterator(Generic[T]):
         Args:
             num_partitions (int): The number of shards to use for the new
                 ParallelIterator
-            batch_time (int): Batches items for batch_time milliseconds
-                on each shard before retrieving it.
-                Increasing batch_time reduces latency but improves throughput.
 
         Returns:
             A ParallelIterator with num_partitions number of shards and the
@@ -351,10 +346,8 @@ class ParallelIterator(Generic[T]):
         def base_iterator(num_partitions, partition_index, timeout=None):
             futures = {}
             for a in all_actors:
-                futures[a.par_iter_slice_batch.remote(
-                    step=num_partitions,
-                    start=partition_index,
-                    batch_time=batch_time)] = a
+                futures[a.par_iter_slice.remote(
+                    step=num_partitions, start=partition_index)] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -370,13 +363,10 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        batch = ray.get(obj_id)
-                        futures[actor.par_iter_slice_batch.remote(
+                        yield ray.get(obj_id)
+                        futures[actor.par_iter_slice.remote(
                             step=num_partitions,
-                            start=partition_index,
-                            batch_time=batch_time)] = actor
-                        for item in batch:
-                            yield item
+                            start=partition_index)] = actor
                     except StopIteration:
                         pass
                 # Always yield after each round of wait with timeout.
@@ -456,20 +446,16 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
-    def gather_async(self, batch_time: int = 10,
-                     pipeline_queue_depth: int = 1) -> "LocalIterator[T]":
+    def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
 
         Arguments:
-            batch_time (int): Batches items for batch_time milliseconds
-                on each shard before retrieving it.
-                Increasing batch_time reduces latency but improves throughput.
-            pipeline_queue_depth (int): The max number of async requests in
-                flight per actor. Increasing this improves the amount of
-                pipeline parallelism in the iterator.
+            async_queue_depth (int): The max number of async requests in flight
+                per actor. Increasing this improves the amount of pipeline
+                parallelism in the iterator.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -481,10 +467,8 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        if pipeline_queue_depth < 1:
+        if async_queue_depth < 1:
             raise ValueError("queue depth must be positive")
-        if batch_time <= 0:
-            raise ValueError("batch time must be positive")
 
         # Forward reference to the returned iterator.
         local_iter = None
@@ -495,9 +479,9 @@ class ParallelIterator(Generic[T]):
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for _ in range(pipeline_queue_depth):
+            for _ in range(async_queue_depth):
                 for a in all_actors:
-                    futures[a.par_iter_next_batch.remote(batch_time)] = a
+                    futures[a.par_iter_next.remote()] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -514,11 +498,8 @@ class ParallelIterator(Generic[T]):
                     actor = futures.pop(obj_id)
                     try:
                         local_iter.shared_metrics.get().current_actor = actor
-                        batch = ray.get(obj_id)
-                        futures[actor.par_iter_next_batch.remote(
-                            batch_time)] = actor
-                        for item in batch:
-                            yield item
+                        yield ray.get(obj_id)
+                        futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
                         pass
                 # Always yield after each round of wait with timeout.
@@ -561,23 +542,11 @@ class ParallelIterator(Generic[T]):
         """Return the list of all shards."""
         return [self.get_shard(i) for i in range(self.num_shards())]
 
-    def get_shard(self,
-                  shard_index: int,
-                  batch_time: int = 10,
-                  pipeline_queue_depth: int = 1) -> "LocalIterator[T]":
+    def get_shard(self, shard_index: int) -> "LocalIterator[T]":
         """Return a local iterator for the given shard.
 
         The iterator is guaranteed to be serializable and can be passed to
         remote tasks or actors.
-
-        Arguments:
-            shard_index (int): Index of the shard to gather.
-            batch_time (int): Batches items for batch_time milliseconds
-                before retrieving it.
-                Increasing batch_time reduces latency but improves throughput.
-            pipeline_queue_depth (int): The max number of requests in flight.
-                Increasing this improves the amount of pipeline
-                parallelism in the iterator.
         """
         a, t = None, None
         i = shard_index
@@ -593,16 +562,10 @@ class ParallelIterator(Generic[T]):
                              self.num_shards())
 
         def base_iterator(timeout=None):
-            queue = collections.deque()
             ray.get(a.par_iter_init.remote(t))
-            for _ in range(pipeline_queue_depth):
-                queue.append(a.par_iter_next_batch.remote(batch_time))
             while True:
                 try:
-                    batch = ray.get(queue.popleft(), timeout=timeout)
-                    queue.append(a.par_iter_next_batch.remote(batch_time))
-                    for item in batch:
-                        yield item
+                    yield ray.get(a.par_iter_next.remote(), timeout=timeout)
                     # Always yield after each round of gets with timeout.
                     if timeout is not None:
                         yield _NextValueNotReady()
@@ -748,36 +711,23 @@ class LocalIterator(Generic[T]):
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
-    def for_each_concur(self,
-                        fn: Callable[[T], U],
-                        max_concur=2,
-                        resources=None) -> "LocalIterator[U]":
-        if resources is None:
-            resources = {}
-        print("resources: ", resources)
-
+    def for_each_concur(self, fn: Callable[[T], U],
+                    max_concur=2) -> "LocalIterator[U]":
         def apply_foreach_concur(it):
             cur = []
-            remote = ray.remote(fn).options(**resources)
-            remote_fn = remote.remote
+            remote_fn = ray.remote(fn).remote
             for item in it:
                 if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
-                    finished, remaining = ray.wait(cur, timeout=0)
-                    if len(remaining) >= max_concur:
-                        ray.wait(cur, num_returns=(len(finished) + 1))
+                    # Keep retrying the function until it returns a valid
+                    # value. This allows for non-blocking functions.
+                    finished = []
+                    if len(cur) >= max_concur:
+                        finished, remaining = ray.wait(cur, num_returns=1)
+                        cur = remaining
                     cur.append(remote_fn(item))
-
-                    while True:
-                        to_yield = cur[0]
-                        finished, remaining = ray.wait([to_yield], timeout=0)
-                        if finished:
-                            cur.pop(0)
-                            yield ray.get(to_yield)
-                        else:
-                            break
-
+                    yield from ray.get(finished)
             yield from ray.get(cur)
 
         # TODO: What does add_wait_hooks do in the regular for_each?
@@ -785,7 +735,7 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.shared_metrics,
             self.local_transforms + [apply_foreach_concur],
-            name=self.name + ".for_each_concur()")
+            name=self.name + ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         def apply_filter(it):
@@ -934,12 +884,9 @@ class LocalIterator(Generic[T]):
         def make_next(i):
             def gen(timeout):
                 while True:
-                    try:
-                        if len(queues[i]) == 0:
-                            fill_next(timeout)
-                        yield queues[i].popleft()
-                    except StopIteration:
-                        break
+                    if len(queues[i]) == 0:
+                        fill_next(timeout)
+                    yield queues[i].popleft()
 
             return gen
 
@@ -1067,20 +1014,6 @@ class ParallelIteratorWorker(object):
         assert self.local_it is not None, "must call par_iter_init()"
         return next(self.local_it)
 
-    def par_iter_next_batch(self, batch_time: int):
-        """Batches par_iter_next."""
-        buffer = []
-        t_end = time.time() + (0.001 * batch_time)
-        while time.time() < t_end:
-            try:
-                buffer.append(self.par_iter_next())
-            except StopIteration:
-                if len(buffer) == 0:
-                    raise StopIteration
-                else:
-                    pass
-        return buffer
-
     def par_iter_slice(self, step: int, start: int):
         """Iterates in increments of step starting from start."""
         assert self.local_it is not None, "must call par_iter_init()"
@@ -1103,20 +1036,6 @@ class ParallelIteratorWorker(object):
                 raise StopIteration
 
         return self.next_ith_buffer[start].pop(0)
-
-    def par_iter_slice_batch(self, step: int, start: int, batch_time: int):
-        """Batches par_iter_slice."""
-        buffer = []
-        t_end = time.time() + (0.001 * batch_time)
-        while time.time() < t_end:
-            try:
-                buffer.append(self.par_iter_slice(step, start))
-            except StopIteration:
-                if len(buffer) == 0:
-                    raise StopIteration
-                else:
-                    pass
-        return buffer
 
 
 class _NextValueNotReady(Exception):
