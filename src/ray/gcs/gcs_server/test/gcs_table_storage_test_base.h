@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <atomic>
-#include <chrono>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
+#include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/gcs/test/gcs_test_util.h"
 #include "ray/util/io_service_pool.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -37,11 +34,11 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   void SetUp() override { InitTableStorage(); }
 
-  void TearDown() override { DeinitTableStorage(); }
+  void TearDown() override { DeInitTableStorage(); }
 
   virtual void InitTableStorage() = 0;
 
-  virtual void DeinitTableStorage() = 0;
+  virtual void DeInitTableStorage() = 0;
 
  protected:
   void TestGcsTableApi() {
