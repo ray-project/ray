@@ -23,9 +23,31 @@ import ray
 from ray.util.sgd.utils import BATCH_SIZE
 
 from ray.util.sgd import TorchTrainer
-# from ray.util.sgd.torch import TrainingOperator
+from ray.util.sgd.torch import TrainingOperator
 
 from ray.util.sgd.torch.examples.image_models.args import parse_args
+
+class SegOperator(TrainingOperator):
+    def train_batch(self, batch, batch_info):
+
+    def train_epoch(self, iterator, info):
+        args = self.config["args"]
+
+        loader = self.train_loader
+        if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
+            if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
+                loader.mixup_enabled = False
+
+        self.model.train()
+
+        loader.mixup_enabled = False
+        for batch_idx, batch in enumerate(iterator):
+            batch_info = {
+                "batch_idx": batch_idx,
+                "global_step": self.global_step
+            }
+            batch_info.update(info)
+            metrics = self.train_batch(batch, batch_info=batch_info)
 
 
 def model_creator(config):
