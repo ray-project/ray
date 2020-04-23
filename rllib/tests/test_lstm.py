@@ -9,7 +9,8 @@ from ray.rllib.policy.rnn_sequencing import chop_into_sequences, \
     add_time_dimension
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import linear, normc_initializer
-from ray.rllib.models.model import Model
+from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+#from ray.rllib.models.model import Model
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 
@@ -91,10 +92,19 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual(seq_lens.tolist(), [1, 2])
 
 
-class RNNSpyModel(Model):
+class RNNSpyModel(RecurrentTFModelV2):
     capture_index = 0
+    cell_size = 3
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lstm = tf.nn.rnn_cell.BasicLSTMCell(
+            RNNSpyModel.cell_size, state_is_tuple=True)
+        # Setup the LSTM cell
+        self.state_init = self.get_initial_state()
+        self.register_variables(self.lstm.variables)
+
+    def forward_rnn(self, inputs, state, seq_lens):
         # Previously, a new class object was created during
         # deserialization and this `capture_index`
         # variable would be refreshed between class instantiations.
@@ -119,54 +129,63 @@ class RNNSpyModel(Model):
             RNNSpyModel.capture_index += 1
             return 0
 
-        features = input_dict["obs"]
-        cell_size = 3
-        last_layer = add_time_dimension(features, self.seq_lens)
-
-        # Setup the LSTM cell
-        lstm = tf.nn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        self.state_init = [
-            np.zeros(lstm.state_size.c, np.float32),
-            np.zeros(lstm.state_size.h, np.float32)
-        ]
+        #features = inputs  #["obs"]
+        #last_layer = add_time_dimension(features, seq_lens)
+        last_layer = inputs
 
         # Setup LSTM inputs
-        if self.state_in:
-            c_in, h_in = self.state_in
-        else:
-            c_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.c], name="c")
-            h_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.h], name="h")
-        self.state_in = [c_in, h_in]
+        #if state:  #self.state_in:
+        #    c_in, h_in = self.state_in
+        #else:
+        #    c_in = tf.placeholder(
+        #        tf.float32, [None, self.lstm.state_size.c], name="c")
+        #    h_in = tf.placeholder(
+        #        tf.float32, [None, self.lstm.state_size.h], name="h")
+        #self.state_in = [c_in, h_in]
+        c_in, h_in = state
 
         # Setup LSTM outputs
         state_in = tf.nn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
-            lstm,
+            self.lstm,
             last_layer,
             initial_state=state_in,
-            sequence_length=self.seq_lens,
+            sequence_length=seq_lens,
             time_major=False,
             dtype=tf.float32)
 
-        self.state_out = list(lstm_state)
+        state_out = list(lstm_state)
         spy_fn = tf.py_func(
             spy, [
                 last_layer,
-                self.state_in,
-                self.state_out,
-                self.seq_lens,
+                state_in,
+                state_out,
+                seq_lens,
             ],
             tf.int64,
             stateful=True)
 
         # Compute outputs
         with tf.control_dependencies([spy_fn]):
-            last_layer = tf.reshape(lstm_out, [-1, cell_size])
-            logits = linear(last_layer, num_outputs, "action",
-                            normc_initializer(0.01))
-        return logits, last_layer
+            with tf.variable_scope("output", reuse=tf.AUTO_REUSE):
+                last_layer = tf.reshape(lstm_out, [-1, RNNSpyModel.cell_size])
+                logits = linear(last_layer, self.num_outputs, "action",
+                                normc_initializer(0.01))
+
+                self.value_out = tf.reshape(
+                    linear(last_layer, 1, "value", normc_initializer(1.0)),
+                    [-1])
+
+        return logits, state_out
+
+    def value_function(self):
+        return self.value_out
+
+    def get_initial_state(self):
+        return [
+            np.zeros(self.lstm.state_size.c, np.float32),
+            np.zeros(self.lstm.state_size.h, np.float32)
+        ]
 
 
 class DebugCounterEnv(gym.Env):

@@ -1,3 +1,7 @@
+from collections import OrderedDict
+import gym
+
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
 #from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
@@ -311,5 +315,58 @@ def restore_original_dimensions(obs, obs_space, tensorlib=tf):
             assert torch is not None
             tensorlib = torch
         return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs
+
+
+# Cache of preprocessors, for if the user is calling unpack obs often.
+_cache = {}
+
+
+def _unpack_obs(obs, space, tensorlib=tf):
+    """Unpack a flattened Dict or Tuple observation array/tensor.
+
+    Arguments:
+        obs: The flattened observation tensor
+        space: The original space prior to flattening
+        tensorlib: The library used to unflatten (reshape) the array/tensor
+    """
+
+    if (isinstance(space, gym.spaces.Dict)
+            or isinstance(space, gym.spaces.Tuple)):
+        if id(space) in _cache:
+            prep = _cache[id(space)]
+        else:
+            prep = get_preprocessor(space)(space)
+            # Make an attempt to cache the result, if enough space left.
+            if len(_cache) < 999:
+                _cache[id(space)] = prep
+        if len(obs.shape) != 2 or obs.shape[1] != prep.shape[0]:
+            raise ValueError(
+                "Expected flattened obs shape of [None, {}], got {}".format(
+                    prep.shape[0], obs.shape))
+        assert len(prep.preprocessors) == len(space.spaces), \
+            (len(prep.preprocessors) == len(space.spaces))
+        offset = 0
+        if isinstance(space, gym.spaces.Tuple):
+            u = []
+            for p, v in zip(prep.preprocessors, space.spaces):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u.append(
+                    _unpack_obs(
+                        tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                        v,
+                        tensorlib=tensorlib))
+        else:
+            u = OrderedDict()
+            for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u[k] = _unpack_obs(
+                    tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                    v,
+                    tensorlib=tensorlib)
+        return u
     else:
         return obs
