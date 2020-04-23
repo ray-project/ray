@@ -1098,8 +1098,8 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":ray_util",
         ":ray_common",
+        ":ray_util",
     ],
 )
 
