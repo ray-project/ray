@@ -206,8 +206,8 @@ class ParallelIterator(Generic[T]):
         time.
 
         A performance note: This function maintains its own internal buffer. If
-        `async_queue_depth` is `n` and max_concur is `k` then the total number of
-        buffered objects could be up to `n + k - 1`
+        `async_queue_depth` is `n` and max_concur is `k` then the total number
+        of buffered objects could be up to `n + k - 1`
 
 
 
