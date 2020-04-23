@@ -184,7 +184,7 @@ def main():
     for i in pbar:
         trainer.train(num_steps=1 if args.smoke_test else None)
 
-        val_stats = trainer.validate()
+        val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     print('Done')
