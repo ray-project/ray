@@ -67,7 +67,7 @@ class StoreClientTestBase : public ::testing::Test {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
                                            elem.second.SerializeAsString(),
-                                           put_calllback));
+                                           put_calllback))
     }
     WaitPendingDone();
 
