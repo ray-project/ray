@@ -46,60 +46,25 @@ reload_env() {
   if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
     case "${GITHUB_PULL_REQUEST}" in
       [1-9]*) TRAVIS_PULL_REQUEST="${GITHUB_PULL_REQUEST}";;
-      *) TRAVIS_PULL_REQUEST="false";;
+      *) TRAVIS_PULL_REQUEST=false;;
     esac
     export TRAVIS_PULL_REQUEST
   fi
 
-  local definitions=() paths=()
-
-  # Environment variables for all platforms
-  definitions+=(
-    PYTHON3_BIN_PATH=python
-    GOROOT="${HOME}/go"
-    GOPATH="${HOME}/go_dir"
-  )
-  # Environment variables for Windows
-  test "${OSTYPE}" != msys || definitions+=(
-    USE_CLANG_CL=1
-  )
+  export PYTHON3_BIN_PATH=python
+  export GOROOT="${HOME}/go" GOPATH="${HOME}/go_dir"
+  if [ "${OSTYPE}" = msys ]; then
+    export USE_CLANG_CL=1
+  fi
 
   # NOTE: Modifying PATH invalidates Bazel's cache! Do not add to PATH unnecessarily.
-  # PATH for all platforms
-  paths+=(
-    "${HOME}/miniconda/bin"
-  )
-  # PATH for Windows
-  test "${OSTYPE}" != msys || paths+=(
-    "${HOME}/miniconda/bin/Scripts"
-  )
-
-  export "${definitions[@]}" 2> /dev/null
-
-  prepend_PATH "${paths[@]}"
-}
-
-# Prepends each argument to PATH if it isn't already in the PATH.
-prepend_PATH() {
-  { local set_x="${-//[^x]/}"; } 2> /dev/null  # save set -x to suppress noise
-  set +x
-  local old="${PATH}"
+  PATH="${HOME}/miniconda/bin":"${PATH}"
   if [ "${OSTYPE}" = msys ]; then
-    PATH="${PATH// :/:}"  # HACK: Work around https://github.com/actions/virtual-environments/issues/635#issue-589318442
+    PATH="${HOME}/miniconda/bin/Scripts":"${PATH}"
   fi
 
-  local to_add
-  for to_add in "$@"; do
-    case ":${PATH}:" in
-      *:"${to_add}":*) ;;  # Do nothing; already in PATH
-      *) PATH="${to_add}:${PATH}" ;;  # Prepend to PATH
-    esac
-  done
-
-  if [ "${old}" != "${PATH}" ]; then
-    echo "PATH=${PATH}"
-  fi
-  test -z "${set_x}" || set -x  # restore set -x
+  # Deduplicate PATH
+  PATH="$(set +x && printf "%s\n" "${PATH}" | tr ":" "\n" | awk '!a[$0]++' | tr "\n" ":")"
 }
 
 test_python() {
@@ -141,15 +106,11 @@ lint_bazel() {
     darwin*) platform=darwin;;
     msys*) platform=windows; suffix=".zip";;
   esac
-  case "${HOSTTYPE}" in
-    x86_64) architecture=amd64;;
-    i?86*) architecture=i386;;
-  esac
   # Run buildifier without affecting external environment variables
   (
     # TODO: Move installing Go & building buildifier to the dependency installation step?
     if [ ! -d "${GOROOT}" ]; then
-      local url="https://dl.google.com/go/go1.14.2.${platform}-${architecture}${suffix}"
+      local url="https://dl.google.com/go/go1.14.2.${platform}-amd64${suffix}"
       local filename="${GOROOT%/*}/${url##*/}"
       if [ "${suffix}" = ".zip" ]; then
         curl -s -L "${url}" -o "${filename}"
@@ -160,7 +121,7 @@ lint_bazel() {
       fi
     fi
     mkdir -p -- "${GOPATH}"
-    prepend_PATH "${GOPATH}/bin" "${GOROOT}/bin"
+    export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
 
     # Build buildifier
     go get github.com/bazelbuild/buildtools/buildifier
@@ -171,24 +132,16 @@ lint_bazel() {
 }
 
 lint_web() {
-  if command -v npm > /dev/null; then
-    (
-      cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
-      set +x # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      install_npm_project
-      if [ -d node_modules ]; then
-        nvm use node
-        node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
-        node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
-        node_modules/.bin/prettier --check public/index.html
-      else
-        { echo "WARNING: Skipping running web linters as NPM project was not built"; } 2> /dev/null
-      fi
-    )
-  else
-    { echo "WARNING: Skipping running web linters as NVM has not been installed"; } 2> /dev/null
-  fi
+  (
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
+    set +x # suppress set -x since it'll get very noisy here
+    . "${HOME}/.nvm/nvm.sh"
+    install_npm_project
+    nvm use node
+    node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
+    node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+    node_modules/.bin/prettier --check public/index.html
+  )
 }
 
 _lint() {
@@ -205,7 +158,9 @@ _lint() {
   # Run Bazel linter Buildifier.
   lint_bazel
   # Run TypeScript and HTML linting.
-  lint_web
+  if [ "${OSTYPE}" != msys ]; then
+    lint_web
+  fi
 }
 
 lint() {
@@ -273,10 +228,7 @@ init() {
 
   configure_system
 
-  local wheels="${LINUX_WHEELS-}${MAC_WHEELS-}"
-  if [ -z "${wheels}" ]; then  # NOT building wheels
-    "${ROOT_DIR}"/install-bazel.sh
-  fi
+  "${ROOT_DIR}"/install-bazel.sh
   . "${ROOT_DIR}"/install-dependencies.sh
   reload_env  # We just modified our environment; reload it so we can continue
 
@@ -295,10 +247,6 @@ build() {
   if [ "${should_run_bazel_and_install}" = 1 ]; then  # NOT building wheels
     bazel build -k "//:*"   # Do a full build first to ensure it passes
     "${ROOT_DIR}"/install-ray.sh
-    # Let's do a super-quick vitals test after the build, just to make sure things didn't go catastrophically wrong. (Leave the real testing for later.)
-    (PYTHONPATH=python GLOG_logtostderr=1 GLOG_minloglevel=1 RAY_BACKEND_LOG_LEVEL=warning \
-      suppress_output python -c "import colorama; colorama.init(); import pytest, ray; pytest.main()" \
-      -q --full-trace python/ray/tests/test_mini.py)
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
@@ -392,9 +340,7 @@ _main() {
     # Unnecessary for Travis (which uses one shell for different commands)
     reload_env
   fi
-  if [ 0 -lt "$#" ]; then
-    "$@"
-  fi
+  "$@"
 }
 
 _main "$@"

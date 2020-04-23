@@ -138,8 +138,6 @@ filter_compatible_pip_requirements() {
     set +x  # this function gets noisy, so disable tracing
     local req to_keep=()
     for req in "$@"; do
-      req="${req// /}"
-      req="${req%%#*}"
       local reqname="${req%%=*}"
       reqname="${reqname%%<*}"
       reqname="${reqname%%>*}"
@@ -181,10 +179,7 @@ install_dependencies() {
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
     local filename
     for filename in "${WORKSPACE_DIR}"/doc/requirements-rtd.txt "${WORKSPACE_DIR}"/doc/requirements-doc.txt; do
-      local requirements
-      requirements=($(sed -e "s/#.*//g" -e "s/[ ]*//g" -- "${filename}"))
-      requirements=($(filter_compatible_pip_requirements "${requirements[@]}"))
-      pip install "${requirements[@]}"
+      pip install $(filter_compatible_pip_requirements $(cat -- "${filename}"))
     done
   fi
 
