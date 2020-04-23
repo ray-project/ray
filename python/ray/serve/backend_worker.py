@@ -7,7 +7,7 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import parse_request_item, retry_actor_failures
+from ray.serve.utils import parse_request_item
 from ray.serve.exceptions import RayServeException
 from ray.async_compat import sync_to_async
 

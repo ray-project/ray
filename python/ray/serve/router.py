@@ -233,7 +233,8 @@ class Router:
 
     async def remove_worker(self, backend_tag, replica_tag):
         backend_replica_tag = backend_tag + ":" + replica_tag
-        assert backend_replica_tag in self.replicas
+        if backend_replica_tag not in self.replicas:
+            return
         worker_handle = self.replicas.pop(backend_replica_tag)
 
         # We need this lock because we modify worker_queue here.

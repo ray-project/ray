@@ -227,7 +227,7 @@ class ServeMaster:
                     backend_tag, replica_tag, worker_handle)
 
                 # Register the worker with the metric monitor.
-                #self.get_metric_monitor()[0].add_target.remote(worker_handle)
+                # self.get_metric_monitor()[0].add_target.remote(worker_handle)
 
         self.replicas_to_start.clear()
 
@@ -236,10 +236,10 @@ class ServeMaster:
         for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
             for replica_tag in replicas_to_stop:
                 try:
-                    worker_handle = ray.util.get_actor(replica_tag)
+                    # worker_handle = ray.util.get_actor(replica_tag)
                     # Remove the replica from metric monitor.
-                    #[monitor] = self.get_metric_monitor()
-                    #monitor.remove_target.remote(worker_handle)
+                    # [monitor] = self.get_metric_monitor()
+                    # monitor.remove_target.remote(worker_handle)
 
                     # Remove the replica from router.
                     # This will also submit __ray_terminate__ on the worker.
@@ -317,8 +317,8 @@ class ServeMaster:
 
     async def create_endpoint(self, route, endpoint, methods):
         async with self.write_lock:
-            # If this is a headless service with no route, key the endpoint based
-            # on its name.
+            # If this is a headless service with no route, key the endpoint
+            # based on its name.
             # TODO(edoakes): we should probably just store routes and endpoints
             # separately.
             if route is None:
@@ -392,8 +392,8 @@ class ServeMaster:
             self.backends[backend_tag] = (backend_worker, init_args,
                                           backend_config_dict)
 
-            # Restart replicas if there is a change in the backend config related
-            # to restart_configs.
+            # Restart replicas if there is a change in the backend config
+            # related to restart_configs.
             need_to_restart_replicas = any(
                 old_backend_config_dict[k] != backend_config_dict[k]
                 for k in BackendConfig.restart_on_change_fields)
