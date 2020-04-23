@@ -7,7 +7,7 @@ import logging
 import gym
 
 import ray
-from ray.rllib.agents.impala import vtrace
+from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy

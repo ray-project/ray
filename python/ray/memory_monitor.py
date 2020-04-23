@@ -92,10 +92,10 @@ class MemoryMonitor:
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / (1024**3)
         if not psutil:
-            print("WARNING: Not monitoring node memory since `psutil` is not "
-                  "installed. Install this with `pip install psutil` "
-                  "(or ray[debug]) to enable debugging of memory-related "
-                  "crashes.")
+            logger.warn("WARNING: Not monitoring node memory since `psutil` "
+                        "is not installed. Install this with "
+                        "`pip install psutil` (or ray[debug]) to enable "
+                        "debugging of memory-related crashes.")
 
     def set_heap_limit(self, worker_name, limit_bytes):
         self.heap_limit = limit_bytes
@@ -114,6 +114,13 @@ class MemoryMonitor:
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
                           "rb") as f:
                     used_gb = int(f.read()) / (1024**3)
+                # Exclude the page cache
+                with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
+                    for line in f.readlines():
+                        if line.split(" ")[0] == "cache":
+                            used_gb = \
+                                used_gb - int(line.split(" ")[1]) / (1024**3)
+                assert used_gb >= 0
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,
