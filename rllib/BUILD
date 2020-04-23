@@ -144,7 +144,7 @@ py_test(
 py_test(
     name = "test_sac",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
 )
 
