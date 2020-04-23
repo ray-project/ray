@@ -1685,8 +1685,6 @@ def cancel(object_id, force=False):
         raise TypeError(
             "ray.cancel() only supported for non-actor object IDs. "
             "Got: {}.".format(type(object_id)))
-    if len(ray.wait([object_id], timeout=0)[1]) != 1:
-        return
     return worker.core_worker.cancel_task(object_id, force)
 
 
