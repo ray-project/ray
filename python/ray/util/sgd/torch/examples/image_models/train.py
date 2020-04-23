@@ -7,10 +7,13 @@
 # Note: other authors MUST include themselves in the above copyright notice
 #       in order to abide by the terms of the Apache license
 
+import time
+import logging
 from os.path import join
 
 from tqdm import trange
 
+import torchvision
 import torch.nn as nn
 
 from timm.data import Dataset, create_loader
@@ -28,20 +31,86 @@ from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.examples.image_models.args import parse_args
 
 class SegOperator(TrainingOperator):
-    def train_batch(self, batch, batch_info):
+    def setup(self):
+        self.model_ema = None
+
+    def train_batch(self, (input, target), batch_info):
+        args = self.config["args"]
+
+        if self.use_gpu:
+            input = input.cuda(non_blocking=True)
+            target = target.cuda(non_blocking=True)
+
+        if not args.prefetcher:
+            # todo: support no-gpu training
+            if args.mixup > 0.:
+                mixup_disabled = False
+                if args.mixup_off_epoch:
+                    mixup_disabled = info["epoch_idx"] >= args.mixup_off_epoch
+                input, target = mixup_batch(
+                    input, target,
+                    alpha=args.mixup,
+                    num_classes=args.num_classes,
+                    smoothing=args.smoothing,
+                    disable=mixup_disabled)
+
+        with self.timers.record("fwd"):
+            output = self.model(input)
+            loss = self.criterion(output, target)
+
+        with self.timers.record("grad"):
+            self.optimizer.zero_grad()
+            if self.use_fp16:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
+
+        with self.timers.record("apply"):
+            self.optimizer.step()
+
+        torch.cuda.synchronize()
+
+        if model_ema is not None:
+            model_ema.update(model)
+
+        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def train_epoch(self, iterator, info):
         args = self.config["args"]
+
+        if self.use_tqdm and self.world_rank == 0:
+            desc = ""
+            if info is not None and "epoch_idx" in info:
+                if "num_epochs" in info:
+                    desc = "{}/{}e".format(info["epoch_idx"] + 1,
+                                           info["num_epochs"])
+                else:
+                    desc = "{}e".format(info["epoch_idx"] + 1)
+            _progress_bar = tqdm(
+                total=info[NUM_STEPS] or len(self.train_loader),
+                desc=desc,
+                unit="batch",
+                leave=False)
 
         loader = self.train_loader
         if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
             if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
                 loader.mixup_enabled = False
 
+        batch_time_m = AverageMeter()
+        data_time_m = AverageMeter()
+        losses_m = AverageMeter()
+
         self.model.train()
 
-        loader.mixup_enabled = False
+        end = time.time()
+        last_idx = len(loader) - 1
+        num_updates = epoch * len(loader)
         for batch_idx, batch in enumerate(iterator):
+            last_batch = batch_idx == last_idx
+            data_time_m.update(time.time() - end)
+
             batch_info = {
                 "batch_idx": batch_idx,
                 "global_step": self.global_step
@@ -49,6 +118,79 @@ class SegOperator(TrainingOperator):
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
+            batch_time_m.update(time.time() - end)
+
+            if last_batch or batch_idx % args.log_interval == 0:
+                lrl = [
+                    param_group['lr']
+                    for param_group in self.optimizer.param_groups
+                ]
+                lr = sum(lrl) / len(lrl)
+
+                # fixme: this doesnt work at all
+                # reduced_loss = reduce_tensor(loss.data, args.world_size)
+                # losses_m.update(metrics["train_loss"], metrics["num_samples"])
+
+                if self.world_rank == 0:
+                    total_samples = (
+                        metrics["num_samples"] * args.ray_num_workers)
+
+                    logging.info(
+                        "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
+                        "Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  "
+                        "Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  "
+                        "({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  "
+                        "LR: {lr:.3e}  "
+                        "Data: {data_time.val:.3f} ({data_time.avg:.3f})".format(
+                            epoch,
+                            batch_idx, len(loader),
+                            100. * batch_idx / last_idx,
+                            loss=losses_m,
+                            batch_time=batch_time_m,
+                            rate=total_samples / batch_time_m.val,
+                            rate_avg=total_samples / batch_time_m.avg,
+                            lr=lr,
+                            data_time=data_time_m))
+
+                    # todo: calculate output_dir
+                    # if args.save_images and output_dir:
+                    #     torchvision.utils.save_image(
+                    #         input,
+                    #         os.path.join(
+                    #             output_dir,
+                    #             "train-batch-%d.jpg" % batch_idx),
+                    #         padding=0,
+                    #         normalize=True)
+
+            if self.use_tqdm and self.world_rank == 0:
+                _progress_bar.n = batch_idx + 1
+                postfix = {}
+                if "train_loss" in metrics:
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
+
+            # todo: we must do this globally
+            # if saver is not None and args.recovery_interval and (
+            #     last_batch or (batch_idx + 1) % args.recovery_interval == 0):
+            #     saver.save_recovery(
+            #         model, optimizer, args, epoch,
+            #         model_ema=model_ema, use_amp=use_amp, batch_idx=batch_idx)
+
+            # fixme: need metric
+            # if self.scheduler is not None:
+            #     self.scheduler.step_update(
+            #         num_updates=self.global_step, metric=losses_m.avg)
+
+            end = time.time()
+            self.global_step += 1
+
+
+    if hasattr(self.optimizer, 'sync_lookahead'):
+        self.optimizer.sync_lookahead()
+
+    # return OrderedDict([('loss', losses_m.avg)])
+
+    # return metric_meters.summary()
 
 def model_creator(config):
     args = config["args"]
