@@ -61,7 +61,7 @@ class PrometheusSink:
                     "Unrecognized event type {}".format(event_type))
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class PrometheusSinkActor(PrometheusSink):
     pass
 
@@ -161,11 +161,9 @@ class PushCollector:
 
     def push_event(self, metric_type: EventType, name, value):
         self.metric_events.append((metric_type, name, value))
-        self.new_metric_added.set()
 
     async def push_once(self):
         old_batch, self.metric_events = self.metric_events, []
-        self.new_metric_added.clear()
         await self.push_batch_callback(self.metric_metadata, old_batch)
 
     async def push_forever(self, interval_s):

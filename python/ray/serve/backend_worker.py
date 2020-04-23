@@ -82,7 +82,8 @@ class RayServeWorker:
         self.metric_collector = PushCollector.connect_from_serve()
         self.error_counter = self.metric_collector.new_counter(
             "backend_error_counter",
-            description="Number of exceptions occurred in backend",
+            description=
+            "Number of exceptions that have occurred in the backend",
             labels={"backend": self.name})
 
     def get_runner_method(self, request_item):
@@ -90,8 +91,8 @@ class RayServeWorker:
         if not hasattr(self.callable, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
-                                    "The avaiable methods are {}".format(
-                                        method_name, dir(self)))
+                                    "The available methods are {}".format(
+                                        method_name, dir(self.callable)))
         return getattr(self.callable, method_name)
 
     def has_positional_args(self, f):
@@ -196,7 +197,7 @@ class RayServeWorker:
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter.add(batch_size)
+            self.error_counter.add()
             return [wrapped_exception for _ in range(batch_size)]
 
     async def handle_request(self, request):

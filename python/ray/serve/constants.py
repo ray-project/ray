@@ -19,5 +19,5 @@ DEFAULT_LATENCY_SLO_MS = 1e9
 #: Key for storing no http route services
 NO_ROUTE_KEY = "NO_ROUTE"
 
-#: Interval in sections for pushing metrics to the metric sink
+#: Interval in seconds for pushing metrics to the metric sink
 METRIC_PUSH_INTERVAL_S = 5

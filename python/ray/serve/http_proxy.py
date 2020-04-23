@@ -26,21 +26,24 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_master(self):
+    def __init__(self):
         assert ray.is_initialized()
+        from ray.serve.api import init as serve_init, _get_master_actor
+        serve_init()
 
-        from ray.serve.api import init, _get_master_actor
-        init()
-        master = _get_master_actor()
-        self.route_table, [self.router_handle
-                           ] = await master.get_http_proxy_config.remote()
-        [self.metric_sink] = await master.get_metric_sink.remote()
+        self.master = _get_master_actor()
 
         self.metric_collector = PushCollector.connect_from_serve()
         self.request_counter = self.metric_collector.new_counter(
             "num_http_requests",
             description="The number of requests processed",
         )
+
+    async def fetch_config_from_master(self):
+        self.route_table, [
+            self.router_handle
+        ] = await self.master.get_http_proxy_config.remote()
+        [self.metric_sink] = await self.master.get_metric_sink.remote()
 
     def set_route_table(self, route_table):
         self.route_table = route_table
