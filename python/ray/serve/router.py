@@ -1,6 +1,7 @@
 import asyncio
 import copy
 from collections import defaultdict
+import time
 from typing import DefaultDict, List
 
 # Note on choosing blist instead of stdlib heapq
@@ -190,7 +191,7 @@ class Router:
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         service = request_meta.service
-        logger.info("Received a request for service {}".format(service))
+        logger.debug("Received a request for service {}".format(service))
 
         # check if the slo specified is directly the
         # wall clock time
@@ -330,11 +331,12 @@ class Router:
     async def _do_query(self, backend, backend_replica_tag, req):
         # If the worker died, this will be a RayActorError. Just return it and
         # let the HTTP proxy handle the retry logic.
-        logger.info("sending query to replica:" + backend_replica_tag)
+        logger.debug("Sending query to replica:" + backend_replica_tag)
+        start = time.time()
         worker = self.replicas[backend_replica_tag]
         result = await worker.handle_request.remote(req)
         await self.mark_worker_idle(backend, backend_replica_tag)
-        logger.info("got result!")
+        logger.debug("Got result in {:.2f}s", time.time() - start)
         return result
 
     async def _assign_query_to_worker(self,

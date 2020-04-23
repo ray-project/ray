@@ -61,7 +61,6 @@ class ServeMaster:
     def _get_or_start_router(self, router_class, router_kwargs):
         try:
             self.router = ray.util.get_actor(SERVE_ROUTER_NAME)
-            logger.info("Router already running")
         except ValueError:
             logger.info(
                 "Starting router with name '{}'".format(SERVE_ROUTER_NAME))
@@ -80,7 +79,6 @@ class ServeMaster:
         """
         try:
             self.http_proxy = ray.util.get_actor(SERVE_PROXY_NAME)
-            logger.info("HTTP proxy already running")
         except ValueError:
             logger.info(
                 "Starting HTTP proxy with name '{}'".format(SERVE_PROXY_NAME))
@@ -94,7 +92,6 @@ class ServeMaster:
     def _get_or_start_metric_monitor(self, gc_window_s):
         try:
             self.metric_monitor = ray.util.get_actor(SERVE_METRIC_MONITOR_NAME)
-            logger.info("Metric monitor already running")
         except ValueError:
             logger.info("Starting metric monitor with name '{}'".format(
                 SERVE_METRIC_MONITOR_NAME))
@@ -106,21 +103,24 @@ class ServeMaster:
             self.metric_monitor.add_target.remote(self.router)
 
     def _checkpoint(self):
-        logger.debug("Master actor writing checkpoint")
+        logger.debug("Writing checkpoint")
+        start = time.time()
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
              self.replicas_to_start, self.replicas_to_stop))
         self.kv_store_client.put("checkpoint", checkpoint)
+        logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
+
         import random
         import os
-        if random.random() < 0.5:
+        if random.random() < 0.9:
             os._exit(0)
 
     async def _recover_from_checkpoint(self):
         # XXX: assumes lock held
         checkpoint = self.kv_store_client.get("checkpoint")
         if checkpoint is None:
-            logger.info("No checkpoint found")
+            logger.debug("No checkpoint found")
             self.write_lock.release()
             return
 
@@ -214,8 +214,6 @@ class ServeMaster:
                 try:
                     worker_handle = ray.util.get_actor(replica_tag)
                 except ValueError:
-                    if replica_tag.startswith("counter"):
-                        logger.info("starting worker " + replica_tag)
                     worker_handle = await self._start_backend_worker(
                         backend_tag, replica_tag)
 
@@ -254,7 +252,7 @@ class ServeMaster:
 
     def _scale_replicas(self, backend_tag, num_replicas):
         """Scale the given backend to the number of replicas."""
-        logger.debug("Scaling backend '{}' to {} replicas".format(
+        logger.info("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
@@ -265,13 +263,15 @@ class ServeMaster:
         delta_num_replicas = num_replicas - current_num_replicas
 
         if delta_num_replicas > 0:
-            logger.info("Adding {} replicas".format(delta_num_replicas))
+            logger.info("Adding {} replicas to backend {}".format(
+                delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self.replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
-            logger.info("Removing {} replicas".format(-delta_num_replicas))
+            logger.info("Removing {} replicas from backend {}".format(
+                -delta_num_replicas, backend_tag))
             assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
                 replica_tag = self.replicas[backend_tag].pop()
@@ -339,7 +339,7 @@ class ServeMaster:
                     "{} Endpoint '{}' is already registered.".format(
                         err_prefix, endpoint))
 
-            logger.debug(
+            logger.info(
                 "Registering route {} to endpoint {} with methods {}.".format(
                     route, endpoint, methods))
 

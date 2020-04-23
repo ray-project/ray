@@ -30,23 +30,13 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            self.replica_tag = replica_tag
-            if replica_tag.startswith("counter"):
-                print(replica_tag, "starting up")
-            if replica_tag.startswith("counter"):
-                print(replica_tag, "got router handle")
-
             self.backend = RayServeWorker(backend_tag, _callable, is_function)
 
         def get_metrics(self):
             return self.backend.get_metrics()
 
         async def handle_request(self, request):
-            if self.replica_tag.startswith("counter"):
-                print(self.replica_tag, "handle request")
             result = await self.backend.handle_request(request)
-            if self.replica_tag.startswith("counter"):
-                print(self.replica_tag, "handle request done")
             return result
 
         def ready(self):
