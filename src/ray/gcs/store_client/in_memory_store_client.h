@@ -25,9 +25,52 @@ namespace ray {
 
 namespace gcs {
 
+/// \class InMemoryTable
+///
+/// This class is thread safe.
 class InMemoryTable {
-  std::unordered_map<std::string, std::string> records GUARDED_BY(mutex_);
+ public:
+  /// Write data to the table synchronously.
+  ///
+  /// \param key The key that will be written to the table.
+  /// \param data The value of the key that will be written to the table.
+  void Put(const std::string &key, const std::string &data);
+
+  /// Write data to the table synchronously.
+  ///
+  /// \param key The key that will be written to the table.
+  /// \param index_key A secondary key that will be used for indexing the data.
+  /// \param data The value of the key that will be written to the table.
+  void PutWithIndex(const std::string &key, const std::string &index_key,
+                    const std::string &data);
+
+  /// Get data from the table synchronously.
+  ///
+  /// \param key The key to lookup from the table.
+  /// \return The value of the key.
+  boost::optional<std::string> Get(const std::string &key);
+
+  /// Get all data from the table synchronously.
+  ///
+  /// \return All data of the table.
+  std::unordered_map<std::string, std::string> GetAll();
+
+  /// Delete data from the table synchronously.
+  ///
+  /// \param key The key that will be deleted from the table.
+  void Delete(const std::string &key);
+
+  /// Delete by index from the table synchronously.
+  ///
+  /// \param index_key The secondary key that will be used to delete the indexed data from
+  /// the table.
+  void DeleteByIndex(const std::string &index_key);
+
+ private:
   absl::Mutex mutex_;
+  std::unordered_map<std::string, std::string> records_ GUARDED_BY(mutex_);
+  std::unordered_map<std::string, std::vector<std::string>> index_keys_
+      GUARDED_BY(mutex_);
 };
 
 /// \class InMemoryStoreClient
@@ -37,16 +80,16 @@ template <typename Key, typename Data, typename IndexKey>
 class InMemoryStoreClient : public StoreClient<Key, Data, IndexKey> {
  public:
   InMemoryStoreClient() {
-    // Run the event loop.
-    // Using boost::asio::io_context::work to avoid ending the event loop when
-    // there are no events to handle.
-    boost::asio::io_context::work worker(main_service_);
-    main_service_.run();
+    thread_io_service_.reset(new std::thread([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(io_service_));
+      io_service_.run();
+    }));
   }
 
   virtual ~InMemoryStoreClient() {
-    // Stop the event loop.
-    main_service_.stop();
+    io_service_.stop();
+    thread_io_service_->join();
   }
 
   Status AsyncPut(const std::string &table_name, const Key &key, const Data &data,
@@ -69,9 +112,13 @@ class InMemoryStoreClient : public StoreClient<Key, Data, IndexKey> {
                             const StatusCallback &callback) override;
 
  private:
-  std::mutex mutex_;
-  const std::unordered_map<std::string, std::shared_ptr<InMemoryTable>> tables_;
-  boost::asio::io_context main_service_;
+  std::shared_ptr<InMemoryTable> GetOrCreateTable(const std::string &table_name);
+
+  absl::Mutex mutex_;
+  std::unordered_map<std::string, std::shared_ptr<InMemoryTable>> tables_
+      GUARDED_BY(mutex_);
+  boost::asio::io_service io_service_;
+  std::unique_ptr<std::thread> thread_io_service_;
 };
 
 }  // namespace gcs

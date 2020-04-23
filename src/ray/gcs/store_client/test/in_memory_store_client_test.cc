@@ -13,20 +13,30 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/test/store_client_test_base.h"
 
 namespace ray {
 
 namespace gcs {
 
-class InMemoryStoreClientTest {
+class InMemoryStoreClientTest : public StoreClientTestBase {
  public:
-  InMemoryStoreClientTest() {}
+  void InitStoreClient() override {
+    store_client_ =
+        std::make_shared<InMemoryStoreClient<ActorID, rpc::ActorTableData, JobID>>();
+  }
 
-  virtual ~InMemoryStoreClientTest() {}
+  void DisconnectStoreClient() override {}
 };
 
-TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) {
-  RAY_LOG(INFO) << "hello world.....";
+TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
+
+TEST_F(InMemoryStoreClientTest, AsyncDeleteTest) { TestAsyncDelete(); }
+
+TEST_F(InMemoryStoreClientTest, AsyncGetAllTest) { TestAsyncGetAll(); }
+
+TEST_F(InMemoryStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
+  TestAsyncPutAndDeleteWithIndex();
 }
 
 }  // namespace gcs
