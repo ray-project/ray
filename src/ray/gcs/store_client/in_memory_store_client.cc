@@ -27,12 +27,14 @@ void InMemoryTable::PutWithIndex(const std::string &key, const std::string &inde
   index_keys_[index_key].emplace_back(key);
 }
 
-boost::optional<std::string> InMemoryTable::Get(const std::string &key) {
+boost::optional<std::string> InMemoryTable::Get(const std::string &key) const {
   auto iter = records_.find(key);
   return iter == records_.end() ? boost::optional<std::string>() : iter->second;
 }
 
-absl::flat_hash_map<std::string, std::string> InMemoryTable::GetAll() { return records_; }
+const absl::flat_hash_map<std::string, std::string> &InMemoryTable::GetAll() const {
+  return records_;
+}
 
 void InMemoryTable::Delete(const std::string &key) { records_.erase(key); }
 

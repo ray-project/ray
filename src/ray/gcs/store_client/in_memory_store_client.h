@@ -47,12 +47,12 @@ class InMemoryTable {
   ///
   /// \param key The key to lookup from the table.
   /// \return The value of the key.
-  boost::optional<std::string> Get(const std::string &key);
+  boost::optional<std::string> Get(const std::string &key) const;
 
   /// Get all data from the table synchronously.
   ///
   /// \return All data of the table.
-  absl::flat_hash_map<std::string, std::string> GetAll();
+  const absl::flat_hash_map<std::string, std::string> &GetAll() const;
 
   /// Delete data from the table synchronously.
   ///
