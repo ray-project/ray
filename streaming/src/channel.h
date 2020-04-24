@@ -15,7 +15,6 @@ enum class TransferCreationStatus : uint32_t {
   PullOk = 1,
   Timeout = 2,
   DataLost = 3,
-  Failed = 4,  // for plasma queue only
   Invalid = 999,
 };
 

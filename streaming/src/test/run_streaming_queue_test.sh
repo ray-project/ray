@@ -62,7 +62,7 @@ sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC --gtest_filter=StreamingTest/StreamingQueueTest.*
+./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC #--gtest_filter=StreamingTest/StreamingQueueTest.GetQueueTest/0
 sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
 bazel run //:redis-cli -- -p 6380 shutdown

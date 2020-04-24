@@ -331,8 +331,6 @@ StreamingQueueStatus DownstreamQueueMessageHandler::PullQueue(
     uint64_t timeout_ms) {
   STREAMING_LOG(INFO) << "PullQueue queue_id: "
                       << queue_id
-                      // << " actor_id: " << actor_id
-                      // << " peer_actor_id: " << peer_actor_id
                       << " start_msg_id: " << start_msg_id
                       << " is_upstream_first_pull: " << is_upstream_first_pull;
   uint64_t start_time = current_time_ms();
@@ -383,7 +381,7 @@ void DownstreamQueueMessageHandler::DispatchMessageInternal(
     std::shared_ptr<LocalMemoryBuffer> buffer,
     std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) {
   std::shared_ptr<Message> msg = ParseMessage(buffer);
-  STREAMING_LOG(INFO) << "DownstreamQueueMessageHandler::DispatchMessageInternal: "
+  STREAMING_LOG(DEBUG) << "DownstreamQueueMessageHandler::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
                        << " peer actorid: " << msg->PeerActorId() << " type: "
                        << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());

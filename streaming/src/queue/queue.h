@@ -29,8 +29,12 @@ enum QueueType { UPSTREAM = 0, DOWNSTREAM };
 /// using a watershed iterator to divided.
 class Queue {
  public:
-  /// \param[in] queue_id the unique identification of a pair of queues (upstream and
-  /// downstream). \param[in] size max size of the queue in bytes. \param[in] transport
+  /// \param actor_id, the actor id of upstream worker
+  /// \param peer_actor_id, the actor id of downstream worker
+  /// \param queue_id the unique identification of a pair of queues (upstream and
+  /// downstream). 
+  /// \param size max size of the queue in bytes. 
+  /// \param transport
   /// transport to send items to peer.
   Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
       : actor_id_(actor_id),
@@ -104,8 +108,6 @@ class Queue {
   std::condition_variable readable_cv_;
 };
 
-const uint64_t QUEUE_INITIAL_SEQ_ID = 1;
-
 /// Queue in upstream.
 class WriterQueue : public Queue {
  public:
@@ -129,9 +131,14 @@ class WriterQueue : public Queue {
         is_resending_(false),
         is_upstream_first_pull_(true) {}
 
-  /// Push a continuous buffer into queue.
-  /// NOTE: the buffer should be copied.
-  Status Push(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
+  /// Push a continuous buffer into queue, the buffer consists of some messages packed by DataWriter.
+  /// \param data, the buffer address
+  /// \param data_size, buffer size
+  /// \param timestamp, the timestamp when the buffer pushed in
+  /// \param msg_id_start, the message id of the first message in the buffer
+  /// \param msg_id_end, the message id of the last message in the buffer
+  /// \param raw, whether this buffer is raw data, be True only in test
+  Status Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
               uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies
@@ -139,8 +146,8 @@ class WriterQueue : public Queue {
   /// NOTE: this callback function is called in queue thread.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
 
-  /// Callback function, will be called when downstream queue wants to
-  /// pull some items form our upstream queue.
+  /// Callback function, will be called when downstream queue receives
+  /// resend items form upstream queue.
   /// NOTE: this callback function is called in queue thread.
   void OnPull(std::shared_ptr<PullRequestMessage> pull_msg,
               boost::asio::io_service &service,

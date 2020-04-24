@@ -16,6 +16,7 @@ namespace streaming {
 
 using ray::ObjectID;
 const uint64_t QUEUE_INVALID_SEQ_ID = std::numeric_limits<uint64_t>::max();
+const uint64_t QUEUE_INITIAL_SEQ_ID = 1;
 
 /// QueueItem is the element stored in `Queue`. Actually, when DataWriter pushes a message
 /// bundle into a queue, the bundle is packed into one QueueItem, so a one-to-one

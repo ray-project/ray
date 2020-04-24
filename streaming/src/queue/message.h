@@ -56,10 +56,10 @@ class Message {
   static const uint32_t MagicNum;
 };
 
-// MagicNum + MessageType
+/// MagicNum + MessageType
 constexpr uint32_t kItemMetaHeaderSize =
     sizeof(Message::MagicNum) + sizeof(queue::protobuf::StreamingQueueMessageType);
-// kItemMetaHeaderSize + fbs length
+/// kItemMetaHeaderSize + fbs length
 constexpr uint32_t kItemHeaderSize = kItemMetaHeaderSize + sizeof(uint64_t);
 
 /// Wrap StreamingQueueDataMsg in streaming_queue.proto.
