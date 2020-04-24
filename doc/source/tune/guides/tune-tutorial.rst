@@ -1,3 +1,5 @@
+.. _tune-tutorial:
+
 A Basic Tune Tutorial
 =====================
 
@@ -124,4 +126,4 @@ You can evaluate best trained model using the Analysis object to retrieve the be
 
 Next Steps
 ----------
-Take a look at the :ref`tune-user-guide` for a more comprehensive overview of Tune's features.
+Take a look at the :ref:`tune-user-guide` for a more comprehensive overview of Tune's features.

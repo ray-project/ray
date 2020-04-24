@@ -18,12 +18,12 @@ Take a look at any of the below tutorials to get started with Tune.
 .. customgalleryitem::
    :tooltip: A gentle 60 second tour of core Tune concepts.
    :figure: /images/tune-workflow.png
-   :description: :doc:`A gentle 60 second tour of Tune <plot_tune-60-seconds>`
+   :description: :doc:`A gentle 60 second tour of Tune <tune-60-seconds>`
 
 .. customgalleryitem::
    :tooltip: A simple Tune walkthrough.
    :figure: /images/tune.png
-   :description: :doc:`A walkthrough to setup your first Tune experiment <plot_tune-tutorial>`
+   :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
 .. raw:: html
 
@@ -32,8 +32,8 @@ Take a look at any of the below tutorials to get started with Tune.
 .. toctree::
    :hidden:
 
-   plot_tune-60-seconds.rst
-   plot_tune-tutorial.rst
+   tune-60-seconds.rst
+   tune-tutorial.rst
 
 
 User Guides
@@ -48,17 +48,17 @@ These pages will demonstrate the various features and configurations of Tune.
 .. customgalleryitem::
    :tooltip: A guide to Tune features.
    :figure: /images/tune.png
-   :description: :doc:`A guide to Tune features <plot_tune-usage>`
+   :description: :doc:`A guide to Tune features <tune-usage>`
 
 .. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
    :figure: /images/tune-pbt-small.png
-   :description: :doc:`A simple guide to Population-based Training <plot_tune-advanced-tutorial>`
+   :description: :doc:`A simple guide to Population-based Training <tune-advanced-tutorial>`
 
 .. customgalleryitem::
    :tooltip: A guide to distributed hyperparameter tuning
    :figure: /images/tune.png
-   :description: :doc:`A guide to distributed hyperparameter tuning <plot_tune-distributed>`
+   :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
 
 .. raw:: html
 
@@ -67,9 +67,9 @@ These pages will demonstrate the various features and configurations of Tune.
 .. toctree::
    :hidden:
 
-   plot_tune-usage.rst
-   plot_tune-advanced-tutorial.rst
-   plot_tune-distributed.rst
+   tune-usage.rst
+   tune-advanced-tutorial.rst
+   tune-distributed.rst
 
 Colab Exercises
 ---------------

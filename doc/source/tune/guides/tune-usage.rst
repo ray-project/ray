@@ -372,6 +372,7 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
     tune.run(
         MyTrainableClass,
         name="experiment_name",
+        upload_dir="s3://my-log-dir",
         sync_to_cloud=custom_sync_str_or_func,
     )
 
@@ -398,7 +399,7 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
 
     ray.init(local_mode=True)
 
-Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
+Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
 
 Further Questions or Issues?
@@ -406,11 +407,8 @@ Further Questions or Issues?
 
 You can post questions or issues or feedback through the following channels:
 
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
+1. `StackOverflow`_: For questions about how to use Ray.
+2. `GitHub Issues`_: For bug reports and feature requests.
 
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues

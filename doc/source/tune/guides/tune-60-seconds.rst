@@ -3,12 +3,13 @@
 Tune in 60 Seconds
 ==================
 
+Let's quickly walk through the key concepts you need to know to use Tune. In this guide, we'll be covering the following:
 
-Tune takes a user-defined Python function or class and evaluates it on a set of hyperparameter configurations.
+.. contents::
+    :local:
+    :depth: 1
 
-Each hyperparameter configuration evaluation is called a *trial*, and multiple trials are run in parallel. In this guide, we'll be covering the following:
-
-.. contents:: :local:
+Tune takes a user-defined Python function or class and evaluates it on a set of hyperparameter configurations. Each hyperparameter configuration evaluation is called a *trial*, and Tune runs multiple trials in parallel, leveraging Search Algorithms and Trial Schedulers to optimize your hyperparameters.
 
 .. image:: /images/tune-workflow.png
 
@@ -147,7 +148,9 @@ Trial Schedulers are Tune modules that adjust and change distributed training ru
     configs = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
     tune.run(MyTrainableClass, num_samples=20, config=configs, scheduler=hyperband)
 
-Unlike **Search Algorithms**, Trial Schedulers do not select which hyperparameter configurations to evaluate. However, you can use them together. See the documentation: :ref:`schedulers-ref`.
+Unlike **Search Algorithms**, Trial Schedulers do not select which hyperparameter configurations to evaluate. However, you can use them together.
+
+See the documentation: :ref:`schedulers-ref`.
 
 
 Analysis
@@ -166,3 +169,25 @@ After running a hyperparameter tuning job, you will want to analyze your results
 
     # Get a dataframe for the max accuracy seen for each trial
     df = analysis.dataframe(metric="mean_accuracy", mode="max")
+
+What's Next?
+~~~~~~~~~~~~
+
+
+Now that you have a working understanding of Tune, check out:
+
+ * :ref:`Tune Guides and Examples <tune-guides-overview>`: Examples and templates for using Tune with your preferred machine learning library.
+ * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
+ * :ref:`tune-user-guide`: A comprehensive overview of Tune's features.
+
+
+Further Questions or Issues?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Reach out to us if you have any questions or issues or feedback through the following channels:
+
+1. `StackOverflow`_: For questions about how to use Ray.
+2. `GitHub Issues`_: For bug reports and feature requests.
+
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues

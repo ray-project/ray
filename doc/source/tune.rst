@@ -23,6 +23,7 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 
 For more information, check out:
 
+  * :ref:`Tune in 60 Seconds <tune-60-seconds>`: A quick overview of Tune and its key concepts.
   * :ref:`Tune Guides and Examples <tune-guides-overview>`: Examples, Tutorials, and Guides for how to use Tune.
   * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
 
