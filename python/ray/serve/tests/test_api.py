@@ -40,6 +40,23 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
+def test_call_method(serve_instance):
+    serve.create_endpoint("call-method", "/call-method")
+
+    class CallMethod:
+        def method(self, request):
+            return "hello"
+
+    serve.create_backend(CallMethod, "call-method")
+    serve.set_traffic("call-method", {"call-method": 1.0})
+
+    resp = requests.get(
+        "http://127.0.0.1:8000/call-method",
+        timeout=1,
+        headers={"X-SERVE-CALL-METHOD": "method"})
+    assert resp.text == "hello"
+
+
 def test_no_route(serve_instance):
     serve.create_endpoint("noroute-endpoint")
 
