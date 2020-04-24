@@ -203,7 +203,6 @@ def reserve_cuda_device(retries=20):
     assert isinstance(cuda_devices, str)
     cuda_devices = set(cuda_devices.split(","))
 
-
     global _dummy_actor
     unused_actors = []
 
@@ -217,8 +216,8 @@ def reserve_cuda_device(retries=20):
         reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
 
         if match_devices and reserved_device not in cuda_devices:
-            logger.info("Device %s not in list of visible devices %s", reserved_device,
-                        cuda_devices)
+            logger.info("Device %s not in list of visible devices %s",
+                        reserved_device, cuda_devices)
             unused_actors.append(_dummy_actor)
             _dummy_actor = None
         else:
