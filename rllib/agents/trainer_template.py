@@ -187,7 +187,7 @@ def build_trainer(name,
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
-            if self.train_exec_impl:
+            if hasattr(self, "train_exec_impl") and self.train_exec_impl:
                 state["train_exec_impl"] = (
                     self.train_exec_impl.shared_metrics.get().save())
             return state
@@ -195,7 +195,7 @@ def build_trainer(name,
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
-            if self.train_exec_impl:
+            if hasattr(self, "train_exec_impl") and self.train_exec_impl:
                 self.train_exec_impl.shared_metrics.get().restore(
                     state["train_exec_impl"])
 
