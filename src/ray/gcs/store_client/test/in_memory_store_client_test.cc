@@ -23,7 +23,8 @@ class InMemoryStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
     store_client_ =
-        std::make_shared<InMemoryStoreClient<ActorID, rpc::ActorTableData, JobID>>();
+        std::make_shared<InMemoryStoreClient<ActorID, rpc::ActorTableData, JobID>>(
+            *(io_service_pool_->Get()), 3);
   }
 
   void DisconnectStoreClient() override {}
