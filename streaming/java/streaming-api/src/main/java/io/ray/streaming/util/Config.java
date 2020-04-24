@@ -15,7 +15,6 @@ public class Config {
 
   public static final String STREAMING_JOB_NAME = "streaming.job.name";
   public static final String STREAMING_OP_NAME = "streaming.op_name";
-  public static final String TASK_JOB_ID = "streaming.task_job_id";
   public static final String STREAMING_WORKER_NAME = "streaming.worker_name";
 
   // channel
