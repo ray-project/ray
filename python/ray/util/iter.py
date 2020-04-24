@@ -711,23 +711,34 @@ class LocalIterator(Generic[T]):
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
-    def for_each_concur(self, fn: Callable[[T], U],
-                        max_concur=2) -> "LocalIterator[U]":
+    def for_each_concur(self,
+                        fn: Callable[[T], U],
+                        max_concur=2,
+                        resources=None) -> "LocalIterator[U]":
+        if resources is None:
+            resources = {}
         def apply_foreach_concur(it):
             cur = []
-            remote_fn = ray.remote(fn).remote
+            remote = ray.remote(fn).options(**resources)
+            remote_fn = remote.remote
             for item in it:
                 if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
-                    # Keep retrying the function until it returns a valid
-                    # value. This allows for non-blocking functions.
-                    finished = []
-                    if len(cur) >= max_concur:
-                        finished, remaining = ray.wait(cur, num_returns=1)
-                        cur = remaining
+                    finished, remaining = ray.wait(cur, timeout=0)
+                    if len(remaining) >= max_concur:
+                        ray.wait(cur, num_returns=(len(finished) + 1))
                     cur.append(remote_fn(item))
-                    yield from ray.get(finished)
+
+                    while True:
+                        to_yield = cur[0]
+                        finished, remaining = ray.wait([to_yield], timeout=0)
+                        if finished:
+                            cur.pop(0)
+                            yield ray.get(to_yield)
+                        else:
+                            break
+
             yield from ray.get(cur)
 
         # TODO: What does add_wait_hooks do in the regular for_each?
@@ -735,7 +746,7 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.shared_metrics,
             self.local_transforms + [apply_foreach_concur],
-            name=self.name + ".for_each()")
+            name=self.name + ".for_each_concur()")
 
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         def apply_filter(it):
