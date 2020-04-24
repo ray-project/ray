@@ -16,7 +16,6 @@
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-//#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 

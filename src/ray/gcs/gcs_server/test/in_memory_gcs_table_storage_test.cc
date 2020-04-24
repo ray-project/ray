@@ -29,10 +29,6 @@ class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
 
   virtual ~InMemoryGcsTableStorageTest() { io_service_pool_->Stop(); }
 
-  static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
-
-  static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
-
   void InitTableStorage() override {
     gcs_table_storage_ =
         std::make_shared<gcs::InMemoryGcsTableStorage>(*(io_service_pool_->Get()));
@@ -41,7 +37,7 @@ class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   void DeInitTableStorage() override {}
 
  protected:
-  size_t io_service_num_{3};
+  size_t io_service_num_{1};
   std::shared_ptr<IOServicePool> io_service_pool_;
 };
 
