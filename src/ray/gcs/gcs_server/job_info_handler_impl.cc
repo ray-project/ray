@@ -21,8 +21,8 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
                                          rpc::AddJobReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
-  RAY_LOG(DEBUG) << "Adding job, job id = " << job_id
-                 << ", driver pid = " << request.data().driver_pid();
+  RAY_LOG(INFO) << "Adding job, job id = " << job_id
+                << ", driver pid = " << request.data().driver_pid();
   auto job_table_data = std::make_shared<JobTableData>();
   job_table_data->CopyFrom(request.data());
   auto on_done = [job_id, request, reply, send_reply_callback](const Status &status) {
@@ -30,8 +30,8 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
     } else {
-      RAY_LOG(DEBUG) << "Finished adding job, job id = " << job_id
-                     << ", driver pid = " << request.data().driver_pid();
+      RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
+                    << ", driver pid = " << request.data().driver_pid();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -46,7 +46,7 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     const rpc::MarkJobFinishedRequest &request, rpc::MarkJobFinishedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
-  RAY_LOG(DEBUG) << "Marking job state, job id = " << job_id;
+  RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
   auto job_table_data =
       gcs::CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr), "", -1);
   auto on_done = [this, job_id, job_table_data, reply,
@@ -56,7 +56,7 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
                                          job_table_data->SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished marking job state, job id = " << job_id;
+      RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

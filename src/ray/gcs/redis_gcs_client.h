@@ -81,7 +81,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
     return redis_client_->GetPrimaryContext();
   }
 
-  std::shared_ptr<RedisClient> GetRedisClient() { return redis_client_; }
+  std::shared_ptr<RedisClient> GetRedisClient() const { return redis_client_; }
 
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.
