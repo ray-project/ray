@@ -18,7 +18,9 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-message ActiveObjectIDs { repeated bytes object_ids = 1; }
+message ActiveObjectIDs {
+  repeated bytes object_ids = 1;
+}
 
 // Persistent state of an ActorHandle.
 message ActorHandle {
@@ -65,7 +67,8 @@ message AssignTaskRequest {
   bytes resource_ids = 3;
 }
 
-message AssignTaskReply {}
+message AssignTaskReply {
+}
 
 message ReturnObject {
   // Object ID.
@@ -143,7 +146,8 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {}
+message DirectActorCallArgWaitCompleteReply {
+}
 
 message GetObjectStatusRequest {
   // The owner of the object. Note that we do not need to include
@@ -166,7 +170,8 @@ message WaitForObjectEvictionRequest {
   bytes object_id = 2;
 }
 
-message WaitForObjectEvictionReply {}
+message WaitForObjectEvictionReply {
+}
 
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
@@ -177,7 +182,8 @@ message KillActorRequest {
   bool no_reconstruction = 3;
 }
 
-message KillActorReply {}
+message KillActorReply {
+}
 
 message CancelTaskRequest {
   // ID of task that should be killed.
@@ -257,9 +263,11 @@ message WaitForRefRemovedReply {
   repeated ObjectReferenceCount borrowed_refs = 1;
 }
 
-message LocalGCRequest {}
+message LocalGCRequest {
+}
 
-message LocalGCReply {}
+message LocalGCReply {
+}
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
@@ -267,7 +275,8 @@ message PlasmaObjectReadyRequest {
   int64 metadata_size = 3;
 }
 
-message PlasmaObjectReadyReply {}
+message PlasmaObjectReadyReply {
+}
 
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
@@ -288,14 +297,11 @@ service CoreWorkerService {
   // Request that a worker cancels a task.
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
   // Get metrics from core workers.
-  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest)
-      returns (GetCoreWorkerStatsReply);
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.
-  rpc WaitForRefRemoved(WaitForRefRemovedRequest)
-      returns (WaitForRefRemovedReply);
+  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
   // Notification from raylet that an object ID is available in local plasma.
-  rpc PlasmaObjectReady(PlasmaObjectReadyRequest)
-      returns (PlasmaObjectReadyReply);
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }
