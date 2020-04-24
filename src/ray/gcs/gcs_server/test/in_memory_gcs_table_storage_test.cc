@@ -16,54 +16,44 @@
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"
-#include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 
 namespace ray {
 
-class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
+class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
-  RedisGcsTableStorageTest() {}
+  InMemoryGcsTableStorageTest() {
+    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_->Run();
+  }
 
-  virtual ~RedisGcsTableStorageTest() {}
+  virtual ~InMemoryGcsTableStorageTest() { io_service_pool_->Stop(); }
 
   static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
 
   static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
 
   void InitTableStorage() override {
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
-    io_service_pool_->Run();
-
-    gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-    redis_client_ = std::make_shared<gcs::RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
-
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+    gcs_table_storage_ =
+        std::make_shared<gcs::InMemoryGcsTableStorage>(*(io_service_pool_->Get()));
   }
 
-  void DeInitTableStorage() override {
-    redis_client_->Disconnect();
-    io_service_pool_->Stop();
-  }
+  void DeInitTableStorage() override {}
 
  protected:
-  size_t io_service_num_{2};
+  size_t io_service_num_{3};
   std::shared_ptr<IOServicePool> io_service_pool_;
-
-  std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
-TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
+TEST_F(InMemoryGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
 
-TEST_F(RedisGcsTableStorageTest, TestGcsTableWithJobIdApi) { TestGcsTableWithJobIdApi(); }
+TEST_F(InMemoryGcsTableStorageTest, TestGcsTableWithJobIdApi) {
+  TestGcsTableWithJobIdApi();
+}
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

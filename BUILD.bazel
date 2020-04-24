@@ -365,6 +365,7 @@ cc_library(
         ":node_manager_rpc",
         ":raylet_lib",
         ":worker_rpc",
+        ":gcs_table_storage_lib",
     ],
 )
 
@@ -823,8 +824,19 @@ cc_library(
     deps = [
         ":gcs",
         ":in_memory_store_client",
-        ":ray_common",
         ":redis_store_client",
+        ":ray_common",
+    ],
+)
+
+cc_library(
+    name = "gcs_table_storage_test_lib",
+    hdrs = [
+        "src/ray/gcs/gcs_server/test/gcs_table_storage_test_base.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_store_client",
     ],
 )
 
@@ -832,7 +844,6 @@ cc_test(
     name = "redis_gcs_table_storage_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
     ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
@@ -842,9 +853,23 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
-        ":gcs_server_lib",
         ":gcs_table_storage_lib",
         ":store_client_test_lib",
+        ":gcs_table_storage_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "in_memory_gcs_table_storage_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_table_storage_lib",
+        ":store_client_test_lib",
+        ":gcs_table_storage_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

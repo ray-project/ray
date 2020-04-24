@@ -406,40 +406,62 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage() {
-    job_table_.reset(new GcsJobTable(
-        std::make_shared<InMemoryStoreClient<JobID, JobTableData, JobID>>()));
+  explicit InMemoryGcsTableStorage(boost::asio::io_service &main_io_service) {
+    io_service_pool_ = std::make_shared<IOServicePool>(1);
+    io_service_pool_->Run();
+
+    job_table_.reset(
+        new GcsJobTable(std::make_shared<InMemoryStoreClient<JobID, JobTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     actor_table_.reset(new GcsActorTable(
-        std::make_shared<InMemoryStoreClient<ActorID, ActorTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ActorID, ActorTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(
         std::make_shared<
-            InMemoryStoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>()));
+            InMemoryStoreClient<ActorCheckpointID, ActorCheckpointData, JobID>>(
+            io_service_pool_, main_io_service)));
     actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(
-        std::make_shared<InMemoryStoreClient<ActorID, ActorCheckpointIdData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ActorID, ActorCheckpointIdData, JobID>>(
+            io_service_pool_, main_io_service)));
     task_table_.reset(new GcsTaskTable(
-        std::make_shared<InMemoryStoreClient<TaskID, TaskTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<TaskID, TaskTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     task_lease_table_.reset(new GcsTaskLeaseTable(
-        std::make_shared<InMemoryStoreClient<TaskID, TaskLeaseData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<TaskID, TaskLeaseData, JobID>>(
+            io_service_pool_, main_io_service)));
     task_reconstruction_table_.reset(new GcsTaskReconstructionTable(
-        std::make_shared<InMemoryStoreClient<TaskID, TaskReconstructionData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<TaskID, TaskReconstructionData, JobID>>(
+            io_service_pool_, main_io_service)));
     object_table_.reset(new GcsObjectTable(
-        std::make_shared<InMemoryStoreClient<ObjectID, ObjectTableDataList, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ObjectID, ObjectTableDataList, JobID>>(
+            io_service_pool_, main_io_service)));
     node_table_.reset(new GcsNodeTable(
-        std::make_shared<InMemoryStoreClient<ClientID, GcsNodeInfo, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ClientID, GcsNodeInfo, JobID>>(
+            io_service_pool_, main_io_service)));
     node_resource_table_.reset(new GcsNodeResourceTable(
-        std::make_shared<InMemoryStoreClient<ClientID, ResourceMap, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ClientID, ResourceMap, JobID>>(
+            io_service_pool_, main_io_service)));
     heartbeat_table_.reset(new GcsHeartbeatTable(
-        std::make_shared<InMemoryStoreClient<ClientID, HeartbeatTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ClientID, HeartbeatTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(
-        std::make_shared<
-            InMemoryStoreClient<ClientID, HeartbeatBatchTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<ClientID, HeartbeatBatchTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     error_info_table_.reset(new GcsErrorInfoTable(
-        std::make_shared<InMemoryStoreClient<JobID, ErrorTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<JobID, ErrorTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     profile_table_.reset(new GcsProfileTable(
-        std::make_shared<InMemoryStoreClient<UniqueID, ProfileTableData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<UniqueID, ProfileTableData, JobID>>(
+            io_service_pool_, main_io_service)));
     worker_failure_table_.reset(new GcsWorkerFailureTable(
-        std::make_shared<InMemoryStoreClient<WorkerID, WorkerFailureData, JobID>>()));
+        std::make_shared<InMemoryStoreClient<WorkerID, WorkerFailureData, JobID>>(
+            io_service_pool_, main_io_service)));
   }
+
+  ~InMemoryGcsTableStorage() { io_service_pool_->Stop(); }
+
+ private:
+  std::shared_ptr<IOServicePool> io_service_pool_;
 };
 
 }  // namespace gcs

@@ -16,11 +16,7 @@
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"
-#include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/gcs/store_client/store_client.h"
-#include "ray/gcs/test/gcs_test_util.h"
-#include "ray/util/io_service_pool.h"
+//#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -45,8 +41,8 @@ class GcsTableStorageTestBase : public ::testing::Test {
     auto table = gcs_table_storage_->JobTable();
     JobID job1_id = JobID::FromInt(1);
     JobID job2_id = JobID::FromInt(2);
-    auto job1_table_data = Mocker::GenJobTableData(job1_id);
-    auto job2_table_data = Mocker::GenJobTableData(job2_id);
+    auto job1_table_data = GenJobTableData(job1_id);
+    auto job2_table_data = GenJobTableData(job2_id);
 
     // Put.
     Put(table, job1_id, *job1_table_data);
@@ -66,7 +62,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
   void TestGcsTableWithJobIdApi() {
     auto table = gcs_table_storage_->ActorTable();
     JobID job_id = JobID::FromInt(3);
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    auto actor_table_data = GenActorTableData(job_id);
     ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
     // Put.
@@ -124,6 +120,28 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
  protected:
+  std::shared_ptr<rpc::JobTableData> GenJobTableData(JobID job_id) {
+    auto job_table_data = std::make_shared<rpc::JobTableData>();
+    job_table_data->set_job_id(job_id.Binary());
+    job_table_data->set_is_dead(false);
+    job_table_data->set_timestamp(std::time(nullptr));
+    job_table_data->set_driver_ip_address("127.0.0.1");
+    job_table_data->set_driver_pid(5667L);
+    return job_table_data;
+  }
+
+  std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID &job_id) {
+    auto actor_table_data = std::make_shared<rpc::ActorTableData>();
+    ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+    actor_table_data->set_actor_id(actor_id.Binary());
+    actor_table_data->set_job_id(job_id.Binary());
+    actor_table_data->set_state(
+        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+    actor_table_data->set_max_reconstructions(1);
+    actor_table_data->set_remaining_reconstructions(1);
+    return actor_table_data;
+  }
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   std::atomic<int> pending_count_{0};
