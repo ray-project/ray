@@ -66,3 +66,11 @@ py_test(
     tags = ["exclusive"],
     deps = [":serve_lib"]
 )
+
+py_test(
+    name = "tutorial_sklearn",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
