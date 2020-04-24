@@ -132,9 +132,9 @@ See the documentation: :ref:`searchalg-ref`.
 Trial Schedulers
 ----------------
 
-In addition, you can make your training process more efficient by stopping, pausing, or perturbing running trials.
+In addition, you can make your training process more efficient by stopping, pausing, or changing the hyperparameters of running trials.
 
-Trial Schedulers are Tune modules that adjust and change distributed training runs during execution. These modules can stop/pause/perturb running trials, making your hyperparameter tuning process much faster. Population-based training and HyperBand are examples of popular optimization algorithms implemented as Trial Schedulers.
+Trial Schedulers are Tune modules that adjust and change distributed training runs during execution. These modules can stop/pause/tweak the hyperparameters of running trials, making your hyperparameter tuning process much faster. Population-based training and HyperBand are examples of popular optimization algorithms implemented as Trial Schedulers.
 
 .. code-block:: python
 
