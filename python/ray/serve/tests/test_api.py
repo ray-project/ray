@@ -50,11 +50,16 @@ def test_call_method(serve_instance):
     serve.create_backend(CallMethod, "call-method")
     serve.set_traffic("call-method", {"call-method": 1.0})
 
+    # Test HTTP path.
     resp = requests.get(
         "http://127.0.0.1:8000/call-method",
         timeout=1,
         headers={"X-SERVE-CALL-METHOD": "method"})
     assert resp.text == "hello"
+
+    # Test serve handle path.
+    handle = serve.get_handle("call-method")
+    assert ray.get(handle.options("method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
