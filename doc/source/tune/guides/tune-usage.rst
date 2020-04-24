@@ -355,13 +355,13 @@ You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the consol
 Uploading Results
 -----------------
 
-If an upload directory is provided, Tune will automatically sync results to the given directory, natively supporting standard S3/gsutil URIs.
+If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory, natively supporting standard S3/gsutil URIs.
 
 .. code-block:: python
 
     tune.run(
         MyTrainableClass,
-        name="experiment_name",
+        local_dir="~/ray_results",
         upload_dir="s3://my-log-dir"
     )
 
@@ -371,7 +371,6 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
 
     tune.run(
         MyTrainableClass,
-        name="experiment_name",
         upload_dir="s3://my-log-dir",
         sync_to_cloud=custom_sync_str_or_func,
     )
@@ -400,6 +399,17 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
     ray.init(local_mode=True)
 
 Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
+
+Stopping after the first failure
+--------------------------------
+
+By default, ``tune.run`` will continue executing until all trials have terminated or errored. To stop the entire Tune run as soon as **any** trial errors:
+
+.. code-block:: python
+
+    tune.run(trainable, fail_fast=True)
+
+This is useful when you are trying to setup a large hyperparameter experiment.
 
 
 Further Questions or Issues?
