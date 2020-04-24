@@ -717,6 +717,7 @@ class LocalIterator(Generic[T]):
                         resources=None) -> "LocalIterator[U]":
         if resources is None:
             resources = {}
+
         def apply_foreach_concur(it):
             cur = []
             remote = ray.remote(fn).options(**resources)
