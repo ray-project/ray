@@ -1,5 +1,5 @@
-A walkthrough to setup your first Tune experiment
-=================================================
+A Basic Tune Tutorial
+=====================
 
 .. image:: /images/tune-api.svg
 

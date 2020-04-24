@@ -115,7 +115,7 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <ref-automatic-cluster>`. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -152,7 +152,7 @@ Note that you can customize the directory of results by running: ``tune.run(loca
 Syncing
 -------
 
-Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the `autoscaler <autoscaling.html>`__.
+Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`autoscaler <ref-automatic-cluster>`.
 By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
@@ -308,18 +308,18 @@ E.g.:
         resume=True
     )
 
-Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion will not run. The new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
 
 .. warning::
 
-    This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+    This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be checkpointed and able to resume. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
 
 .. _tune-distributed-common:
 
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the `Autoscaler page <autoscaling.html>`__ to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <ref-automatic-cluster>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 

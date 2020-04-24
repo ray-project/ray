@@ -73,7 +73,7 @@ An example can be found in `logging_example.py <https://github.com/ray-project/r
 Viskit
 ------
 
-Tune automatically integrates with Viskit via the ``CSVLogger`` outputs. To use VisKit (you may have to install some dependencies), run:
+Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLogger`` outputs. To use VisKit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 

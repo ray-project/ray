@@ -1,7 +1,7 @@
 .. _tune-60-seconds:
 
-A gentle 60 second tour of Tune
-===============================
+Tune in 60 Seconds
+==================
 
 
 Tune takes a user-defined Python function or class and evaluates it on a set of hyperparameter configurations.
@@ -64,12 +64,11 @@ See the documentation: :ref:`trainable-docs`.
 tune.run
 --------
 
-Use ``tune.run`` execute hyperparameter tuning. Underneath the hood, Tune will leverage the core Ray APIs to execute parallel or distributed tuning.
-
-You need to pass a Trainable class or function into ``tune.run``.  This function manages your distributed experiment and provides many features such as logging, checkpointing, and early stopping.
+Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This function manages your distributed experiment and provides many features such as logging, checkpointing, and early stopping.
 
 .. code-block:: python
 
+    # Pass in a Trainable class or function to tune.run.
     tune.run(trainable)
 
     # Run 10 trials (each trial is one instance of a Trainable). Tune runs in
@@ -110,11 +109,12 @@ Search Algorithms
 
 To optimize the hyperparameters of your training process, you will want to explore a “search space”.
 
-Search Algorithms are Tune modules that help explore a provided search space. It will use previous results from evaluating different hyperparameters to suggest better hyperparameters. Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as Nevergrad, Ax, and Hyperopt.
+Search Algorithms are Tune modules that help explore a provided search space. It will use previous results from evaluating different hyperparameters to suggest better hyperparameters. Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as `Nevergrad <https://github.com/facebookresearch/nevergrad>`_ and `Hyperopt <https://github.com/hyperopt/hyperopt/>`_.
 
 .. code-block:: python
 
     # https://github.com/hyperopt/hyperopt/
+    # pip install hyperopt
     import hyperopt as hp
     from ray.tune.suggest.hyperopt import HyperOptSearch
 
@@ -155,7 +155,7 @@ Analysis
 
 After running a hyperparameter tuning job, you will want to analyze your results to determine what specific parameters are important and which hyperparameter values are the best.
 
-``tune.run`` returns an `Analysis`_ object which has methods you can use for analyzing your results. This object can also retrieve all training runs as dataframes, allowing you to do ad-hoc data analysis over your results.
+``tune.run`` returns an :ref:`Analysis <tune-analysis-docs>` object which has methods you can use for analyzing your results. This object can also retrieve all training runs as dataframes, allowing you to do ad-hoc data analysis over your results.
 
 .. code-block:: python
 

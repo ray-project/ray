@@ -1,3 +1,5 @@
+.. _tune-api-ref:
+
 Tune API Reference
 ==================
 

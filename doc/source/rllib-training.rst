@@ -172,9 +172,9 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
 .. note::
 
-    It's recommended that you run RLlib trainers with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib trainers with :ref:`Tune <tune-index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Tune <tune-index>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 

@@ -1,3 +1,5 @@
+.. _tune-analysis-docs:
+
 Analysis (tune.analysis)
 ========================
 

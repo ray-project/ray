@@ -9,8 +9,8 @@ This document provides an overview of the core concepts as well as some of the c
 
 .. contents:: :local:
 
-Parallelism/GPUs
-----------------
+Parallelism / GPUs
+------------------
 
 .. tip:: To run everything sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
 
@@ -63,8 +63,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``:
 Search Space (Grid/Random)
 --------------------------
 
-.. warning:: If you use a Search Algorithm, you may not be able to specify lambdas or grid search with this
-    interface, as the search algorithm may require a different search space declaration.
+.. warning:: If you use a Search Algorithm, you will need to use a different search space API.
 
 You can specify a grid search or random search via the dict passed into ``tune.run(config=)``.
 
@@ -101,10 +100,32 @@ By default, each random variable and grid search point is sampled once. To take 
 
 Read about this in the :ref:`Grid/Random Search API <tune-grid-random>` page.
 
-Metrics (Auto-Filled Results)
------------------------------
+Reporting Metrics
+-----------------
 
-During training, Tune will automatically fill certain fields if not already provided. All of these can be used as stopping conditions or in the Scheduler/Search Algorithm specification.
+You can log arbitrary values and metrics in both training APIs:
+
+.. code-block:: python
+
+    def trainable(config):
+        num_epochs = 100
+        for i in range(num_epochs):
+            accuracy = model.train()
+            metric_1 = f(model)
+            metric_2 = model.get_loss()
+            tune.track.log(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+
+    class Trainable(tune.Trainable):
+        ...
+
+        def _train(self):  # this is called iteratively
+            accuracy = self.model.train()
+            metric_1 = f(self.model)
+            metric_2 = self.model.get_loss()
+            # don't call track.log here!
+            return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+
+During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
 .. literalinclude:: ../../../../python/ray/tune/result.py
    :language: python
