@@ -40,15 +40,18 @@ void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
 
-  // Init gcs node_manager
+  // Init gcs node_manager.
   InitGcsNodeManager();
 
-  // Init gcs detector
+  // Init gcs pub sub instance.
+  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
+
+  // Init gcs detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
       main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
-  // Init gcs actor manager
+  // Init gcs actor manager.
   InitGcsActorManager();
 
   // Register rpc service.
@@ -93,7 +96,7 @@ void GcsServer::Start() {
   // Run rpc server.
   rpc_server_.Run();
 
-  // Store gcs rpc server address in redis
+  // Store gcs rpc server address in redis.
   StoreGcsServerAddressInRedis();
   is_started_ = true;
 
@@ -138,7 +141,7 @@ void GcsServer::InitGcsActorManager() {
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
   return std::unique_ptr<rpc::DefaultJobInfoHandler>(
-      new rpc::DefaultJobInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultJobInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {

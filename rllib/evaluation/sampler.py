@@ -6,7 +6,7 @@ import threading
 import time
 
 from ray.util.debug import log_once
-from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
@@ -18,6 +18,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
@@ -545,8 +546,8 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
                             episode.last_info_for(agent_id) or {},
                             episode.rnn_state_for(agent_id),
                             np.zeros_like(
-                                _flatten_action(policy.action_space.sample())),
-                            0.0))
+                                flatten_to_single_ndarray(
+                                    policy.action_space.sample())), 0.0))
 
     return active_envs, to_eval, outputs
 
