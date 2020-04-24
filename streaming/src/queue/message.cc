@@ -256,10 +256,10 @@ void ResendDataMessage::ToProtobuf(std::string *output) {
 
 std::shared_ptr<ResendDataMessage> ResendDataMessage::FromBytes(uint8_t *bytes) {
   bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
+  uint64_t *fbs_length = (uint64_t *)bytes;
   bytes += sizeof(uint64_t);
 
-  std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
+  std::string inputpb(reinterpret_cast<char const *>(bytes), *fbs_length);
   queue::protobuf::StreamingQueueResendDataMsg message;
   message.ParseFromString(inputpb);
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
@@ -270,6 +270,7 @@ std::shared_ptr<ResendDataMessage> ResendDataMessage::FromBytes(uint8_t *bytes) 
   uint64_t seq_id = message.seq_id();
   uint64_t msg_id_start = message.msg_id_start();
   uint64_t msg_id_end = message.msg_id_end();
+  uint64_t length = message.length();
   bool raw = message.raw();
 
   STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
@@ -279,7 +280,7 @@ std::shared_ptr<ResendDataMessage> ResendDataMessage::FromBytes(uint8_t *bytes) 
                        << " msg_id_end: " << msg_id_end << " last_seq_id:" << last_seq_id
                        << " queue_id:" << queue_id << " length:" << length;
 
-  bytes += *length;
+  bytes += *fbs_length;
   /// COPY
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);

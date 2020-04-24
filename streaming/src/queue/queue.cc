@@ -302,17 +302,28 @@ void ReaderQueue::Notify(uint64_t seq_id) {
 void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args) {}
 
 void ReaderQueue::OnData(QueueItem &item) {
-  if (item.SeqId() != expect_seq_id_) {
-    STREAMING_LOG(WARNING) << "OnData ignore seq_id: " << item.SeqId()
-                           << " expect_seq_id_: " << expect_seq_id_;
-    return;
-  }
-
   last_recv_seq_id_ = item.SeqId();
   STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_;
 
   Push(item);
-  expect_seq_id_++;
+}
+
+void ReaderQueue::OnResendData(std::shared_ptr<ResendDataMessage> msg) {
+  // TODO: fix timestamp parameter
+  STREAMING_LOG(INFO) << "OnResendData queue_id: " << queue_id_ << " recv seq_id "
+                      << msg->SeqId() << "(" << msg->FirstSeqId() << "/"
+                      << msg->LastSeqId() << ")";
+  QueueItem item(msg->SeqId(), msg->Buffer(), 0, msg->MsgIdStart(), msg->MsgIdEnd(),
+                 msg->IsRaw());
+  STREAMING_CHECK(msg->Buffer()->Data() != nullptr);
+
+  Push(item);
+  STREAMING_CHECK(msg->SeqId() >= msg->FirstSeqId() && msg->SeqId() <= msg->LastSeqId())
+      << "(" << msg->FirstSeqId() << "/" << msg->SeqId() << "/" << msg->LastSeqId()
+      << ")";
+  if (msg->SeqId() == msg->LastSeqId()) {
+    STREAMING_LOG(INFO) << "Resend DATA Done";
+  }
 }
 
 }  // namespace streaming

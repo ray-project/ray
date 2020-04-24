@@ -39,8 +39,8 @@ class QueueItem {
         /*COPY*/ buffer_(std::make_shared<LocalMemoryBuffer>(data, data_size, true)) {}
 
   QueueItem(uint64_t seq_id, std::shared_ptr<LocalMemoryBuffer> buffer,
-            uint64_t timestamp, bool raw = false)
-      : seq_id_(seq_id), timestamp_(timestamp), raw_(raw), buffer_(buffer) {}
+            uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false)
+      : seq_id_(seq_id), msg_id_start_(msg_id_start), msg_id_end_(msg_id_end), timestamp_(timestamp), raw_(raw), buffer_(buffer) {}
 
   QueueItem(std::shared_ptr<DataMessage> data_msg)
       : seq_id_(data_msg->SeqId()),

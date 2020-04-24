@@ -205,7 +205,6 @@ class ReaderQueue : public Queue {
         peer_actor_id_(peer_actor_id),
         min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
-        expect_seq_id_(1),
         transport_(transport) {}
 
   /// Delete processed items whose seq id <= seq_id,
@@ -213,12 +212,14 @@ class ReaderQueue : public Queue {
   void OnConsumed(uint64_t seq_id);
 
   void OnData(QueueItem &item);
+  /// Callback function, will be called when PullPeer DATA comes.
+  /// TODO: can be combined with OnData
+  /// NOTE: this callback function is called in queue thread.
+  void OnResendData(std::shared_ptr<ResendDataMessage> msg);
 
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
 
   uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
-
-  void SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
 
  private:
   void Notify(uint64_t seq_id);
@@ -229,7 +230,6 @@ class ReaderQueue : public Queue {
   ActorID peer_actor_id_;
   uint64_t min_consumed_id_;
   uint64_t last_recv_seq_id_;
-  uint64_t expect_seq_id_;
   std::shared_ptr<PromiseWrapper> promise_for_pull_;
   std::shared_ptr<Transport> transport_;
 };

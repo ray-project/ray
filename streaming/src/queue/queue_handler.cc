@@ -226,7 +226,7 @@ void UpstreamQueueMessageHandler::DispatchMessageInternal(
     std::shared_ptr<LocalMemoryBuffer> buffer,
     std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) {
   std::shared_ptr<Message> msg = ParseMessage(buffer);
-  STREAMING_LOG(DEBUG) << "QueueMessageHandler::DispatchMessageInternal: "
+  STREAMING_LOG(DEBUG) << "UpstreamQueueMessageHandler::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
                        << " peer actorid: " << msg->PeerActorId() << " type: "
                        << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
@@ -383,7 +383,7 @@ void DownstreamQueueMessageHandler::DispatchMessageInternal(
     std::shared_ptr<LocalMemoryBuffer> buffer,
     std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) {
   std::shared_ptr<Message> msg = ParseMessage(buffer);
-  STREAMING_LOG(DEBUG) << "QueueMessageHandler::DispatchMessageInternal: "
+  STREAMING_LOG(INFO) << "DownstreamQueueMessageHandler::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
                        << " peer actorid: " << msg->PeerActorId() << " type: "
                        << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
@@ -398,6 +398,22 @@ void DownstreamQueueMessageHandler::DispatchMessageInternal(
     if (callback != nullptr) {
       callback(check_result);
     }
+  } else if (msg->Type() ==
+             queue::protobuf::StreamingQueueMessageType::StreamingQueueResendDataMsgType) {
+    auto queue = downstream_queues_.find(msg->QueueId());
+    if (queue == downstream_queues_.end()) {
+      std::shared_ptr<ResendDataMessage> data_msg =
+          std::dynamic_pointer_cast<ResendDataMessage>(msg);
+      STREAMING_LOG(DEBUG) << "Can not find queue for "
+                           << queue::protobuf::StreamingQueueMessageType_Name(msg->Type())
+                           << ", maybe queue has been destroyed, ignore it."
+                           << " seq id: " << data_msg->SeqId();
+      return;
+    }
+    std::shared_ptr<ResendDataMessage> resend_data_msg =
+        std::dynamic_pointer_cast<ResendDataMessage>(msg);
+
+    queue->second->OnResendData(resend_data_msg);
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
                            << queue::protobuf::StreamingQueueMessageType_Name(
