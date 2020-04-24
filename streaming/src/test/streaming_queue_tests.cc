@@ -50,6 +50,13 @@ TEST_P(StreamingQueueTest, PullPeerAsyncTest) {
   SubmitTest(queue_num, "StreamingQueueTest", "pull_peer_async_test", 60 * 1000);
 }
 
+TEST_P(StreamingQueueTest, GetQueueTest) {
+  STREAMING_LOG(INFO) << "StreamingQueueTest.get_queue_test";
+
+  uint32_t queue_num = 1;
+  SubmitTest(queue_num, "StreamingQueueTest", "get_queue_test", 60 * 1000);
+}
+
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   STREAMING_LOG(INFO) << "StreamingWriterTest.streaming_writer_exactly_once_test";
 

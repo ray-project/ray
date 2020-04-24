@@ -264,7 +264,31 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
       : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"pull_peer_async_test",
-         std::bind(&StreamingQueueUpStreamTestSuite::PullPeerAsyncTest, this)}};
+         std::bind(&StreamingQueueUpStreamTestSuite::PullPeerAsyncTest, this)},
+         {"get_queue_test",
+         std::bind(&StreamingQueueUpStreamTestSuite::GetQueueTest, this)}};
+  }
+
+  void GetQueueTest() {
+    // Sleep 2s, queue shoulde not exist when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
+    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    upstream_handler->CreateUpstreamQueue(queue_id, peer_actor_id_, 10240);
+    STREAMING_LOG(INFO) << "IsQueueExist: "
+                        << upstream_handler->UpstreamQueueExists(queue_id);
+
+    // Sleep 2s, No valid data when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10 * 1000));
+    STREAMING_LOG(INFO) << "StreamingQueueUpStreamTestSuite::GetQueueTest done";
+    status_ = true;
   }
 
   void PullPeerAsyncTest() {
@@ -309,8 +333,35 @@ class StreamingQueueDownStreamTestSuite : public StreamingQueueTestSuite {
       : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"pull_peer_async_test",
-         std::bind(&StreamingQueueDownStreamTestSuite::PullPeerAsyncTest, this)}};
+         std::bind(&StreamingQueueDownStreamTestSuite::PullPeerAsyncTest, this)},
+         {"get_queue_test",
+         std::bind(&StreamingQueueDownStreamTestSuite::GetQueueTest, this)}};
   };
+
+  void GetQueueTest() {
+    auto downstream_handler =
+         ray::streaming::DownstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
+
+    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+
+    downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
+
+    bool is_upstream_first_pull_ = false;
+    downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
+
+    ASSERT_TRUE(is_upstream_first_pull_);
+
+    downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
+    ASSERT_FALSE(is_upstream_first_pull_);
+
+    STREAMING_LOG(INFO) << "StreamingQueueDownStreamTestSuite::GetQueueTest done";
+    status_ = true;
+  }
 
   void PullPeerAsyncTest() {
     auto downstream_handler =
