@@ -22,6 +22,13 @@ static std::string gcs_server_executable;
 static std::string actor_executable;
 static int node_manager_port;
 
+class StreamingQueueTest : public StreamingQueueTestBase {
+ public:
+  StreamingQueueTest()
+      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
+                               actor_executable, gcs_server_executable) {}
+};
+
 class StreamingWriterTest : public StreamingQueueTestBase {
  public:
   StreamingWriterTest()
@@ -36,6 +43,13 @@ class StreamingExactlySameTest : public StreamingQueueTestBase {
                                actor_executable, gcs_server_executable) {}
 };
 
+TEST_P(StreamingQueueTest, PullPeerAsyncTest) {
+  STREAMING_LOG(INFO) << "StreamingQueueTest.pull_peer_async_test";
+
+  uint32_t queue_num = 1;
+  SubmitTest(queue_num, "StreamingQueueTest", "pull_peer_async_test", 60 * 1000);
+}
+
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   STREAMING_LOG(INFO) << "StreamingWriterTest.streaming_writer_exactly_once_test";
 
@@ -45,6 +59,8 @@ TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   SubmitTest(queue_num, "StreamingWriterTest", "streaming_writer_exactly_once_test",
              60 * 1000);
 }
+
+INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 
 INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
 

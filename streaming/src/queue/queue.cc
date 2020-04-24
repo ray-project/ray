@@ -122,6 +122,8 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *data, uint32_t data_size,
 
   QueueItem item(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, raw);
   Queue::Push(item);
+  STREAMING_LOG(DEBUG) << "WriterQueue::Push seq_id: " << seq_id_;
+  seq_id_++;
   return Status::OK();
 }
 
@@ -129,7 +131,7 @@ void WriterQueue::Send() {
   while (!IsPendingEmpty()) {
     // FIXME: front -> send -> pop
     QueueItem item = PopPending();
-    DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.Buffer(),
+    DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.MsgIdStart(), item.MsgIdEnd(), item.Buffer(),
                     item.IsRaw());
     std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
     STREAMING_CHECK(transport_ != nullptr);

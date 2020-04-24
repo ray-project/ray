@@ -38,6 +38,15 @@ std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
   case queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType:
     message = CheckRspMessage::FromBytes(bytes);
     break;
+  case queue::protobuf::StreamingQueuePullRequestMsgType:
+    message = PullRequestMessage::FromBytes(bytes);
+    break;
+  case queue::protobuf::StreamingQueuePullResponseMsgType:
+    message = PullResponseMessage::FromBytes(bytes);
+    break;
+  case queue::protobuf::StreamingQueueResendDataMsgType:
+    message = ResendDataMessage::FromBytes(bytes);
+    break;
   default:
     STREAMING_CHECK(false) << "nonsupport message type: "
                            << queue::protobuf::StreamingQueueMessageType_Name(*type);
@@ -284,6 +293,8 @@ void UpstreamQueueMessageHandler::ReleaseAllUpQueues() {
 std::shared_ptr<DownstreamQueueMessageHandler>
 DownstreamQueueMessageHandler::CreateService(const ActorID &actor_id) {
   if (nullptr == downstream_handler_) {
+    STREAMING_LOG(INFO) << "DownstreamQueueMessageHandler::CreateService "
+                        << " actorid: " << actor_id;
     downstream_handler_ = std::make_shared<DownstreamQueueMessageHandler>(actor_id);
   }
   return downstream_handler_;
@@ -415,6 +426,8 @@ StreamingQueueStatus DownstreamQueueMessageHandler::PullPeerAsync(
                       << " start_msg_id: " << start_msg_id;
   auto queue = GetDownQueue(queue_id);
   STREAMING_CHECK(queue != nullptr);
+  STREAMING_LOG(INFO) << "PullPeerAsync "
+                      << " actorid: " << queue->GetActorID();
   PullRequestMessage msg(queue->GetActorID(), queue->GetPeerActorID(), queue_id,
                          start_msg_id);
   std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();

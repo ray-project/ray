@@ -51,6 +51,8 @@ void DataMessage::ToProtobuf(std::string *output) {
   msg.set_dst_actor_id(peer_actor_id_.Binary());
   msg.set_queue_id(queue_id_.Binary());
   msg.set_seq_id(seq_id_);
+  msg.set_msg_id_start(msg_id_start_);
+  msg.set_msg_id_end(msg_id_end_);
   msg.set_length(buffer_->Size());
   msg.set_raw(raw_);
   msg.SerializeToString(output);
@@ -67,6 +69,8 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
   ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
   ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  uint64_t msg_id_start = message.msg_id_start();
+  uint64_t msg_id_end = message.msg_id_end();
   uint64_t seq_id = message.seq_id();
   uint64_t length = message.length();
   bool raw = message.raw();
@@ -76,7 +80,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);
   std::shared_ptr<DataMessage> data_msg = std::make_shared<DataMessage>(
-      src_actor_id, dst_actor_id, queue_id, seq_id, buffer, raw);
+      src_actor_id, dst_actor_id, queue_id, seq_id, msg_id_start, msg_id_end, buffer, raw);
 
   return data_msg;
 }

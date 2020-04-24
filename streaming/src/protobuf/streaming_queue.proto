@@ -26,8 +26,10 @@ message StreamingQueueDataMsg {
   bytes dst_actor_id = 2;
   bytes queue_id = 3;
   uint64 seq_id = 4;
-  uint64 length = 5;
-  bool raw = 6;
+  uint64 msg_id_start = 5;
+  uint64 msg_id_end = 6;
+  uint64 length = 7;
+  bool raw = 8;
 }
 
 message StreamingQueueCheckMsg {

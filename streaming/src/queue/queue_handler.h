@@ -42,7 +42,6 @@ class QueueMessageHandler {
   /// \param[in] actor_id actor id of current actor.
   QueueMessageHandler(const ActorID &actor_id)
       : actor_id_(actor_id), queue_dummy_work_(queue_service_) {
-    Start();
   }
 
   virtual ~QueueMessageHandler() { Stop(); }
@@ -119,7 +118,9 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
   UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id),
-  handler_service_dummy_worker_(handler_service_) {}
+  handler_service_dummy_worker_(handler_service_) {
+    Start();
+  }
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -169,7 +170,9 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   DownstreamQueueMessageHandler(const ActorID &actor_id)
-      : QueueMessageHandler(actor_id) {}
+      : QueueMessageHandler(actor_id) {
+          Start();
+      }
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
   StreamingQueueStatus PullQueue(const ObjectID &queue_id, uint64_t start_msg_id,
@@ -195,7 +198,6 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
       const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
 
- private:
   StreamingQueueStatus PullPeerAsync(const ObjectID &queue_id, uint64_t start_msg_id,
                                      bool &is_upstream_first_pull, uint64_t timeout_ms);
 

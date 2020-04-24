@@ -44,12 +44,16 @@ class QueueItem {
 
   QueueItem(std::shared_ptr<DataMessage> data_msg)
       : seq_id_(data_msg->SeqId()),
+        msg_id_start_(data_msg->MsgIdStart()),
+        msg_id_end_(data_msg->MsgIdEnd()),
         raw_(data_msg->IsRaw()),
         buffer_(data_msg->Buffer()) {}
 
   QueueItem(const QueueItem &&item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
+    msg_id_start_ = item.msg_id_start_;
+    msg_id_end_ = item.msg_id_end_;
     timestamp_ = item.timestamp_;
     raw_ = item.raw_;
   }
@@ -57,6 +61,8 @@ class QueueItem {
   QueueItem(const QueueItem &item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
+    msg_id_start_ = item.msg_id_start_;
+    msg_id_end_ = item.msg_id_end_;
     timestamp_ = item.timestamp_;
     raw_ = item.raw_;
   }
@@ -64,6 +70,8 @@ class QueueItem {
   QueueItem &operator=(const QueueItem &item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
+    msg_id_start_ = item.msg_id_start_;
+    msg_id_end_ = item.msg_id_end_;
     timestamp_ = item.timestamp_;
     raw_ = item.raw_;
     return *this;
