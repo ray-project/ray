@@ -5,7 +5,7 @@ import gym
 import numpy as np
 
 import ray
-from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
+from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -61,7 +61,7 @@ def before_init(policy, observation_space, action_space, config):
         }, [], None)
         dist = policy.dist_class(dist_inputs, policy.model)
         action = dist.sample().detach().numpy()
-        action = _unbatch_tuple_actions(action)
+        action = unbatch_actions(action)
         if add_noise and isinstance(policy.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * policy.action_noise_std
         return action

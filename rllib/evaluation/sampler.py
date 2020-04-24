@@ -19,6 +19,7 @@ from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 tree = try_import_tree()
 
