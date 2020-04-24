@@ -31,11 +31,14 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  // Connect to gcs
+  // Connect to gcs.
   redis_gcs_client_.reset(new RedisGcsClient(options_));
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
-  // Get gcs service address
+  // Init gcs pub sub instance.
+  gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
+
+  // Get gcs service address.
   auto get_server_address = [this]() {
     std::pair<std::string, int> address;
     GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
@@ -44,7 +47,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   };
   std::pair<std::string, int> address = get_server_address();
 
-  // Connect to gcs service
+  // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
                                               *client_call_manager_, get_server_address));
