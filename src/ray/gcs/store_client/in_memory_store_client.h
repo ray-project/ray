@@ -76,8 +76,7 @@ class InMemoryTable {
 /// \class InMemoryStoreClient
 ///
 /// This class is thread safe.
-template <typename Key, typename Data, typename IndexKey>
-class InMemoryStoreClient : public StoreClient<Key, Data, IndexKey> {
+class InMemoryStoreClient : public StoreClient {
  public:
   explicit InMemoryStoreClient(boost::asio::io_service &main_io_service,
                                size_t io_service_num = 1)
@@ -86,25 +85,26 @@ class InMemoryStoreClient : public StoreClient<Key, Data, IndexKey> {
     io_service_pool_->Run();
   }
 
-  virtual ~InMemoryStoreClient() { io_service_pool_->Stop(); }
+  ~InMemoryStoreClient() { io_service_pool_->Stop(); }
 
-  Status AsyncPut(const std::string &table_name, const Key &key, const Data &data,
-                  const StatusCallback &callback) override;
+  Status AsyncPut(const std::string &table_name, const std::string &key,
+                  const std::string &data, const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                           const IndexKey &index_key, const Data &data,
+  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
+                           const std::string &index_key, const std::string &data,
                            const StatusCallback &callback) override;
 
-  Status AsyncGet(const std::string &table_name, const Key &key,
-                  const OptionalItemCallback<Data> &callback) override;
+  Status AsyncGet(const std::string &table_name, const std::string &key,
+                  const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     const SegmentedCallback<std::pair<Key, Data>> &callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const Key &key,
+  Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const IndexKey &index_key,
+  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
  private:

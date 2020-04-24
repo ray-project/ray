@@ -48,45 +48,41 @@ void InMemoryTable::DeleteByIndex(const std::string &index_key) {
   }
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncPut(
-    const std::string &table_name, const Key &key, const Data &data,
-    const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
+                                     const std::string &key, const std::string &data,
+                                     const StatusCallback &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, key, data, callback]() {
     auto table = GetOrCreateTable(table_name);
-    table->Put(key.Binary(), data.SerializeAsString());
+    table->Put(key, data);
     main_io_service_.post([callback]() { callback(Status::OK()); });
   });
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncPutWithIndex(
-    const std::string &table_name, const Key &key, const IndexKey &index_key,
-    const Data &data, const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
+                                              const std::string &key,
+                                              const std::string &index_key,
+                                              const std::string &data,
+                                              const StatusCallback &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, key, index_key, data, callback]() {
     auto table = GetOrCreateTable(table_name);
-    table->PutWithIndex(key.Binary(), index_key.Binary(), data.SerializeAsString());
+    table->PutWithIndex(key, index_key, data);
     main_io_service_.post([callback]() { callback(Status::OK()); });
   });
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncGet(
-    const std::string &table_name, const Key &key,
-    const OptionalItemCallback<Data> &callback) {
+Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
+                                     const std::string &key,
+                                     const OptionalItemCallback<std::string> &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, key, callback]() {
     auto table = GetOrCreateTable(table_name);
-    auto value = table->Get(key.Binary());
-    if (value) {
-      Data data;
-      RAY_CHECK(data.ParseFromString(*value));
-      main_io_service_.post(
-          [callback, data]() { callback(Status::OK(), std::move(data)); });
+    auto data = table->Get(key);
+    if (data) {
+      main_io_service_.post([callback, data]() { callback(Status::OK(), data); });
     } else {
       main_io_service_.post([callback]() { callback(Status::OK(), boost::none); });
     }
@@ -94,19 +90,16 @@ Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncGet(
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncGetAll(
+Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const SegmentedCallback<std::pair<Key, Data>> &callback) {
+    const SegmentedCallback<std::pair<std::string, std::string>> &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, callback]() {
     auto table = GetOrCreateTable(table_name);
     auto records = table->GetAll();
-    std::vector<std::pair<Key, Data>> result;
+    std::vector<std::pair<std::string, std::string>> result;
     for (auto &record : records) {
-      Data data;
-      RAY_CHECK(data.ParseFromString(record.second));
-      result.emplace_back(std::make_pair(Key::FromBinary(record.first), std::move(data)));
+      result.emplace_back(std::make_pair(record.first, record.second));
     }
     main_io_service_.post(
         [result, callback]() { callback(Status::OK(), false, result); });
@@ -114,33 +107,31 @@ Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncGetAll(
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncDelete(
-    const std::string &table_name, const Key &key, const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
+                                        const std::string &key,
+                                        const StatusCallback &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, key, callback]() {
     auto table = GetOrCreateTable(table_name);
-    table->Delete(key.Binary());
+    table->Delete(key);
     main_io_service_.post([callback]() { callback(Status::OK()); });
   });
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-Status InMemoryStoreClient<Key, Data, IndexKey>::AsyncDeleteByIndex(
-    const std::string &table_name, const IndexKey &index_key,
-    const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
+                                               const std::string &index_key,
+                                               const StatusCallback &callback) {
   auto io_service = io_service_pool_->Get(std::hash<std::string>()(table_name));
   io_service->post([this, table_name, index_key, callback]() {
     auto table = GetOrCreateTable(table_name);
-    table->DeleteByIndex(index_key.Binary());
+    table->DeleteByIndex(index_key);
     main_io_service_.post([callback]() { callback(Status::OK()); });
   });
   return Status::OK();
 }
 
-template <typename Key, typename Data, typename IndexKey>
-std::shared_ptr<InMemoryTable> InMemoryStoreClient<Key, Data, IndexKey>::GetOrCreateTable(
+std::shared_ptr<InMemoryTable> InMemoryStoreClient::GetOrCreateTable(
     const std::string &table_name) {
   absl::MutexLock lock(&mutex_);
   auto iter = tables_.find(table_name);
@@ -152,22 +143,6 @@ std::shared_ptr<InMemoryTable> InMemoryStoreClient<Key, Data, IndexKey>::GetOrCr
     return table;
   }
 }
-
-template class InMemoryStoreClient<ActorID, rpc::ActorTableData, JobID>;
-template class InMemoryStoreClient<JobID, rpc::JobTableData, JobID>;
-template class InMemoryStoreClient<ActorCheckpointID, rpc::ActorCheckpointData, JobID>;
-template class InMemoryStoreClient<ActorID, rpc::ActorCheckpointIdData, JobID>;
-template class InMemoryStoreClient<TaskID, rpc::TaskTableData, JobID>;
-template class InMemoryStoreClient<TaskID, rpc::TaskLeaseData, JobID>;
-template class InMemoryStoreClient<TaskID, rpc::TaskReconstructionData, JobID>;
-template class InMemoryStoreClient<ObjectID, rpc::ObjectTableDataList, JobID>;
-template class InMemoryStoreClient<ClientID, rpc::GcsNodeInfo, JobID>;
-template class InMemoryStoreClient<ClientID, rpc::ResourceMap, JobID>;
-template class InMemoryStoreClient<ClientID, rpc::HeartbeatTableData, JobID>;
-template class InMemoryStoreClient<ClientID, rpc::HeartbeatBatchTableData, JobID>;
-template class InMemoryStoreClient<JobID, rpc::ErrorTableData, JobID>;
-template class InMemoryStoreClient<UniqueID, rpc::ProfileTableData, JobID>;
-template class InMemoryStoreClient<WorkerID, rpc::WorkerFailureData, JobID>;
 
 }  // namespace gcs
 
