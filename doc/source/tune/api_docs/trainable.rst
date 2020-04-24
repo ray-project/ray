@@ -113,7 +113,7 @@ Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors before exec
 Advanced Resource Allocation
 ----------------------------
 
-Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, in ``tune.run``, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to set ``extra_cpu`` or ``extra_gpu`` inside ``tune.run`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should set ``"gpu": 1, "extra_gpu": 4``.
 
 .. code-block:: python
    :emphasize-lines: 4-8

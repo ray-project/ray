@@ -10,7 +10,7 @@ Logging Path
 
 Tune will log the results of each trial to a subfolder under a specified local dir, which defaults to ``~/ray_results``.
 
-.. code-block:: bash
+.. code-block:: python
 
     # This logs to 2 different trial folders:
     # ~/ray_results/trainable_name/trial_name_1 and ~/ray_results/trainable_name/trial_name_2
@@ -19,7 +19,7 @@ Tune will log the results of each trial to a subfolder under a specified local d
 
 You can specify the ``local_dir`` and ``trainable_name``:
 
-.. code-block:: bash
+.. code-block:: python
 
     # This logs to 2 different trial folders:
     # ./results/test_experiment/trial_name_1 and ./results/test_experiment/trial_name_2

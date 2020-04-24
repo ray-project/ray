@@ -160,7 +160,7 @@ PyTorch Examples
 XGBoost Example
 ~~~~~~~~~~~~~~~
 
-- `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and a XGBoost callback.
+- `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 
 LightGBM Example
@@ -173,5 +173,5 @@ Contributed Examples
 ~~~~~~~~~~~~~~~~~~~~
 
 - `pbt_tune_cifar10_with_keras <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_tune_cifar10_with_keras.py>`__: A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
-- `genetic_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/genetic_example.py>`__: Optimizing the michalewicz function using the contributed GeneticSearch search algorithm with AsyncHyperBandScheduler.
+- `genetic_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/genetic_example.py>`__: Optimizing the michalewicz function using the contributed GeneticSearch algorithm with AsyncHyperBandScheduler.
 - `tune_cifar10_gluon <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_cifar10_gluon.py>`__: MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.

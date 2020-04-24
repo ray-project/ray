@@ -5,7 +5,7 @@ Tune User Guide
 
 .. warning:: Before you continue, be sure to have read :ref:`tune-60-seconds`.
 
-This document overviews features and different configurations of Tune.
+This document provides an overview of the core concepts as well as some of the configurations for running Tune.
 
 .. contents:: :local:
 
@@ -271,7 +271,7 @@ Tune automatically outputs Tensorboard files during ``tune.run``. To visualize l
 
     $ pip install tensorboardX
 
-Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results.
+Then, after you run an experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results.
 
 .. code-block:: bash
 
@@ -309,7 +309,7 @@ The following fields will automatically show up on the console output, if provid
 3. ``mean_accuracy``
 4. ``timesteps_this_iter`` (aggregated into ``timesteps_total``).
 
-Below is an example of the consoe output:
+Below is an example of the console output:
 
 .. code-block:: bash
 

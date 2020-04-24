@@ -15,9 +15,9 @@ Each hyperparameter configuration evaluation is called a *trial*, and multiple t
 Trainables
 ----------
 
-To allow Tune to optimize your model, Tune will need to control your training process. This is done via the Trainable API. Each *trial* corresponds to one instance of a Trainable; Tune will create multiple instances of the Trainable..
+To allow Tune to optimize your model, Tune will need to control your training process. This is done via the Trainable API. Each *trial* corresponds to one instance of a Trainable; Tune will create multiple instances of the Trainable.
 
-The Trainable API is where you specify how to set up your model and track intermediate training progress. There’s two types of Trainables - a **function-based API** is for fast prototyping, and **class-based** API that unlocks many Tune features such as checkpointing, pausing.
+The Trainable API is where you specify how to set up your model and track intermediate training progress. There are two types of Trainables - a **function-based API** is for fast prototyping, and **class-based** API that unlocks many Tune features such as checkpointing, pausing.
 
 .. code-block:: python
 
