@@ -355,17 +355,37 @@ You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the consol
 Uploading Results
 -----------------
 
-If an upload directory is provided, Tune will automatically sync results to the given directory, natively supporting standard S3/gsutil commands.
-
-You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument. This argument is similar to ``sync_to_cloud`` in that it supports strings with the same replacement fields and arbitrary functions.
+If an upload directory is provided, Tune will automatically sync results to the given directory, natively supporting standard S3/gsutil URIs.
 
 .. code-block:: python
 
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_to_cloud=custom_sync_func,
+        upload_dir="s3://my-log-dir"
     )
+
+You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument in ``tune.run``. This argument supports either strings with the same replacement fields OR arbitrary functions.
+
+.. code-block:: python
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        sync_to_cloud=custom_sync_str_or_func,
+    )
+
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
+
+.. code-block:: python
+
+    def custom_sync_func(source, target):
+        # do arbitrary things inside
+        sync_cmd = "s3 {source} {target}".format(
+            source=source,
+            target=target)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
 
 .. _tune-debugging:
 

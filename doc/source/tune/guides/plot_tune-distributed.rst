@@ -173,7 +173,7 @@ If a string is provided, then it must include replacement fields ``{source}`` an
     )
 
 When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
-This custom sync command would be also be used in node failures, where the source argument would be the path to the trial directory and the target would be a remote path. The `sync_to_driver` would be invoked to push a checkpoint to new node for a queued trial to resume.
+This custom sync command is used to restart trials under failure. The ``sync_to_driver`` is invoked to push a checkpoint to new node for a paused/pre-empted trial to resume.
 
 
 .. _tune-distributed-spot:
