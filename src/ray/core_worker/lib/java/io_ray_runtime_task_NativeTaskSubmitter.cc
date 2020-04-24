@@ -131,11 +131,9 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, task_args, task_options, &return_ids,
-      /*max_retries=*/0);
-
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args,
+                                                     task_options, &return_ids,
+                                                     /*max_retries=*/0);
 
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }

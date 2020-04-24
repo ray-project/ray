@@ -14,15 +14,21 @@ import setuptools.command.build_ext as _build_ext
 # before these files have been created, so we have to move the files
 # manually.
 
+exe_suffix = ".exe" if sys.platform == "win32" else ""
+
+# .pyd is the extension Python requires on Windows for shared libraries.
+# https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
+pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
+
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server",
-    "ray/_raylet.so",
-    "ray/core/src/ray/raylet/raylet_monitor",
-    "ray/core/src/ray/gcs/gcs_server",
-    "ray/core/src/ray/raylet/raylet",
+    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
+    "ray/_raylet" + pyd_suffix,
+    "ray/core/src/ray/raylet/raylet_monitor" + exe_suffix,
+    "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
+    "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
 ]
 
@@ -103,6 +109,12 @@ class build_ext(_build_ext.build_ext):
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
         command = ["../build.sh", "-p", sys.executable]
+        if sys.platform == "win32" and command[0].lower().endswith(".sh"):
+            # We can't run .sh files directly in Windows, so find a shell.
+            # Don't use "bash" instead of "sh", because that might run the Bash
+            # from WSL! (We want MSYS2's Bash, which is also sh by default.)
+            shell = os.getenv("BAZEL_SH", "sh")  # NOT "bash"! (see above)
+            command.insert(0, shell)
         if build_java:
             # Also build binaries for Java if the above env variable exists.
             command += ["-l", "python,java"]

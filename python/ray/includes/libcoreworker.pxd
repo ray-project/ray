@@ -82,7 +82,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
-        CRayStatus SubmitTask(
+        void SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries)

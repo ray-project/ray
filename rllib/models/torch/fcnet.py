@@ -67,7 +67,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 prev_layer_size = hiddens[-1]
             if self.num_outputs:
                 self._logits = SlimFC(
-                    in_size=hiddens[-1],
+                    in_size=prev_layer_size,
                     out_size=self.num_outputs,
                     initializer=normc_initializer(0.01),
                     activation_fn=None)

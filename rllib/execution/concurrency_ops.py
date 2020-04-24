@@ -5,7 +5,10 @@ from ray.util.iter import LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 
 
-def Concurrently(ops: List[LocalIterator], *, mode="round_robin"):
+def Concurrently(ops: List[LocalIterator],
+                 *,
+                 mode="round_robin",
+                 output_indexes=None):
     """Operator that runs the given parent iterators concurrently.
 
     Arguments:
@@ -14,6 +17,9 @@ def Concurrently(ops: List[LocalIterator], *, mode="round_robin"):
               each parent iterator in order deterministically.
             - In 'async' mode, we pull from each parent iterator as fast as
               they are produced. This is non-deterministic.
+        output_indexes (list): If specified, only output results from the
+            given ops. For example, if output_indexes=[0], only results from
+            the first op in ops will be returned.
 
         >>> sim_op = ParallelRollouts(...).for_each(...)
         >>> replay_op = LocalReplay(...).for_each(...)
@@ -28,7 +34,23 @@ def Concurrently(ops: List[LocalIterator], *, mode="round_robin"):
         deterministic = False
     else:
         raise ValueError("Unknown mode {}".format(mode))
-    return ops[0].union(*ops[1:], deterministic=deterministic)
+
+    if output_indexes:
+        for i in output_indexes:
+            assert i in range(len(ops)), ("Index out of range", i)
+
+        def tag(op, i):
+            return op.for_each(lambda x: (i, x))
+
+        ops = [tag(op, i) for i, op in enumerate(ops)]
+
+    output = ops[0].union(*ops[1:], deterministic=deterministic)
+
+    if output_indexes:
+        output = (output.filter(lambda tup: tup[0] in output_indexes)
+                  .for_each(lambda tup: tup[1]))
+
+    return output
 
 
 class Enqueue:
