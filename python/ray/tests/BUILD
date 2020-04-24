@@ -417,7 +417,7 @@ py_test(
 
 py_test(
     name = "test_cancel",
-    size = "small",
+    size = "medium",
     srcs = ["test_cancel.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
