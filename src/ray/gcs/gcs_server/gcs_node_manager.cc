@@ -104,6 +104,8 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
       node_failure_detector_(new NodeFailureDetector(
           io_service, node_info_accessor, [this](const ClientID &node_id) {
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+              node->set_state(rpc::GcsNodeInfo::DEAD);
+              RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
               RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
               // TODO(Shanly): Remove node resources from resource table.
             }
@@ -146,6 +148,8 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
+    node->set_state(rpc::GcsNodeInfo::DEAD);
+    RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
     RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
     // TODO(Shanly): Remove node resources from resource table.
   }
@@ -156,6 +160,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
                                           rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all nodes info.";
   for (const auto &entry : alive_nodes_) {
+    reply->add_node_info_list()->CopyFrom(*entry.second);
+  }
+  for (const auto &entry : dead_nodes_) {
     reply->add_node_info_list()->CopyFrom(*entry.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -170,6 +177,7 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
   node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   // TODO(Shanly): Remove it later.
   // The heartbeat data is reported here because some python unit tests rely on the
   // heartbeat data in redis.
@@ -217,7 +225,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     RAY_CHECK_OK(node_info_accessor_.AsyncUpdateResources(
         node_id, *to_be_updated_resources, on_done));
   } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Node is not exist."));
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
   }
