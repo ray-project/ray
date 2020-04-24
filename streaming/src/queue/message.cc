@@ -13,7 +13,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
 
   queue::protobuf::StreamingQueueMessageType type = Type();
   size_t total_len =
-      sizeof(Message::MagicNum) + sizeof(type) + sizeof(fbs_length) + fbs_length;
+      kItemHeaderSize + fbs_length;
   if (buffer_ != nullptr) {
     total_len += buffer_->Size();
   }
@@ -59,10 +59,8 @@ void DataMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *fbs_length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *fbs_length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *fbs_length);
   queue::protobuf::StreamingQueueDataMsg message;
   message.ParseFromString(inputpb);
@@ -95,10 +93,8 @@ void NotificationMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueNotificationMsg message;
   message.ParseFromString(inputpb);
@@ -123,10 +119,8 @@ void CheckMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueCheckMsg message;
   message.ParseFromString(inputpb);
@@ -150,10 +144,8 @@ void CheckRspMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueCheckRspMsg message;
   message.ParseFromString(inputpb);
@@ -178,10 +170,8 @@ void PullRequestMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<PullRequestMessage> PullRequestMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueuePullRequestMsg message;
   message.ParseFromString(inputpb);
@@ -211,10 +201,8 @@ void PullResponseMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueuePullResponseMsg message;
   message.ParseFromString(inputpb);
@@ -255,10 +243,8 @@ void ResendDataMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<ResendDataMessage> ResendDataMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *fbs_length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *fbs_length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *fbs_length);
   queue::protobuf::StreamingQueueResendDataMsg message;
   message.ParseFromString(inputpb);
@@ -310,10 +296,8 @@ void TestInitMessage::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueTestInitMsg message;
   message.ParseFromString(inputpb);
@@ -348,10 +332,8 @@ void TestCheckStatusRspMsg::ToProtobuf(std::string *output) {
 }
 
 std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
-  uint64_t *length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
+  uint64_t *length = (uint64_t *)(bytes + kItemMetaHeaderSize);
+  bytes += kItemHeaderSize;
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueTestCheckStatusRspMsg message;
   message.ParseFromString(inputpb);

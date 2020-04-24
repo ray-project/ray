@@ -126,7 +126,8 @@ class WriterQueue : public Queue {
         peer_last_msg_id_(0),
         peer_last_seq_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport),
-        is_resending_(false) {}
+        is_resending_(false),
+        is_upstream_first_pull_(true) {}
 
   /// Push a continuous buffer into queue.
   /// NOTE: the buffer should be copied.
