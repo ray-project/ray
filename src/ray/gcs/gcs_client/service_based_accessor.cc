@@ -20,8 +20,7 @@ namespace gcs {
 
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      job_sub_executor_(client_impl->GetRedisGcsClient().job_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
@@ -64,13 +63,15 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing finished job.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    JobTableData job_data;
+    job_data.ParseFromString(data);
     if (job_data.is_dead()) {
-      subscribe(job_id, job_data);
+      subscribe(JobID::FromBinary(id), job_data);
     }
   };
   Status status =
-      job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+      client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing finished job.";
   return status;
 }
