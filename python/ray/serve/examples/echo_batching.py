@@ -35,7 +35,7 @@ serve.create_backend(
     MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
 print("Backend Config for backend: 'counter:v1'")
 print(b_config)
-serve.link("magic_counter", "counter:v1")
+serve.set_traffic("magic_counter", {"counter:v1": 1.0})
 
 handle = serve.get_handle("magic_counter")
 future_list = []

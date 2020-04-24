@@ -32,7 +32,11 @@ class TestReproducibility(unittest.TestCase):
             register_env("PickLargest", env_creator)
             agent = DQNTrainer(
                 env="PickLargest",
-                config={"seed": 666 if trial in [0, 1] else 999})
+                config={
+                    "seed": 666 if trial in [0, 1] else 999,
+                    "min_iter_time_s": 0,
+                    "timesteps_per_iteration": 100,
+                })
 
             trajectory = list()
             for _ in range(8):

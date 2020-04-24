@@ -10,16 +10,27 @@ from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
 
-def rollout(policy, env, timestep_limit=None, add_noise=False):
+def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
+
+    Args:
+        policy (Policy): Rllib Policy from which to draw actions.
+        env (gym.Env): Environment from which to draw rewards, done, and
+            next state.
+        timestep_limit (Optional[int]): Steps after which to end the rollout.
+            If None, use `env.spec.max_episode_steps` or 999999.
+        add_noise (bool): Indicates whether exploratory action noise should be
+            added.
+        offset (float): Value to subtract from the reward (e.g. survival bonus
+            from humanoid).
     """
     max_timestep_limit = 999999
     env_timestep_limit = env.spec.max_episode_steps if (
@@ -27,18 +38,21 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
         else max_timestep_limit
     timestep_limit = (env_timestep_limit if timestep_limit is None else min(
         timestep_limit, env_timestep_limit))
-    rews = []
+    rewards = []
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac = policy.compute_actions(observation, add_noise=add_noise)[0]
-        observation, rew, done, _ = env.step(ac)
-        rews.append(rew)
+        ac = policy.compute_actions(
+            observation, add_noise=add_noise, update=True)[0]
+        observation, r, done, _ = env.step(ac)
+        if offset != 0.0:
+            r -= np.abs(offset)
+        rewards.append(r)
         t += 1
         if done:
             break
-    rews = np.array(rews, dtype=np.float32)
-    return rews, t
+    rewards = np.array(rewards, dtype=np.float32)
+    return rewards, t
 
 
 def make_session(single_threaded):

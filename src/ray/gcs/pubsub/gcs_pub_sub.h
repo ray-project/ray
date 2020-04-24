@@ -25,6 +25,8 @@
 namespace ray {
 namespace gcs {
 
+#define JOB_CHANNEL "JOB"
+
 /// \class GcsPubSub
 ///
 /// GcsPubSub supports publishing, subscription and unsubscribing of data.
