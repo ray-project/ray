@@ -26,7 +26,8 @@
 namespace ray {
 namespace gcs {
 
-/// GcsNodeManager is responsible for managing and monitoring nodes.
+/// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
+/// node and resource related rpc requests.
 /// This class is not thread-safe.
 class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
@@ -40,30 +41,37 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor);
 
+  /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                           rpc::RegisterNodeReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle unregister rpc request come from raylet.
   void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
                             rpc::UnregisterNodeReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all node info rpc request.
   void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle heartbeat rpc come from raylet.
   void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle update resource rpc request.
   void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
                              rpc::UpdateResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle delete resource rpc request.
   void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
                              rpc::DeleteResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
