@@ -18,17 +18,35 @@ import numpy as np
 
 @ray.remote
 class ServeMaster:
-    """Initialize and store all actor handles.
+    """Responsible for managing the state of the serving system.
 
-    Note:
-        This actor is necessary because ray will destroy actors when the
-        original actor handle goes out of scope (when driver exit). Therefore
-        we need to initialize and store actor handles in a seperate actor.
+    The master actor implements fault tolerance by persisting its state in
+    a new checkpoint each time a state change is made. If the actor crashes,
+    the latest checkpoint is loaded and the state is recovered. Checkpoints
+    are written/read using a provided KV-store interface.
+
+    All hard state in the system is maintained by this actor and persisted via
+    these checkpoints. Soft state required by other components is fetched by
+    those actors from this actor on startup and updates are pushed out from
+    this actor.
+
+    The dataplane actors started by the master actor are named, detached actors
+    so they will not fate share with the master if it crashes.
+
+    The following guarantees are provided for state-changing calls to the
+    master actor:
+        - If the call succeeds, the change was made and will be reflected in
+          the system even if the master actor or other actors die unexpectedly.
+        - If the call fails, the change may have been made but isn't guaranteed
+          to have been. The client should retry in this case. Note that this
+          requires all implementations here to be idempotent.
     """
 
     async def __init__(self, kv_store_connector, router_class, router_kwargs,
                        start_http_proxy, http_proxy_host, http_proxy_port,
                        metric_gc_window_s):
+        # Used to read/write checkpoints.
+        # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
@@ -36,7 +54,9 @@ class ServeMaster:
         self.backends = {}
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
+        # replicas that should be started if recovering from a checkpoint.
         self.replicas_to_start = defaultdict(list)
+        # replicas that should be stopped if recovering from a checkpoint.
         self.replicas_to_stop = defaultdict(list)
         # endpoint -> traffic_dict
         self.traffic_policies = dict()
@@ -44,21 +64,49 @@ class ServeMaster:
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
 
+        # Used to ensure that only a single state-changing operation happens
+        # at any given time.
         self.write_lock = asyncio.Lock()
 
+        # Cached handles to actors in the system.
         self.router = None
         self.http_proxy = None
         self.metric_monitor = None
 
+        # If starting the actor for the first time, starts up the other system
+        # components. If recovering, fetches their actor handles.
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
+        # NOTE(edoakes): the metric monitor is not currently started because
+        # it is currently being rewritten.
         # self._get_or_start_metric_monitor(metric_gc_window_s)
 
-        await self.write_lock.acquire()
-        asyncio.get_event_loop().create_task(self._recover_from_checkpoint())
+        # NOTE(edoakes): unfortunately, we can't completely recover from a
+        # checkpoint in the constructor because we block while waiting for
+        # other actors to start up, and those actors fetch soft state from
+        # this actor. Because no other tasks will start executing until after
+        # the constructor finishes, if we were to run this logic in the
+        # constructor it could lead to deadlock between this actor and a child.
+        # However we do need to guarantee that we have fully recovered from a
+        # checkpoint before any other state-changing calls run. We address this
+        # by acquiring the write_lock and then posting the task to recover from
+        # a checkpoint to the event loop. Other state-changing calls acquire
+        # this lock and will be blocked until recovering from the checkpoint
+        # finishes.
+        checkpoint = self.kv_store_client.get("checkpoint")
+        if checkpoint is None:
+            logger.debug("No checkpoint found")
+        else:
+            await self.write_lock.acquire()
+            asyncio.get_event_loop().create_task(
+                self._recover_from_checkpoint())
 
     def _get_or_start_router(self, router_class, router_kwargs):
+        """Get the router belonging to this serve cluster.
+
+        If the router does not already exist, it will be started.
+        """
         try:
             self.router = ray.util.get_actor(SERVE_ROUTER_NAME)
         except ValueError:
@@ -71,11 +119,14 @@ class ServeMaster:
                 max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
             ).remote(**router_kwargs)
 
-    def _get_or_start_http_proxy(self, host, port):
-        """Start the HTTP proxy on the given host:port if not already started.
+    def get_router(self):
+        """Returns a handle to the router managed by this actor."""
+        return [self.router]
 
-        On startup (or restart), the HTTP proxy will fetch its config via
-        get_http_proxy_config.
+    def _get_or_start_http_proxy(self, host, port):
+        """Get the HTTP proxy belonging to this serve cluster.
+
+        If the HTTP proxy does not already exist, it will be started.
         """
         try:
             self.http_proxy = ray.util.get_actor(SERVE_PROXY_NAME)
@@ -89,7 +140,19 @@ class ServeMaster:
                 max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
             ).remote(host, port)
 
+    def get_http_proxy(self):
+        """Returns a handle to the HTTP proxy managed by this actor."""
+        return [self.http_proxy]
+
+    def get_http_proxy_config(self):
+        """Called by the HTTP proxy on startup to fetch required state."""
+        return self.routes, self.get_router()
+
     def _get_or_start_metric_monitor(self, gc_window_s):
+        """Get the metric monitor belonging to this serve cluster.
+
+        If the metric monitor does not already exist, it will be started.
+        """
         try:
             self.metric_monitor = ray.util.get_actor(SERVE_METRIC_MONITOR_NAME)
         except ValueError:
@@ -102,44 +165,52 @@ class ServeMaster:
             start_metric_monitor_loop.remote(self.metric_monitor)
             self.metric_monitor.add_target.remote(self.router)
 
+    def get_metric_monitor(self):
+        """Returns a handle to the metric monitor managed by this actor."""
+        return [self.metric_monitor]
+
     def _checkpoint(self):
+        """Checkpoint internal state and write it to the KV store."""
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
              self.replicas_to_start, self.replicas_to_stop))
+
         self.kv_store_client.put("checkpoint", checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
 
-        import random
-        import os
-        if random.random() < 0.9:
-            os._exit(0)
+    async def _recover_from_checkpoint(self, checkpoint_bytes):
+        """Recover the cluster state from the provided checkpoint.
 
-    async def _recover_from_checkpoint(self):
-        # XXX: assumes lock held
-        checkpoint = self.kv_store_client.get("checkpoint")
-        if checkpoint is None:
-            logger.debug("No checkpoint found")
-            self.write_lock.release()
-            return
+        Performs the following operations:
+            1) Deserializes the internal state from the checkpoint.
+            2) Pushes the latest configuration to the HTTP proxy and router
+               in case we crashed before updating them.
+            3) Starts/stops any worker replicas that are pending creation or
+               deletion.
 
+        NOTE: this requires that self.write_lock is already acquired and will
+        release it before returning.
+        """
         start = time.time()
         logger.info("Recovering from checkpoint")
-        # 1) Check "base components" - they might not have been started yet, in
-        # which case we need to start them.
-        # 2) Check workers - they might not have been started yet, in which
-        # case we need to start them.
-        # 3) Delete the workers that we're removing (take a new checkpoint?)
+
+        # Load internal state from the checkpoint data.
         (self.routes, self.backends, self.traffic_policies, self.replicas,
          self.replicas_to_start,
-         self.replicas_to_stop) = pickle.loads(checkpoint)
+         self.replicas_to_stop) = pickle.loads(checkpoint_bytes)
 
+        # Fetch actor handles for all of the backend replicas in the system.
+        # All of these workers are guaranteed to already exist because they
+        # would not be written to a checkpoint in self.workers until they
+        # were created.
         for backend_tag, replica_tags in self.replicas.items():
             for replica_tag in replica_tags:
                 self.workers[backend_tag][replica_tag] = ray.util.get_actor(
                     replica_tag)
 
+        # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
         for endpoint, traffic_policy in self.traffic_policies.items():
             await self.router.set_traffic.remote(endpoint, traffic_policy)
@@ -153,8 +224,10 @@ class ServeMaster:
             await self.router.set_backend_config.remote(
                 backend, backend_config_dict)
 
+        # Push configuration state to the HTTP proxy.
         await self.http_proxy.set_route_table.remote(self.routes)
 
+        # Start/stop any pending backend replicas.
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
 
@@ -164,33 +237,30 @@ class ServeMaster:
         self.write_lock.release()
 
     def get_backend_configs(self):
+        """Fetched by the router on startup."""
         backend_configs = {}
         for backend, (_, _, backend_config_dict) in self.backends.items():
             backend_configs[backend] = backend_config_dict
         return backend_configs
 
     def get_traffic_policies(self):
+        """Fetched by the router on startup."""
         return self.traffic_policies
 
     def _list_replicas(self, backend_tag):
+        """Used only for testing."""
         return self.replicas[backend_tag]
 
     def get_traffic_policy(self, endpoint):
+        """Fetched by serve handles."""
         return self.traffic_policies[endpoint]
 
-    def get_router(self):
-        return [self.router]
-
-    def get_http_proxy_config(self):
-        return self.routes, self.get_router()
-
-    def get_http_proxy(self):
-        return [self.http_proxy]
-
-    def get_metric_monitor(self):
-        return [self.metric_monitor]
-
     async def _start_backend_worker(self, backend_tag, replica_tag):
+        """Creates a backend worker and waits for it to start up.
+
+        Assumes that the backend configuration has already been registered
+        in self.backends.
+        """
         logger.debug("Starting worker '{}' for backend '{}'.".format(
             replica_tag, backend_tag))
         worker_creator, init_args, config_dict = self.backends[backend_tag]
@@ -208,9 +278,18 @@ class ServeMaster:
         return worker_handle
 
     async def _start_pending_replicas(self):
-        # Note: they may already be created if we failed during this operation.
+        """Starts the pending backend replicas in self.replicas_to_start.
+
+        Starts the worker, then pushes an update to the router to add it to
+        the proper backend. If the worker has already been started, only
+        updates the router.
+
+        Clears self.replicas_to_start.
+        """
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
+                # NOTE(edoakes): the replicas may already be created if we
+                # failed after creating them but before writing a checkpoint.
                 try:
                     worker_handle = ray.util.get_actor(replica_tag)
                 except ValueError:
@@ -230,19 +309,22 @@ class ServeMaster:
         self.replicas_to_start.clear()
 
     async def _stop_pending_replicas(self):
-        # Note: they may already be deleted if we failed during this operation.
+        """Stops the pending backend replicas in self.replicas_to_stop.
+
+        Stops workers by telling the router to remove them.
+
+        Clears self.replicas_to_stop.
+        """
         for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
             for replica_tag in replicas_to_stop:
+                # NOTE(edoakes): the replicas may already be stopped if we
+                # failed after stopping them but before writing a checkpoint.
                 try:
-                    # worker_handle = ray.util.get_actor(replica_tag)
-                    # Remove the replica from metric monitor.
-                    # [monitor] = self.get_metric_monitor()
-                    # monitor.remove_target.remote(worker_handle)
-
                     # Remove the replica from router.
                     # This will also submit __ray_terminate__ on the worker.
-                    # We kill the worker from the router to guarantee that the
-                    # router won't submit any more requests on it.
+                    # NOTE(edoakes): we currently need to kill the worker from
+                    # the router to guarantee that the router won't submit any
+                    # more requests to it.
                     await self.router.remove_worker.remote(
                         backend_tag, replica_tag)
                 except ValueError:
@@ -251,8 +333,16 @@ class ServeMaster:
         self.replicas_to_stop.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
-        """Scale the given backend to the number of replicas."""
-        logger.info("Scaling backend '{}' to {} replicas".format(
+        """Scale the given backend to the number of replicas.
+
+        NOTE: this does not actually start or stop the replicas, but instead
+        adds the intention to start/stop them to self.workers_to_start and
+        self.workers_to_stop. The caller is responsible for then first writing
+        a checkpoint and then actually starting/stopping the intended replicas.
+        This avoids inconsistencies with starting/stopping a worker and then
+        crashing before writing a checkpoint.
+        """
+        logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
@@ -263,14 +353,14 @@ class ServeMaster:
         delta_num_replicas = num_replicas - current_num_replicas
 
         if delta_num_replicas > 0:
-            logger.info("Adding {} replicas to backend {}".format(
+            logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self.replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
-            logger.info("Removing {} replicas from backend {}".format(
+            logger.debug("Removing {} replicas from backend {}".format(
                 -delta_num_replicas, backend_tag))
             assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
@@ -284,12 +374,15 @@ class ServeMaster:
                 self.replicas_to_stop[backend_tag].append(replica_tag)
 
     def get_all_worker_handles(self):
+        """Fetched by the router on startup."""
         return self.workers
 
     def get_all_endpoints(self):
+        """Used for validation by the API client."""
         return [endpoint for endpoint, methods in self.routes.values()]
 
     async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
+        """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
             assert endpoint_name in self.get_all_endpoints(), \
                 "Attempted to assign traffic for an endpoint '{}'" \
@@ -310,12 +403,19 @@ class ServeMaster:
 
             self.traffic_policies[endpoint_name] = traffic_policy_dictionary
 
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # update to avoid inconsistent state if we crash after pushing the
+            # update.
             self._checkpoint()
-
             await self.router.set_traffic.remote(endpoint_name,
                                                  traffic_policy_dictionary)
 
     async def create_endpoint(self, route, endpoint, methods):
+        """Create a new endpoint with the specified route and methods.
+
+        If the route is None, this is a "headless" endpoint that will not
+        be added to the HTTP proxy (can only be accessed via a handle).
+        """
         async with self.write_lock:
             # If this is a headless service with no route, key the endpoint
             # based on its name.
@@ -345,13 +445,15 @@ class ServeMaster:
 
             self.routes[route] = (endpoint, methods)
 
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # update to avoid inconsistent state if we crash after pushing the
+            # update.
             self._checkpoint()
-
-            [http_proxy] = self.get_http_proxy()
-            await http_proxy.set_route_table.remote(self.routes)
+            await self.http_proxy.set_route_table.remote(self.routes)
 
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
+        """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_config_dict = dict(backend_config)
             backend_worker = create_backend_worker(func_or_class)
@@ -364,8 +466,10 @@ class ServeMaster:
             self._scale_replicas(backend_tag,
                                  backend_config_dict["num_replicas"])
 
+            # NOTE(edoakes): we must write a checkpoint before starting new
+            # or pushing the updated config to avoid inconsistent state if we
+            # crash while making the change.
             self._checkpoint()
-
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
 
@@ -375,6 +479,7 @@ class ServeMaster:
                 backend_tag, backend_config_dict)
 
     async def set_backend_config(self, backend_tag, backend_config):
+        """Set the config for the specified backend."""
         async with self.write_lock:
             assert (backend_tag in self.backends
                     ), "Backend {} is not registered.".format(backend_tag)
@@ -405,6 +510,9 @@ class ServeMaster:
             self._scale_replicas(backend_tag,
                                  backend_config_dict["num_replicas"])
 
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # update to avoid inconsistent state if we crash after pushing the
+            # update.
             self._checkpoint()
 
             # Inform the router about change in configuration
@@ -416,6 +524,7 @@ class ServeMaster:
             await self._stop_pending_replicas()
 
     def get_backend_config(self, backend_tag):
+        """Get the current config for the specified backend."""
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         return BackendConfig(**self.backends[backend_tag][2])
