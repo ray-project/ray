@@ -111,9 +111,9 @@ if __name__ == "__main__":
         checkpoint_freq=20,
         verbose=False,
         stop={
-            "training_iteration": 2000,
+            "training_iteration": 200,
         },
-        num_samples=4,
+        num_samples=8,
         config={
             "lr": 0.0001,
             # note: this parameter is perturbed but has no effect on

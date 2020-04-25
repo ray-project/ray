@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_GCS_SERVER_H
 #define RAY_GCS_GCS_SERVER_H
 
+#include <ray/gcs/pubsub/gcs_pub_sub.h>
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
@@ -146,6 +147,8 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;

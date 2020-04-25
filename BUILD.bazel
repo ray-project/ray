@@ -360,6 +360,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
+        ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":node_manager_rpc",
         ":raylet_lib",
@@ -862,6 +863,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
+        ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":redis_store_client",
     ],

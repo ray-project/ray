@@ -27,7 +27,7 @@ class EvalTest(unittest.TestCase):
         def env_creator(env_config):
             return gym.make("CartPole-v0")
 
-        agent_classes = [DQNTrainer, A3CTrainer]
+        agent_classes = [A3CTrainer, DQNTrainer]
 
         for agent_cls in agent_classes:
             ray.init(object_store_memory=1000 * 1024 * 1024)
