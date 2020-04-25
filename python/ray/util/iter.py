@@ -212,8 +212,11 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
         """
-        return self._with_transform(lambda local_it: local_it.for_each_concur(fn, max_concur=max_concur),
-                                    ".for_each()")
+        return self._with_transform(
+            lambda local_it:
+                local_it.for_each_concur(fn, max_concur=max_concur),
+            ".for_each()"
+        )
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.

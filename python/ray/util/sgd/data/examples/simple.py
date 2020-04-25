@@ -7,8 +7,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import numpy as np
-
 
 class Net(nn.Module):
     def __init__(self):
@@ -35,8 +33,8 @@ data = [i * 0.001 for i in range(3201)]
 
 
 def data_creator(config):
-    l = list(map(lambda x: (to_mat(x), to_mat(x)), data))
-    return torch.utils.data.DataLoader(l)
+    as_list = list(map(lambda x: (to_mat(x), to_mat(x)), data))
+    return torch.utils.data.DataLoader(as_list)
 
 
 def optimizer_creator(model, config):
@@ -46,8 +44,6 @@ def optimizer_creator(model, config):
 def loss_creator(config):
     return -nn.MSELoss(config)
 
-
-from ray.util.iter import *
 
 ray.init()
 

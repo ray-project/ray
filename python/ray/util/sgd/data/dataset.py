@@ -1,4 +1,3 @@
-import ray
 from ray.util.iter import ParallelIterator
 
 
@@ -15,7 +14,8 @@ class Dataset():
         else:
             par_iter = ParallelIterator.from_items(iterable)
         if download_func:
-            # par_iter = par_iter.for_each_concur(download_func, max_concur=max_concur)
+            # par_iter = par_iter.for_each_concur(download_func,
+            # max_concur=max_concur)
             par_iter = par_iter.for_each(download_func)
         self.iter = par_iter.batch(batch_size)
 
@@ -35,9 +35,11 @@ class Dataset():
             self._materialized = {}
 
     def get_shard(self, i):
-        assert i < self.iter.num_shards(
-        ), "Trying to get shard {} but there are only {} shards. Are you sure you called set_num_shards already".format(
-            i, self.iter.num_shards())
+        assert i < self.iter.num_shards(), \
+            "Trying to get shard {} but there are only {} shards." + \
+            "Are you sure you called set_num_shards already".format(
+                i, self.iter.num_shards()
+            )
         # iter = self.iter.get_shard(i, max_async_requests=self.max_concur)
 
         # TODO: Remove after Parallel Iterator bug is fixed
