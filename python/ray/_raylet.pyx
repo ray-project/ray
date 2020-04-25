@@ -1142,8 +1142,8 @@ cdef class CoreWorker:
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.
-            from ray.experimental.async_api import _async_init
-            self.async_event_loop.run_until_complete(_async_init())
+            from ray.experimental.async_api import init as plasma_async_init
+            plasma_async_init()
 
             # Create and attach the monitor object
             monitor_state = AsyncMonitorState(self.async_event_loop)
