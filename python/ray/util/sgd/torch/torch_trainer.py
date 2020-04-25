@@ -464,7 +464,7 @@ class TorchTrainer:
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
         if dataset:
-            dataset.set_num_shards(len(self.remote_workers) + 1)
+            dataset.set_num_shards(self.max_replicas)
         for i, w in enumerate(self.remote_workers):
             params = dict(num_steps=num_steps, profile=profile, info=info)
             if dataset:

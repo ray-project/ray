@@ -1,7 +1,7 @@
 import ray
 from ray.util import iter
 from ray.util.sgd.torch.torch_trainer import TorchTrainer
-from ray.util.sgd.data.new_dataset import Dataset
+from ray.util.sgd.data.dataset import Dataset
 
 import torch
 from torch import nn
@@ -29,7 +29,7 @@ def model_creator(config):
     return Net()
 
 
-data = [i * 0.001 for i in range(3201)]
+data = [i * 0.001 for i in range(1000)]
 
 
 def data_creator(config):
@@ -47,7 +47,7 @@ def loss_creator(config):
 
 ray.init()
 
-p_iter = iter.from_items(data, num_shards=1)
+p_iter = iter.from_items(data, num_shards=1, repeat=True)
 dataset = Dataset(
     p_iter,
     batch_size=32,
@@ -63,15 +63,14 @@ trainer = TorchTrainer(
         "batch_size": 32,
         "epoch": 10
     },
-    num_workers=2,
+    num_workers=5,
 )
 
-# trainer.train(dataset=dataset, num_steps=50)
-# model = trainer.get_model()
-# print("f(0.5)=",model(to_mat(0.5)))
-
 for i in range(10):
-    trainer.train(dataset=dataset, num_steps=50)
-    # trainer.train(dataset=dataset)
+    # Train a full epoch using the data_creator
+    trainer.train()
+    # Train for another epoch using the dataset
+    trainer.train(dataset=dataset, num_steps=200)
+
     model = trainer.get_model()
-    print("f(0.5)=", model(to_mat(0.5)))
+    print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
