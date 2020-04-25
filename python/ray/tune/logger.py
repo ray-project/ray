@@ -186,7 +186,8 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
-    VALID_HPARAMS = (str, bool, int, float, list, None)
+    # NoneType is not supported on the last TBX release yet.
+    VALID_HPARAMS = (str, bool, int, float, list)
 
     def _init(self):
         try:
@@ -255,17 +256,19 @@ class TBXLogger(Logger):
         flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in flat_params.items() if isinstance(v, VALID_SUMMARY_TYPES)
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_HPARAMS)
         }
 
         removed = {
             k: v
             for k, v in flat_params.items()
-            if not isinstance(v, VALID_SUMMARY_TYPES)
+            if not isinstance(v, self.VALID_HPARAMS)
         }
-        logger.info(
-            "Removed the following hyperparameter values when "
-            "logging to tensorboard: %s", str(removed))
+        if removed:
+            logger.info(
+                "Removed the following hyperparameter values when "
+                "logging to tensorboard: %s", str(removed))
 
         from tensorboardX.summary import hparams
         try:
