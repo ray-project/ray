@@ -53,7 +53,7 @@ def test_cancel_chain(ray_start_regular, use_force):
         ray.get(obj2, timeout=.1)
 
     signaler2.send.remote()
-    ray.get(obj1, timeout=.1)
+    ray.get(obj1, timeout=10)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -109,7 +109,7 @@ def test_single_cpu_cancel(shutdown_only, use_force):
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
     ray.cancel(obj3, use_force)
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(obj3, 0.1)
+        ray.get(obj3, 10)
 
     ray.cancel(obj1, use_force)
 
@@ -143,10 +143,10 @@ def test_comprehensive(ray_start_regular, use_force):
 
     ray.cancel(a, use_force)
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a, 1)
+        ray.get(a, 10)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a2, 1)
+        ray.get(a2, 10)
 
     signaler.send.remote()
 
@@ -223,7 +223,7 @@ def test_fast(shutdown_only, use_force):
     signaler.send.remote()
     for obj_id in ids:
         try:
-            ray.get(obj_id, 5)
+            ray.get(obj_id, 10)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
 
