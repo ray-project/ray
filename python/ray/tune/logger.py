@@ -186,6 +186,8 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
+    VALID_HPARAMS = {str, bool, int, float, None}
+
     def _init(self):
         try:
             from tensorboardX import SummaryWriter
@@ -253,14 +255,20 @@ class TBXLogger(Logger):
         flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in flat_params.items() if v is not None
+            for k, v in flat_params.items()
+            if type(v) in VALID_SUMMARY_TYPES
         }
         from tensorboardX.summary import hparams
-        experiment_tag, session_start_tag, session_end_tag = hparams(
-            hparam_dict=scrubbed_params, metric_dict=result)
-        self._file_writer.file_writer.add_summary(experiment_tag)
-        self._file_writer.file_writer.add_summary(session_start_tag)
-        self._file_writer.file_writer.add_summary(session_end_tag)
+        try:
+            experiment_tag, session_start_tag, session_end_tag = hparams(
+                hparam_dict=scrubbed_params, metric_dict=result)
+            self._file_writer.file_writer.add_summary(experiment_tag)
+            self._file_writer.file_writer.add_summary(session_start_tag)
+            self._file_writer.file_writer.add_summary(session_end_tag)
+        except Exception:
+            logger.exception("TensorboardX failed to log hparams. "
+                             "This may be due to an unsupported type "
+                             "in the hyperparameter values.")
 
 
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
