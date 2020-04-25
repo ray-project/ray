@@ -581,9 +581,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
 
             obs_batch = [t.obs for t in eval_data]
             state_batches = _to_column_format(rnn_in)
-
             # TODO(ekl): how can we make info batch available to TF code?
-            obs_batch = [t.obs for t in eval_data]
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
 
