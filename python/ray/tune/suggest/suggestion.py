@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 
-    Custom search algorithms can extend this class easily by overriding the
+    Custom algorithms can extend this class easily by overriding the
     `suggest` method provide generated parameters for the trials.
 
     Any subclass that implements ``__init__`` must also call the
