@@ -8,7 +8,7 @@ from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.serve.utils import parse_request_item
 from ray.serve.exceptions import RayServeException
-from ray.serve.metric import PushCollector
+from ray.serve.metric import MetricClient
 from ray.async_compat import sync_to_async
 
 
@@ -79,7 +79,7 @@ class RayServeWorker:
         self.router_handle = router_handle
         self.is_function = is_function
 
-        self.metric_collector = PushCollector.connect_from_serve()
+        self.metric_collector = MetricClient.connect_from_serve()
         self.error_counter = self.metric_collector.new_counter(
             "backend_error_counter",
             description=

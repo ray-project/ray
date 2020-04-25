@@ -2,14 +2,14 @@ import pytest
 import requests
 
 from ray import serve
-from ray.serve.metric import PushCollector, PrometheusSink
+from ray.serve.metric import MetricClient, PrometheusSink
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_push_event():
     sink = PrometheusSink()
-    collector = PushCollector(
+    collector = MetricClient(
         push_batch_callback=lambda *args: sink.push_batch(*args),
         default_labels={"a": "b"})
 
@@ -54,7 +54,7 @@ async def test_system_metric_endpoints(serve_instance):
 
     serve.create_backend(test_error_counter, "m:v1")
     serve.create_endpoint("test_metrics", "/measure", methods=["GET", "POST"])
-    serve.link("test_metrics", "m:v1")
+    serve.set_traffic("test_metrics", {"m:v1": 1})
 
     # Send one query
     requests.get("http://127.0.0.1:8000/measure")

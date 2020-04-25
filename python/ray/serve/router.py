@@ -14,7 +14,7 @@ import blist
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.utils import logger
-from ray.serve.metric import PushCollector
+from ray.serve.metric import MetricClient
 
 
 class Query:
@@ -160,7 +160,7 @@ class Router:
         for backend, replica_dict in backend_dict.items():
             for worker in replica_dict.values():
                 await self.add_new_worker(backend, worker)
-        self.metric_collector = PushCollector.connect_from_serve()
+        self.metric_collector = MetricClient.connect_from_serve()
         self.num_router_requests = self.metric_collector.new_counter(
             "num_router_requests",
             description="Number of requests from the router's view.")

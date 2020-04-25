@@ -5,7 +5,7 @@ import uvicorn
 
 import ray
 from ray.serve.context import TaskContext
-from ray.serve.metric import PushCollector
+from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger
@@ -33,7 +33,7 @@ class HTTPProxy:
 
         self.master = _get_master_actor()
 
-        self.metric_collector = PushCollector.connect_from_serve()
+        self.metric_collector = MetricClient.connect_from_serve()
         self.request_counter = self.metric_collector.new_counter(
             "num_http_requests",
             description="The number of requests processed",
