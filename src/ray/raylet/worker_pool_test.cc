@@ -103,19 +103,19 @@ class WorkerPoolTest : public ::testing::Test {
 
   std::shared_ptr<Worker> CreateWorker(Process proc,
                                        const Language &language = Language::PYTHON) {
-    std::function<void(LocalClientConnection &)> client_handler =
-        [this](LocalClientConnection &client) { HandleNewClient(client); };
-    std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
-        message_handler = [this](std::shared_ptr<LocalClientConnection> client,
+    std::function<void(ClientConnection &)> client_handler =
+        [this](ClientConnection &client) { HandleNewClient(client); };
+    std::function<void(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *)>
+        message_handler = [this](std::shared_ptr<ClientConnection> client,
                                  int64_t message_type, const uint8_t *message) {
           HandleMessage(client, message_type, message);
         };
-    local_stream_protocol::socket socket(io_service_);
+    local_stream_socket socket(io_service_);
     auto client =
-        LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
-                                      "worker", {}, error_message_type_);
+        ClientConnection::Create(client_handler, message_handler, std::move(socket),
+                                 "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker = std::make_shared<Worker>(
-        WorkerID::FromRandom(), language, -1, client, client_call_manager_);
+        WorkerID::FromRandom(), language, "127.0.0.1", -1, client, client_call_manager_);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
@@ -162,8 +162,8 @@ class WorkerPoolTest : public ::testing::Test {
   rpc::ClientCallManager client_call_manager_;
 
  private:
-  void HandleNewClient(LocalClientConnection &){};
-  void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
+  void HandleNewClient(ClientConnection &){};
+  void HandleMessage(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *){};
 };
 
 static inline TaskSpecification ExampleTaskSpec(

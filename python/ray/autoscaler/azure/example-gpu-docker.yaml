@@ -60,26 +60,16 @@ auth:
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 head_node:
-    hardware_profile:
-        vm_size: Standard_NC6s_v3
+    azure_arm_parameters:
+        vmSize: Standard_NC6s_v3
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
-# https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
-# Note: the Azure Python SDK expects all parameter keys to be in slug_style
-#       the styles of parameter values are not changed
+# Ray will auto-configure unspecified fields using example-full.yaml
 worker_nodes:
-    hardware_profile:
-        vm_size: Standard_NC6s_v3
+    azure_arm_parameters:
+        vmSize: Standard_NC6s_v3
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -90,11 +80,11 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - pip install -U https://sdgraystorage.blob.core.windows.net/ray-wheels/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
  
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install azure-cli-core azure-core azure-mgmt-authorization azure-mgmt-compute azure-mgmt-msi azure-mgmt-network
+    - pip install azure-cli-core==2.4.0 azure-mgmt-compute==12.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.1.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

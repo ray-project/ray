@@ -3,7 +3,7 @@ import unittest
 
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 tf = try_import_tf()
 
@@ -15,11 +15,7 @@ class TestTD3(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
+        for _ in framework_iterator(config, frameworks=["tf"]):
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
             num_iterations = 2
             for i in range(num_iterations):
@@ -33,12 +29,7 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
-            if fw != "tf":
-                continue
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
-
+        for _ in framework_iterator(config, frameworks="tf"):
             # Default GaussianNoise setup.
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.

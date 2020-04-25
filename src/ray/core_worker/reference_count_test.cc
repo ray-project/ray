@@ -113,12 +113,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
   void Put(const ObjectID &object_id) {
-    rc_.AddOwnedObject(object_id, {}, task_id_, address_, "", 0);
+    rc_.AddOwnedObject(object_id, {}, task_id_, address_, "", 0, false);
     rc_.AddLocalReference(object_id, "");
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
-    rc_.AddOwnedObject(outer_id, {inner_id}, task_id_, address_, "", 0);
+    rc_.AddOwnedObject(outer_id, {inner_id}, task_id_, address_, "", 0, false);
     rc_.AddLocalReference(outer_id, "");
   }
 
@@ -139,7 +139,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
     rc_.UpdateSubmittedTaskReferences({arg_id});
     ObjectID return_id = ObjectID::FromRandom();
-    rc_.AddOwnedObject(return_id, {}, task_id_, address_, "", 0);
+    rc_.AddOwnedObject(return_id, {}, task_id_, address_, "", 0, false);
     // Add a sentinel reference to keep all nested object IDs in scope.
     rc_.AddLocalReference(return_id, "");
     return return_id;
@@ -259,6 +259,38 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 }
 
+TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
+  ObjectID id = ObjectID::FromRandom();
+  TaskID task_id = TaskID::ForFakeTask();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  auto out_of_scope = std::make_shared<bool>(false);
+  auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
+
+  // The object goes out of scope once it has no more refs.
+  std::vector<ObjectID> out;
+  ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
+  rc->AddOwnedObject(id, {}, task_id, address, "", 0, false);
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_FALSE(*out_of_scope);
+  rc->AddLocalReference(id, "");
+  ASSERT_FALSE(*out_of_scope);
+  rc->RemoveLocalReference(id, &out);
+  ASSERT_TRUE(*out_of_scope);
+
+  // Unreconstructable objects go out of scope even if they have a nonzero
+  // lineage ref count.
+  *out_of_scope = false;
+  ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
+  rc->AddOwnedObject(id, {}, task_id, address, "", 0, false);
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateSubmittedTaskReferences({id});
+  ASSERT_FALSE(*out_of_scope);
+  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  ASSERT_TRUE(*out_of_scope);
+}
+
 // Tests call site tracking and ability to update object size.
 TEST_F(ReferenceCountTest, TestReferenceStats) {
   ObjectID id1 = ObjectID::FromRandom();
@@ -279,7 +311,7 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   ASSERT_EQ(stats.object_refs(0).call_site(), "file.py:42");
   rc->RemoveLocalReference(id1, nullptr);
 
-  rc->AddOwnedObject(id2, {}, task_id, address, "file2.py:43", 100);
+  rc->AddOwnedObject(id2, {}, task_id, address, "file2.py:43", 100, false);
   rpc::CoreWorkerStats stats2;
   rc->AddObjectRefStats({}, &stats2);
   ASSERT_EQ(stats2.object_refs_size(), 1);
@@ -297,7 +329,7 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   TaskID task_id = TaskID::ForFakeTask();
   rpc::Address address;
   address.set_ip_address("1234");
-  rc->AddOwnedObject(object_id, {}, task_id, address, "", 0);
+  rc->AddOwnedObject(object_id, {}, task_id, address, "", 0, false);
 
   TaskID added_id;
   rpc::Address added_address;
@@ -308,7 +340,7 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   auto object_id2 = ObjectID::FromRandom();
   task_id = TaskID::ForFakeTask();
   address.set_ip_address("5678");
-  rc->AddOwnedObject(object_id2, {}, task_id, address, "", 0);
+  rc->AddOwnedObject(object_id2, {}, task_id, address, "", 0, false);
   ASSERT_TRUE(rc->GetOwner(object_id2, &added_id, &added_address));
   ASSERT_EQ(task_id, added_id);
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
@@ -340,7 +372,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RAY_CHECK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
-  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1, ctx,
                          /*remove_after_get*/ true, &results));
   ASSERT_EQ(results.size(), 1);
@@ -1733,6 +1765,44 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
 
 // TODO: Test Pop and Merge individually.
 
+TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) {
+  ObjectID id = ObjectID::FromRandom();
+  TaskID task_id = TaskID::ForFakeTask();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  auto out_of_scope = std::make_shared<bool>(false);
+  auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
+
+  // The object goes out of scope once it has no more refs.
+  std::vector<ObjectID> out;
+  ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
+  rc->AddOwnedObject(id, {}, task_id, address, "", 0, false);
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_FALSE(*out_of_scope);
+  rc->AddLocalReference(id, "");
+  ASSERT_FALSE(*out_of_scope);
+  rc->RemoveLocalReference(id, &out);
+  ASSERT_TRUE(*out_of_scope);
+
+  // Unreconstructable objects stay in scope if they have a nonzero lineage ref
+  // count.
+  *out_of_scope = false;
+  ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
+  rc->AddOwnedObject(id, {}, task_id, address, "", 0, false);
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateSubmittedTaskReferences({id});
+  ASSERT_FALSE(*out_of_scope);
+  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  ASSERT_FALSE(*out_of_scope);
+
+  // Unreconstructable objects go out of scope once their lineage ref count
+  // reaches 0.
+  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  ASSERT_TRUE(*out_of_scope);
+}
+
 // Test to make sure that we call the lineage released callback correctly.
 TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   std::vector<ObjectID> out;
@@ -1752,7 +1822,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ASSERT_TRUE(lineage_deleted.empty());
 
   // We should keep lineage for owned objects.
-  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, false);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->HasReference(id));
   rc->RemoveLocalReference(id, nullptr);
@@ -1771,7 +1841,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
-    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
   }
 
   rc->SetReleaseLineageCallback(
@@ -1800,6 +1870,11 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
 
     // The task finishes but is retryable.
     rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+    // We should fail to set the deletion callback because the object has
+    // already gone out of scope.
+    ASSERT_FALSE(rc->SetDeleteCallback(
+        id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
+
     ASSERT_EQ(out.size(), 1);
     out.clear();
     ASSERT_TRUE(lineage_deleted.empty());
@@ -1813,6 +1888,81 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   // references.
   ASSERT_EQ(lineage_deleted.size(), ids.size());
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
+
+  // Local references.
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Submit 2 dependent tasks.
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Both tasks finish, 1 is retryable.
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  // The dependency is no longer in scope, but we still keep a reference to it
+  // because it is in the lineage of the retryable task.
+  ASSERT_EQ(out.size(), 1);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Simulate retrying the task.
+  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  ASSERT_FALSE(rc->HasReference(id));
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
+  auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
+  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+
+  ObjectID borrowed_id = ObjectID::FromRandom();
+  rc->AddLocalReference(borrowed_id, "");
+  bool pinned = false;
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned));
+
+  ObjectID id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(pinned);
+
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
+
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  rc->AddLocalReference(id, "");
+  ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
+  rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  auto objects = rc->ResetObjectsOnRemovedNode(node_id);
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], id);
+  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
+  ASSERT_FALSE(pinned);
+  ASSERT_TRUE(deleted->count(id) > 0);
+  deleted->clear();
 }
 
 }  // namespace ray

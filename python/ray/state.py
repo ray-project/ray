@@ -369,86 +369,6 @@ class GlobalState:
                     ray.ActorID(actor_id_binary))
             return results
 
-    def _task_table(self, task_id):
-        """Fetch and parse the task table information for a single task ID.
-
-        Args:
-            task_id: A task ID to get information about.
-
-        Returns:
-            A dictionary with information about the task ID in question.
-        """
-        assert isinstance(task_id, ray.TaskID)
-        message = self._execute_command(
-            task_id, "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("RAYLET_TASK"), "", task_id.binary())
-        if message is None:
-            return {}
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-
-        assert len(gcs_entries.entries) == 1
-        task_table_data = gcs_utils.TaskTableData.FromString(
-            gcs_entries.entries[0])
-
-        task = ray._raylet.TaskSpec.from_string(
-            task_table_data.task.task_spec.SerializeToString())
-        function_descriptor = task.function_descriptor()
-
-        task_spec_info = {
-            "JobID": task.job_id().hex(),
-            "TaskID": task.task_id().hex(),
-            "ParentTaskID": task.parent_task_id().hex(),
-            "ParentCounter": task.parent_counter(),
-            "ActorID": (task.actor_id().hex()),
-            "ActorCreationID": task.actor_creation_id().hex(),
-            "ActorCreationDummyObjectID": (
-                task.actor_creation_dummy_object_id().hex()),
-            "PreviousActorTaskDummyObjectID": (
-                task.previous_actor_task_dummy_object_id().hex()),
-            "ActorCounter": task.actor_counter(),
-            "Args": task.arguments(),
-            "ReturnObjectIDs": task.returns(),
-            "RequiredResources": task.required_resources(),
-            "FunctionDescriptor": function_descriptor.to_dict(),
-        }
-
-        execution_spec = ray._raylet.TaskExecutionSpec.from_string(
-            task_table_data.task.task_execution_spec.SerializeToString())
-        return {
-            "ExecutionSpec": {
-                "NumForwards": execution_spec.num_forwards(),
-            },
-            "TaskSpec": task_spec_info
-        }
-
-    def task_table(self, task_id=None):
-        """Fetch and parse the task table information for one or more task IDs.
-
-        Args:
-            task_id: A hex string of the task ID to fetch information about. If
-                this is None, then the task object table is fetched.
-
-        Returns:
-            Information from the task table.
-        """
-        self._check_connected()
-        if task_id is not None:
-            task_id = ray.TaskID(hex_to_binary(task_id))
-            return self._task_table(task_id)
-        else:
-            task_table_keys = self._keys(
-                gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
-            task_ids_binary = [
-                key[len(gcs_utils.TablePrefix_RAYLET_TASK_string):]
-                for key in task_table_keys
-            ]
-
-            results = {}
-            for task_id_binary in task_ids_binary:
-                results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.TaskID(task_id_binary))
-            return results
-
     def client_table(self):
         """Fetch and parse the Redis DB client table.
 
@@ -495,7 +415,7 @@ class GlobalState:
             entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
             assert entry.job_id == job_id.binary()
             job_info["JobID"] = job_id.hex()
-            job_info["NodeManagerAddress"] = entry.node_manager_address
+            job_info["DriverIPAddress"] = entry.driver_ip_address
             job_info["DriverPid"] = entry.driver_pid
             if entry.is_dead:
                 job_info["StopTime"] = entry.timestamp
@@ -511,7 +431,7 @@ class GlobalState:
             Information about the Ray jobs in the cluster,
             namely a list of dicts with keys:
             - "JobID" (identifier for the job),
-            - "NodeManagerAddress" (IP address of the driver for this job),
+            - "DriverIPAddress" (IP address of the driver for this job),
             - "DriverPid" (process ID of the driver for this job),
             - "StartTime" (UNIX timestamp of the start time of this job),
             - "StopTime" (UNIX timestamp of the stop time of this job, if any)
@@ -1071,7 +991,7 @@ def jobs():
     Returns:
         Information from the job table, namely a list of dicts with keys:
         - "JobID" (identifier for the job),
-        - "NodeManagerAddress" (IP address of the driver for this job),
+        - "DriverIPAddress" (IP address of the driver for this job),
         - "DriverPid" (process ID of the driver for this job),
         - "StartTime" (UNIX timestamp of the start time of this job),
         - "StopTime" (UNIX timestamp of the stop time of this job, if any)
@@ -1131,19 +1051,6 @@ def actors(actor_id=None):
         Information about the actors.
     """
     return state.actor_table(actor_id=actor_id)
-
-
-def tasks(task_id=None):
-    """Fetch and parse the task table information for one or more task IDs.
-
-    Args:
-        task_id: A hex string of the task ID to fetch information about. If
-            this is None, then the task object table is fetched.
-
-    Returns:
-        Information from the task table.
-    """
-    return state.task_table(task_id=task_id)
 
 
 def objects(object_id=None):

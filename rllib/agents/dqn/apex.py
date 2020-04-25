@@ -1,15 +1,18 @@
 import collections
+import copy
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
+from ray.rllib.execution.train_ops import UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import AsyncReplayOptimizer
 from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, ParallelReplay, StandardMetricsReporting,
-    StoreToReplayActors, UpdateTargetNetwork, Enqueue, Dequeue,
-    STEPS_TRAINED_COUNTER)
 from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
 from ray.util.iter import LocalIterator
 
@@ -101,6 +104,8 @@ def execution_plan(workers, config):
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = LocalIterator.get_metrics()
+        # Manually update the steps trained counter since the learner thread
+        # is executing outside the pipeline.
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer
@@ -140,7 +145,7 @@ def execution_plan(workers, config):
     # the weights of the worker that generated the batch.
     rollouts = ParallelRollouts(workers, mode="async", async_queue_depth=2)
     store_op = rollouts \
-        .for_each(StoreToReplayActors(replay_actors)) \
+        .for_each(StoreToReplayBuffer(actors=replay_actors)) \
         .zip_with_source_actor() \
         .for_each(UpdateWorkerWeights(
             learner_thread, workers,
@@ -149,7 +154,7 @@ def execution_plan(workers, config):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
-    replay_op = ParallelReplay(replay_actors, async_queue_depth=4) \
+    replay_op = Replay(actors=replay_actors, async_queue_depth=4) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
@@ -162,10 +167,32 @@ def execution_plan(workers, config):
             workers, config["target_network_update_freq"],
             by_steps_trained=True))
 
-    # Execute (1), (2), (3) asynchronously as fast as possible.
-    merged_op = Concurrently([store_op, replay_op, update_op], mode="async")
+    # Execute (1), (2), (3) asynchronously as fast as possible. Only output
+    # items from (3) since metrics aren't available before then.
+    merged_op = Concurrently(
+        [store_op, replay_op, update_op], mode="async", output_indexes=[2])
 
-    return StandardMetricsReporting(merged_op, workers, config)
+    # Add in extra replay and learner metrics to the training result.
+    def add_apex_metrics(result):
+        replay_stats = ray.get(replay_actors[0].stats.remote(
+            config["optimizer"].get("debug")))
+        exploration_infos = workers.foreach_trainable_policy(
+            lambda p, _: p.get_exploration_info())
+        result["info"].update({
+            "exploration_infos": exploration_infos,
+            "learner_queue": learner_thread.learner_queue_size.stats(),
+            "learner": copy.deepcopy(learner_thread.stats),
+            "replay_shard_0": replay_stats,
+        })
+        return result
+
+    # Only report metrics from the workers with the lowest 1/3 of epsilons.
+    selected_workers = workers.remote_workers()[
+        -len(workers.remote_workers()) // 3:]
+
+    return StandardMetricsReporting(
+        merged_op, workers, config,
+        selected_workers=selected_workers).for_each(add_apex_metrics)
 
 
 APEX_TRAINER_PROPERTIES = {

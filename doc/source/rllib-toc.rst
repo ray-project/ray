@@ -87,11 +87,11 @@ Algorithms
 
 *  High-throughput architectures
 
-   -  |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
+   -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
    -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+   -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
@@ -101,21 +101,21 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+   -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
-   -  |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+   -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
    -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
+   -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+   -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| :ref:`Evolution Strategies <es>`
+   -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
 *  Multi-agent specific
 
@@ -124,7 +124,7 @@ Algorithms
 
 *  Offline
 
-   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+   -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 *  Contextual bandits
 

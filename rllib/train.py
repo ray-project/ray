@@ -46,6 +46,10 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--no-ray-ui",
+        action="store_true",
+        help="Whether to disable the Ray web ui.")
+    parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
@@ -156,10 +160,10 @@ def run(args, parser):
 
     verbose = 1
     for exp in experiments.values():
-
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
-        if exp["config"].get("input") and \
+        # NOTE: Some of our yaml files don't have a `config` section.
+        if exp.get("config", {}).get("input") and \
                 not os.path.exists(exp["config"]["input"]):
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
@@ -197,6 +201,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
+            include_webui=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,

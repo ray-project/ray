@@ -146,8 +146,10 @@ def build_trainer(name,
             prev_steps = self.optimizer.num_steps_sampled
 
             start = time.time()
+            optimizer_steps_this_iter = 0
             while True:
                 fetches = self.optimizer.step()
+                optimizer_steps_this_iter += 1
                 if after_optimizer_step:
                     after_optimizer_step(self, fetches)
                 if (time.time() - start >= self.config["min_iter_time_s"]
@@ -160,6 +162,7 @@ def build_trainer(name,
             else:
                 res = self.collect_metrics()
             res.update(
+                optimizer_steps_this_iter=optimizer_steps_this_iter,
                 timesteps_this_iter=self.optimizer.num_steps_sampled -
                 prev_steps,
                 info=res.get("info", {}))
@@ -170,10 +173,10 @@ def build_trainer(name,
 
         def _train_exec_impl(self):
             if before_train_step:
-                logger.warning("Ignoring before_train_step callback")
+                logger.debug("Ignoring before_train_step callback")
             res = next(self.train_exec_impl)
             if after_train_result:
-                logger.warning("Ignoring after_train_result callback")
+                logger.debug("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)

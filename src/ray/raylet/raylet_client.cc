@@ -30,23 +30,23 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/url.h"
+#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
-static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+namespace ray {
+
+static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
 
-static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+static int write_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
-
-namespace ray {
 
 raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
                                            const std::string &raylet_socket,
@@ -62,12 +62,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    local_stream_protocol::endpoint endpoint(raylet_socket);
-#else
-    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
-#endif
-    if (!conn_.connect(endpoint, ec)) {
+    if (!conn_.connect(ParseUrlEndpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {
@@ -170,7 +165,8 @@ raylet::RayletClient::RayletClient(
     boost::asio::io_service &io_service,
     std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
-    const JobID &job_id, const Language &language, ClientID *raylet_id, int port)
+    const JobID &job_id, const Language &language, ClientID *raylet_id,
+    const std::string &ip_address, int port)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
@@ -179,7 +175,7 @@ raylet::RayletClient::RayletClient(
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
-      language, port);
+      language, fbb.CreateString(ip_address), port);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -370,6 +366,14 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
+}
+
+ray::Status raylet::RayletClient::CancelWorkerLease(
+    const TaskID &task_id,
+    const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_task_id(task_id.Binary());
+  return grpc_client_->CancelWorkerLease(request, callback);
 }
 
 Status raylet::RayletClient::PinObjectIDs(

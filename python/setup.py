@@ -14,16 +14,21 @@ import setuptools.command.build_ext as _build_ext
 # before these files have been created, so we have to move the files
 # manually.
 
+exe_suffix = ".exe" if sys.platform == "win32" else ""
+
+# .pyd is the extension Python requires on Windows for shared libraries.
+# https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
+pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
+
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server",
-    "ray/_raylet.so",
-    "ray/core/src/ray/raylet/raylet_monitor",
-    "ray/core/src/ray/gcs/gcs_server",
-    "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
+    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
+    "ray/_raylet" + pyd_suffix,
+    "ray/core/src/ray/raylet/raylet_monitor" + exe_suffix,
+    "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
+    "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
 ]
 
@@ -43,6 +48,8 @@ optional_ray_files = []
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/azure/azure-vm-template.json",
+    "ray/autoscaler/azure/azure-config-template.json",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
@@ -75,7 +82,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "debug": [],
-    "dashboard": [],
+    "dashboard": ["requests"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
@@ -102,6 +109,12 @@ class build_ext(_build_ext.build_ext):
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
         command = ["../build.sh", "-p", sys.executable]
+        if sys.platform == "win32" and command[0].lower().endswith(".sh"):
+            # We can't run .sh files directly in Windows, so find a shell.
+            # Don't use "bash" instead of "sh", because that might run the Bash
+            # from WSL! (We want MSYS2's Bash, which is also sh by default.)
+            shell = os.getenv("BAZEL_SH", "sh")  # NOT "bash"! (see above)
+            command.insert(0, shell)
         if build_java:
             # Also build binaries for Java if the above env variable exists.
             command += ["-l", "python,java"]
@@ -171,9 +184,19 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.16", "filelock", "jsonschema", "click", "colorama", "pyyaml",
-    "redis >= 3.3.2", "protobuf >= 3.8.0", "py-spy >= 0.2.0", "aiohttp",
-    "google", "grpcio"
+    "aiohttp",
+    "click",
+    "colorama",
+    "filelock",
+    "google",
+    "grpcio",
+    "jsonschema",
+    "msgpack >= 0.6.0, < 1.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "redis >= 3.3.2",
 ]
 
 setup(
@@ -192,7 +215,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.29"],
+    setup_requires=["cython >= 0.29.14", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

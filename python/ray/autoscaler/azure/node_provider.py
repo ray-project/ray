@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 from threading import RLock
 from uuid import uuid4
 
@@ -6,7 +8,9 @@ from azure.common.client_factory import get_client_from_cli_profile
 from msrestazure.azure_active_directory import MSIAuthentication
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-from azure.mgmt.compute.models import ResourceIdentityType
+from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.resource.resources.models import DeploymentMode
+from knack.util import CLIError
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
@@ -50,15 +54,21 @@ class AzureNodeProvider(NodeProvider):
                 client_class=ComputeManagementClient, **kwargs)
             self.network_client = get_client_from_cli_profile(
                 client_class=NetworkManagementClient, **kwargs)
-        except Exception:
-            logger.info(
-                "CLI profile authentication failed. Trying MSI", exc_info=True)
+            self.resource_client = get_client_from_cli_profile(
+                client_class=ResourceManagementClient, **kwargs)
+        except CLIError as e:
+            if str(e) != "Please run 'az login' to setup account.":
+                raise
+            else:
+                logger.info("CLI profile authentication failed. Trying MSI")
 
-            credentials = MSIAuthentication()
-            self.compute_client = ComputeManagementClient(
-                credentials=credentials, **kwargs)
-            self.network_client = NetworkManagementClient(
-                credentials=credentials, **kwargs)
+                credentials = MSIAuthentication()
+                self.compute_client = ComputeManagementClient(
+                    credentials=credentials, **kwargs)
+                self.network_client = NetworkManagementClient(
+                    credentials=credentials, **kwargs)
+                self.resource_client = ResourceManagementClient(
+                    credentials=credentials, **kwargs)
 
         self.lock = RLock()
 
@@ -164,79 +174,48 @@ class AzureNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         # TODO: restart deallocated nodes if possible
-        location = self.provider_config["location"]
         resource_group = self.provider_config["resource_group"]
-        subnet_id = self.provider_config["subnet_id"]
 
-        config = node_config.copy()
-        config_tags = config.get("tags", {})
+        # load the template file
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(current_path, "azure-vm-template.json")
+        with open(template_path, "r") as template_fp:
+            template = json.load(template_fp)
+
+        # get the tags
+        config_tags = node_config.get("tags", {}).copy()
         config_tags.update(tags)
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        config["tags"] = config_tags
-        config["location"] = location
         name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
+        unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
+        vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
+        use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
-        for _ in range(count):
-            unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
-            vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
-            config["os_profile"]["computer_name"] = vm_name
+        template_params = node_config["azure_arm_parameters"].copy()
+        template_params["vmName"] = vm_name
+        template_params["provisionPublicIp"] = not use_internal_ips
+        template_params["vmTags"] = config_tags
+        template_params["vmCount"] = count
 
-            try:
-                assert len(vm_name) <= VM_NAME_MAX_LEN
-            except AssertionError as e:
-                e.args += ("name", vm_name)
-                raise
-
-            ip_configuration = {"name": uuid4(), "subnet": {"id": subnet_id}}
-
-            if not self.provider_config.get("use_internal_ips", False):
-                # create public ip address
-                public_ip_addess_params = {
-                    "location": location,
-                    "public_ip_allocation_method": "Dynamic"
-                }
-                public_ip_address = (
-                    self.network_client.public_ip_addresses.create_or_update(
-                        resource_group_name=resource_group,
-                        public_ip_address_name="{}-ip".format(vm_name),
-                        parameters=public_ip_addess_params).result())
-                ip_configuration["public_ip_address"] = public_ip_address
-
-            nic_params = {
-                "location": location,
-                "ip_configurations": [ip_configuration]
-            }
-            nic = self.network_client.network_interfaces.create_or_update(
-                resource_group_name=resource_group,
-                network_interface_name="{}-nic".format(vm_name),
-                parameters=nic_params).result()
-
-            # update vm config with network parameters
-            config["network_profile"] = {
-                "network_interfaces": [{
-                    "id": nic.id
-                }]
-            }
-
-            config["identity"] = {
-                "type": ResourceIdentityType.user_assigned,
-                "user_assigned_identities": [{
-                    # zero-documentation.. *sigh*
-                    "key": self.provider_config["msi_identity_id"],
-                    "value": {
-                        "principal_id": self.provider_config[
-                            "msi_identity_principal_id"],
-                        "client_id": self.provider_config["msi_identity_id"]
+        parameters = {
+            "properties": {
+                "mode": DeploymentMode.incremental,
+                "template": template,
+                "parameters": {
+                    key: {
+                        "value": value
                     }
-                }]
+                    for key, value in template_params.items()
+                }
             }
+        }
 
-            # TODO: do we need to wait or fire and forget is fine?
-            self.compute_client.virtual_machines.create_or_update(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=vm_name,
-                parameters=config)
+        # TODO: we could get the private/public ips back directly
+        self.resource_client.deployments.create_or_update(
+            resource_group_name=resource_group,
+            deployment_name="ray-vm-{}".format(name_tag),
+            parameters=parameters).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):
@@ -252,34 +231,57 @@ class AzureNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         """Terminates the specified node. This will delete the VM and
            associated resources (NIC, IP, Storage) for the specified node."""
-        # self.compute_client.virtual_machines.deallocate(
-        # resource_group_name=self.provider_config["resource_group"],
-        # vm_name=node_id)
+
         resource_group = self.provider_config["resource_group"]
-        nodes = self._get_filtered_nodes(
-            tag_filters={TAG_RAY_CLUSTER_NAME: self.cluster_name})
-        for node, metadata in nodes.items():
-            # gather disks to delete later
-            vm = self.compute_client.virtual_machines.get(
-                resource_group_name=resource_group, vm_name=node)
-            disks = {d.name for d in vm.storage_profile.data_disks}
-            disks.add(vm.storage_profile.os_disk.name)
+        try:
+            # get metadata for node
+            metadata = self._get_node(node_id)
+        except KeyError:
+            # node no longer exists
+            return
+
+        # TODO: deallocate instead of delete to allow possible reuse
+        # self.compute_client.virtual_machines.deallocate(
+        #   resource_group_name=resource_group,
+        #   vm_name=node_id)
+
+        # gather disks to delete later
+        vm = self.compute_client.virtual_machines.get(
+            resource_group_name=resource_group, vm_name=node_id)
+        disks = {d.name for d in vm.storage_profile.data_disks}
+        disks.add(vm.storage_profile.os_disk.name)
+
+        try:
             # delete machine, must wait for this to complete
             self.compute_client.virtual_machines.delete(
-                resource_group_name=resource_group, vm_name=node).wait()
+                resource_group_name=resource_group, vm_name=node_id).wait()
+        except Exception as e:
+            logger.warning("Failed to delete VM: {}".format(e))
+
+        try:
             # delete nic
             self.network_client.network_interfaces.delete(
                 resource_group_name=resource_group,
                 network_interface_name=metadata["nic_name"])
-            # delete ip address
-            if "public_ip_name" in metadata:
+        except Exception as e:
+            logger.warning("Failed to delete nic: {}".format(e))
+
+        # delete ip address
+        if "public_ip_name" in metadata:
+            try:
                 self.network_client.public_ip_addresses.delete(
                     resource_group_name=resource_group,
                     public_ip_address_name=metadata["public_ip_name"])
-            # delete disks
-            for disk in disks:
+            except Exception as e:
+                logger.warning("Failed to delete public ip: {}".format(e))
+
+        # delete disks
+        for disk in disks:
+            try:
                 self.compute_client.disks.delete(
                     resource_group_name=resource_group, disk_name=disk)
+            except Exception as e:
+                logger.warning("Failed to delete disk: {}".format(e))
 
     def _get_node(self, node_id):
         self._get_filtered_nodes({})  # Side effect: updates cache

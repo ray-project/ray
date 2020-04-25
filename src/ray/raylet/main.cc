@@ -124,11 +124,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
+        make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
+        make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -201,7 +201,12 @@ int main(int argc, char *argv[]) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };
-  boost::asio::signal_set signals(main_service, SIGTERM);
+  boost::asio::signal_set signals(main_service);
+#ifdef _WIN32
+  signals.add(SIGBREAK);
+#else
+  signals.add(SIGTERM);
+#endif
   signals.async_wait(handler);
 
   main_service.run();

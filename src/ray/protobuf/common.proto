@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
 enum Language {
@@ -269,16 +269,18 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   map<string, string> webui_display = 10;
+  // Number of objects that are IN_PLASMA_ERROR in the local memory store.
+  int32 num_in_plasma = 11;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 11;
+  int32 num_local_objects = 12;
   // Used local object store memory.
-  int64 used_object_store_memory = 12;
+  int64 used_object_store_memory = 13;
   // Length of the task queue.
-  int32 task_queue_length = 13;
+  int32 task_queue_length = 14;
   // Number of executed tasks.
-  int32 num_executed_tasks = 14;
+  int32 num_executed_tasks = 15;
   // Actor constructor.
-  string actor_title = 15;
+  string actor_title = 16;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 16;
+  repeated ObjectRefInfo object_refs = 17;
 }

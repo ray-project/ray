@@ -13,7 +13,7 @@ from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -56,6 +56,17 @@ def force_list(elements=None, to_tuple=False):
 
 force_tuple = partial(force_list, to_tuple=True)
 
+
+# TODO(sven): remove at some point.
+def try_import_tree():
+    try:
+        import tree
+        return tree
+    except (ImportError, ModuleNotFoundError):
+        raise ModuleNotFoundError(
+            "`dm-tree` is not installed! Run `pip install dm-tree`.")
+
+
 __all__ = [
     "add_mixins",
     "check",
@@ -64,6 +75,7 @@ __all__ = [
     "fc",
     "force_list",
     "force_tuple",
+    "framework_iterator",
     "lstm",
     "one_hot",
     "relu",
@@ -78,6 +90,7 @@ __all__ = [
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
+    "try_import_tree",
     "ConstantSchedule",
     "DeveloperAPI",
     "ExponentialSchedule",

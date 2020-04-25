@@ -1,26 +1,24 @@
+from functools import partial
 import gym
 import logging
 import numpy as np
-from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
-
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchMultiCategorical, TorchDiagGaussian
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
+from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchMultiCategorical, TorchDeterministic, TorchDiagGaussian
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -151,7 +149,8 @@ class ModelCatalog:
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic
+                dist = Deterministic if framework == "tf" else \
+                    TorchDeterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical
@@ -331,8 +330,8 @@ class ModelCatalog:
             v2_class = None
             # try to get a default v2 model
             if not model_config.get("custom_model"):
-                v2_class = default_model or ModelCatalog._get_v2_model(
-                    obs_space, model_config)
+                v2_class = default_model or ModelCatalog._get_v2_model_class(
+                    obs_space, model_config, framework=framework)
             # fallback to a default v1 model
             if v2_class is None:
                 if tf.executing_eagerly():
@@ -347,11 +346,13 @@ class ModelCatalog:
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
         elif framework == "torch":
-            if default_model:
-                return default_model(obs_space, action_space, num_outputs,
-                                     model_config, name)
-            return ModelCatalog._get_default_torch_model_v2(
-                obs_space, action_space, num_outputs, model_config, name)
+            v2_class = \
+                default_model or ModelCatalog._get_v2_model_class(
+                    obs_space, model_config, framework=framework)
+            # Wrap in the requested interface.
+            wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
         else:
             raise NotImplementedError(
                 "Framework must be 'tf' or 'torch': {}".format(framework))
@@ -451,7 +452,7 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, TFModelV2), model_cls
+        assert issubclass(model_cls, (TFModelV2, TorchModelV2)), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
@@ -464,32 +465,6 @@ class ModelCatalog:
         wrapper.__qualname__ = name
 
         return wrapper
-
-    @staticmethod
-    def _get_default_torch_model_v2(obs_space, action_space, num_outputs,
-                                    model_config, name):
-        from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                  PyTorchFCNet)
-        from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                      PyTorchVisionNet)
-
-        model_config = model_config or MODEL_DEFAULTS
-
-        if model_config.get("use_lstm"):
-            raise NotImplementedError(
-                "LSTM auto-wrapping not implemented for torch")
-
-        if isinstance(obs_space, gym.spaces.Discrete):
-            obs_rank = 1
-        else:
-            obs_rank = len(obs_space.shape)
-
-        if obs_rank > 2:
-            return PyTorchVisionNet(obs_space, action_space, num_outputs,
-                                    model_config, name)
-
-        return PyTorchFCNet(obs_space, action_space, num_outputs, model_config,
-                            name)
 
     @staticmethod
     def get_model(input_dict,
@@ -548,17 +523,29 @@ class ModelCatalog:
                                      num_outputs, options)
 
     @staticmethod
-    def _get_v2_model(obs_space, options):
-        options = options or MODEL_DEFAULTS
-        obs_rank = len(obs_space.shape)
+    def _get_v2_model_class(obs_space, model_config, framework="tf"):
+        model_config = model_config or MODEL_DEFAULTS
+        if framework == "torch":
+            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                      FCNet)
+            from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                          VisionNet)
+            if model_config.get("use_lstm"):
+                raise NotImplementedError(
+                    "LSTM auto-wrapping not implemented for torch")
+        else:
+            from ray.rllib.models.tf.fcnet_v2 import \
+                FullyConnectedNetwork as FCNet
+            from ray.rllib.models.tf.visionnet_v2 import \
+                VisionNetwork as VisionNet
 
-        if options.get("use_lstm"):
-            return None  # TODO: default LSTM v2 not implemented
-
-        if obs_rank > 2:
-            return VisionNetV2
-
-        return FCNetV2
+        # Discrete/1D obs-spaces.
+        if isinstance(obs_space, gym.spaces.Discrete) or \
+                len(obs_space.shape) <= 2:
+            return FCNet
+        # Default Conv2D net.
+        else:
+            return VisionNet
 
     @staticmethod
     def get_torch_model(obs_space,

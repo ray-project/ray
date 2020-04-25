@@ -4,11 +4,11 @@ import itertools
 import numpy as np
 
 import ray
-from ray.serve.queues import (CentralizedQueues)
+from ray.serve.router import Router
 from ray.serve.utils import logger
 
 
-class RandomPolicyQueue(CentralizedQueues):
+class RandomPolicyQueue(Router):
     """
     A wrapper class for Random policy.This backend selection policy is
     `Stateless` meaning the current decisions of selecting backend are
@@ -39,7 +39,7 @@ class RandomPolicyQueueActor(RandomPolicyQueue):
     pass
 
 
-class RoundRobinPolicyQueue(CentralizedQueues):
+class RoundRobinPolicyQueue(Router):
     """
     A wrapper class for RoundRobin policy. This backend selection policy
     is `Stateful` meaning the current decisions of selecting backend are
@@ -81,7 +81,7 @@ class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue):
     pass
 
 
-class PowerOfTwoPolicyQueue(CentralizedQueues):
+class PowerOfTwoPolicyQueue(Router):
     """
     A wrapper class for powerOfTwo policy. This backend selection policy is
     `Stateless` meaning the current decisions of selecting backend are
@@ -127,7 +127,7 @@ class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue):
     pass
 
 
-class FixedPackingPolicyQueue(CentralizedQueues):
+class FixedPackingPolicyQueue(Router):
     """
     A wrapper class for FixedPacking policy. This backend selection policy is
     `Stateful` meaning the current decisions of selecting backend are dependent
@@ -139,12 +139,12 @@ class FixedPackingPolicyQueue(CentralizedQueues):
 
     """
 
-    def __init__(self, packing_num=3):
+    async def __init__(self, packing_num=3):
         # Saves the information about last assigned
         # backend for every service
         self.fixed_packing_iterator_map = {}
         self.packing_num = packing_num
-        super().__init__()
+        await super().__init__()
 
     async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,

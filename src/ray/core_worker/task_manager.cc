@@ -66,7 +66,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     // PushTaskReply.
     reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
                                        /*inner_ids=*/{}, caller_id, caller_address,
-                                       call_site, -1);
+                                       call_site, -1, /*is_reconstructable=*/true);
   }
 
   {
@@ -76,6 +76,50 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
                   .second);
     num_pending_tasks_++;
   }
+}
+
+Status TaskManager::ResubmitTask(const TaskID &task_id,
+                                 std::vector<ObjectID> *task_deps) {
+  TaskSpecification spec;
+  bool resubmit = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return Status::Invalid("Task spec missing");
+    }
+
+    if (!it->second.pending) {
+      resubmit = true;
+      it->second.pending = true;
+      RAY_CHECK(it->second.num_retries_left > 0);
+      it->second.num_retries_left--;
+      spec = it->second.spec;
+    }
+  }
+
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps->push_back(spec.ArgId(i, j));
+      }
+    } else {
+      const auto &inlined_ids = spec.ArgInlinedIds(i);
+      for (const auto &inlined_id : inlined_ids) {
+        task_deps->push_back(inlined_id);
+      }
+    }
+  }
+
+  if (!task_deps->empty()) {
+    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+  }
+
+  if (resubmit) {
+    retry_task_callback_(spec, /*delay=*/false);
+  }
+
+  return Status::OK();
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -127,6 +171,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   std::vector<ObjectID> direct_return_ids;
+  std::vector<ObjectID> plasma_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -136,7 +181,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // Mark it as in plasma with a dummy object.
       RAY_CHECK(
           in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
     } else {
+      // NOTE(swang): If a direct object was promoted to plasma, then we do not
+      // record the node ID that it was pinned at, which means that we will not
+      // be able to reconstruct it if the plasma object copy is lost. However,
+      // this is okay because the pinned copy is on the local node, so we will
+      // fate-share with the object if the local node fails.
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
       if (return_object.data().size() > 0) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(
@@ -235,7 +287,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left > 0) {
     RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
-    retry_task_callback_(spec);
+    retry_task_callback_(spec, /*delay=*/true);
   } else {
     // Throttled logging of task failure errors.
     {
@@ -378,13 +430,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
     // a number of retries.
     actor_manager_->PublishTerminatedActor(spec);
   }
-}
-
-TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
-  absl::MutexLock lock(&mu_);
-  auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end());
-  return it->second.spec;
 }
 
 }  // namespace ray

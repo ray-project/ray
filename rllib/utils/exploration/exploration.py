@@ -1,12 +1,13 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
+from ray.rllib.utils.framework import check_framework, try_import_torch, \
     TensorType
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 
-tf = try_import_tf()
+torch, nn = try_import_torch()
 
 
 @DeveloperAPI
@@ -18,22 +19,28 @@ class Exploration:
     implemented exploration schema.
     """
 
-    def __init__(self,
-                 action_space: Space,
-                 num_workers: int,
-                 worker_index: int,
-                 framework: str = "tf"):
+    def __init__(self, action_space: Space, *, framework: str,
+                 policy_config: dict, model: ModelV2, num_workers: int,
+                 worker_index: int):
         """
         Args:
             action_space (Space): The action space in which to explore.
+            framework (str): One of "tf" or "torch".
+            policy_config (dict): The Policy's config dict.
+            model (ModelV2): The Policy's model.
             num_workers (int): The overall number of workers used.
             worker_index (int): The index of the worker using this class.
-            framework (str): One of "tf" or "torch".
         """
         self.action_space = action_space
+        self.policy_config = policy_config
+        self.model = model
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
+        # The device on which the Model has been placed.
+        # This Exploration will be on the same device.
+        self.device = None if not isinstance(self.model, nn.Module) else \
+            next(self.model.parameters()).device
 
     @DeveloperAPI
     def before_compute_actions(self,
@@ -54,9 +61,8 @@ class Exploration:
 
     @DeveloperAPI
     def get_exploration_action(self,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
-                               model: ModelV2,
+                               *,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         """Returns a (possibly) exploratory action and its log-likelihood.
@@ -65,12 +71,9 @@ class Exploration:
         exploratory action.
 
         Args:
-            distribution_inputs (TensorType): The output coming from the model,
-                ready for parameterizing a distribution
-                (e.g. q-values or PG-logits).
-            action_dist_class (class): The action distribution class
-                to use.
-            model (ModelV2): The Model object.
+            action_distribution (ActionDistribution): The instantiated
+                ActionDistribution object to work with when creating
+                exploration actions.
             timestep (int|TensorType): The current sampling time step. It can
                 be a tensor for TF graph mode, otherwise an integer.
             explore (bool): True: "Normal" exploration behavior.
