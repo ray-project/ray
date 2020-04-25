@@ -255,9 +255,18 @@ class TBXLogger(Logger):
         flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in flat_params.items()
-            if type(v) in VALID_SUMMARY_TYPES
+            for k, v in flat_params.items() if type(v) in VALID_SUMMARY_TYPES
         }
+
+        removed = {
+            k: v
+            for k, v in flat_params.items()
+            if type(v) not in VALID_SUMMARY_TYPES
+        }
+        logger.info(
+            "Removed the following hyperparameter values when "
+            "logging to tensorboard: %s", str(removed))
+
         from tensorboardX.summary import hparams
         try:
             experiment_tag, session_start_tag, session_end_tag = hparams(
