@@ -56,7 +56,6 @@ class DistributedTorchRunner(TorchRunner):
             world_size (int): the total number of runners.
         """
         self.world_rank = world_rank
-        self.config["world_rank"] = world_rank
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
