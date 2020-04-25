@@ -351,11 +351,8 @@ If you are interested in implementing or contributing a new Search Algorithm, th
 Model-Based Suggestion Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
+Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
 
-.. autoclass:: ray.tune.suggest.SuggestionAlgorithm
+.. autoclass:: ray.tune.suggest.Searcher
     :show-inheritance:
     :noindex:
-
-    .. automethod:: ray.tune.suggest.SuggestionAlgorithm.suggest
-        :noindex:
