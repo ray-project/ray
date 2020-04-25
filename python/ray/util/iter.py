@@ -205,7 +205,7 @@ class ParallelIterator(Generic[T]):
         """Remotely apply fn to each item in this iterator, at most max_concur at a
         time. This should be used to achieve a high degree of parallelism
         without the overhead of increasing the number of shards (which are
-        actor based).
+        actor based). This provides the same semantic guarantees as `for_each`.
 
         A performance note: This function maintains its own internal buffer. If
         `async_queue_depth` is `n` and max_concur is `k` then the total number
