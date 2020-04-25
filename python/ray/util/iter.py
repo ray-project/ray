@@ -215,12 +215,16 @@ class ParallelIterator(Generic[T]):
 
         Args:
             fn (func): function to apply to each item.
-            max_concur (int): the max number of concurrent calls to fn per shard
-            resources (dict): the resources that the function requires to execute.
+            max_concur (int): max number of concurrent calls to fn per shard.
+            resources (dict): resources that the function requires to execute.
                 This has the same default as `ray.remote`.
 
         Examples:
-            >>> next(from_range(4).for_each_concur(lambda x: x * 2, max_concur=2, resources={"num_cpus": 0.1}).gather_sync())
+            >>> next(from_range(4).for_each_concur(
+                        lambda x: x * 2,
+                        max_concur=2,
+                        resources={"num_cpus": 0.1}).gather_sync()
+                )
             ... [0, 2, 4, 8]
 
         """
