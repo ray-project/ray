@@ -14,8 +14,8 @@ class Dataset():
         else:
             par_iter = ParallelIterator.from_items(iterable)
         if download_func:
-            par_iter = par_iter.for_each_concur(download_func,
-                max_concur=max_concur)
+            par_iter = par_iter.for_each_concur(
+                download_func, max_concur=max_concur)
             # par_iter = par_iter.for_each(download_func)
         self.iter = par_iter.batch(batch_size)
 
