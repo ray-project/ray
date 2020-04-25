@@ -142,7 +142,7 @@ class ConcurrencyLimiter(Searcher):
     """A wrapper algorithm for limiting the number of concurrent trials.
 
     Args:
-        search_alg (Searcher): Searcher object that the
+        searcher (Searcher): Searcher object that the
             ConcurrencyLimiter will manage.
 
     """
@@ -153,7 +153,7 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         self.live_trials = set()
         super(ConcurrencyLimiter, self).__init__(
-            metric=self.search_alg.metric, mode=self.search_alg.mode)
+            metric=self.searcher.metric, mode=self.searcher.mode)
 
     def suggest(self, trial_id):
         if len(self.live_trials) >= self.max_concurrent:
@@ -165,7 +165,8 @@ class ConcurrencyLimiter(Searcher):
         if trial_id not in self.live_trials:
             return
         else:
-            self.searcher.observe(trial_id, result=result, error=error)
+            self.searcher.on_trial_complete(
+                trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
 
     def save(self, checkpoint_dir):
