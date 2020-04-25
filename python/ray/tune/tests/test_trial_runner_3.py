@@ -29,11 +29,11 @@ class TrialRunnerTest3(unittest.TestCase):
         def on_step_begin(self, trialrunner):
             self._update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
-            setattr(self, "pre_step", cnt + 1)
+            self.pre_step = cnt + 1
 
         def on_step_end(self, trialrunner):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
-            setattr(self, "post_step", 1 + cnt)
+            self.post_step = 1 + cnt
 
         import types
         runner.trial_executor.on_step_begin = types.MethodType(
@@ -381,7 +381,7 @@ class TrialRunnerTest3(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
-        for i in range(5):
+        for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
@@ -402,14 +402,14 @@ class TrialRunnerTest3(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
-        for i in range(5):
+        for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 1)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
-        for i in range(5):
+        for _ in range(5):
             runner2.step()
         self.assertEquals(count_checkpoints(tmpdir), 2)
 
@@ -481,7 +481,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         }
         repeat_alg.add_configurations({"test": experiment_spec})
         runner = TrialRunner(search_alg=repeat_alg)
-        for i in range(repeat * 2):
+        for _ in range(repeat * 2):
             runner.step()
 
         trials = runner.get_trials()

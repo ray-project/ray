@@ -299,7 +299,7 @@ class VariantGeneratorTest(unittest.TestCase):
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:
-            assert False
+            raise
 
 
 if __name__ == "__main__":

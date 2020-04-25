@@ -191,7 +191,11 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=loss)
 
         search_alg = HyperOptSearch(
-            space, metric="loss", mode="min", random_state_seed=5)
+            space,
+            metric="loss",
+            mode="min",
+            random_state_seed=5,
+            n_initial_points=1)
         return search_alg, cost
 
 
