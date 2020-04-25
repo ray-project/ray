@@ -179,7 +179,6 @@ class TestTorchRunner(unittest.TestCase):
 class TestLocalDistributedRunner(unittest.TestCase):
     def setUp(self):
         os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-        print(os.environ.get("CUDA_VISIBLE_DEVICES"))
         ray.init(num_gpus=4)
 
     def tearDown(self):

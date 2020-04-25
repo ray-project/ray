@@ -234,7 +234,7 @@ def reserve_cuda_device(retries=20):
             unused_actors.append(_dummy_actor)
             _dummy_actor = None
         else:
-            logger.info("Found matching device %s", reserved_device)
+            logger.debug("Found matching device %s", reserved_device)
             success = True
             for actor in unused_actors:
                 actor.__ray_terminate__.remote()
@@ -292,7 +292,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def _set_cuda_device(self, device_str):
         """Sets the CUDA device for this current local worker."""
         if self._is_set:
-            raise Exception("should not be set twice..")
+            raise RuntimeError("CUDA devices already set.")
         self._is_set = True
 
         # This is idempotent. We need to call it
@@ -300,7 +300,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
         _init_cuda_context()
         assert isinstance(device_str, str)
         self.local_device = device_str
-        logger.info("Setting local device: %s", self.local_device)
+        logger.debug("Setting local device: %s", self.local_device)
         try:
             torch.cuda.set_device(int(self.local_device))
         except RuntimeError:
