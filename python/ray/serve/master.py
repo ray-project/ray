@@ -78,9 +78,7 @@ class ServeMaster:
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
-        # NOTE(edoakes): the metric monitor is not currently started because
-        # it is currently being rewritten.
-        # self._get_or_start_metric_monitor(metric_gc_window_s)
+        self._get_or_start_metric_monitor(metric_gc_window_s)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -304,7 +302,7 @@ class ServeMaster:
                     backend_tag, replica_tag, worker_handle)
 
                 # Register the worker with the metric monitor.
-                # self.get_metric_monitor()[0].add_target.remote(worker_handle)
+                self.metric_monitor.add_target.remote(worker_handle)
 
         self.replicas_to_start.clear()
 
