@@ -705,7 +705,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandleCancelTask(const rpc::CancelTaskRequest &request,
                         rpc::CancelTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
