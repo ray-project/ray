@@ -3,7 +3,6 @@ import pickle
 import threading
 from abc import ABC, abstractmethod
 
-import ray
 from ray.streaming.collector import OutputCollector
 from ray.streaming.config import Config
 from ray.streaming.context import RuntimeContextImpl
