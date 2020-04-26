@@ -808,8 +808,27 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };
+  auto on_done = [this, object_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [object_id, subscribe, done](
+                          const Status &status,
+                          const std::vector<rpc::ObjectTableData> &result) {
+        if (status.ok()) {
+          gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                     result);
+          subscribe(object_id, notification);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
   auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Binary(),
-                                                       on_subscribe, done);
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
