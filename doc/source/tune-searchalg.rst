@@ -37,35 +37,6 @@ Read about this in the :ref:`Grid/Random Search API <tune-grid-random>`.
 Note that other search algorithms will require a different search space declaration than the default Tune format.
 
 
-Repeated Evaluations
---------------------
-
-Use ``ray.tune.suggest.Repeater`` to average over multiple evaluations of the same
-hyperparameter configurations. This is useful in cases where the evaluated
-training procedure has high variance (i.e., in reinforcement learning).
-
-By default, ``Repeater`` will take in a ``repeat`` parameter and a ``search_alg``.
-The ``search_alg`` will suggest new configurations to try, and the ``Repeater``
-will run ``repeat`` trials of the configuration. It will then average the
-``search_alg.metric`` from the final results of each repeated trial.
-
-See the API documentation (:ref:`repeater-doc`) for more details.
-
-.. code-block:: python
-
-    from ray.tune.suggest import Repeater
-
-    search_alg = BayesOpt(...)
-    re_search_alg = Repeater(search_alg, repeat=10)
-
-    # Repeat 2 samples 10 times each.
-    tune.run(trainable, num_samples=20, search_alg=re_search_alg)
-
-.. note:: This does not apply for grid search and random search.
-.. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
-    Early termination can negatively affect the average reported metric.
-
-
 BayesOpt Search
 ---------------
 
@@ -92,13 +63,7 @@ An example of this can be found in `bayesopt_example.py <https://github.com/ray-
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
-The ``HyperOptSearch`` is a SearchAlgorithm that is backed by `HyperOpt <http://hyperopt.github.io/hyperopt>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using HyperOptSearch.
-
-In order to use this search algorithm, you will need to install HyperOpt via the following command:
-
-.. code-block:: bash
-
-    $ pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
+The ``HyperOptSearch`` is a SearchAlgorithm that is backed by `HyperOpt <http://hyperopt.github.io/hyperopt>`__ to perform sequential model-based hyperparameter optimization.
 
 This algorithm requires using the `HyperOpt search space specification <https://github.com/hyperopt/hyperopt/wiki/FMin>`__. You can use HyperOptSearch like follows:
 
@@ -112,34 +77,6 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
     :show-inheritance:
     :noindex:
 
-SigOpt Search
--------------
-
-The ``SigOptSearch`` is a SearchAlgorithm that is backed by `SigOpt <https://sigopt.com/>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SigOptSearch.
-
-In order to use this search algorithm, you will need to install SigOpt via the following command:
-
-.. code-block:: bash
-
-    $ pip install sigopt
-
-This algorithm requires the user to have a `SigOpt API key <https://app.sigopt.com/docs/overview/authentication>`__ to make requests to the API. Store the API token as an environment variable named ``SIGOPT_KEY`` like follows:
-
-.. code-block:: bash
-
-    $ export SIGOPT_KEY= ...
-
-This algorithm requires using the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__. You can use SigOptSearch like follows:
-
-.. code-block:: python
-
-    tune.run(... , search_alg=SigOptSearch(sigopt_space, ... ))
-
-An example of this can be found in `sigopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__.
-
-.. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
-    :show-inheritance:
-    :noindex:
 
 Nevergrad Search
 ----------------
@@ -166,29 +103,6 @@ An example of this can be found in `nevergrad_example.py <https://github.com/ray
     :show-inheritance:
     :noindex:
 
-Scikit-Optimize Search
-----------------------
-
-The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
-
-In order to use this search algorithm, you will need to install Scikit-Optimize via the following command:
-
-.. code-block:: bash
-
-    $ pip install scikit-optimize
-
-This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/stable/auto_examples/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
-
-.. code-block:: python
-
-    optimizer = Optimizer(dimension, ...)
-    tune.run(... , search_alg=SkOptSearch(optimizer, parameter_names, ... ))
-
-An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
-
-.. autoclass:: ray.tune.suggest.skopt.SkOptSearch
-    :show-inheritance:
-    :noindex:
 
 Dragonfly Search
 ----------------
@@ -339,23 +253,5 @@ This algorithm allows users to mix continuous dimensions and discrete dimensions
 An example of this can be found in `zoopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/zoopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
-    :show-inheritance:
-    :noindex:
-
-Contributing a New Algorithm
-----------------------------
-
-If you are interested in implementing or contributing a new Search Algorithm, the API is straightforward:
-
-.. autoclass:: ray.tune.suggest.SearchAlgorithm
-    :members:
-    :noindex:
-
-Model-Based Suggestion Algorithms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
-
-.. autoclass:: ray.tune.suggest.Searcher
     :show-inheritance:
     :noindex:

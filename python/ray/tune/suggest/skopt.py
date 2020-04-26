@@ -68,14 +68,20 @@ class SkOptSearch(Searcher):
         use_early_stopped_trials: Deprecated.
 
     Example:
-        >>> from skopt import Optimizer
-        >>> optimizer = Optimizer([(0,20),(-100,100)])
-        >>> current_best_params = [[10, 0], [15, -20]]
-        >>> algo = SkOptSearch(optimizer,
-        >>>     ["width", "height"],
-        >>>     metric="mean_loss",
-        >>>     mode="min",
-        >>>     points_to_evaluate=current_best_params)
+
+    .. code-block:: python
+
+        from skopt import Optimizer
+        optimizer = Optimizer([(0,20),(-100,100)])
+        current_best_params = [[10, 0], [15, -20]]
+        algo = SkOptSearch(optimizer,
+            ["width", "height"],
+            metric="mean_loss",
+            mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(func, search_alg=algo)
+        algo.save("./logdir")
     """
 
     def __init__(self,

@@ -88,6 +88,18 @@ class Repeater(Searcher):
             Trainable/Function config which corresponds to the index of the
             repeated trial. This can be used for seeds. Defaults to True.
 
+    Example:
+
+    .. code-block:: python
+
+        from ray.tune.suggest import Repeater
+
+        search_alg = BayesOptSearch(...)
+        re_search_alg = Repeater(search_alg, repeat=10)
+
+        # Repeat 2 samples 10 times each.
+        tune.run(trainable, num_samples=20, search_alg=re_search_alg)
+
     """
 
     def __init__(self, searcher, repeat=1, set_index=True):

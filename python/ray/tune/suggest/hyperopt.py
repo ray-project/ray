@@ -19,12 +19,20 @@ logger = logging.getLogger(__name__)
 class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
-    Requires HyperOpt to be installed from source.
+    To use this search algorithm, you will need to install HyperOpt:
+
+    .. code-block:: bash
+
+        pip install -U hyperopt
+
+    Note that this class does not extend
+    ``ray.tune.suggest.BasicVariantGenerator``. This means that you will not
+    be able to leverage Tune's default ``grid_search`` and random search
+    primitives when using HyperOptSearch.
+
     Uses the Tree-structured Parzen Estimators algorithm, although can be
     trivially extended to support any algorithm HyperOpt uses. Externally
-    added trials will not be tracked by HyperOpt. Trials of the current run
-    can be saved using save method, trials of a previous run can be loaded
-    using restore method, thus enabling a warm start feature.
+    added trials will not be tracked by HyperOpt.
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
