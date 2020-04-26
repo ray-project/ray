@@ -133,7 +133,7 @@ class ExternalEnv(threading.Thread):
         episode.log_action(observation, action)
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, info=None):
+    def log_returns(self, episode_id, reward, done, info=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -144,12 +144,16 @@ class ExternalEnv(threading.Thread):
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Optional info dict.
+            done (bool): Indicates if episode is done. (Obsolete as episode.done(obs) overrides this)
         """
 
         episode = self._get(episode_id)
         episode.cur_reward += reward
+        episode.cur_done = done
+
         if info:
             episode.cur_info = info or {}
+
 
     @PublicAPI
     def end_episode(self, episode_id, observation):
@@ -238,6 +242,9 @@ class _ExternalEnvEpisode:
 
     def _send(self):
         if self.multiagent:
+            if not self.training_enabled:
+                for agent_id in self.cur_info_dict:
+                    self.cur_info_dict[agent_id]["training_enabled"] = False
             item = {
                 "obs": self.new_observation_dict,
                 "reward": self.cur_reward_dict,
@@ -261,8 +268,8 @@ class _ExternalEnvEpisode:
             self.new_observation = None
             self.new_action = None
             self.cur_reward = 0.0
-        if not self.training_enabled:
-            item["info"]["training_enabled"] = False
+            if not self.training_enabled:
+                item["info"]["training_enabled"] = False
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()

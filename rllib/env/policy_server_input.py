@@ -90,7 +90,6 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         logger.info("Starting connector server at {}:{}".format(address, port))
         logger.info("")
         thread = threading.Thread(name="server", target=self.serve_forever)
-        thread.daemon = True
         thread.start()
 
     @override(InputReader)
@@ -180,7 +179,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             elif command == PolicyClient.LOG_RETURNS:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.log_returns(
-                    args["episode_id"], args["reward"], args["info"])
+                    args["episode_id"], args["reward"], args["done"], args["info"])
             elif command == PolicyClient.END_EPISODE:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(args["episode_id"],
@@ -188,5 +187,11 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             else:
                 raise ValueError("Unknown command: {}".format(command))
             return response
+
+        def log_message(self, format, *args):
+            # Suppress the 200 OK responses.
+            if any(args) == 200:
+                return
+
 
     return Handler
