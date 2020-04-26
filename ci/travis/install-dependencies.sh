@@ -132,24 +132,6 @@ install_npm_project() {
   fi
 }
 
-# Takes a list of pip requirements and prints the ones that don't have known incompatibilities with the current system.
-filter_compatible_pip_requirements() {
-  (
-    set +x  # this function gets noisy, so disable tracing
-    local req to_keep=()
-    for req in "$@"; do
-      local reqname="${req%%=*}"
-      reqname="${reqname%%<*}"
-      reqname="${reqname%%>*}"
-      case "${OSTYPE},${reqname}" in
-        msys,blist) ;;
-        *) to_keep+=("${req}");;
-      esac
-    done
-    printf "%s\n" "${to_keep[@]}"
-  )
-}
-
 install_dependencies() {
 
   install_base
@@ -177,10 +159,8 @@ install_dependencies() {
     pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0  # Python linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
-    local filename
-    for filename in "${WORKSPACE_DIR}"/doc/requirements-rtd.txt "${WORKSPACE_DIR}"/doc/requirements-doc.txt; do
-      pip install $(filter_compatible_pip_requirements $(cat -- "${filename}"))
-    done
+    pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+    pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
   fi
 
   # Install modules needed in all jobs.
