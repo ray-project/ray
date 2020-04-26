@@ -176,11 +176,11 @@ class AzureNodeProvider(NodeProvider):
         # TODO: restart deallocated nodes if possible
         resource_group = self.provider_config["resource_group"]
 
-        # load the template
-        template_path = os.path.join(
-            os.path.dirname(__file__), "azure-vm-template.json")
-        with open(template_path, "r") as template_file_fd:
-            template = json.load(template_file_fd)
+        # load the template file
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(current_path, "azure-vm-template.json")
+        with open(template_path, "r") as template_fp:
+            template = json.load(template_fp)
 
         # get the tags
         config_tags = node_config.get("tags", {}).copy()
@@ -189,28 +189,33 @@ class AzureNodeProvider(NodeProvider):
 
         name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
         unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
+        vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
+        use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
-        parameters = node_config["azure_arm_parameters"].copy()
-        parameters["vmName"] = "{name}-{id}".format(
-            name=name_tag, id=unique_id)
-        parameters["provisionPublicIp"] = not self.provider_config.get(
-            "use_internal_ips", False)
-        parameters["vmTags"] = config_tags
-        parameters["vmCount"] = count
+        template_params = node_config["azure_arm_parameters"].copy()
+        template_params["vmName"] = vm_name
+        template_params["provisionPublicIp"] = not use_internal_ips
+        template_params["vmTags"] = config_tags
+        template_params["vmCount"] = count
 
-        deployment_properties = {
-            "mode": DeploymentMode.incremental,
-            "template": template,
-            "parameters": {k: {
-                "value": v
+        parameters = {
+            "properties": {
+                "mode": DeploymentMode.incremental,
+                "template": template,
+                "parameters": {
+                    key: {
+                        "value": value
+                    }
+                    for key, value in template_params.items()
+                }
             }
-                           for k, v in parameters.items()}
         }
 
         # TODO: we could get the private/public ips back directly
         self.resource_client.deployments.create_or_update(
-            resource_group, "ray-vm-{}".format(name_tag),
-            deployment_properties).wait()
+            resource_group_name=resource_group,
+            deployment_name="ray-vm-{}".format(name_tag),
+            parameters=parameters).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):
