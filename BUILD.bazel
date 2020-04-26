@@ -823,7 +823,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
-        ":in_memory_store_client",
+        ":gcs_in_memory_store_client",
         ":redis_store_client",
         ":ray_common",
     ],
