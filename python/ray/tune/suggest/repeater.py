@@ -13,7 +13,7 @@ TRIAL_INDEX = "__trial_index__"
 def _warn_num_samples(searcher, num_samples):
     if isinstance(searcher, Repeater) and num_samples % searcher.repeat:
         logger.warning(
-            "`num_samples` is now exepected to be the total number of trials, "
+            "`num_samples` is now expected to be the total number of trials, "
             "including the repeat trials. For example, set num_samples=15 if "
             "you intend to obtain 3 search algorithm suggestions and repeat "
             "each suggestion 5 times. Any leftover trials "
@@ -67,6 +67,11 @@ class _TrialGroup:
 
 class Repeater(Searcher):
     """A wrapper algorithm for repeating trials of same parameters.
+
+    Set tune.run(num_samples=...) to be a multiple of `repeat`. For example,
+    set num_samples=15 if you intend to obtain 3 search algorithm suggestions
+    and repeat each suggestion 5 times. Any leftover trials
+    (num_samples mod repeat) will be ignored.
 
     It is recommended that you do not run an early-stopping TrialScheduler
     simultaneously.
