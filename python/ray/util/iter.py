@@ -220,7 +220,7 @@ class ParallelIterator(Generic[T]):
                 This has the same default as `ray.remote`.
 
         Returns:
-        ParallelIterator[U] a parallel iterator whose elements have `fn` applied. 
+            ParallelIterator[U] a parallel iterator whose elements have `fn` applied. 
 
 
         Examples:
