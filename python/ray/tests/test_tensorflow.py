@@ -1,8 +1,10 @@
 from numpy.testing import assert_almost_equal
-import tensorflow.compat.v1 as tf
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.utils.framework import try_import_tf
+
+tf = try_import_tf()
 
 
 def make_linear_network(w_name=None, b_name=None):

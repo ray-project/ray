@@ -1661,10 +1661,31 @@ def kill(actor):
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
-
     worker = ray.worker.global_worker
     worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, False)
+
+
+def cancel(object_id, force=False):
+    """Kill a task forcefully.
+
+    This will interrupt any running tasks on the actor, causing them to fail
+    immediately. Any atexit handlers installed in the actor will still be run.
+
+    If this actor is reconstructable, it will be attempted to be reconstructed.
+
+    Args:
+        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
+        of the task to kill.
+    """
+    worker = ray.worker.global_worker
+    worker.check_connected()
+
+    if not isinstance(object_id, ray.ObjectID):
+        raise TypeError(
+            "ray.cancel() only supported for non-actor object IDs. "
+            "Got: {}.".format(type(object_id)))
+    return worker.core_worker.cancel_task(object_id, force)
 
 
 def _mode(worker=global_worker):

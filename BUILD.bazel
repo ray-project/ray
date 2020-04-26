@@ -360,6 +360,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
+        ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":node_manager_rpc",
         ":raylet_lib",
@@ -862,6 +863,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
+        ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":redis_store_client",
     ],
@@ -1085,6 +1087,23 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_in_memory_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/in_memory_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/in_memory_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+    ],
+)
+
+cc_library(
     name = "store_client_test_lib",
     hdrs = [
         "src/ray/gcs/store_client/test/store_client_test_base.h",
@@ -1106,6 +1125,17 @@ cc_test(
     ],
     deps = [
         ":redis_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "in_memory_store_client_test",
+    srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs_in_memory_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
