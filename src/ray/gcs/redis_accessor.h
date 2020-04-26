@@ -195,7 +195,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
@@ -205,8 +205,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &data_ptr,

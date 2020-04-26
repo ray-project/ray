@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_TASK_INFO_HANDLER_IMPL_H
 #define RAY_GCS_TASK_INFO_HANDLER_IMPL_H
 
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -24,8 +25,9 @@ namespace rpc {
 /// This implementation class of `TaskInfoHandler`.
 class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
  public:
-  explicit DefaultTaskInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultTaskInfoHandler(gcs::RedisGcsClient &gcs_client,
+                                  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
 
   void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
                      SendReplyCallback send_reply_callback) override;
@@ -45,6 +47,7 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
 
  private:
   gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 };
 
 }  // namespace rpc

@@ -293,11 +293,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTask(const TaskID &task_id) {
+  void UnsubscribeTask(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -340,11 +338,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTaskLease(const TaskID &task_id) {
+  void UnsubscribeTaskLease(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
   bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
@@ -688,7 +684,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
 
   // Cancel subscription to a task.
-  ASSERT_TRUE(UnsubscribeTask(task_id));
+  UnsubscribeTask(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -714,17 +710,17 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitPendingDone(task_lease_count, 2);
+  WaitPendingDone(task_lease_count, 1);
 
   // Cancel subscription to a task lease.
-  ASSERT_TRUE(UnsubscribeTaskLease(task_id));
+  UnsubscribeTaskLease(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
 
   // Assert unsubscribe succeeded.
   usleep(100 * 1000);
-  EXPECT_EQ(task_lease_count, 2);
+  EXPECT_EQ(task_lease_count, 1);
 
   // Attempt task reconstruction to GCS.
   auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();

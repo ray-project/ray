@@ -389,9 +389,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
   return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                               const StatusCallback &done) {
-  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AsyncAddTaskLease(
@@ -414,9 +413,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
   return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                                        const StatusCallback &done) {
-  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AttemptTaskReconstruction(
