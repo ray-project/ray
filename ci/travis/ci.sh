@@ -100,25 +100,11 @@ lint_python() {
 }
 
 lint_bazel() {
-  local platform="" architecture="" suffix=".tar.gz"
-  case "${OSTYPE}" in
-    linux*) platform=linux;;
-    darwin*) platform=darwin;;
-    msys*) platform=windows; suffix=".zip";;
-  esac
   # Run buildifier without affecting external environment variables
   (
     # TODO: Move installing Go & building buildifier to the dependency installation step?
     if [ ! -d "${GOROOT}" ]; then
-      local url="https://dl.google.com/go/go1.14.2.${platform}-amd64${suffix}"
-      local filename="${GOROOT%/*}/${url##*/}"
-      if [ "${suffix}" = ".zip" ]; then
-        curl -s -L "${url}" -o "${filename}"
-        unzip -q -d "${GOROOT%/*}" -- "${filename}"
-        rm -f -- "${filename}"
-      else
-        curl -s -L "${url}" | tar -C "${GOROOT%/*}" -xz
-      fi
+      curl -s -L "https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz" | tar -C "${GOROOT%/*}" -xz
     fi
     mkdir -p -- "${GOPATH}"
     export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
@@ -145,20 +131,29 @@ lint_web() {
 }
 
 _lint() {
+  local platform=""
+  case "${OSTYPE}" in
+    linux*) platform=linux;;
+  esac
+
   if [ -n "${TRAVIS_BRANCH-}" ]; then
     "${ROOT_DIR}"/check-git-clang-format-output.sh
   else
     # TODO(mehrdadn): Implement this on GitHub Actions
     echo "WARNING: Not running clang-format due to TRAVIS_BRANCH not being defined."
   fi
+
   # Run Python linting
   lint_python
+
   # Make sure that the README is formatted properly.
   lint_readme
-  # Run Bazel linter Buildifier.
-  lint_bazel
-  # Run TypeScript and HTML linting.
-  if [ "${OSTYPE}" != msys ]; then
+
+  if [ "${platform}" = linux ]; then
+    # Run Bazel linter Buildifier.
+    lint_bazel
+
+    # Run TypeScript and HTML linting.
     lint_web
   fi
 }

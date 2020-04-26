@@ -278,9 +278,8 @@ script:
   # cc bazel tests (w/o RLlib)
   - ./ci/suppress_output bazel test --config=ci --build_tests_only --show_progress_rate_limit=100 --test_output=errors -- //:all -rllib/...
 
-  - local bazel_targets=()
   # ray serve tests
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then bazel_targets+=(python/ray/serve/...); fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
 
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
@@ -289,9 +288,8 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then bazel_targets+=(python/ray/tests/...); fi
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel_targets+=(python/ray/tune/...); fi
-  - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only "${bazel_targets[@]}"
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 deploy:
