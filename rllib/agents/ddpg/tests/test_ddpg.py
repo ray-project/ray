@@ -92,7 +92,8 @@ class TestDDPG(unittest.TestCase):
         config["use_huber"] = True
         config["huber_threshold"] = 1.0
         config["gamma"] = 0.99
-        config["l2_reg"] = 1e-6
+        # Make this small (seems to introduce errors).
+        config["l2_reg"] = 1e-10
         config["prioritized_replay"] = False
         # Use very simple nets.
         config["actor_hiddens"] = [10]
@@ -317,7 +318,7 @@ class TestDDPG(unittest.TestCase):
             prev_fw_loss = (c, a, t)
 
             # Update weights from our batch (n times).
-            for update_iteration in range(2):
+            for update_iteration in range(10):
                 print("train iteration {}".format(update_iteration))
                 if fw == "tf":
                     in_ = self._get_batch_helper(obs_size, actions, batch_size)
@@ -345,31 +346,22 @@ class TestDDPG(unittest.TestCase):
                     # (instead of sampling from replay buffer).
                     trainer.optimizer._fake_batch = in_
                     trainer.train()
-                    # Compare updated model.
+                    # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():
-                        # Skip target vars.
-                        if re.search("actor_out_1|actor_hidden_0_1|sequential_"
-                                     "[23]]", tf_key):
-                            continue
                         tf_var = tf_weights[tf_key]
-                        torch_var = policy.model.state_dict()[map_[tf_key]]
-                        if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.05)
+                        # Model.
+                        if re.search(
+                                "actor_out_1|actor_hidden_0_1|sequential_"
+                                "[23]", tf_key):
+                            torch_var = policy.target_model.state_dict()[map_[
+                                tf_key]]
+                        # Target model.
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
-                    # Compare target nets.
-                    for tf_key in tf_weights.keys():
-                        # Only target vars.
-                        if not re.search("actor_out_1|actor_hidden_0_1|"
-                                         "sequential_[23]]", tf_key):
-                            continue
-                        tf_var = tf_weights[tf_key]
-                        torch_var = policy.target_model.state_dict()[map_[
-                            tf_key]]
+                            torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.05)
+                            check(tf_var, np.transpose(torch_var), rtol=0.07)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.07)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {
