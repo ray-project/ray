@@ -91,7 +91,6 @@ class DragonflySearch(Searcher):
             self._opt.tell([(points_to_evaluate, evaluated_rewards)])
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
-        self._metric = metric
         # Dragonfly internally maximizes, so "min" => -1
         if mode == "min":
             self._metric_op = -1.
@@ -99,14 +98,21 @@ class DragonflySearch(Searcher):
             self._metric_op = 1.
         self._live_trial_mapping = {}
         super(DragonflySearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
+            metric=metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
         if self._initial_points:
             suggested_config = self._initial_points[0]
             del self._initial_points[0]
         else:
-            suggested_config = self._opt.ask()
+            try:
+                suggested_config = self._opt.ask()
+            except Exception as exc:
+                logger.warning(
+                    "Dragonfly errored when querying. This may be due to a "
+                    "higher level of parallelism than supported. Try reducing "
+                    "parallelism in the experiment: %s", str(exc))
+                return None
         self._live_trial_mapping[trial_id] = suggested_config
         return {"point": suggested_config}
 
