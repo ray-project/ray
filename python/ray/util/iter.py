@@ -219,6 +219,10 @@ class ParallelIterator(Generic[T]):
             resources (dict): resources that the function requires to execute.
                 This has the same default as `ray.remote`.
 
+        Returns:
+        ParallelIterator[U] a parallel iterator whose elements have `fn` applied. 
+
+
         Examples:
             >>> next(from_range(4).for_each_concur(
                         lambda x: x * 2,
