@@ -39,6 +39,8 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Ignore this heartbeat as the node is not registered.
+    // TODO(Shanly): Maybe we should reply the raylet with an error. So the raylet can
+    // crash itself as soon as possible.
     return;
   }
 
@@ -111,15 +113,6 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
             }
           })) {
   // TODO(Shanly): Load node info list from storage synchronously.
-  const auto lookup_callback =
-      [this](Status status, const std::vector<rpc::GcsNodeInfo> &node_info_list) {
-        for (const auto &node_info : node_info_list) {
-          if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
-            AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info));
-          }
-        }
-      };
-  RAY_CHECK_OK(node_info_accessor_.AsyncGetAll(lookup_callback));
   // TODO(Shanly): Load cluster resources from storage synchronously.
 }
 
