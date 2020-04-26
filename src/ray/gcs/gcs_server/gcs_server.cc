@@ -18,7 +18,6 @@
 #include "gcs_actor_manager.h"
 #include "gcs_node_manager.h"
 #include "job_info_handler_impl.h"
-#include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -64,9 +63,8 @@ void GcsServer::Start() {
       new rpc::ActorInfoGrpcService(main_service_, *actor_info_handler_));
   rpc_server_.RegisterService(*actor_info_service_);
 
-  node_info_handler_ = InitNodeInfoHandler();
   node_info_service_.reset(
-      new rpc::NodeInfoGrpcService(main_service_, *node_info_handler_));
+      new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
 
   object_info_handler_ = InitObjectInfoHandler();
@@ -147,11 +145,6 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
   return std::unique_ptr<rpc::DefaultActorInfoHandler>(
       new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
-}
-
-std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
-  return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
-      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_, *gcs_node_manager_));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
