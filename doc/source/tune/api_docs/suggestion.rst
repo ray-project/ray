@@ -3,12 +3,6 @@
 Search Algorithms (tune.suggest)
 ================================
 
-.. _repeater-doc:
-
-Repeater
---------
-
-.. autoclass:: ray.tune.suggest.Repeater
 
 AxSearch
 --------
@@ -54,6 +48,14 @@ ZOOptSearch
 -----------
 
 .. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+
+.. _repeater-doc:
+
+Repeater
+--------
+
+.. autoclass:: ray.tune.suggest.Repeater
+
 
 SearchAlgorithm
 ---------------
