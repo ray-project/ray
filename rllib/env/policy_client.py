@@ -49,8 +49,9 @@ class PolicyClient:
             address (str): Server to connect to (e.g., "localhost:9090").
             inference_mode (str): Whether to use 'local' or 'remote' policy
                 inference for computing actions.
-            update_interval (float or None): If using 'local' inference mode, the
-                policy is refreshed after this many seconds have passed, or None for manual control via client.
+            update_interval (float or None): If using 'local' inference mode,
+                the policy is refreshed after this many seconds have passed,
+                or None for manual control via client.
         """
         self.address = address
         if inference_mode == "local":
@@ -210,7 +211,8 @@ class PolicyClient:
 
     def _update_local_policy(self):
         assert self.inference_thread.is_alive()
-        if self.update_interval is None or time.time() - self.last_updated > self.update_interval:
+        if self.update_interval is None or time.time(
+        ) - self.last_updated > self.update_interval:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,

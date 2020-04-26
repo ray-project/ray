@@ -179,7 +179,8 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             elif command == PolicyClient.LOG_RETURNS:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.log_returns(
-                    args["episode_id"], args["reward"], args["done"], args["info"])
+                    args["episode_id"], args["reward"], args["done"],
+                    args["info"])
             elif command == PolicyClient.END_EPISODE:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(args["episode_id"],
@@ -192,6 +193,5 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             # Suppress the 200 OK responses.
             if any(args) == 200:
                 return
-
 
     return Handler
