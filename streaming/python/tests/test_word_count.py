@@ -1,3 +1,4 @@
+import os
 import ray
 from ray.streaming import StreamingContext
 
@@ -26,14 +27,16 @@ def test_simple_word_count():
     ctx = StreamingContext.Builder() \
         .build()
     sink_file = "/tmp/ray_streaming_test_simple_word_count.txt"
+    if os.path.exists(sink_file):
+        os.remove(sink_file)
 
     def sink_func(x):
-        with open(sink_file, "w") as f:
+        with open(sink_file, "a") as f:
             f.write("{}:{},".format(x[0], x[1]))
 
     ctx.from_values("a", "b", "c") \
         .set_parallelism(1) \
-        .flat_map(lambda x: x + x) \
+        .flat_map(lambda x: [x, x]) \
         .map(lambda x: (x, 1)) \
         .key_by(lambda x: x[0]) \
         .reduce(lambda old_value, new_value:
@@ -45,11 +48,11 @@ def test_simple_word_count():
     ray.shutdown()
     with open(sink_file, "r") as f:
         result = f.read()
-        assert "aa:1" in result
-        assert "bb:1" in result
-        assert "cc:1" in result
+        assert "a:2" in result
+        assert "b:2" in result
+        assert "c:2" in result
 
 
 if __name__ == "__main__":
-    test_word_count()
+    # test_word_count()
     test_simple_word_count()
