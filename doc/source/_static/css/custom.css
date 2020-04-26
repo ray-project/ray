@@ -18,3 +18,15 @@
 .rst-content .section ol p, .rst-content .section ul p {
     margin-bottom: 0px;
 }
+
+div.sphx-glr-bigcontainer {
+    display: inline-block;
+    width: 100%
+}
+
+
+td.tune-colab, th.tune-colab {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}

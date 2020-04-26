@@ -1,3 +1,5 @@
+.. _searchalg-ref:
+
 Search Algorithms (tune.suggest)
 ================================
 
