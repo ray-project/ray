@@ -294,6 +294,12 @@ build() {
 
 run() {
   local result=0 flush_logs=0
+  local should_test_wheels=""
+  case "${OSTYPE}" in
+    darwin*) should_test_wheels="${MAC_WHEELS-}";;
+    linux*) should_test_wheels="${LINUX_WHEELS-}";;
+    msys*) should_test_wheels="${WINDOWS_WHEELS-}";;
+  esac
   ##### BEGIN TASKS #####
 
   if [ "${LINT-}" = 1 ]; then
@@ -304,7 +310,7 @@ run() {
     test_python
   fi
 
-  if [ "${RAY_INSTALL_JAVA-}" = 1 ]; then
+  if [ "${RAY_INSTALL_JAVA-}" = 1 ] && [ "${should_test_wheels}" != 1 ]; then
     "${WORKSPACE_DIR}"/java/test.sh
   fi
 
@@ -312,11 +318,6 @@ run() {
     bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
   fi
 
-  local should_test_wheels=""
-  case "${OSTYPE}" in
-    linux*) should_test_wheels="${LINUX_WHEELS-}";;
-    darwin*) should_test_wheels="${MAC_WHEELS-}";;
-  esac
   if [ "${should_test_wheels}" = 1 ]; then
     "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
   fi
