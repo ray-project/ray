@@ -710,7 +710,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitPendingDone(task_lease_count, 2);
+  WaitPendingDone(task_lease_count, 1);
 
   // Cancel subscription to a task lease.
   UnsubscribeTaskLease(task_id);
@@ -720,7 +720,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Assert unsubscribe succeeded.
   usleep(100 * 1000);
-  EXPECT_EQ(task_lease_count, 2);
+  EXPECT_EQ(task_lease_count, 1);
 
   // Attempt task reconstruction to GCS.
   auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
