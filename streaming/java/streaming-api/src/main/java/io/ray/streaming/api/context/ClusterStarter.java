@@ -37,14 +37,7 @@ class ClusterStarter {
     for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
       File file = new File(socket);
       if (file.exists()) {
-        file.delete();
-      }
-    }
-
-    // Delete existing socket files.
-    for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
-      File file = new File(socket);
-      if (file.exists()) {
+        LOG.info("Delete existing socket file {}", file);
         file.delete();
       }
     }
@@ -118,7 +111,10 @@ class ClusterStarter {
           .redirectOutput(ProcessBuilder.Redirect.INHERIT)
           .redirectError(ProcessBuilder.Redirect.INHERIT);
       Process process = processBuilder.start();
-      process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
+      boolean exit = process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
+      if (!exit) {
+        process.destroyForcibly();
+      }
       return process.exitValue() == 0;
     } catch (Exception e) {
       throw new RuntimeException("Error executing command " + String.join(" ", command), e);
