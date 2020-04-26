@@ -39,12 +39,22 @@ class TaskFinisherInterface {
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
+  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
+class TaskResubmissionInterface {
+ public:
+  virtual Status ResubmitTask(const TaskID &task_id,
+                              std::vector<ObjectID> *task_deps) = 0;
 
-class TaskManager : public TaskFinisherInterface {
+  virtual ~TaskResubmissionInterface() {}
+};
+
+using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+
+class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
@@ -72,6 +82,19 @@ class TaskManager : public TaskFinisherInterface {
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
                       const TaskSpecification &spec, const std::string &call_site,
                       int max_retries = 0);
+
+  /// Resubmit a task that has completed execution before. This is used to
+  /// reconstruct objects stored in Plasma that were lost.
+  ///
+  /// \param[in] task_id The ID of the task to resubmit.
+  /// \param[out] task_deps The object dependencies of the resubmitted task,
+  /// i.e. all arguments that were not inlined in the task spec. The caller is
+  /// responsible for making sure that these dependencies become available, so
+  /// that the resubmitted task can run. This is only populated if the task was
+  /// not already pending and was successfully resubmitted.
+  /// \return OK if the task was successfully resubmitted or was
+  /// already pending, Invalid if the task spec is no longer present.
+  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -108,8 +131,14 @@ class TaskManager : public TaskFinisherInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
+  /// Set number of retries to zero for a task that is being canceled.
+  ///
+  /// \param[in] task_id to cancel.
+  /// \return Whether the task was pending and was marked for cancellation.
+  bool MarkTaskCanceled(const TaskID &task_id) override;
+
   /// Return the spec for a pending task.
-  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///

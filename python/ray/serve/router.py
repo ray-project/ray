@@ -2,7 +2,6 @@ import asyncio
 import copy
 from collections import defaultdict
 from typing import DefaultDict, List
-import ray.cloudpickle as pickle
 
 # Note on choosing blist instead of stdlib heapq
 # 1. pop operation should be O(1) (amortized)
@@ -13,6 +12,7 @@ import ray.cloudpickle as pickle
 import blist
 
 import ray
+import ray.cloudpickle as pickle
 from ray.serve.utils import logger
 
 
@@ -110,7 +110,7 @@ class Router:
     3. When there is only 1 backend ready, we will only use that backend.
     """
 
-    def __init__(self):
+    async def __init__(self):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   service_queue.
@@ -149,6 +149,16 @@ class Router:
         # operation at a time simplifies design overhead for custom queuing and
         # batching polcies.
         self.flush_lock = asyncio.Lock()
+
+        # Fetch the worker handles from the master actor. We use a "pull-based"
+        # approach instead of pushing them from the master so that the router
+        # can transparently recover from failure.
+        ray.serve.init()
+        master_actor = ray.serve.api._get_master_actor()
+        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+        for backend, replica_dict in backend_dict.items():
+            for worker in replica_dict.values():
+                await self.add_new_worker(backend, worker)
 
     def is_ready(self):
         return True
@@ -197,21 +207,21 @@ class Router:
         await self.worker_queues[backend].put(worker_handle)
         await self.flush()
 
-    async def remove_and_destroy_replica(self, backend, replica_handle):
+    async def remove_worker(self, backend, worker_handle):
         # We need this lock because we modify worker_queue here.
         async with self.flush_lock:
             old_queue = self.worker_queues[backend]
             new_queue = asyncio.Queue()
-            target_id = replica_handle._actor_id
+            target_id = worker_handle._actor_id
 
             while not old_queue.empty():
-                replica_handle = await old_queue.get()
-                if replica_handle._actor_id != target_id:
-                    await new_queue.put(replica_handle)
+                worker_handle = await old_queue.get()
+                if worker_handle._actor_id != target_id:
+                    await new_queue.put(worker_handle)
 
             self.worker_queues[backend] = new_queue
-            # TODO: consider await this with timeout, or use ray_kill
-            replica_handle.__ray_terminate__.remote()
+            # TODO: consider awaiting this on a timeout or using ray.kill().
+            worker_handle.__ray_terminate__.remote()
 
     async def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
@@ -288,6 +298,8 @@ class Router:
                     backend, buffer_queue, worker_queue, max_batch_size)
 
     async def _do_query(self, backend, worker, req):
+        # If the worker died, this will be a RayActorError. Just return it and
+        # let the HTTP proxy handle the retry logic.
         result = await worker.handle_request.remote(req)
         await self.mark_worker_idle(backend, worker)
         return result

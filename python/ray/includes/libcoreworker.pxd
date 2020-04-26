@@ -82,7 +82,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
-        CRayStatus SubmitTask(
+        void SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries)
@@ -97,6 +97,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_reconstruction)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -195,6 +196,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool install_failure_signal_handler
         c_string node_ip_address
         int node_manager_port
+        c_string raylet_ip_address
         c_string driver_name
         c_string stdout_file
         c_string stderr_file
@@ -213,6 +215,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
+        (c_bool() nogil) kill_main
         CCoreWorkerOptions()
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":

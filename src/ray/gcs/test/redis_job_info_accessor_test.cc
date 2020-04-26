@@ -31,7 +31,7 @@ class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
       JobID job_id = JobID::FromInt(i);
       std::shared_ptr<JobTableData> job_data_ptr =
           CreateJobTableData(job_id, /*is_dead*/ false, /*timestamp*/ 1,
-                             /*node_manager_address*/ "", /*driver_pid*/ i);
+                             /*driver_ip_address*/ "", /*driver_pid*/ i);
       id_to_data_[job_id] = job_data_ptr;
     }
   }

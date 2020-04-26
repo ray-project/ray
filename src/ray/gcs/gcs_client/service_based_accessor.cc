@@ -20,8 +20,7 @@ namespace gcs {
 
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      job_sub_executor_(client_impl->GetRedisGcsClient().job_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
@@ -64,13 +63,15 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing finished job.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    JobTableData job_data;
+    job_data.ParseFromString(data);
     if (job_data.is_dead()) {
-      subscribe(job_id, job_data);
+      subscribe(JobID::FromBinary(id), job_data);
     }
   };
   Status status =
-      job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+      client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing finished job.";
   return status;
 }
@@ -79,7 +80,7 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : subscribe_id_(ClientID::FromRandom()),
       client_impl_(client_impl),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().log_based_actor_table()) {}
+      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -102,6 +103,22 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(task_spec.IsActorCreationTask() && callback);
+  rpc::CreateActorRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreateActor(
+      request, [callback](const Status &, const rpc::CreateActorReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
       });
   return Status::OK();
 }
@@ -279,23 +296,30 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
-  client_impl_->GetGcsRpcClient().RegisterNode(
-      request, [this, node_id, &local_node_info](const Status &status,
-                                                 const rpc::RegisterNodeReply &reply) {
-        if (status.ok()) {
-          local_node_info_.CopyFrom(local_node_info);
-          local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
-        }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                       << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, local_node_info,
+                    node_id](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().RegisterNode(
+        request, [this, node_id, local_node_info, done_callback](
+                     const Status &status, const rpc::RegisterNodeReply &reply) {
+          if (status.ok()) {
+            local_node_info_.CopyFrom(local_node_info);
+            local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+          }
+          RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                         << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().UnregisterNode(
@@ -305,8 +329,8 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
+                      << ", node id = " << node_id;
       });
   return Status::OK();
 }
@@ -841,17 +865,20 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      worker_failure_sub_executor_(
-          client_impl->GetRedisGcsClient().worker_failure_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::WorkerFailureData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    subscribe(WorkerID::FromBinary(id), worker_failure_data);
+  };
+  auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                          on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
   return status;
 }

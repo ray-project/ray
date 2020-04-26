@@ -1,3 +1,5 @@
+.. _searchalg-ref:
+
 Search Algorithms (tune.suggest)
 ================================
 
@@ -47,6 +49,11 @@ SkOptSearch
 -----------
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+
+ZOOptSearch
+-----------
+
+.. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
 
 SearchAlgorithm
 ---------------

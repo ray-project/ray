@@ -13,16 +13,40 @@ py_library(
 py_test(
     name = "test_serve",
     size = "medium",
-    srcs = glob(["tests/*.py"]),
+    srcs = glob(["tests/*.py"], exclude=["tests/test_nonblocking.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "echo_full",
+    size = "small",
+    srcs = glob(["examples/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "test_nonblocking",
+    size = "small",
+    srcs = glob(["tests/test_nonblocking.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
 py_test(
-    name = "echo_full",
+    name = "quickstart_class",
     size = "small",
-    srcs = glob(["examples/*.py"]),
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "quickstart_function",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
 )

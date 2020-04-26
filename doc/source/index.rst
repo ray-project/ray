@@ -17,6 +17,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD`_: Distributed Training Wrappers
+- :ref:`rayserve`
 
 
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
@@ -248,11 +249,9 @@ Getting Involved
    :caption: Tune
 
    tune.rst
-   Tune Guides and Tutorials <tune/generated_guides/overview.rst>
-   tune-usage.rst
+   Tutorials, Guides, Examples <tune/tutorials/overview.rst>
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-examples.rst
    tune/api_docs/overview.rst
    tune-contrib.rst
 
@@ -283,13 +282,18 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
+   :caption: RayServe
+
+   rayserve/overview.rst
+
+.. toctree::
+   :maxdepth: -1
    :caption: Other Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   serve.rst
 
 .. toctree::
    :maxdepth: -1

@@ -103,7 +103,7 @@ py_test(
 py_test(
     name = "test_apex",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex.py"]
 )
 
@@ -140,11 +140,27 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
+# DDPPO
+py_test(
+    name = "test_ddppo",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/ppo/tests/test_ddppo.py"]
+)
+
+# APPO
+py_test(
+    name = "test_appo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/ppo/tests/test_appo.py"]
+)
+
 # SAC
 py_test(
     name = "test_sac",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
 )
 
@@ -1318,6 +1334,14 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_metrics_and_callbacks_legacy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
     args = ["--num-iters=2"]
 )
 

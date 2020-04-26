@@ -43,7 +43,6 @@ from ray.dashboard.metrics_exporter.client import MetricsExportClient
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
     from ray.tune import Analysis
-    from tensorboard import program
 except ImportError:
     Analysis = None
 
@@ -329,7 +328,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         profiling_id = req.query.get("profiling_id")
         profiling_info = self.dashboard_controller.get_profiling_info(
             profiling_id)
-        return aiohttp.web.json_response(self.is_dev, profiling_info)
+        return aiohttp.web.json_response(profiling_info)
 
     async def kill_actor(self, req) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")
@@ -1031,12 +1030,12 @@ class TuneCollector(threading.Thread):
             if len(df) == 0 or "trial_id" not in df.columns:
                 continue
 
-            # start TensorBoard server if not started yet
-            if not self._tensor_board_started:
-                tb = program.TensorBoard()
-                tb.configure(argv=[None, "--logdir", self._logdir])
-                tb.launch()
-                self._tensor_board_started = True
+            # # start TensorBoard server if not started yet
+            # if not self._tensor_board_started:
+            #     tb = program.TensorBoard()
+            #     tb.configure(argv=[None, "--logdir", self._logdir])
+            #     tb.launch()
+            #     self._tensor_board_started = True
 
             self._available = True
 
