@@ -55,9 +55,9 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   /**
-   * Allocating job worker resource then create job worker actor
+   * Allocate job workers' resource then create job workers' actor.
    *
-   * @param executionGraph execution graph
+   * @param executionGraph the physical plan
    */
   protected void prepareResourceAndCreateWorker(ExecutionGraph executionGraph) {
     List<Container> containers = resourceManager.getRegisteredContainers();
