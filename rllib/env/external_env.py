@@ -144,7 +144,7 @@ class ExternalEnv(threading.Thread):
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Optional info dict.
-            done (bool): Indicates if episode is done. (Obsolete as episode.done(obs) overrides this)
+            done (bool): Indicates if episode is done.
         """
 
         episode = self._get(episode_id)
@@ -153,7 +153,6 @@ class ExternalEnv(threading.Thread):
 
         if info:
             episode.cur_info = info or {}
-
 
     @PublicAPI
     def end_episode(self, episode_id, observation):
