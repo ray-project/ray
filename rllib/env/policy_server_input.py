@@ -189,10 +189,4 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             else:
                 raise ValueError("Unknown command: {}".format(command))
             return response
-
-        def log_message(self, format, *args):
-            # Suppress the 200 OK responses.
-            if any(args) == 200:
-                return
-
     return Handler
