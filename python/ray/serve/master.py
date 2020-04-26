@@ -100,7 +100,7 @@ class ServeMaster:
         else:
             await self.write_lock.acquire()
             asyncio.get_event_loop().create_task(
-                self._recover_from_checkpoint())
+                self._recover_from_checkpoint(checkpoint))
 
     def _get_or_start_router(self, router_class, router_kwargs):
         """Get the router belonging to this serve cluster.
