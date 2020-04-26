@@ -296,23 +296,30 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
-  client_impl_->GetGcsRpcClient().RegisterNode(
-      request, [this, node_id, &local_node_info](const Status &status,
-                                                 const rpc::RegisterNodeReply &reply) {
-        if (status.ok()) {
-          local_node_info_.CopyFrom(local_node_info);
-          local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
-        }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                       << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, local_node_info,
+                    node_id](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().RegisterNode(
+        request, [this, node_id, local_node_info, done_callback](
+                     const Status &status, const rpc::RegisterNodeReply &reply) {
+          if (status.ok()) {
+            local_node_info_.CopyFrom(local_node_info);
+            local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+          }
+          RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                         << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().UnregisterNode(
@@ -322,8 +329,8 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
+                      << ", node id = " << node_id;
       });
   return Status::OK();
 }
@@ -858,17 +865,20 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      worker_failure_sub_executor_(
-          client_impl->GetRedisGcsClient().worker_failure_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing worker failures.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::WorkerFailureData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    subscribe(WorkerID::FromBinary(id), worker_failure_data);
+  };
+  auto status = client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL,
+                                                          on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
   return status;
 }

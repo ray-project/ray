@@ -39,6 +39,8 @@ class TaskFinisherInterface {
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
+  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
@@ -128,6 +130,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
+
+  /// Set number of retries to zero for a task that is being canceled.
+  ///
+  /// \param[in] task_id to cancel.
+  /// \return Whether the task was pending and was marked for cancellation.
+  bool MarkTaskCanceled(const TaskID &task_id);
+
+  /// Return the spec for a pending task.
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///

@@ -64,6 +64,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD2(OnTaskDependenciesInlined,
                void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
+
+  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {

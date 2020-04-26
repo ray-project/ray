@@ -1,3 +1,5 @@
+.. _tune-contrib:
+
 Contributing to Tune
 ====================
 
