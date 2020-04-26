@@ -14,9 +14,6 @@ public class ChannelUtils {
     if (conf.containsKey(Config.STREAMING_JOB_NAME)) {
       builder.setJobName(conf.get(Config.STREAMING_JOB_NAME));
     }
-    if (conf.containsKey(Config.TASK_JOB_ID)) {
-      builder.setTaskJobId(conf.get(Config.TASK_JOB_ID));
-    }
     if (conf.containsKey(Config.STREAMING_WORKER_NAME)) {
       builder.setWorkerName(conf.get(Config.STREAMING_WORKER_NAME));
     }
