@@ -358,7 +358,6 @@ class Pool:
                 logger.info("Connecting to ray cluster at address='{}'".format(
                     ray_address))
                 ray.init(address=ray_address)
-
             # Local mode.
             else:
                 logger.info("Starting local ray cluster")
