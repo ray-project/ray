@@ -4,6 +4,11 @@ Search Algorithms (tune.suggest)
 ================================
 
 
+ConcurrencyLimiter
+------------------
+
+.. autoclass:: ray.tune.suggest.ConcurrencyLimiter
+
 AxSearch
 --------
 
