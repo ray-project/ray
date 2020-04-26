@@ -27,6 +27,10 @@ class GcsTableStorageTest : public gcs::StoreClientTestBase {
 
   virtual ~GcsTableStorageTest() {}
 
+  static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
+
+  static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
+
   void InitStoreClient() override {
     gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
     redis_client_ = std::make_shared<gcs::RedisClient>(options);

@@ -3,7 +3,6 @@ import pickle
 import threading
 from abc import ABC, abstractmethod
 
-import ray
 from ray.streaming.collector import OutputCollector
 from ray.streaming.config import Config
 from ray.streaming.context import RuntimeContextImpl
@@ -31,8 +30,6 @@ class StreamTask(ABC):
             self.worker.config.get(Config.CHANNEL_SIZE,
                                    Config.CHANNEL_SIZE_DEFAULT))
         channel_conf[Config.CHANNEL_SIZE] = channel_size
-        channel_conf[Config.TASK_JOB_ID] = ray.runtime_context.\
-            _get_runtime_context().current_driver_id
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 

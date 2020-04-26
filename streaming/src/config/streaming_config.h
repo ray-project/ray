@@ -30,8 +30,6 @@ class StreamingConfig {
 
   std::string worker_name_ = "DEFAULT_WORKER_NAME";
 
-  std::string task_job_id_ = JobID::Nil().Hex();
-
   // Default flow control type is unconsumed sequence flow control. More detail
   // introducation and implemention in ray/streaming/src/flow_control.h.
   streaming::proto::FlowControlType flow_control_type_ =
@@ -50,7 +48,6 @@ class StreamingConfig {
   TYPE Get##NAME() const { return VALUE; }       \
   void Set##NAME(TYPE value) { VALUE = value; }
 
-  DECL_GET_SET_PROPERTY(const std::string &, TaskJobId, task_job_id_)
   DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
   DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
   DECL_GET_SET_PROPERTY(uint32_t, EmptyMessageTimeInterval, empty_message_time_interval_)

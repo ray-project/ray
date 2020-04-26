@@ -28,26 +28,6 @@
   <version>27.0.1-jre</version>
 </dependency>
 <dependency>
-  <groupId>org.mockito</groupId>
-  <artifactId>mockito-all</artifactId>
-  <version>1.10.19</version>
-</dependency>
-<dependency>
-  <groupId>org.powermock</groupId>
-  <artifactId>powermock-api-mockito</artifactId>
-  <version>1.6.6</version>
-</dependency>
-<dependency>
-  <groupId>org.powermock</groupId>
-  <artifactId>powermock-module-testng</artifactId>
-  <version>1.6.6</version>
-</dependency>
-<dependency>
-  <groupId>org.projectlombok</groupId>
-  <artifactId>lombok</artifactId>
-  <version>1.16.20</version>
-</dependency>
-<dependency>
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-api</artifactId>
   <version>1.7.25</version>

@@ -1,7 +1,6 @@
 class Config:
     STREAMING_JOB_NAME = "streaming.job.name"
     STREAMING_OP_NAME = "streaming.op_name"
-    TASK_JOB_ID = "streaming.task_job_id"
     STREAMING_WORKER_NAME = "streaming.worker_name"
     # channel
     CHANNEL_TYPE = "channel_type"

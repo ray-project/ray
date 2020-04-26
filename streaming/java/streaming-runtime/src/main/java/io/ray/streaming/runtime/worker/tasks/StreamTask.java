@@ -49,11 +49,10 @@ public abstract class StreamTask implements Runnable {
   private void prepareTask() {
     Map<String, String> queueConf = new HashMap<>();
     worker.getConfig().forEach((k, v) -> queueConf.put(k, String.valueOf(v)));
-    String queueSize = (String) worker.getConfig()
+    String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
-    String channelType = (String) worker.getConfig()
+    String channelType = worker.getConfig()
         .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
