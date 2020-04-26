@@ -24,68 +24,13 @@ namespace ray {
 
 namespace gcs {
 
-/// \class InMemoryTable
-///
-/// Non-thread safe.
-class InMemoryTable {
- public:
-  /// Write data to the table synchronously.
-  ///
-  /// \param key The key that will be written to the table.
-  /// \param data The value of the key that will be written to the table.
-  void Put(const std::string &key, const std::string &data);
-
-  /// Write data to the table synchronously.
-  ///
-  /// \param key The key that will be written to the table.
-  /// \param index_key A secondary key that will be used for indexing the data.
-  /// \param data The value of the key that will be written to the table.
-  void PutWithIndex(const std::string &key, const std::string &index_key,
-                    const std::string &data);
-
-  /// Get data from the table synchronously.
-  ///
-  /// \param key The key to lookup from the table.
-  /// \return The value of the key.
-  boost::optional<std::string> Get(const std::string &key) const;
-
-  /// Get all data from the table synchronously.
-  ///
-  /// \return All data of the table.
-  const absl::flat_hash_map<std::string, std::string> &GetAll() const;
-
-  /// Delete data from the table synchronously.
-  ///
-  /// \param key The key that will be deleted from the table.
-  void Delete(const std::string &key);
-
-  /// Delete by index from the table synchronously.
-  ///
-  /// \param index_key The secondary key that will be used to delete the indexed data from
-  /// the table.
-  void DeleteByIndex(const std::string &index_key);
-
- private:
-  // Mapping from key to data.
-  absl::flat_hash_map<std::string, std::string> records_;
-
-  // Mapping from index key to keys.
-  absl::flat_hash_map<std::string, std::vector<std::string>> index_keys_;
-};
-
 /// \class InMemoryStoreClient
 ///
 /// This class is thread safe.
 class InMemoryStoreClient : public StoreClient {
  public:
-  explicit InMemoryStoreClient(boost::asio::io_service &main_io_service,
-                               size_t io_service_num = 1)
-      : main_io_service_(main_io_service) {
-    io_service_pool_.reset(new IOServicePool(io_service_num));
-    io_service_pool_->Run();
-  }
-
-  ~InMemoryStoreClient() { io_service_pool_->Stop(); }
+  explicit InMemoryStoreClient(boost::asio::io_service &main_io_service)
+      : main_io_service_(main_io_service) {}
 
   Status AsyncPut(const std::string &table_name, const std::string &key,
                   const std::string &data, const StatusCallback &callback) override;
@@ -108,14 +53,23 @@ class InMemoryStoreClient : public StoreClient {
                             const StatusCallback &callback) override;
 
  private:
-  std::shared_ptr<InMemoryTable> GetOrCreateTable(const std::string &table_name);
+  struct InMemoryTable {
+    /// Mutex to protect the records_ field and the index_keys_ field.
+    absl::Mutex mutex_;
+    // Mapping from key to data.
+    absl::flat_hash_map<std::string, std::string> records_ GUARDED_BY(mutex_);
+    // Mapping from index key to keys.
+    absl::flat_hash_map<std::string, std::vector<std::string>> index_keys_
+        GUARDED_BY(mutex_);
+  };
+
+  std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
+      const std::string &table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
       GUARDED_BY(mutex_);
-
-  std::unique_ptr<IOServicePool> io_service_pool_;
 
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
   /// of the callback.
