@@ -8,18 +8,13 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-platform="unknown"
-unamestr="$(uname)"
-if [[ "$unamestr" == "Linux" ]]; then
-  echo "Platform is linux."
-  platform="linux"
-elif [[ "$unamestr" == "Darwin" ]]; then
-  echo "Platform is macosx."
-  platform="macosx"
-else
-  echo "Unrecognized platform."
-  exit 1
-fi
+platform=""
+case "${OSTYPE}" in
+  linux*) platform="linux";;
+  darwin*) platform="macosx";;
+  msys*) platform="windows";;
+  *) echo "Unrecognized platform."; exit 1;;
+esac
 
 TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
@@ -129,6 +124,8 @@ elif [[ "$platform" == "macosx" ]]; then
     fi
 
   done
+elif [ "${platform}" = windows ]; then
+  echo "WARNING: Wheel testing not yet implemented for Windows."
 else
   echo "Unrecognized environment."
   exit 3
