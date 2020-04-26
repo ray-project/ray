@@ -10,6 +10,16 @@ TRIAL_INDEX = "__trial_index__"
 """str: A constant value representing the repeat index of the trial."""
 
 
+def _warn_num_samples(searcher, num_samples):
+    if isinstance(searcher, Repeater) and num_samples % searcher.repeat:
+        logger.warning(
+            "`num_samples` is now exepected to be the total number of trials, "
+            "including the repeat trials. For example, set num_samples=15 if "
+            "you intend to obtain 3 search algorithm suggestions and repeat "
+            "each suggestion 5 times. Any leftover trials "
+            "(num_samples mod repeat) will be ignored.")
+
+
 class _TrialGroup:
     """Internal class for grouping trials of same parameters.
 
@@ -77,7 +87,7 @@ class Repeater(Searcher):
 
     def __init__(self, searcher, repeat=1, set_index=True):
         self.searcher = searcher
-        self._repeat = repeat
+        self.repeat = repeat
         self._set_index = set_index
         self._groups = []
         self._trial_id_to_group = {}
@@ -91,7 +101,7 @@ class Repeater(Searcher):
             if config is None:
                 return config
             self._current_group = _TrialGroup(
-                trial_id, copy.deepcopy(config), max_trials=self._repeat)
+                trial_id, copy.deepcopy(config), max_trials=self.repeat)
             self._groups.append(self._current_group)
             index_in_group = 0
         else:

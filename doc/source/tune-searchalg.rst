@@ -56,7 +56,9 @@ See the API documentation (:ref:`repeater-doc`) for more details.
 
     search_alg = BayesOpt(...)
     re_search_alg = Repeater(search_alg, repeat=10)
-    tune.run(trainable, search_alg=re_search_alg)
+
+    # Repeat the sample 20 times.
+    tune.run(trainable, num_samples=20, search_alg=re_search_alg)
 
 .. note:: This does not apply for grid search and random search.
 .. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.

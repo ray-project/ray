@@ -12,6 +12,11 @@ from ray.tune.utils import merge_dicts, flatten_dict
 logger = logging.getLogger(__name__)
 
 
+def _warn_on_repeater(searcher, total_samples):
+    from ray.tune.suggest.repeater import _warn_num_samples
+    _warn_num_samples(searcher, total_samples)
+
+
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 
@@ -145,6 +150,14 @@ class ConcurrencyLimiter(Searcher):
         searcher (Searcher): Searcher object that the
             ConcurrencyLimiter will manage.
 
+    Example:
+
+    .. code-block:: python
+
+        from ray.tune.suggest import ConcurrencyLimiter
+        search_alg = HyperOptSearch(metric="accuracy")
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
+        tune.run(trainable, search_alg=search_alg)
     """
 
     def __init__(self, searcher, max_concurrent):
@@ -212,6 +225,9 @@ class SearchGenerator(SearchAlgorithm):
         self._experiment = experiment_list[0]
         experiment_spec = self._experiment.spec
         self._total_samples = experiment_spec.get("num_samples", 1)
+
+        _warn_on_repeater(self.searcher, self._total_samples)
+
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
@@ -263,17 +279,17 @@ class SearchGenerator(SearchAlgorithm):
             trial_id=trial_id, result=result, error=error)
 
     def is_finished(self):
-        return self._counter >= self._total_samples
+        return self._counter >= self._total_samples or self._finished
 
 
-class _MockSuggestionAlgorithm(Searcher):
+class _MockSearcher(Searcher):
     def __init__(self, **kwargs):
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
         self.final_results = []
         self.stall = False
         self.results = []
-        super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
+        super(_MockSearcher, self).__init__(**kwargs)
 
     def suggest(self, trial_id):
         if not self.stall:
@@ -289,7 +305,21 @@ class _MockSuggestionAlgorithm(Searcher):
         self.counter["complete"] += 1
         if result:
             self._process_result(result)
-        del self.live_trials[trial_id]
+        if trial_id in self.live_trials:
+            del self.live_trials[trial_id]
 
     def _process_result(self, result):
         self.final_results += [result]
+
+
+class _MockSuggestionAlgorithm(SearchGenerator):
+    def __init__(self, max_concurrent=None, **kwargs):
+        self.searcher = _MockSearcher(**kwargs)
+        if max_concurrent:
+            self.searcher = ConcurrencyLimiter(
+                self.searcher, max_concurrent=max_concurrent)
+        super(_MockSuggestionAlgorithm, self).__init__(self.searcher)
+
+    @property
+    def live_trials(self):
+        return self.searcher.live_trials
