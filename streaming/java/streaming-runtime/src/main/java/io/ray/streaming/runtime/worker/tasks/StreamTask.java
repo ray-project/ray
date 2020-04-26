@@ -52,7 +52,6 @@ public abstract class StreamTask implements Runnable {
     String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
     queueConf.put(Config.CHANNEL_TYPE, worker.getConfig().get(Config.CHANNEL_TYPE));
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();

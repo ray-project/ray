@@ -33,7 +33,6 @@ class StreamTask(ABC):
             self.worker.config.get(Config.CHANNEL_SIZE,
                                    Config.CHANNEL_SIZE_DEFAULT))
         channel_conf[Config.CHANNEL_SIZE] = channel_size
-        channel_conf[Config.TASK_JOB_ID] = ray.worker.global_worker.current_job_id
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 

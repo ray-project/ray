@@ -87,11 +87,6 @@
   <version>1.6.6</version>
 </dependency>
 <dependency>
-  <groupId>org.projectlombok</groupId>
-  <artifactId>lombok</artifactId>
-  <version>1.16.20</version>
-</dependency>
-<dependency>
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-api</artifactId>
   <version>1.7.25</version>

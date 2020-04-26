@@ -150,26 +150,26 @@ class ChannelCreationParametersBuilder:
         "io.ray.streaming.runtime.worker.JobWorker",
         "onReaderMessage", "([B)V")
     _java_reader_sync_function_descriptor = JavaFunctionDescriptor(
-            "io.ray.streaming.runtime.worker.JobWorker",
-            "onReaderMessageSync", "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker",
+        "onReaderMessageSync", "([B)[B")
     _java_writer_async_function_descriptor = JavaFunctionDescriptor(
-            "io.ray.streaming.runtime.worker.JobWorker",
-            "onWriterMessage", "([B)V")
+        "io.ray.streaming.runtime.worker.JobWorker",
+        "onWriterMessage", "([B)V")
     _java_writer_sync_function_descriptor = JavaFunctionDescriptor(
-            "io.ray.streaming.runtime.worker.JobWorker",
-            "onWriterMessageSync", "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker",
+        "onWriterMessageSync", "([B)[B")
     _python_reader_async_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.worker",
-            "on_reader_message", "JobWorker")
+        "ray.streaming.runtime.worker",
+        "on_reader_message", "JobWorker")
     _python_reader_sync_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.worker",
-            "on_reader_message_sync", "JobWorker")
+        "ray.streaming.runtime.worker",
+        "on_reader_message_sync", "JobWorker")
     _python_writer_async_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.worker",
-            "on_writer_message", "JobWorker")
+        "ray.streaming.runtime.worker",
+        "on_writer_message", "JobWorker")
     _python_writer_sync_function_descriptor = PythonFunctionDescriptor(
-            "ray.streaming.runtime.worker",
-            "on_writer_message_sync", "JobWorker")
+        "ray.streaming.runtime.worker",
+        "on_writer_message_sync", "JobWorker")
 
     def get_parameters(self):
         return self._parameters
@@ -208,16 +208,16 @@ class ChannelCreationParametersBuilder:
 
     @staticmethod
     def set_python_writer_function_descriptor(async_function, sync_function):
-        ChannelCreationParametersBuilder.\
+        ChannelCreationParametersBuilder. \
             _python_writer_async_function_descriptor = async_function
-        ChannelCreationParametersBuilder.\
+        ChannelCreationParametersBuilder. \
             _python_writer_sync_function_descriptor = sync_function
 
     @staticmethod
     def set_python_reader_function_descriptor(async_function, sync_function):
-        ChannelCreationParametersBuilder.\
+        ChannelCreationParametersBuilder. \
             _python_reader_async_function_descriptor = async_function
-        ChannelCreationParametersBuilder.\
+        ChannelCreationParametersBuilder. \
             _python_reader_sync_function_descriptor = sync_function
 
 
@@ -344,9 +344,6 @@ def _to_native_conf(conf):
     config = streaming_pb.StreamingConfig()
     if Config.STREAMING_JOB_NAME in conf:
         config.job_name = conf[Config.STREAMING_JOB_NAME]
-    if Config.TASK_JOB_ID in conf:
-        job_id = conf[Config.TASK_JOB_ID]
-        config.task_job_id = job_id.hex()
     if Config.STREAMING_WORKER_NAME in conf:
         config.worker_name = conf[Config.STREAMING_WORKER_NAME]
     if Config.STREAMING_OP_NAME in conf:

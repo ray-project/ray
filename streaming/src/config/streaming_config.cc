@@ -18,10 +18,6 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (!config.job_name().empty()) {
     SetJobName(config.job_name());
   }
-  if (!config.task_job_id().empty()) {
-    STREAMING_CHECK(config.task_job_id().size() == 2 * JobID::Size());
-    SetTaskJobId(config.task_job_id());
-  }
   if (!config.worker_name().empty()) {
     SetWorkerName(config.worker_name());
   }

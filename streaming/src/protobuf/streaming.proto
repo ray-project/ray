@@ -29,7 +29,6 @@ enum FlowControlType {
 // all string in this message is ASCII string
 message StreamingConfig {
   string job_name = 1;
-  string task_job_id = 2;
   string worker_name = 3;
   string op_name = 4;
   NodeType role = 5;
