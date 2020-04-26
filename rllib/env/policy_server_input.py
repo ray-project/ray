@@ -189,4 +189,5 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             else:
                 raise ValueError("Unknown command: {}".format(command))
             return response
+
     return Handler
