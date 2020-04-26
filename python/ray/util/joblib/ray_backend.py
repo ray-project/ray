@@ -5,7 +5,6 @@ import logging
 from ray.util.multiprocessing.pool import Pool
 import ray
 
-
 logger = logging.getLogger(__name__)
 
 
