@@ -166,38 +166,43 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
   std::thread handle_service_thread_;
 };
 
-/// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
+/// DownstreamQueueMessageHandler holds and manages all downstream queues of current actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   DownstreamQueueMessageHandler(const ActorID &actor_id)
       : QueueMessageHandler(actor_id) {
           Start();
       }
+  /// Create a downstream queue.
+  /// \param queue_id, queue id of the queue to be created.
+  /// \param peer_actor_id, actor id of peer actor.
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
+  /// Request to pull messages from corresponded upstream queue, whose message id
+  /// is larger than `start_msg_id`. Multiple attempts to pull until timeout.
+  /// \param queue_id, queue id of the queue to be pulled.
+  /// \param start_msg_id, the starting message id reqeust by downstream queue.
+  /// \param is_upstream_first_pull
+  /// \param timeout_ms, the maxmium timeout.
   StreamingQueueStatus PullQueue(const ObjectID &queue_id, uint64_t start_msg_id,
                                  bool &is_upstream_first_pull,
                                  uint64_t timeout_ms = 2000);
+  /// Check whether the downstream queue specified by queue_id exists or not.
   bool DownstreamQueueExists(const ObjectID &queue_id);
-
-  void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
-
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
-
+  /// Obtain downstream queue specified by queue_id.
   std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID &queue_id);
-
+  /// Release all downstream queues
   void ReleaseAllDownQueues();
-
+  /// The callback function called when downstream queue receives a queue item.
   void OnData(std::shared_ptr<DataMessage> msg);
   virtual void DispatchMessageInternal(
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
-
   static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
       const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
-
   StreamingQueueStatus PullPeerAsync(const ObjectID &queue_id, uint64_t start_msg_id,
                                      bool &is_upstream_first_pull, uint64_t timeout_ms);
 

@@ -116,7 +116,7 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
   }
 
   while (is_resending_) {
-    STREAMING_LOG(INFO) << "This queue is sending pull data, wait.";
+    STREAMING_LOG(INFO) << "This queue is resending data, wait.";
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
@@ -129,7 +129,6 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
 
 void WriterQueue::Send() {
   while (!IsPendingEmpty()) {
-    // FIXME: front -> send -> pop
     QueueItem item = PopPending();
     DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.MsgIdStart(), item.MsgIdEnd(), item.Buffer(),
                     item.IsRaw());
@@ -200,14 +199,14 @@ int WriterQueue::ResendItems(std::list<QueueItem>::iterator start_iter,
 }
 
 void WriterQueue::FindItem(
-    uint64_t target_msg_id, std::function<void()> large, std::function<void()> small,
-    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> ok) {
+    uint64_t target_msg_id, std::function<void()> large_callback, std::function<void()> small_callback,
+    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> found_callback) {
   auto last_one = std::prev(watershed_iter_);
   bool last_item_too_small =
       last_one != buffer_queue_.end() && last_one->MsgIdEnd() < target_msg_id;
 
   if (QUEUE_INITIAL_SEQ_ID == seq_id_ || last_item_too_small) {
-    large();
+    large_callback();
     return;
   }
 
@@ -222,9 +221,9 @@ void WriterQueue::FindItem(
       [&target_msg_id](QueueItem &item) { return item.InItem(target_msg_id); });
 
   if (target_item != watershed_iter_) {
-    ok(target_item, first_seq_id, last_seq_id);
+    found_callback(target_item, first_seq_id, last_seq_id);
   } else {
-    small();
+    small_callback();
   }
 }
 

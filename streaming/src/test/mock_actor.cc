@@ -312,9 +312,7 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
     for (int msg_id = 1; msg_id <= 80; msg_id++) {
       uint8_t data[100];
       memset(data, msg_id, 100);
-
       STREAMING_LOG(INFO) << "Writer User Push item msg_id: " << msg_id;
-
       ASSERT_TRUE(
           queue->Push(msg_id/*seqid*/, data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
       queue->Send();
@@ -346,19 +344,14 @@ class StreamingQueueDownStreamTestSuite : public StreamingQueueTestSuite {
         ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
     RayFunction sync_call_func{ray::Language::PYTHON,
         ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
-
     downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
-
     downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
 
     bool is_upstream_first_pull_ = false;
     downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
-
     ASSERT_TRUE(is_upstream_first_pull_);
-
     downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
     ASSERT_FALSE(is_upstream_first_pull_);
-
     STREAMING_LOG(INFO) << "StreamingQueueDownStreamTestSuite::GetQueueTest done";
     status_ = true;
   }
@@ -512,7 +505,7 @@ class StreamingWorker {
     RAY_CHECK(function_descriptor->Type() ==
               ray::FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
-    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask "
+    STREAMING_LOG(DEBUG) << "StreamingWorker::ExecuteTask "
                         << typed_descriptor->ToString();
 
     std::string func_name = typed_descriptor->FunctionName();
@@ -591,17 +584,12 @@ class StreamingWorker {
         queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType);
     std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
-    STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
     CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
         actor_handle_serialized, ObjectID::Nil());
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
-    STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();
-
-    // STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
-    // peer_actor_handle_ =
-    //     std::make_shared<ActorHandle>(actor_handle_serialized);
+    STREAMING_LOG(INFO) << "Actor id from handle: " << actor_handle->GetActorID();
 
     STREAMING_LOG(INFO) << "HandleInitTask queues:";
     for (auto qid : message->QueueIds()) {

@@ -178,12 +178,29 @@ class WriterQueue : public Queue {
   uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
 
  private:
+  /// Resend an item to peer.
+  /// \param item, the item object reference to ben resend.
+  /// \param first_seq_id, the seq id of the first item in this resend sequence.
+  /// \param last_seq_id, the seq id of the last item in this resend sequence.
   void ResendItem(QueueItem &item, uint64_t first_seq_id, uint64_t last_seq_id);
+  /// Resend items to peer from start_iter iterator to watershed_iter_.
+  /// \param start_iter, the starting list iterator.
+  /// \param first_seq_id, the seq id of the first item in this resend sequence.
+  /// \param last_seq_id, the seq id of the last item in this resend sequence.
   int ResendItems(std::list<QueueItem>::iterator start_iter, uint64_t first_seq_id,
                   uint64_t last_seq_id);
+  /// Find the item which the message with `target_msg_id` in. If the `target_msg_id`
+  /// is larger than the largest message id in the queue, the `large_callback` callback
+  /// will be called; If the `target_message_id` is smaller than the smallest message id
+  /// in the queue, the `small_callback` callback will be called; If the `target_msg_id` is
+  /// found in the queue, the `found_callback` callback willbe called.
+  /// \param target_msg_id, the target message id to be found.
   void FindItem(
-      uint64_t target, std::function<void()> large, std::function<void()> small,
-      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> ok);
+      uint64_t target_msg_id, 
+      std::function<void()> large_callback, 
+      std::function<void()> small_callback,
+      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> found_callback);
+
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;

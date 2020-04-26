@@ -29,10 +29,10 @@ class Message {
         buffer_(buffer) {}
   Message() {}
   virtual ~Message() {}
-  ActorID ActorId() { return actor_id_; }
-  ActorID PeerActorId() { return peer_actor_id_; }
-  ObjectID QueueId() { return queue_id_; }
-  std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
+  inline ActorID ActorId() { return actor_id_; }
+  inline ActorID PeerActorId() { return peer_actor_id_; }
+  inline ObjectID QueueId() { return queue_id_; }
+  inline std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
   /// Serialize all meta data and data to a LocalMemoryBuffer, which can be sent through
   /// direct actor call. \return serialized buffer .
@@ -76,11 +76,11 @@ class DataMessage : public Message {
 
   static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  uint64_t SeqId() { return seq_id_; }
-  uint64_t MsgIdStart() { return msg_id_start_; }
-  uint64_t MsgIdEnd() { return msg_id_end_; }
-  bool IsRaw() { return raw_; }
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t MsgIdStart() { return msg_id_start_; }
+  inline uint64_t MsgIdEnd() { return msg_id_end_; }
+  inline bool IsRaw() { return raw_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t seq_id_;
@@ -106,8 +106,8 @@ class NotificationMessage : public Message {
   static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
 
-  uint64_t SeqId() { return seq_id_; }
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline uint64_t SeqId() { return seq_id_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t seq_id_;
@@ -128,7 +128,7 @@ class CheckMessage : public Message {
   static std::shared_ptr<CheckMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
 
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   const queue::protobuf::StreamingQueueMessageType type_ =
@@ -147,8 +147,8 @@ class CheckRspMessage : public Message {
 
   static std::shared_ptr<CheckRspMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
-  queue::protobuf::StreamingQueueError Error() { return err_code_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline queue::protobuf::StreamingQueueError Error() { return err_code_; }
 
  private:
   queue::protobuf::StreamingQueueError err_code_;
@@ -165,8 +165,8 @@ class PullRequestMessage : public Message {
 
   static std::shared_ptr<PullRequestMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  uint64_t MsgId() { return msg_id_; }
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline uint64_t MsgId() { return msg_id_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t msg_id_;
@@ -189,11 +189,11 @@ class PullResponseMessage : public Message {
 
   static std::shared_ptr<PullResponseMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  uint64_t SeqId() { return seq_id_; }
-  uint64_t MsgId() { return msg_id_; }
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
-  queue::protobuf::StreamingQueueError Error() { return err_code_; }
-  bool IsUpstreamFirstPull() { return is_upstream_first_pull_; }
+  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t MsgId() { return msg_id_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline queue::protobuf::StreamingQueueError Error() { return err_code_; }
+  inline bool IsUpstreamFirstPull() { return is_upstream_first_pull_; }
 
  private:
   uint64_t seq_id_;
@@ -221,13 +221,13 @@ class ResendDataMessage : public Message {
 
   static std::shared_ptr<ResendDataMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  uint64_t MsgIdStart() { return msg_id_start_; }
-  uint64_t MsgIdEnd() { return msg_id_end_; }
-  uint64_t SeqId() { return seq_id_; }
-  uint64_t FirstSeqId() { return first_seq_id_; }
-  uint64_t LastSeqId() { return last_seq_id_; }
-  bool IsRaw() { return raw_; }
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline uint64_t MsgIdStart() { return msg_id_start_; }
+  inline uint64_t MsgIdEnd() { return msg_id_end_; }
+  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t FirstSeqId() { return first_seq_id_; }
+  inline uint64_t LastSeqId() { return last_seq_id_; }
+  inline bool IsRaw() { return raw_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t first_seq_id_;
@@ -263,14 +263,14 @@ class TestInitMessage : public Message {
 
   static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
-  std::string ActorHandleSerialized() { return actor_handle_serialized_; }
-  queue::protobuf::StreamingQueueTestRole Role() { return role_; }
-  std::vector<ObjectID> QueueIds() { return queue_ids_; }
-  std::vector<ObjectID> RescaleQueueIds() { return rescale_queue_ids_; }
-  std::string TestSuiteName() { return test_suite_name_; }
-  std::string TestName() { return test_name_; }
-  uint64_t Param() { return param_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline std::string ActorHandleSerialized() { return actor_handle_serialized_; }
+  inline queue::protobuf::StreamingQueueTestRole Role() { return role_; }
+  inline std::vector<ObjectID> QueueIds() { return queue_ids_; }
+  inline std::vector<ObjectID> RescaleQueueIds() { return rescale_queue_ids_; }
+  inline std::string TestSuiteName() { return test_suite_name_; }
+  inline std::string TestName() { return test_name_; }
+  inline uint64_t Param() { return param_; }
 
   std::string ToString() {
     std::ostringstream os;
@@ -316,9 +316,9 @@ class TestCheckStatusRspMsg : public Message {
 
   static std::shared_ptr<TestCheckStatusRspMsg> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
-  std::string TestName() { return test_name_; }
-  bool Status() { return status_; }
+  inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  inline std::string TestName() { return test_name_; }
+  inline bool Status() { return status_; }
 
  private:
   const queue::protobuf::StreamingQueueMessageType type_ =

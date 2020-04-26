@@ -122,7 +122,7 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
 Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id, uint8_t *data,
                                              uint32_t data_size, uint64_t timestamp,
                                              uint64_t msg_id_start, uint64_t msg_id_end) {
-  STREAMING_LOG(INFO) << "StreamingQueueProducer::PushQueueItem:"
+  STREAMING_LOG(DEBUG) << "StreamingQueueProducer::PushQueueItem:"
                       << " qid: " << channel_info_.channel_id << " seq_id: " << seq_id
                       << " data_size: " << data_size;
   Status status = queue_->Push(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, false);
