@@ -10,6 +10,11 @@ Repeater
 
 .. autoclass:: ray.tune.suggest.Repeater
 
+ConcurrencyLimiter
+------------------
+
+.. autoclass:: ray.tune.suggest.ConcurrencyLimiter
+
 AxSearch
 --------
 
