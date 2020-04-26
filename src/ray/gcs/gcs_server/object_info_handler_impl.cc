@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "object_info_handler_impl.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -26,11 +27,14 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
                  << ", object id = " << object_id;
 
   auto on_done = [reply, object_id, send_reply_callback](
-                     Status status, const std::vector<rpc::ObjectTableData> &result) {
+                     const Status &status,
+                     const std::vector<rpc::ObjectTableData> &result) {
     if (status.ok()) {
       for (const rpc::ObjectTableData &object_table_data : result) {
         reply->add_object_table_data_list()->CopyFrom(object_table_data);
       }
+      RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id;
     } else {
       RAY_LOG(ERROR) << "Failed to get object locations: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
@@ -43,9 +47,6 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
   if (!status.ok()) {
     on_done(status, std::vector<rpc::ObjectTableData>());
   }
-
-  RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id;
 }
 
 void DefaultObjectInfoHandler::HandleAddObjectLocation(
@@ -56,8 +57,16 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
+    if (status.ok()) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
+          OBJECT_CHANNEL, object_id.Binary(),
+          gcs::CreateObjectChange(node_id, true)->SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished adding object location, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id
+                     << ", node id = " << node_id;
+    } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
@@ -69,10 +78,6 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-
-  RAY_LOG(DEBUG) << "Finished adding object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
 }
 
 void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
@@ -83,8 +88,16 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
+    if (status.ok()) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
+          OBJECT_CHANNEL, object_id.Binary(),
+          gcs::CreateObjectChange(node_id, false)->SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished removing object location, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id
+                     << ", node id = " << node_id;
+    } else {
       RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
@@ -96,10 +109,6 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-
-  RAY_LOG(DEBUG) << "Finished removing object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
 }
 
 }  // namespace rpc

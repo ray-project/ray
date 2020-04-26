@@ -186,8 +186,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    status =
-        gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id, /*done*/ nullptr);
+    status = gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id);
     listeners_.erase(entry);
   }
   return status;

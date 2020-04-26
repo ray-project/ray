@@ -325,10 +325,8 @@ class ObjectInfoAccessor {
   /// Cancel subscription to any update of an object's location.
   ///
   /// \param object_id The ID of the object to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscription is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                             const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
 
  protected:
   ObjectInfoAccessor() = default;

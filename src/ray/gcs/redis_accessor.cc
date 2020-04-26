@@ -502,9 +502,8 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
   return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
 }
 
-Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                                            const StatusCallback &done) {
-  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, nullptr);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)

@@ -311,6 +311,11 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
+message ObjectChange {
+  bool is_add = 1;
+  ObjectTableData data = 2;
+}
+
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
