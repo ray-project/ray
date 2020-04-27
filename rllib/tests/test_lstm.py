@@ -96,6 +96,57 @@ class TestLSTMUtils(unittest.TestCase):
 class RNNSpyModel(RecurrentTFModelV2):
     capture_index = 0
     cell_size = 3
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
+        self.lstm = tf.keras.layers.LSTM(self.cell_size, return_state=True,
+                                         return_sequences=True)
+
+    def forward_rnn(self, inputs, state, seq_lens):
+        lstm_out, h, c = self.lstm(inputs=inputs,
+            mask=tf.sequence_mask(seq_lens),
+            initial_state=state)
+
+        def spy(inputs, seq_lens):
+            # TF runs this function in an isolated context, so we have to use
+            # redis to communicate back to our suite
+            ray.experimental.internal_kv._internal_kv_put(
+                "t_spy_in_{}".format(RNNSpyModel.capture_index),
+                pickle.dumps((inputs, seq_lens)),
+                overwrite=True)
+            RNNSpyModel.capture_index += 1
+            return 0
+
+        spy_fn = tf.py_func(
+            spy, [
+                inputs,
+                seq_lens,
+            ],
+            tf.int64,
+            stateful=True)
+
+        with tf.control_dependencies([spy_fn]):
+            output = tf.layers.dense(lstm_out, self.num_outputs)
+            value_out = tf.layers.dense(lstm_out, 1)
+            self._value_out = value_out
+            return output, [h, c]
+
+    @override(ModelV2)
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
+
+    @override(ModelV2)
+    def get_initial_state(self):
+        return [
+            np.zeros(self.cell_size, np.float32),
+            np.zeros(self.cell_size, np.float32)
+        ]
+
+
+class RNNSpyModel_old(RecurrentTFModelV2):
+    capture_index = 0
+    cell_size = 3
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
@@ -103,88 +154,66 @@ class RNNSpyModel(RecurrentTFModelV2):
                          name)
         self.cell_size = RNNSpyModel.cell_size
 
-        def spy(sequences):  #, state_in_h, state_in_c, state_out_h, state_out_c, seq_lens):
-            if len(sequences) == 1:
+        def spy(
+                inputs, seq_lens
+        ):  #, state_in_h, state_in_c, state_out_h, state_out_c, seq_lens):
+            if len(inputs) == 1:
                 return 0  # don't capture inference inputs
             # TF runs this function in an isolated context, so we have to use
             # redis to communicate back to our suite
             ray.experimental.internal_kv._internal_kv_put(
                 "rnn_spy_in_{}".format(RNNSpyModel.capture_index),
                 pickle.dumps({
-                    "sequences": sequences,
-                    #"state_in": [state_in_h, state_in_c],
-                    #"state_out": [state_out_h, state_out_c],
-                    #"seq_lens": seq_lens,
+                    "sequences": inputs,
+                    "seq_lens": seq_lens,
                 }),
                 overwrite=True)
             RNNSpyModel.capture_index += 1
             return 0
 
         # Create a keras LSTM model.
-        #self.lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
-        #    RNNSpyModel.cell_size, state_is_tuple=True)
-        inputs = tf.keras.layers.Input(shape=(None, ) + obs_space.shape,
-                                       name="input")
-        # Setup the LSTM cell
-        #state_init = self.get_initial_state()
+        inputs = tf.keras.layers.Input(
+            shape=(None, ) + obs_space.shape, name="input")
         state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
         state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
 
-        # Setup LSTM inputs
-        #if state:  #self.state_in:
-        #    c_in, h_in = self.state_in
-        #else:
-        #    c_in = tf.placeholder(
-        #        tf.float32, [None, self.lstm.state_size.c], name="c")
-        #    h_in = tf.placeholder(
-        #        tf.float32, [None, self.lstm.state_size.h], name="h")
-        #self.state_in = [c_in, h_in]
-        #c_in, h_in = state
-
         lstm_out, state_h, state_c = tf.keras.layers.LSTM(
-            self.cell_size, return_sequences=True, return_state=True, name="lstm")(
+            self.cell_size,
+            return_sequences=True,
+            return_state=True,
+            name="lstm")(
                 inputs=inputs,
                 mask=tf.sequence_mask(seq_in),
                 initial_state=[state_in_h, state_in_c])
 
-        # Setup LSTM outputs
-        #state_in_tuple = tf.nn.rnn_cell.LSTMStateTuple(state_in[0], state_in[1])
-        #lstm_out, state_out_c, state_out_h = tf.keras.layers.RNN(
-        #    self.lstm_cell,
-        #    time_major=False,
-        #    return_sequences=True,
-        #    return_state=True
-        #    )(inputs, state_in_tuple)
-            #inputs,
-            #initial_state=state_in,
-            #sequence_length=seq_lens,
-            #dtype=tf.float32)
-
-        def lambda_(x):  #, lstm_out, state_in_h, state_in_c, state_out_h, state_out_c, seq_lens):
-            spy_fn = tf.py_function(
-                spy, [
-                    x,
+        def lambda_(
+                inputs  #, state_in_c
+        ):  #, lstm_out, state_in_h, state_in_c, state_out_h, state_out_c, seq_lens):
+            spy_fn = tf.py_func(
+                spy,
+                [
+                    inputs[0],
                     #state_in_c,
                     #state_in_h,
                     #state_out_c,
                     #state_out_h,
-                    #seq_lens,
+                    inputs[1],
                 ],
-                tf.int64)
-                #stateful=True)
-    
+                tf.int64, stateful=True)
+
             # Compute outputs
             with tf.control_dependencies([spy_fn]):
-                #last_layer = tf.reshape(x, [-1, self.cell_size])
+            #last_layer = tf.reshape(x, [-1, self.cell_size])
                 logits = tf.keras.layers.Dense(
                     units=self.num_outputs,
-                    kernel_initializer=normc_initializer(0.01))(x)
+                    kernel_initializer=normc_initializer(0.01))(lstm_out)
     
-                return x, logits
+                return logits
 
-        last_layer, logits = tf.keras.layers.Lambda(lambda_)(lstm_out) #, arguments=dict(
-            #lstm_out=lstm_out, state_in_h=state_in_h, state_in_c=state_in_c, state_out_h=state_h, state_out_c=state_c, seq_lens=seq_in
+        logits = tf.keras.layers.Lambda(lambda_)([lstm_out, seq_in])  #, arguments=dict(state_in_c=state_in_c))(
+            #lstm_out)  #, arguments=dict(
+        #lstm_out=lstm_out, state_in_h=state_in_h, state_in_c=state_in_c, state_out_h=state_h, state_out_c=state_c, seq_lens=seq_in
         #))
         #(inputs)
 
@@ -192,11 +221,13 @@ class RNNSpyModel(RecurrentTFModelV2):
         #    units=self.num_outputs,
         #    kernel_initializer=normc_initializer(0.01))(lstm_out)
 
+        # Value branch.
         value_out = tf.keras.layers.Dense(
-            units=1, kernel_initializer=normc_initializer(1.0))(last_layer)
+            units=1, kernel_initializer=normc_initializer(1.0))(lstm_out)
 
         self.base_model = tf.keras.Model(
-            [inputs, seq_in, state_in_h, state_in_c], [logits, value_out, state_h, state_c])
+            [inputs, seq_in, state_in_h, state_in_c],
+            [logits, value_out, state_h, state_c])
         self.base_model.summary()
         self.register_variables(self.base_model.variables)
 
@@ -208,7 +239,8 @@ class RNNSpyModel(RecurrentTFModelV2):
         # This behavior is no longer the case, so we manually refresh
         # the variable.
         RNNSpyModel.capture_index = 0
-        model_out, value_out, h, c = self.base_model([inputs, seq_lens, state[0], state[1]])
+        model_out, value_out, h, c = self.base_model(
+            [inputs, seq_lens, state[0], state[1]])
         self._value_out = value_out
         return model_out, [h, c]
         #features = inputs  #["obs"]

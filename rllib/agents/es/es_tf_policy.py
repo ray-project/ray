@@ -79,13 +79,11 @@ class ESTFPolicy:
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             self.action_space, config["model"], dist_type="deterministic")
         self.model = ModelCatalog.get_model_v2(
-            obs_space=obs_space,
+            obs_space=self.preprocessor.observation_space,
             action_space=action_space,
             num_outputs=dist_dim,
             model_config=config["model"])
-        dist_inputs, _ = self.model({
-            SampleBatch.CUR_OBS: self.inputs
-        })
+        dist_inputs, _ = self.model({SampleBatch.CUR_OBS: self.inputs})
         dist = dist_class(dist_inputs, self.model)
         self.sampler = dist.sample()
 

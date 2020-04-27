@@ -21,6 +21,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiCategorical, TorchDeterministic, TorchDiagGaussian
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 tf = try_import_tf()
@@ -476,6 +477,7 @@ class ModelCatalog:
                   seq_lens=None):
         """Deprecated: use get_model_v2() instead."""
 
+        deprecation_warning("get_model", "get_model_v2", error=False)
         assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
         model = ModelCatalog._get_model(input_dict, obs_space, action_space,
@@ -501,6 +503,7 @@ class ModelCatalog:
     @staticmethod
     def _get_model(input_dict, obs_space, action_space, num_outputs, options,
                    state_in, seq_lens):
+        deprecation_warning("_get_model", "get_model_v2", error=False)
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.debug("Using custom model {}".format(model))
@@ -546,10 +549,3 @@ class ModelCatalog:
         # Default Conv2D net.
         else:
             return VisionNet
-
-    @staticmethod
-    def get_torch_model(obs_space,
-                        num_outputs,
-                        options=None,
-                        default_model_cls=None):
-        raise DeprecationWarning("Please use get_model_v2() instead.")

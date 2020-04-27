@@ -18,11 +18,12 @@ class FullyConnectedNetwork(Model):
         Note that dict inputs will be flattened into a vector. To define a
         model that processes the components separately, use _build_layers_v2().
         """
-        # Hard deprecate this class. All Models should use the ModelV2
+        # Soft deprecate this class. All Models should use the ModelV2
         # API from here on.
         deprecation_warning(
-            "Model->FullyConnectedNetwork", "ModelV2->FullyConnectedNetwork",
-            error=True)
+            "Model->FullyConnectedNetwork",
+            "ModelV2->FullyConnectedNetwork",
+            error=False)
 
         hiddens = options.get("fcnet_hiddens")
         activation = get_activation_fn(options.get("fcnet_activation"))

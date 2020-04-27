@@ -28,9 +28,8 @@ class TorchModelV2(ModelV2):
         """
 
         if not isinstance(self, nn.Module):
-            raise ValueError(
-                "Subclasses of TorchModel must also inherit from "
-                "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
+            raise ValueError("Subclasses of TorchModel must also inherit from "
+                             "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
 
         ModelV2.__init__(
             self,

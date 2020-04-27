@@ -3,7 +3,6 @@ import gym
 
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
-#from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 

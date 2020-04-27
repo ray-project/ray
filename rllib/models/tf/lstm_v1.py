@@ -24,8 +24,7 @@ class LSTM(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         # Hard deprecate this class. All Models should use the ModelV2
         # API from here on.
-        deprecation_warning(
-            "Model->LSTM", "RecurrentTFModelV2", error=True)
+        deprecation_warning("Model->LSTM", "RecurrentTFModelV2", error=True)
 
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
