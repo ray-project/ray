@@ -28,6 +28,8 @@ class Policy(metaclass=ABCMeta):
     Attributes:
         observation_space (gym.Space): Observation space of the policy.
         action_space (gym.Space): Action space of the policy.
+        exploration (Exploration): The exploration object to use for
+            computing actions, or None.
     """
 
     @DeveloperAPI
@@ -42,8 +44,6 @@ class Policy(metaclass=ABCMeta):
             observation_space (gym.Space): Observation space of the policy.
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
-            exploration (Exploration): The exploration object to use for
-                computing actions.
         """
         self.observation_space = observation_space
         self.action_space = action_space
@@ -54,6 +54,8 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
+        # Exploration should be initialized manually by subclasses, if used.
+        self.exploration = None
 
     @abstractmethod
     @DeveloperAPI
