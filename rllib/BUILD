@@ -1389,7 +1389,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy",
-    tags = ["examples", "examples_M_xxx"],
+    tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
 )

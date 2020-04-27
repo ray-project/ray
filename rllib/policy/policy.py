@@ -32,6 +32,8 @@ class Policy(metaclass=ABCMeta):
     Attributes:
         observation_space (gym.Space): Observation space of the policy.
         action_space (gym.Space): Action space of the policy.
+        exploration (Exploration): The exploration object to use for
+            computing actions, or None.
     """
 
     @DeveloperAPI
@@ -46,8 +48,6 @@ class Policy(metaclass=ABCMeta):
             observation_space (gym.Space): Observation space of the policy.
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
-            exploration (Exploration): The exploration object to use for
-                computing actions.
         """
         self.observation_space = observation_space
         self.action_space = action_space

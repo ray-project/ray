@@ -40,7 +40,6 @@ if __name__ == "__main__":
     }
     algo = BayesOptSearch(
         space,
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         utility_kwargs={
