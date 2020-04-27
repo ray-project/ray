@@ -89,6 +89,8 @@ An example of this can be found in `bayesopt_example.py <https://github.com/ray-
     :show-inheritance:
     :noindex:
 
+.. _tune-hyperopt:
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
@@ -111,6 +113,7 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
     :show-inheritance:
     :noindex:
+
 
 SigOpt Search
 -------------
@@ -140,6 +143,8 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
 .. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
     :show-inheritance:
     :noindex:
+
+.. _tune-nevergrad:
 
 Nevergrad Search
 ----------------
@@ -216,6 +221,8 @@ An example of this can be found in `dragonfly_example.py <https://github.com/ray
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
     :show-inheritance:
     :noindex:
+
+.. _tune-ax:
 
 Ax Search
 ---------

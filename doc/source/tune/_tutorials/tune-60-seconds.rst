@@ -14,18 +14,14 @@ Let's quickly walk through the key concepts you need to know to use Tune. In thi
 Trainables
 ----------
 
-Tune will optimize your training process using the Trainable API. Use this API to set up your model and train it.
-
-There are two types of Trainables - a **function-based API** is for fast prototyping, and **class-based** API that enables checkpointing and pausing.
-
-Let's maximize this objective function:
+Tune will optimize your training process using the :ref:`Trainable API <trainable-docs>`. To start, let's try to maximize this objective function:
 
 .. code-block:: python
 
     def objective(x, a, b):
         return a * (x ** 0.5) + b
 
-Here's an example of specifying the objective function using the Function API:
+Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
 
 .. code-block:: python
 
@@ -37,7 +33,9 @@ Here's an example of specifying the objective function using the Function API:
 
             tune.track.log(score=score)  # This sends the score to Tune.
 
-Here's an example of specifying the objective function using Class API example:
+Now, there's two Trainable APIs - one being the :ref:`function-based API <tune-function-api>` that we demonstrated above.
+
+The other is a :ref:`class-based API <tune-class-api>` that enables :ref:`checkpointing and pausing <tune-trainable-save-restore>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
 .. code-block:: python
 
@@ -57,19 +55,19 @@ Here's an example of specifying the objective function using Class API example:
 
 .. tip:: Do not use ``tune.track.log`` within a ``Trainable`` class.
 
-See the documentation: :ref:`trainable-docs`.
+See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
 tune.run
 --------
 
-Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This function manages your distributed experiment and provides many features such as logging, checkpointing, and early stopping.
+Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
     # Pass in a Trainable class or function to tune.run.
     tune.run(trainable)
 
-This function will report status on the command line until all Trials stop:
+This function will report status on the command line until all trials stop (each trial is one instance of a :ref:`Trainable <trainable-docs>`):
 
 .. code-block:: bash
 
@@ -80,32 +78,32 @@ This function will report status on the command line until all Trials stop:
     Result logdir: /Users/foo/ray_results/myexp
     Number of trials: 1 (1 RUNNING)
     +----------------------+----------+---------------------+-----------+--------+--------+----------------+-------+
-    | Trial name           | status   | loc                 |    param1 | param2 |    acc | total time (s) |  iter |
+    | Trial name           | status   | loc                 |         a |      b |  score | total time (s) |  iter |
     |----------------------+----------+---------------------+-----------+--------+--------+----------------+-------|
     | MyTrainable_a826033a | RUNNING  | 10.234.98.164:31115 | 0.303706  | 0.0761 | 0.1289 |        7.54952 |    15 |
     +----------------------+----------+---------------------+-----------+--------+--------+----------------+-------+
 
 
-You can also easily run 10 trials (each trial is one instance of a Trainable). Tune automatically determines parallelism.
+You can also easily run 10 trials. Tune automatically :ref:`determines how many trials will run in parallel <tune-parallelism>`.
 
 .. code-block:: python
 
     tune.run(trainable, num_samples=10)
 
-Finally, you can randomly sample hyperparameters:
+Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 
 .. code-block:: python
 
     space = {"x": tune.uniform(0, 1)}
     tune.run(my_trainable, config=space, num_samples=10)
 
-See the documentation: :ref:`tune-run-ref`.
+See more documentation: :ref:`tune-run-ref`.
 
 
 Search Algorithms
 -----------------
 
-To optimize the hyperparameters of your training process, you will want to use a Search Algorithm which will help suggest better hyperparameters.
+To optimize the hyperparameters of your training process, you will want to use a :ref:`Search Algorithm <tune-search-alg>` which will help suggest better hyperparameters.
 
 .. code-block:: python
 
@@ -116,12 +114,12 @@ To optimize the hyperparameters of your training process, you will want to use a
 
     # Create a HyperOpt search space
     space = {
-        "momentum": hp.uniform("momentum", 0, 20),
-        "lr": hp.uniform("lr", 0, 1)
+        "a": hp.uniform("a", 0, 1),
+        "b": hp.uniform("b", 0, 20)
     }
 
-    # Specify the search space and maximize accuracy
-    hyperopt = HyperOptSearch(space, metric="accuracy", mode="max")
+    # Specify the search space and maximize score
+    hyperopt = HyperOptSearch(space, metric="score", mode="max")
 
     # Execute 20 trials using HyperOpt and stop after 20 iterations
     tune.run(
@@ -131,14 +129,14 @@ To optimize the hyperparameters of your training process, you will want to use a
         stop={"training_iteration": 20}
     )
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as `Nevergrad <https://github.com/facebookresearch/nevergrad>`_ and `Hyperopt <https://github.com/hyperopt/hyperopt/>`_.
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <tune-nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
 
 See the documentation: :ref:`searchalg-ref`.
 
 Trial Schedulers
 ----------------
 
-In addition, you can make your training process more efficient by using a Trial Scheduler.
+In addition, you can make your training process more efficient by using a :ref:`Trial Scheduler <tune-schedulers>`.
 
 Trial Schedulers can stop/pause/tweak the hyperparameters of running trials, making your hyperparameter tuning process much faster.
 
@@ -146,11 +144,11 @@ Trial Schedulers can stop/pause/tweak the hyperparameters of running trials, mak
 
     from ray.tune.schedulers import HyperBandScheduler
 
-    # Create HyperBand scheduler and maximize accuracy
-    hyperband = HyperBandScheduler(metric="accuracy", mode="max")
+    # Create HyperBand scheduler and maximize score
+    hyperband = HyperBandScheduler(metric="score", mode="max")
 
     # Execute 20 trials using HyperBand using a search space
-    configs = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
+    configs = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 1)}
 
     tune.run(
         MyTrainableClass,
@@ -159,9 +157,9 @@ Trial Schedulers can stop/pause/tweak the hyperparameters of running trials, mak
         scheduler=hyperband
     )
 
-Population-based training and HyperBand are examples of popular optimization algorithms implemented as Trial Schedulers.
+:ref:`Population-based Training <tune-scheduler-pbt>` and :ref:`HyperBand <tune-scheduler-hyperband>` are examples of popular optimization algorithms implemented as Trial Schedulers.
 
-Unlike **Search Algorithms**, Trial Schedulers do not select which hyperparameter configurations to evaluate. However, you can use them together.
+Unlike **Search Algorithms**, :ref:`Trial Scheduler <tune-schedulers>` do not select which hyperparameter configurations to evaluate. However, you can use them together.
 
 See the documentation: :ref:`schedulers-ref`.
 
@@ -181,12 +179,11 @@ This object can also retrieve all training runs as dataframes, allowing you to d
 
 .. code-block:: python
 
-    # Get a dataframe for the max accuracy seen for each trial
-    df = analysis.dataframe(metric="mean_accuracy", mode="max")
+    # Get a dataframe for the max score seen for each trial
+    df = analysis.dataframe(metric="score", mode="max")
 
 What's Next?
 ~~~~~~~~~~~~
-
 
 Now that you have a working understanding of Tune, check out:
 
