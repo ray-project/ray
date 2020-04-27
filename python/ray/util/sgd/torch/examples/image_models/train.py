@@ -153,9 +153,9 @@ def main():
         val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
-    print('Done')
+    print("Done")
     trainer.shutdown()
-    print('Shutdown')
+    print("Shutdown")
 
 
 if __name__ == "__main__":
