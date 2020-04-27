@@ -106,11 +106,11 @@ class SegOperator(TrainingOperator):
 
         args = self.config["args"]
 
-        if self.use_gpu:
-            input = input.cuda(non_blocking=True)
-            target = target.cuda(non_blocking=True)
-
         if not args.prefetcher:
+            # prefetcher already does this for us if enabled
+            if self.use_gpu:
+                input, target = input.cuda(), target.cuda()
+
             # todo: support no-gpu training
             if args.mixup > 0.:
                 mixup_disabled = False
@@ -140,14 +140,21 @@ class SegOperator(TrainingOperator):
 
         torch.cuda.synchronize()
 
-        if model_ema is not None:
-            model_ema.update(model)
+        if self.model_ema is not None:
+            self.model_ema.update(model)
 
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def train_epoch(self, iterator, info):
         # todo: we need to do this, but we cant
         # loader_train.sampler.set_epoch(epoch)
+
+        loader = self.train_loader
+
+        # todo: same here
+        if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
+            if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
+                loader.mixup_enabled = False
 
         args = self.config["args"]
 
@@ -164,11 +171,6 @@ class SegOperator(TrainingOperator):
                 desc=desc,
                 unit="batch",
                 leave=False)
-
-        loader = self.train_loader
-        if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
-            if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
-                loader.mixup_enabled = False
 
         batch_time_m = AverageMeter()
         data_time_m = AverageMeter()
@@ -199,13 +201,12 @@ class SegOperator(TrainingOperator):
                 ]
                 lr = sum(lrl) / len(lrl)
 
-                # fixme: this doesnt work at all
-                # reduced_loss = reduce_tensor(loss.data, args.world_size)
-                # losses_m.update(metrics["train_loss"], metrics["num_samples"])
+                reduced_loss = reduce_tensor(loss.data, args.world_size)
+                losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
 
                 if self.world_rank == 0:
                     total_samples = (
-                        metrics["num_samples"] * args.ray_num_workers)
+                        metrics["NUM_STEPS"] * args.ray_num_workers)
 
                     logging.info(
                         "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
