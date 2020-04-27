@@ -750,6 +750,19 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "gcs_test_util_lib",
+    hdrs = [
+        "src/ray/gcs/test/accessor_test_base.h",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":gcs_service_rpc",
+    ],
+)
+
 cc_test(
     name = "gcs_server_rpc_test",
     srcs = [
@@ -778,6 +791,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -791,6 +805,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -804,18 +819,8 @@ cc_test(
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "gcs_test_util_lib",
-    hdrs = [
-        "src/ray/gcs/test/gcs_test_util.h",
-    ],
-    copts = COPTS,
-    deps = [
-        ":gcs_service_rpc",
     ],
 )
 
@@ -1192,7 +1197,6 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
-        "src/ray/gcs/test/*.h",
     ]),
     copts = COPTS,
     deps = [
@@ -1236,6 +1240,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1252,6 +1257,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1268,6 +1274,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1284,6 +1291,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1300,6 +1308,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
