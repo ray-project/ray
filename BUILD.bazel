@@ -774,6 +774,7 @@ cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
         "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
+        "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
     deps = [

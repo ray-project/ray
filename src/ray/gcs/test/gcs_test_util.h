@@ -23,6 +23,8 @@
 #include "src/ray/common/test_util.h"
 #include "src/ray/util/asio_util.h"
 
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
+
 namespace ray {
 
 struct Mocker {

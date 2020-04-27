@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
+#include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -23,11 +23,11 @@ namespace ray {
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    raylet_client_ = std::make_shared<Mocker::MockRayletClient>();
-    worker_client_ = std::make_shared<Mocker::MockWorkerClient>();
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_);
-    gcs_actor_scheduler_ = std::make_shared<Mocker::MockedGcsActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_, actor_info_accessor_, *gcs_node_manager_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor) {
@@ -45,14 +45,14 @@ class GcsActorSchedulerTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  Mocker::MockedActorInfoAccessor actor_info_accessor_;
-  Mocker::MockedNodeInfoAccessor node_info_accessor_;
-  Mocker::MockedErrorInfoAccessor error_info_accessor_;
+  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
+  GcsServerMocker::MockedNodeInfoAccessor node_info_accessor_;
+  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
 
-  std::shared_ptr<Mocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<Mocker::MockWorkerClient> worker_client_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<Mocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
 };

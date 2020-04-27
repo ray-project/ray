@@ -28,7 +28,7 @@
 
 namespace ray {
 
-struct Mocker {
+struct GcsServerMocker {
   class MockWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
     ray::Status PushNormalTask(

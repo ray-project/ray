@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
+#include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
 #include "gtest/gtest.h"
@@ -28,7 +29,7 @@ class MockedGcsActorManager : public gcs::GcsActorManager {
                                  rpc::ClientFactoryFn client_factory = nullptr)
       : gcs::GcsActorManager(io_context, actor_info_accessor, gcs_node_manager,
                              lease_client_factory, client_factory) {
-    gcs_actor_scheduler_.reset(new Mocker::MockedGcsActorScheduler(
+    gcs_actor_scheduler_.reset(new GcsServerMocker::MockedGcsActorScheduler(
         io_context, actor_info_accessor, gcs_node_manager,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor) {
@@ -47,14 +48,14 @@ class MockedGcsActorManager : public gcs::GcsActorManager {
 
  public:
   void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
-    auto gcs_actor_scheduler =
-        dynamic_cast<Mocker::MockedGcsActorScheduler *>(gcs_actor_scheduler_.get());
+    auto gcs_actor_scheduler = dynamic_cast<GcsServerMocker::MockedGcsActorScheduler *>(
+        gcs_actor_scheduler_.get());
     gcs_actor_scheduler->ResetLeaseClientFactory(std::move(lease_client_factory));
   }
 
   void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
-    auto gcs_actor_scheduler =
-        dynamic_cast<Mocker::MockedGcsActorScheduler *>(gcs_actor_scheduler_.get());
+    auto gcs_actor_scheduler = dynamic_cast<GcsServerMocker::MockedGcsActorScheduler *>(
+        gcs_actor_scheduler_.get());
     gcs_actor_scheduler->ResetClientFactory(std::move(client_factory));
   }
 
@@ -71,8 +72,8 @@ class MockedGcsActorManager : public gcs::GcsActorManager {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    raylet_client_ = std::make_shared<Mocker::MockRayletClient>();
-    worker_client_ = std::make_shared<Mocker::MockWorkerClient>();
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_);
     gcs_actor_manager_ = std::make_shared<MockedGcsActorManager>(
@@ -85,12 +86,12 @@ class GcsActorManagerTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  Mocker::MockedActorInfoAccessor actor_info_accessor_;
-  Mocker::MockedNodeInfoAccessor node_info_accessor_;
-  Mocker::MockedErrorInfoAccessor error_info_accessor_;
+  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
+  GcsServerMocker::MockedNodeInfoAccessor node_info_accessor_;
+  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
 
-  std::shared_ptr<Mocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<Mocker::MockWorkerClient> worker_client_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<MockedGcsActorManager> gcs_actor_manager_;
 };
