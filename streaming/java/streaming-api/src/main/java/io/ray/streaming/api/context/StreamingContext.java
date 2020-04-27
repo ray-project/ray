@@ -15,11 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Encapsulate the context information of a streaming Job.
  */
 public class StreamingContext implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(StreamingContext.class);
 
   private transient AtomicInteger idGenerator;
 
@@ -58,12 +61,17 @@ public class StreamingContext implements Serializable {
 
     if (Ray.internal() == null) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
-        ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), true);
+        Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
+        ClusterStarter.startCluster(false, true);
+        LOG.info("Create local cluster for job {}.", jobName);
       } else {
-        ClusterStarter.startCluster(true, false);
+        ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), false);
+        LOG.info("Create multi process cluster for job {}.", jobName);
       }
 
       Runtime.getRuntime().addShutdownHook(new Thread(StreamingContext.this::stop));
+    } else {
+      LOG.info("Reuse existing cluster.");
     }
 
     ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);

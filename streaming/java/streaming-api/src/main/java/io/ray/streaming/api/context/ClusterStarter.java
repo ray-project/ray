@@ -26,6 +26,9 @@ class ClusterStarter {
     if (!isLocal) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
       System.setProperty("ray.run-mode", "CLUSTER");
+    } else {
+      System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+      System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     }
 
     if (!isCrossLanguage) {
