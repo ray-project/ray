@@ -185,15 +185,15 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
-    def for_each(self, fn: Callable[[T], U], max_concurrent=2,
+    def for_each(self, fn: Callable[[T], U], max_concurrency=2,
                  resources=None) -> "ParallelIterator[U]":
-        """Remotely apply fn to each item in this iterator, at most `max_concur`
+        """Remotely apply fn to each item in this iterator, at most `max_concurrency`
         at a time.
 
-        If `max_concurrent` == 1 then `fn` will be executed serially by the
+        If `max_concurrency` == 1 then `fn` will be executed serially by the
         shards
 
-        `max_concurrent` should be used to achieve a high degree of parallelism
+        `max_concurrency` should be used to achieve a high degree of parallelism
         without the overhead of increasing the number of shards (which are
         actor based). This provides the semantic guarantee that `fn(x_i)` will
         _begin_ executing before `fn(x_{i+1})` (but not necessarily finish
@@ -206,11 +206,11 @@ class ParallelIterator(Generic[T]):
 
         Args:
             fn (func): function to apply to each item.
-            max_concurrent (int): max number of concurrent calls to fn per
+            max_concurrency (int): max number of concurrent calls to fn per
                 shard. If 0, then apply all operations concurrently.
             resources (dict): resources that the function requires to execute.
                 This has the same default as `ray.remote` and is only used
-                when `max_concurrent > 1`.
+                when `max_concurrency > 1`.
 
         Returns:
             ParallelIterator[U] a parallel iterator whose elements have `fn`
@@ -227,7 +227,7 @@ class ParallelIterator(Generic[T]):
 
         """
         return self._with_transform(
-            lambda local_it: local_it.for_each(fn, max_concurrent, resources),
+            lambda local_it: local_it.for_each(fn, max_concurrency, resources),
             ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
@@ -671,9 +671,9 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
-    def for_each(self, fn: Callable[[T], U], max_concurrent=1,
+    def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "LocalIterator[U]":
-        if max_concurrent == 1:
+        if max_concurrency == 1:
 
             def apply_foreach(it):
                 for item in it:
@@ -701,7 +701,7 @@ class LocalIterator(Generic[T]):
                         yield item
                     else:
                         finished, remaining = ray.wait(cur, timeout=0)
-                        if max_concurrent and len(remaining) >= max_concurrent:
+                        if max_concurrency and len(remaining) >= max_concurrency:
                             ray.wait(cur, num_returns=(len(finished) + 1))
                         cur.append(remote_fn(item))
 
