@@ -564,7 +564,7 @@ def init(address=None,
     .. code-block:: python
 
         ray.init(address="123.45.67.89:6379")
-    
+
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
     cluster with ray.init().
