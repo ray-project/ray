@@ -1685,9 +1685,9 @@ def cancel(object_id, force=False):
     """Cancels a locally-submitted task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
-    the task is currently executing, the behavior depends on the `force` flag.
-    When `force=False`, a KeyboardInterrupt will be raised in Python and when
-    `force=True`, the executing the task will immediately exit. If the task is
+    the task is currently executing, the behavior depends on the ``force`` flag.
+    When ``force=False``, a KeyboardInterrupt will be raised in Python and when
+    ``force=True``, the executing the task will immediately exit. If the task is
     already finished, nothing will happen.
 
     Only non-actor tasks can be canceled. Canceled tasks will not be
