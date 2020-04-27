@@ -77,7 +77,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        return tuple([a1, a2])
+        return (a1, a2)
 
     def sample(self):
         # first, sample a1
@@ -90,7 +90,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        return tuple([a1, a2])
+        return (a1, a2)
 
     def logp(self, actions):
         a1, a2 = actions[:, 0], actions[:, 1]
