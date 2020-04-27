@@ -69,11 +69,12 @@ if __name__ == "__main__":
         "env": "NestedSpaceRepeatAfterMeEnv",
         "env_config": {
             "space": Dict({
-                "a": Tuple([Dict({
-                    "d": Box(0.0, 1.0, ()),
-                    "e": Discrete(2)
-                })]),
-                "b": Box(-1.0, 1.0, (2, )),
+                "a": Tuple(
+                    [Dict({
+                        "d": Box(-10.0, 10.0, ()),
+                        "e": Discrete(2)
+                    })]),
+                "b": Box(-10.0, 10.0, (2, )),
                 "c": Discrete(4)
             }),
         },
@@ -81,7 +82,6 @@ if __name__ == "__main__":
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
-        "kl_coeff": 0.0,
         "num_sgd_iter": 20,
         "vf_loss_coeff": 0.01,
         "lr": 0.0003
