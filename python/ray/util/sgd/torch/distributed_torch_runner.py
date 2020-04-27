@@ -32,6 +32,8 @@ class DistributedTorchRunner(TorchRunner):
 
     def __init__(self,
                  *args,
+                 world_rank,
+                 world_size,
                  backend="gloo",
                  add_dist_sampler=True,
                  wrap_ddp=False,
@@ -42,12 +44,21 @@ class DistributedTorchRunner(TorchRunner):
         self.backend = backend
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
-        self.world_rank = None
+
+        self.world_rank = world_rank
+        self.world_size = world_size
 
     def setup(self):
         raise RuntimeError("Need to call setup commands separately.")
 
-    def setup_process_group(self, url, world_rank, world_size):
+    @property
+    def sys_info(self):
+        return {
+            "world_rank": self.world_rank,
+            "world_size": self.world_size
+        }
+
+    def setup_process_group(self, url):
         """Connects the distributed PyTorch backend.
 
         Args:
@@ -55,9 +66,8 @@ class DistributedTorchRunner(TorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
-        self.world_rank = world_rank
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-            url, world_rank, world_size))
+            url, self.world_rank, self.world_size))
         logger.debug("using {}".format(self.backend))
         if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
             logger.debug(
@@ -69,8 +79,8 @@ class DistributedTorchRunner(TorchRunner):
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
-            rank=world_rank,
-            world_size=world_size,
+            rank=self.world_rank,
+            world_size=self.world_size,
             timeout=timeout)
 
     def setup_ddp_and_operator(self):

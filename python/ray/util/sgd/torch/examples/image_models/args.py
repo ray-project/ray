@@ -469,8 +469,10 @@ def parse_args():
     args.prefetcher = not args.no_prefetcher
     args.distributed = False  # ray SGD handles this (DistributedSampler)
     args.device = "cuda"  # ray should handle this
+    # args.world_size = 1
+    # args.rank = 0  # global rank
 
-    if args.no_gpu == 0 and args.prefetcher:
+    if args.no_gpu and args.prefetcher:
         logging.warning("Prefetcher needs CUDA currently "
                         "(might be a bug in timm). "
                         "Disabling it.")

@@ -325,14 +325,18 @@ class TorchTrainer:
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=1, num_gpus=int(self.use_gpu), **params)
+                num_cpus=1, num_gpus=int(self.use_gpu),
+                world_rank=0,
+                world_size=num_workers, **params)
 
             # Generate actor class
             RemoteRunner = ray.remote(
                 num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Start workers
             self.remote_workers = [
-                RemoteRunner.remote(**params) for i in range(num_workers - 1)
+                RemoteRunner.remote(
+                    world_rank=i+1, world_size=num_workers, **params)
+                for i in range(num_workers - 1)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
@@ -354,10 +358,10 @@ class TorchTrainer:
 
             # Setup the process group among all workers.
             remote_pgroup_setups = [
-                worker.setup_process_group.remote(address, i + 1, num_workers)
+                worker.setup_process_group.remote(address)
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup_process_group(address, 0, num_workers)
+            self.local_worker.setup_process_group(address)
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_pgroup_setups)
 

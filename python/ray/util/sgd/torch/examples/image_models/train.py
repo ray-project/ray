@@ -35,7 +35,9 @@ class SegOperator(TrainingOperator):
     def setup(self):
         self.model_ema = None
 
-    def train_batch(self, (input, target), batch_info):
+    def train_batch(self, batch, batch_info):
+        input, target = batch
+
         args = self.config["args"]
 
         if self.use_gpu:
@@ -186,12 +188,12 @@ class SegOperator(TrainingOperator):
             self.global_step += 1
 
 
-    if hasattr(self.optimizer, 'sync_lookahead'):
-        self.optimizer.sync_lookahead()
+        if hasattr(self.optimizer, 'sync_lookahead'):
+            self.optimizer.sync_lookahead()
 
-    # return OrderedDict([('loss', losses_m.avg)])
+        # return OrderedDict([('loss', losses_m.avg)])
 
-    # return metric_meters.summary()
+        # return metric_meters.summary()
 
 def model_creator(config):
     args = config["args"]
@@ -218,7 +220,7 @@ def model_creator(config):
     return model
 
 
-def data_creator(config):
+def data_creator(config, sys_info):
     # torch.manual_seed(args.seed + torch.distributed.get_rank())
 
     args = config["args"]
@@ -230,7 +232,8 @@ def data_creator(config):
         util.mock_data(train_dir, val_dir)
 
     # todo: verbose should depend on rank
-    data_config = resolve_data_config(vars(args), verbose=True)
+    data_config = resolve_data_config(
+        vars(args), verbose=sys_info["world_rank"] == 0)
 
     dataset_train = Dataset(join(args.data, "train"))
     dataset_eval = Dataset(join(args.data, "val"))
