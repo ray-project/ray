@@ -323,3 +323,7 @@ class _MockSuggestionAlgorithm(SearchGenerator):
     @property
     def live_trials(self):
         return self.searcher.live_trials
+
+    @property
+    def results(self):
+        return self.searcher.results

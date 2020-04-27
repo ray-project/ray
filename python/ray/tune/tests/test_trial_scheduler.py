@@ -668,6 +668,7 @@ class BOHBSuite(unittest.TestCase):
         sched = HyperBandForBOHB(max_t=3, reduction_factor=3, mode="min")
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -681,7 +682,7 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
