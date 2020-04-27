@@ -81,9 +81,10 @@ if __name__ == "__main__":
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
+        "kl_coeff": 0.0,
         "num_sgd_iter": 20,
         "vf_loss_coeff": 0.01,
-        "lr": 0.0005
+        "lr": 0.0003
     }
 
     import ray.rllib.agents.ppo as ppo
