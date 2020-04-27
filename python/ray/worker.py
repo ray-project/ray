@@ -1682,7 +1682,7 @@ def kill(actor):
 
 
 def cancel(object_id, force=False):
-    """Cancels a locally-submitted task according to the following pseudocode.
+    """Cancels a locally-submitted task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the `force` flag.
