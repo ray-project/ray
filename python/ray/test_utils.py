@@ -273,4 +273,3 @@ def wait_until_server_available(address,
         s.close()
         return True
     return False
-

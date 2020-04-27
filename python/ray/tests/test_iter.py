@@ -134,7 +134,6 @@ def test_from_iterators(ray_start_regular_shared):
     assert list(it.gather_sync()) == [0, 0, 1, 1]
 
 
-
 def test_from_range(ray_start_regular_shared):
     it = from_range(4)
     assert repr(it) == "ParallelIterator[from_range[4, shards=2]]"
@@ -174,7 +173,8 @@ def test_for_each_concur(ray_start_regular_shared):
     def to_list(it):
         return list(it)
 
-    it = from_items([(i, main_wait, test_wait) for i in range(8)], num_shards=2)
+    it = from_items(
+        [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
     it = it.for_each(task, max_concurrent=2, resources={"num_cpus": 0.1})
 
     for i in range(4):
@@ -189,8 +189,9 @@ def test_for_each_concur(ray_start_regular_shared):
     for i in range(3):
         ray.get(test_wait.release.remote())
 
-    assert repr(it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
-    assert ray.get(to_list.remote(it.gather_sync())) == list(range(10,18))
+    assert repr(
+        it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
+    assert ray.get(to_list.remote(it.gather_sync())) == list(range(10, 18))
 
 
 def test_combine(ray_start_regular_shared):

@@ -185,34 +185,36 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
-    def for_each(self,
-                        fn: Callable[[T], U],
-                        max_concurrent=2,
-                        resources=None) -> "ParallelIterator[U]":
+    def for_each(self, fn: Callable[[T], U], max_concurrent=2,
+                 resources=None) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator, at most `max_concur`
         at a time.
 
-        If `max_concurrent` == 1 then `fn` will be executed serially by the shards
+        If `max_concurrent` == 1 then `fn` will be executed serially by the
+        shards
 
         `max_concurrent` should be used to achieve a high degree of parallelism
         without the overhead of increasing the number of shards (which are
-        actor based). This provides the semantic guarantee that `fn(x_i)` will _begin_
-        executing before `fn(x_{i+1})` (but not necessarily finish first)
+        actor based). This provides the semantic guarantee that `fn(x_i)` will
+        _begin_ executing before `fn(x_{i+1})` (but not necessarily finish
+        first)
 
-        A performance note: When executing concurrently, this function maintains
-        its own internal buffer. If `async_queue_depth` is `n` and max_concur is
-        `k` then the total number of buffered objects could be up to `n + k - 1`
+        A performance note: When executing concurrently, this function
+        maintains its own internal buffer. If `async_queue_depth` is `n` and
+        max_concur is `k` then the total number of buffered objects could be up
+        to `n + k - 1`
 
         Args:
             fn (func): function to apply to each item.
-            max_concurrent (int): max number of concurrent calls to fn per shard.
-                If 0, then apply all operations concurrently.
+            max_concurrent (int): max number of concurrent calls to fn per
+                shard. If 0, then apply all operations concurrently.
             resources (dict): resources that the function requires to execute.
-                This has the same default as `ray.remote` and is only used when
-                `max_concurrent > 1`.
+                This has the same default as `ray.remote` and is only used
+                when `max_concurrent > 1`.
 
         Returns:
-            ParallelIterator[U] a parallel iterator whose elements have `fn` applied. 
+            ParallelIterator[U] a parallel iterator whose elements have `fn`
+            applied.
 
 
         Examples:
@@ -224,10 +226,9 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
 
         """
-        return self._with_transform(lambda local_it: local_it.for_each(fn,
-                                                                       max_concurrent,
-                                                                       resources),
-                                    ".for_each()")
+        return self._with_transform(
+            lambda local_it: local_it.for_each(fn, max_concurrent, resources),
+            ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.
@@ -670,11 +671,10 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
-    def for_each(self,
-                 fn: Callable[[T], U],
-                 max_concurrent=1,
+    def for_each(self, fn: Callable[[T], U], max_concurrent=1,
                  resources=None) -> "LocalIterator[U]":
         if max_concurrent == 1:
+
             def apply_foreach(it):
                 for item in it:
                     if isinstance(item, _NextValueNotReady):
@@ -707,7 +707,8 @@ class LocalIterator(Generic[T]):
 
                         while len(cur) > 0:
                             to_yield = cur[0]
-                            finished, remaining = ray.wait([to_yield], timeout=0)
+                            finished, remaining = ray.wait(
+                                [to_yield], timeout=0)
                             if finished:
                                 cur.pop(0)
                                 yield ray.get(to_yield)
@@ -715,7 +716,6 @@ class LocalIterator(Generic[T]):
                                 break
 
                 yield from ray.get(cur)
-
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
