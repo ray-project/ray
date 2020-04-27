@@ -177,8 +177,8 @@ class ChannelCreationParametersBuilder:
     def __init__(self):
         self._parameters = []
 
-    def build_input_queue_parameters(self, queue_ids_dict):
-        self.build_parameters(queue_ids_dict,
+    def build_input_queue_parameters(self, from_actors):
+        self.build_parameters(from_actors,
                               self._java_writer_async_function_descriptor,
                               self._java_writer_sync_function_descriptor,
                               self._python_writer_async_function_descriptor,
