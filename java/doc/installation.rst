@@ -42,7 +42,7 @@ Then we can start building Ray with the following commands:
   ci/travis/install-bazel.sh
 
   # build native components
-  RAY_INSTALL_JAVA=1 ./build.sh
+  ./build.sh -l java
 
   # build java API
   cd java
