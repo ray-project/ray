@@ -54,7 +54,7 @@ public class OutputCollector implements Collector<Record> {
           byte[] bytes = javaSerializer.serialize(record);
           javaBuffer = ByteBuffer.allocate(1 + bytes.length);
           javaBuffer.put(Serializer.JAVA_TYPE_ID);
-          // TODO(mubai) remove copy
+          // TODO(chaokunyang) remove copy
           javaBuffer.put(bytes);
           javaBuffer.flip();
         }
@@ -65,7 +65,7 @@ public class OutputCollector implements Collector<Record> {
           byte[] bytes = crossLangSerializer.serialize(record);
           crossLangBuffer = ByteBuffer.allocate(1 + bytes.length);
           crossLangBuffer.put(Serializer.CROSS_LANG_TYPE_ID);
-          // TODO(mubai) remove copy
+          // TODO(chaokunyang) remove copy
           crossLangBuffer.put(bytes);
           crossLangBuffer.flip();
         }
