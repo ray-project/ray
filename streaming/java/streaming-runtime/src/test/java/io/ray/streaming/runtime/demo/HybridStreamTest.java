@@ -6,15 +6,18 @@ import io.ray.streaming.api.function.impl.MapFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 public class HybridStreamTest {
+  private static final Logger LOG = LoggerFactory.getLogger(HybridStreamTest.class);
 
   public static class Mapper1 implements MapFunction<Object, Object> {
 
     @Override
     public Object map(Object value) {
-      System.out.println("HybridStreamTest Mapper1 " + value);
+      LOG.info("HybridStreamTest Mapper1 {}", value);
       return value.toString();
     }
   }
@@ -23,7 +26,7 @@ public class HybridStreamTest {
 
     @Override
     public boolean filter(Object value) throws Exception {
-      System.out.println("HybridStreamTest Filter1 " + value);
+      LOG.info("HybridStreamTest Filter1 {}", value);
       return !value.toString().contains("b");
     }
   }

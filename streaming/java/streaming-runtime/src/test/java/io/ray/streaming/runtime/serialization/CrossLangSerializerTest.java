@@ -3,7 +3,6 @@ package io.ray.streaming.runtime.serialization;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
