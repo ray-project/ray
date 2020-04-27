@@ -65,7 +65,6 @@ void initTaskRequest(TaskRequest &tr, vector<ResourceUnit> &pred_demands,
 
 void addTaskResourceInstances(bool predefined, vector<double> allocation, uint64_t idx,
                               TaskResourceInstances *task_allocation) {
-
   std::vector<ResourceUnit> allocation_ru = VectorDoubleToVectorResourceUnit(allocation);
 
   if (task_allocation->predefined_resources.size() < PredefinedResources_MAX) {
@@ -419,8 +418,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {11};
     vector<bool> pred_soft = {false};
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_EQ(node_id, -1);
@@ -430,8 +429,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {11};
     vector<bool> pred_soft = {true};
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -443,8 +442,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {5};
     vector<bool> pred_soft = {false};
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -596,7 +595,8 @@ TEST_F(SchedulingTest, GetCPUInstancesDoubleTest) {
 TEST_F(SchedulingTest, AvailableResourceInstancesOpsTest) {
   NodeResources node_resources;
   vector<ResourceUnit> pred_capacities{3 /* CPU */};
-  initNodeResources(node_resources, pred_capacities, EmptyIntVector, EmptyResourceUnitVector);
+  initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                    EmptyResourceUnitVector);
   ClusterResourceScheduler cluster(0, node_resources);
 
   ResourceInstanceCapacities instances;
@@ -628,14 +628,15 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<ResourceUnit> pred_capacities{3. /* CPU */, 4. /* MEM */, 5. /* GPU */};
-    initNodeResources(node_resources, pred_capacities, EmptyIntVector, EmptyResourceUnitVector);
+    initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                      EmptyResourceUnitVector);
     ClusterResourceScheduler cluster_resources(0, node_resources);
 
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<bool> pred_soft = {false};
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
 
     NodeResourceInstances old_local_resources = cluster_resources.GetLocalResources();
 
@@ -643,7 +644,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
         std::make_shared<TaskResourceInstances>();
     bool success =
         cluster_resources.AllocateTaskResourceInstances(task_req, task_allocation);
-        
+
     ASSERT_EQ(success, true);
 
     cluster_resources.FreeTaskResourceInstances(task_allocation);
@@ -655,14 +656,15 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<ResourceUnit> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
-    initNodeResources(node_resources, pred_capacities, EmptyIntVector, EmptyResourceUnitVector);
+    initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                      EmptyResourceUnitVector);
     ClusterResourceScheduler cluster_resources(0, node_resources);
 
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {4. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<bool> pred_soft = {false};  // Hard constrained resource.
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
 
     NodeResourceInstances old_local_resources = cluster_resources.GetLocalResources();
     std::shared_ptr<TaskResourceInstances> task_allocation =
@@ -677,14 +679,15 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<ResourceUnit> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
-    initNodeResources(node_resources, pred_capacities, EmptyIntVector, EmptyResourceUnitVector);
+    initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                      EmptyResourceUnitVector);
     ClusterResourceScheduler cluster_resources(0, node_resources);
 
     TaskRequest task_req;
     vector<ResourceUnit> pred_demands = {4. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<bool> pred_soft = {true};  // Soft constrained resource.
-    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyResourceUnitVector,
-                    EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                    EmptyResourceUnitVector, EmptyBoolVector, EmptyIntVector);
 
     NodeResourceInstances old_local_resources = cluster_resources.GetLocalResources();
     std::shared_ptr<TaskResourceInstances> task_allocation =

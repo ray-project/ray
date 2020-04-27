@@ -30,36 +30,35 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
-class ResourceUnit { 
-#define RESOURCE_UNIT_SCALING 1000  
-private: 
+class ResourceUnit {
+#define RESOURCE_UNIT_SCALING 1000
+ private:
   int64_t i_;
-public: 
-  ResourceUnit(double d = 0)  { 
-    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); 
-  } 
-      
-  ResourceUnit operator + (ResourceUnit const &ru) { 
-    ResourceUnit res;
-    res.i_ = i_ + ru.i_; 
-    return res;
-  } 
 
-  ResourceUnit operator += (ResourceUnit const &ru) { 
+ public:
+  ResourceUnit(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
+
+  ResourceUnit operator+(ResourceUnit const &ru) {
+    ResourceUnit res;
+    res.i_ = i_ + ru.i_;
+    return res;
+  }
+
+  ResourceUnit operator+=(ResourceUnit const &ru) {
     i_ += ru.i_;
     return *this;
-  } 
+  }
 
-  ResourceUnit operator - (ResourceUnit const &ru) { 
+  ResourceUnit operator-(ResourceUnit const &ru) {
     ResourceUnit res;
-    res.i_ = i_ - ru.i_; 
+    res.i_ = i_ - ru.i_;
     return res;
-  } 
+  }
 
-  ResourceUnit operator -= (ResourceUnit const &ru) { 
+  ResourceUnit operator-=(ResourceUnit const &ru) {
     i_ -= ru.i_;
     return *this;
-  } 
+  }
 
   ResourceUnit operator-() const {
     ResourceUnit res;
@@ -67,57 +66,71 @@ public:
     return res;
   }
 
-  ResourceUnit operator + (double const d) { 
+  ResourceUnit operator+(double const d) {
     ResourceUnit res;
-    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING); 
+    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
     return res;
-  } 
+  }
 
-  ResourceUnit operator - (double const d) { 
+  ResourceUnit operator-(double const d) {
     ResourceUnit res;
-    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING); 
+    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
     return res;
-  } 
+  }
 
-  ResourceUnit operator = (double const d) { 
-    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); ; 
+  ResourceUnit operator=(double const d) {
+    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
+    ;
     return *this;
-  } 
+  }
 
-  friend bool operator < (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator > (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator <= (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator >= (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator == (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator != (ResourceUnit const &ru1, ResourceUnit const &ru2);
-  
-  double GetDouble() { return (double)i_/RESOURCE_UNIT_SCALING; };
+  friend bool operator<(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator>(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator<=(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator>=(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator==(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator!=(ResourceUnit const &ru1, ResourceUnit const &ru2);
 
-  friend std::ostream & operator << (std::ostream &out, const ResourceUnit &ru);
-}; 
+  double GetDouble() { return (double)i_ / RESOURCE_UNIT_SCALING; };
 
-bool operator < (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ < ru2.i_); };
-bool operator > (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ > ru2.i_); };
-bool operator <= (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ <= ru2.i_); };
-bool operator >= (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ >= ru2.i_); };
-bool operator == (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ == ru2.i_); };
-bool operator != (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ != ru2.i_); };
+  friend std::ostream &operator<<(std::ostream &out, const ResourceUnit &ru);
+};
 
-std::ostream & operator << (std::ostream &out, const ResourceUnit &ru) {
-    out << ru.i_;
-    return out;
+bool operator<(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ < ru2.i_);
+};
+bool operator>(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ > ru2.i_);
+};
+bool operator<=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ <= ru2.i_);
+};
+bool operator>=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ >= ru2.i_);
+};
+bool operator==(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ == ru2.i_);
+};
+bool operator!=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
+  return (ru1.i_ != ru2.i_);
+};
+
+std::ostream &operator<<(std::ostream &out, const ResourceUnit &ru) {
+  out << ru.i_;
+  return out;
 }
 
-
 // Helper function to compare two vectors with ResourceUnit values.
-bool EqualVectors(const std::vector<ResourceUnit> &v1, const std::vector<ResourceUnit> &v2);
+bool EqualVectors(const std::vector<ResourceUnit> &v1,
+                  const std::vector<ResourceUnit> &v2);
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(const std::vector<double> &vector);
+std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(
+    const std::vector<double> &vector);
 
 /// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorResourceUnitToVectorDouble(const std::vector<ResourceUnit> &vector_ru);
-
+std::vector<double> VectorResourceUnitToVectorDouble(
+    const std::vector<ResourceUnit> &vector_ru);
 
 struct ResourceCapacity {
   ResourceUnit total;
@@ -451,7 +464,7 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(ResourceUnit demand, bool soft, 
+  bool AllocateResourceInstances(ResourceUnit demand, bool soft,
                                  std::vector<ResourceUnit> &available,
                                  std::vector<ResourceUnit> *allocation);
 
@@ -481,7 +494,8 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
   std::vector<ResourceUnit> AddAvailableResourceInstances(
-      std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<ResourceUnit> available,
+      ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -491,7 +505,8 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<ResourceUnit> SubtractAvailableResourceInstances(
-      std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<ResourceUnit> available,
+      ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///

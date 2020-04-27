@@ -40,7 +40,8 @@ std::string UnorderedMapToString(const std::unordered_map<std::string, double> &
 }
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(const std::vector<double> &vector) {
+std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(
+    const std::vector<double> &vector) {
   std::vector<ResourceUnit> vector_ru(vector.size());
   for (size_t i = 0; i < vector.size(); i++) {
     vector_ru[i] = vector[i];
@@ -49,7 +50,8 @@ std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(const std::vector<dou
 }
 
 /// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorResourceUnitToVectorDouble(const std::vector<ResourceUnit> &vector_ru) {
+std::vector<double> VectorResourceUnitToVectorDouble(
+    const std::vector<ResourceUnit> &vector_ru) {
   std::vector<double> vector(vector_ru.size());
   for (size_t i = 0; i < vector_ru.size(); i++) {
     ResourceUnit ru(vector_ru[i]);
@@ -337,7 +339,8 @@ std::string TaskResourceInstances::DebugString() const {
   return buffer.str();
 }
 
-bool EqualVectors(const std::vector<ResourceUnit> &v1, const std::vector<ResourceUnit> &v2) {
+bool EqualVectors(const std::vector<ResourceUnit> &v1,
+                  const std::vector<ResourceUnit> &v2) {
   return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
 }
 
@@ -582,11 +585,11 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        resources.predefined_resources[i].available - 
-            task_req.predefined_resources[i].demand;
+        resources.predefined_resources[i].available -
+        task_req.predefined_resources[i].demand;
     if (resources.predefined_resources[i].available < zero) {
       resources.predefined_resources[i].available = zero;
-    }        
+    }
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
@@ -619,10 +622,10 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
         resources.predefined_resources[i].available +
-            task_req.predefined_resources[i].demand;
-    if (resources.predefined_resources[i].available > 
+        task_req.predefined_resources[i].demand;
+    if (resources.predefined_resources[i].available >
         resources.predefined_resources[i].total) {
-      resources.predefined_resources[i].available = 
+      resources.predefined_resources[i].available =
           resources.predefined_resources[i].total;
     }
   }
@@ -687,8 +690,7 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
 
   ResourceUnit resource_total_ru(resource_total);
   if (idx != -1) {
-    auto diff_capacity = resource_total_ru - 
-        it->second.predefined_resources[idx].total;
+    auto diff_capacity = resource_total_ru - it->second.predefined_resources[idx].total;
     it->second.predefined_resources[idx].total += diff_capacity;
     it->second.predefined_resources[idx].available += diff_capacity;
     if (it->second.predefined_resources[idx].available < 0) {
@@ -833,8 +835,6 @@ std::vector<ResourceUnit> ClusterResourceScheduler::SubtractAvailableResourceIns
 bool ClusterResourceScheduler::AllocateResourceInstances(
     ResourceUnit demand, bool soft, std::vector<ResourceUnit> &available,
     std::vector<ResourceUnit> *allocation) {
-
-
   allocation->resize(available.size());
   ResourceUnit remaining_demand = demand;
 
@@ -1013,8 +1013,7 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-
-  std::vector<ResourceUnit> cpu_instances_ru = 
+  std::vector<ResourceUnit> cpu_instances_ru =
       VectorDoubleToVectorResourceUnit(cpu_instances);
 
   if (cpu_instances.size() == 0) {
@@ -1031,8 +1030,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-
-  std::vector<ResourceUnit> cpu_instances_ru = 
+  std::vector<ResourceUnit> cpu_instances_ru =
       VectorDoubleToVectorResourceUnit(cpu_instances);
 
   if (cpu_instances.size() == 0) {
