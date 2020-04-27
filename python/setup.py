@@ -19,12 +19,8 @@ from itertools import chain
 import setuptools.command.build_ext as _build_ext
 from setuptools import setup, find_packages, Distribution
 
-if sys.version_info[0] >= 3:
-    import urllib.parse as urllib_parse
-    import urllib.request as urllib_request
-else:
-    import urllib2 as urllib_parse
-    import urllib2 as urllib_request
+import urllib.parse as urllib_parse
+import urllib.request as urllib_request
 
 try:
     import requests
@@ -127,23 +123,6 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-def makedirs(path, exist_ok):
-    """Python 2-compatible version of makedirs().
-
-    WARNING: path components to create should NOT include ".." components
-    See documentation: https://docs.python.org/3/library/os.html#os.makedirs
-    """
-    if sys.version_info[:2] >= (3, 2):
-        os.makedirs(path, exist_ok=exist_ok)
-    else:
-        try:
-            os.makedirs(path)
-        except OSError as ex:
-            ok = exist_ok and ex.errno == errno.EEXIST and os.path.isdir(path)
-            if not ok:
-                raise
-
-
 def download(url):
     if requests:
         result = requests.get(url).content
@@ -152,26 +131,30 @@ def download(url):
     return result
 
 
-# Keep this as a global function so external scripts can call it
-# (makes life easier during development)
-def bazel_build(root_dir, build_ext=None):
-    if is_native_windows_or_msys():
-        BAZEL_SH = os.getenv("BAZEL_SH")
-        SYSTEMROOT = os.getenv("SystemRoot")
-        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
-        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
-            msg = (
-                "You appear to have Bash from WSL,"
-                " which Bazel is not compatible with."
-                "To avoid potential problems,"
-                " please explicitly set the {envvar!r}"
-                " environment variable for Bazel.").format(envvar="BAZEL_SH")
-            raise ValueError(msg)
+class build_ext(_build_ext.build_ext):
+    def run(self):
+        if is_invalid_windows_platform():
+            msg = ("Please use official native CPython on Windows,"
+                   " not Cygwin/MSYS/MSYS2/MinGW/etc.")
+            raise OSError(msg)
 
-    if not os.path.isabs(root_dir):
-        raise ValueError("root_dir must be an absolute path")
+        root_dir = os.path.dirname(os.getcwd())
+        if is_native_windows_or_msys():
+            BAZEL_SH = os.getenv("BAZEL_SH")
+            SYSTEMROOT = os.getenv("SystemRoot")
+            wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
+            if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
+                msg = (
+                    "You appear to have Bash from WSL,"
+                    " which Bazel is not compatible with."
+                    "To avoid potential problems,"
+                    " please explicitly set the {name!r}"
+                    " environment variable for Bazel.").format(name="BAZEL_SH")
+                raise ValueError(msg)
 
-    if build_ext:  # Is this a pip setup invocation?
+        if not os.path.isabs(root_dir):
+            raise ValueError("root_dir must be an absolute path")
+
         # Note: We are passing in sys.executable so that we use the same
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
@@ -209,27 +192,16 @@ def bazel_build(root_dir, build_ext=None):
             finally:
                 shutil.rmtree(work_dir)
 
-    bazel_env = os.environ.copy()
-    # Apparently both Python 2 and 3 should be set to the same executable?
-    bazel_env["PYTHON2_BIN_PATH"] = sys.executable
-    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
-    bazel_build_cmd = ["bazel", "build", "--verbose_failures"]
-    bazel_build_cmd.append("//:ray_pkg")
-    if os.getenv("RAY_INSTALL_JAVA") == "1":
-        # Also build binaries for Java if the above env variable exists.
-        bazel_build_cmd.append("//java:all")
-    subprocess.check_call(bazel_build_cmd, env=bazel_env)
-
-
-class build_ext(_build_ext.build_ext):
-    def run(self):
-        if is_invalid_windows_platform():
-            msg = ("Please use official native CPython on Windows,"
-                   " not Cygwin/MSYS/MSYS2/MinGW/etc.")
-            raise OSError(msg)
-
-        root_dir = os.path.dirname(os.getcwd())
-        bazel_build(root_dir, self)
+        bazel_env = os.environ.copy()
+        # Apparently both Python 2 and 3 should be set to the same executable?
+        bazel_env["PYTHON2_BIN_PATH"] = sys.executable
+        bazel_env["PYTHON3_BIN_PATH"] = sys.executable
+        bazel_build_cmd = ["bazel", "build", "--verbose_failures"]
+        bazel_build_cmd.append("//:ray_pkg")
+        if os.getenv("RAY_INSTALL_JAVA") == "1":
+            # Also build binaries for Java if the above env variable exists.
+            bazel_build_cmd.append("//java:all")
+        subprocess.check_call(bazel_build_cmd, env=bazel_env)
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
@@ -271,7 +243,7 @@ class build_ext(_build_ext.build_ext):
         source = filename
         destination = os.path.join(self.build_lib, filename)
         # Create the target directory if it doesn't already exist.
-        makedirs(os.path.dirname(destination), exist_ok=True)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
             shutil.copy(source, destination)
@@ -310,40 +282,33 @@ requires = [
     "protobuf >= 3.8.0",
 ]
 
-
-def main():
-    return setup(
-        name="ray",
-        version=find_version("ray", "__init__.py"),
-        author="Ray Team",
-        author_email="ray-dev@googlegroups.com",
-        description=("A system for parallel and distributed Python that"
-                     "unifies the ML ecosystem."),
-        long_description=open(
-            os.path.join(
-                os.path.dirname(__file__), os.path.pardir, "README.rst"),
-            "r").read(),
-        url="https://github.com/ray-project/ray",
-        keywords=("ray distributed parallel machine-learning "
-                  "reinforcement-learning deep-learning python"),
-        packages=find_packages(),
-        cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
-        install_requires=requires,
-        setup_requires=["cython >= 0.29"],
-        extras_require=extras,
-        entry_points={
-            "console_scripts": [
-                "ray=ray.scripts.scripts:main",
-                "rllib=ray.rllib.scripts:cli [rllib]",
-                "tune=ray.tune.scripts:cli"
-            ]
-        },
-        include_package_data=True,
-        zip_safe=False,
-        license="Apache 2.0")
-
-
-if __name__ == "__main__":
-    main()
+setup(
+    name="ray",
+    version=find_version("ray", "__init__.py"),
+    author="Ray Team",
+    author_email="ray-dev@googlegroups.com",
+    description=("A system for parallel and distributed Python that unifies "
+                 "the ML ecosystem."),
+    long_description=open(
+        os.path.join(
+            os.path.dirname(__file__), os.path.pardir, "README.rst"),
+        "r").read(),
+    url="https://github.com/ray-project/ray",
+    keywords=("ray distributed parallel machine-learning "
+              "reinforcement-learning deep-learning python"),
+    packages=find_packages(),
+    cmdclass={"build_ext": build_ext},
+    # The BinaryDistribution argument triggers build_ext.
+    distclass=BinaryDistribution,
+    install_requires=requires,
+    setup_requires=["cython >= 0.29"],
+    extras_require=extras,
+    entry_points={
+        "console_scripts": [
+            "ray=ray.scripts.scripts:main",
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+        ]
+    },
+    include_package_data=True,
+    zip_safe=False,
+    license="Apache 2.0")
