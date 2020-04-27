@@ -42,21 +42,16 @@ def task_runner_mock_actor():
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueueActor.remote()
-    print("1")
     q.link.remote("svc", "backend-single-prod")
-    print("2")
     q.add_new_worker.remote("backend-single-prod", "replica-1",
                             task_runner_mock_actor)
 
     # Make sure we get the request result back
-    print("3")
     result = await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
-    print("4")
     assert result == "DONE"
 
     # Make sure it's the right request
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    print("5")
     assert got_work.request_args[0] == 1
     assert got_work.request_kwargs == {}
 
