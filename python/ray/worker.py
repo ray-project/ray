@@ -565,6 +565,10 @@ def init(address=None,
 
         ray.init(address="123.45.67.89:6379")
 
+    You can also define an environment variable called `RAY_ADDRESS` in
+    the same format as the `address` parameter to connect to an existing
+    cluster with ray.init().
+
     Args:
         address (str): The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis,
@@ -671,6 +675,17 @@ def init(address=None,
     if redis_address is not None:
         raise DeprecationWarning("The redis_address argument is deprecated. "
                                  "Please use address instead.")
+
+    if "RAY_ADDRESS" in os.environ:
+        if redis_address is None and (address is None or address == "auto"):
+            address = os.environ["RAY_ADDRESS"]
+        else:
+            raise RuntimeError(
+                "Cannot use both the RAY_ADDRESS environment variable and "
+                "the address argument of ray.init simultaneously. If you "
+                "use RAY_ADDRESS to connect to a specific Ray cluster, "
+                "please call ray.init() or ray.init(address=\"auto\") on the "
+                "driver.")
 
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
