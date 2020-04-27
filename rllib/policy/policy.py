@@ -54,8 +54,6 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
-        # Exploration should be initialized manually by subclasses, if used.
-        self.exploration = None
 
     @abstractmethod
     @DeveloperAPI
