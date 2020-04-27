@@ -170,7 +170,12 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
+  void HandleNotification(const GcsNodeInfo &node_info);
+
   ServiceBasedGcsClient *client_impl_;
+
+  using NodeChangeCallback =
+      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
@@ -188,6 +193,14 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ClientID local_node_id_;
 
   Sequencer<ClientID> sequencer_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
+
+  /// A cache for information about all nodes.
+  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<ClientID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
