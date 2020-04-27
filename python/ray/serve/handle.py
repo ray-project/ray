@@ -111,32 +111,6 @@ class RayServeHandle:
         return ray.get(
             master_actor.get_traffic_policy.remote(self.endpoint_name))
 
-    def _ensure_backend_unique(self, backend_tag=None):
-        traffic_policy = self.get_traffic_policy()
-        if backend_tag is None:
-            assert len(traffic_policy) == 1, (
-                "Multiple backends detected. "
-                "Please pass in backend_tag=... argument to specify backend.")
-            backends = set(traffic_policy.keys())
-            return backends.pop()
-        else:
-            assert (backend_tag in traffic_policy
-                    ), "Backend {} not found in avaiable backends: {}.".format(
-                        backend_tag, list(traffic_policy.keys()))
-            return backend_tag
-
-    def scale(self, new_num_replicas, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.num_replicas = new_num_replicas
-        serve.set_backend_config(backend_tag, config)
-
-    def set_max_batch_size(self, new_max_batch_size, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.max_batch_size = new_max_batch_size
-        serve.set_backend_config(backend_tag, config)
-
     def __repr__(self):
         return """
 RayServeHandle(
