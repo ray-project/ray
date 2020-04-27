@@ -245,6 +245,7 @@ class ParallelIterator(Generic[T]):
                                     ".filter()")
 
     def batch(self, n: int) -> "ParallelIterator[List[T]]":
+
         """Remotely batch together items in this iterator.
 
         Args:
