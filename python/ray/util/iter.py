@@ -213,7 +213,7 @@ class ParallelIterator(Generic[T]):
                 when `max_concurrency > 1`.
 
         Returns:
-            ParallelIterator[U] a parallel iterator whose elements have `fn`
+            ParallelIterator[U]: a parallel iterator whose elements have `fn`
             applied.
 
 
