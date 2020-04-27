@@ -116,6 +116,9 @@ To optimize the hyperparameters of your training process, you will want to use a
     space = {
         "a": hp.uniform("a", 0, 1),
         "b": hp.uniform("b", 0, 20)
+
+        # Note: Arbitrary HyperOpt search spaces should be supported!
+        # "foo": hp.lognormal("foo", 0, 1))
     }
 
     # Specify the search space and maximize score
