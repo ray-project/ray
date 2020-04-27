@@ -1698,13 +1698,13 @@ def cancel(object_id, force=False):
     retried (max_retries will not be respected).
 
     Args:
-            task_object_id (ObjectID): ObjectID returned by the task
-                                        that should be canceled.
-            force (boolean): Whether to force-kill a running task by
-                            killing the worker that is running the task.
+        task_object_id (ObjectID): ObjectID returned by the task
+                                    that should be canceled.
+        force (boolean): Whether to force-kill a running task by killing
+                        the worker that is running the task.
     Raises:
-            ValueError: This is also raised for actor tasks, already
-                        completed tasks, and non-locally submitted tasks.
+        ValueError: This is also raised for actor tasks, already completed
+                    tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
