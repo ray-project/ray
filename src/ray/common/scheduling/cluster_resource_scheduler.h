@@ -30,23 +30,109 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
-// Helper function to compare two vectors with double values.
-bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2);
+class ResourceUnit { 
+#define RESOURCE_UNIT_SCALING 1000  
+private: 
+  int64_t i_;
+public: 
+  ResourceUnit(double d = 0)  { 
+    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); 
+  } 
+      
+  ResourceUnit operator + (ResourceUnit const &ru) { 
+    ResourceUnit res;
+    res.i_ = i_ + ru.i_; 
+    return res;
+  } 
+
+  ResourceUnit operator += (ResourceUnit const &ru) { 
+    i_ += ru.i_;
+    return *this;
+  } 
+
+  ResourceUnit operator - (ResourceUnit const &ru) { 
+    ResourceUnit res;
+    res.i_ = i_ - ru.i_; 
+    return res;
+  } 
+
+  ResourceUnit operator -= (ResourceUnit const &ru) { 
+    i_ -= ru.i_;
+    return *this;
+  } 
+
+  ResourceUnit operator-() const {
+    ResourceUnit res;
+    res.i_ = -i_;
+    return res;
+  }
+
+  ResourceUnit operator + (double const d) { 
+    ResourceUnit res;
+    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING); 
+    return res;
+  } 
+
+  ResourceUnit operator - (double const d) { 
+    ResourceUnit res;
+    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING); 
+    return res;
+  } 
+
+  ResourceUnit operator = (double const d) { 
+    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); ; 
+    return *this;
+  } 
+
+  friend bool operator < (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator > (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator <= (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator >= (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator == (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator != (ResourceUnit const &ru1, ResourceUnit const &ru2);
+  
+  double GetDouble() { return (double)i_/RESOURCE_UNIT_SCALING; };
+
+  friend std::ostream & operator << (std::ostream &out, const ResourceUnit &ru);
+}; 
+
+bool operator < (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ < ru2.i_); };
+bool operator > (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ > ru2.i_); };
+bool operator <= (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ <= ru2.i_); };
+bool operator >= (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ >= ru2.i_); };
+bool operator == (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ == ru2.i_); };
+bool operator != (ResourceUnit const &ru1, ResourceUnit const &ru2) { return (ru1.i_ != ru2.i_); };
+
+std::ostream & operator << (std::ostream &out, const ResourceUnit &ru) {
+    out << ru.i_;
+    return out;
+}
+
+
+// Helper function to compare two vectors with ResourceUnit values.
+bool EqualVectors(const std::vector<ResourceUnit> &v1, const std::vector<ResourceUnit> &v2);
+
+/// Convert a vector of doubles to a vector of resource units.
+std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(const std::vector<double> &vector);
+
+/// Convert a vector of resource units to a vector of doubles.
+std::vector<double> VectorResourceUnitToVectorDouble(const std::vector<ResourceUnit> &vector_ru);
+
 
 struct ResourceCapacity {
-  double total;
-  double available;
+  ResourceUnit total;
+  ResourceUnit available;
 };
 
 /// Capacities of each instance of a resource.
 struct ResourceInstanceCapacities {
-  std::vector<double> total;
-  std::vector<double> available;
+  std::vector<ResourceUnit> total;
+  std::vector<ResourceUnit> available;
 };
 
 struct ResourceRequest {
   /// Amount of resource being requested.
-  double demand;
+  ResourceUnit demand;
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
@@ -81,16 +167,23 @@ class TaskRequest {
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<double>> predefined_resources;
+  std::vector<std::vector<ResourceUnit>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
+  absl::flat_hash_map<int64_t, std::vector<ResourceUnit>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() const {
+  std::vector<ResourceUnit> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
       return this->predefined_resources[CPU];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetCPUInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorResourceUnitToVectorDouble(this->predefined_resources[CPU]);
     } else {
       return {};
     }
@@ -298,7 +391,7 @@ class ClusterResourceScheduler {
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, int64_t resource_total);
+                              const std::string &resource_name, double resource_total);
 
   /// Delete a given resource from a given node.
   ///
@@ -324,7 +417,7 @@ class ClusterResourceScheduler {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(double total, bool unit_instances,
+  void InitResourceInstances(ResourceUnit total, bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -358,8 +451,9 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(double demand, bool soft, std::vector<double> &available,
-                                 std::vector<double> *allocation);
+  bool AllocateResourceInstances(ResourceUnit demand, bool soft, 
+                                 std::vector<ResourceUnit> &available,
+                                 std::vector<ResourceUnit> *allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
@@ -386,8 +480,8 @@ class ClusterResourceScheduler {
   /// \return Overflow capacities of "resource_instances" after adding instance
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
-  std::vector<double> AddAvailableResourceInstances(
-      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
+  std::vector<ResourceUnit> AddAvailableResourceInstances(
+      std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -396,8 +490,8 @@ class ClusterResourceScheduler {
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
-  std::vector<double> SubtractAvailableResourceInstances(
-      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
+  std::vector<ResourceUnit> SubtractAvailableResourceInstances(
+      std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///

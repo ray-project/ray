@@ -14,7 +14,7 @@
 
 #include "cluster_resource_scheduler.h"
 
-std::string VectorToString(const std::vector<double> &vector) {
+std::string VectorToString(const std::vector<ResourceUnit> &vector) {
   std::stringstream buffer;
 
   buffer << "[";
@@ -37,6 +37,25 @@ std::string UnorderedMapToString(const std::unordered_map<std::string, double> &
   }
   buffer << "]";
   return buffer.str();
+}
+
+/// Convert a vector of doubles to a vector of resource units.
+std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(const std::vector<double> &vector) {
+  std::vector<ResourceUnit> vector_ru(vector.size());
+  for (size_t i = 0; i < vector.size(); i++) {
+    vector_ru[i] = vector[i];
+  }
+  return vector_ru;
+}
+
+/// Convert a vector of resource units to a vector of doubles.
+std::vector<double> VectorResourceUnitToVectorDouble(const std::vector<ResourceUnit> &vector_ru) {
+  std::vector<double> vector(vector_ru.size());
+  for (size_t i = 0; i < vector_ru.size(); i++) {
+    ResourceUnit ru(vector_ru[i]);
+    vector[i] = ru.GetDouble();
+  }
+  return vector;
 }
 
 /// Convert a map of resources to a TaskRequest data structure.
@@ -121,12 +140,12 @@ NodeResources ResourceMapToNodeResources(
 
   for (auto const &resource : resource_map_total) {
     ResourceCapacity resource_capacity;
-    resource_capacity.total = (int64_t)resource.second;
+    resource_capacity.total = resource.second;
     auto it = resource_map_available.find(resource.first);
     if (it == resource_map_available.end()) {
       resource_capacity.available = 0;
     } else {
-      resource_capacity.available = (int64_t)it->second;
+      resource_capacity.available = it->second;
     }
     if (resource.first == ray::kCPU_ResourceLabel) {
       node_resources.predefined_resources[CPU] = resource_capacity;
@@ -318,7 +337,7 @@ std::string TaskResourceInstances::DebugString() const {
   return buffer.str();
 }
 
-bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2) {
+bool EqualVectors(const std::vector<ResourceUnit> &v1, const std::vector<ResourceUnit> &v2) {
   return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
 }
 
@@ -559,17 +578,24 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     return false;
   }
 
+  ResourceUnit zero(0.);
+
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        std::max(0., resources.predefined_resources[i].available -
-                         task_req.predefined_resources[i].demand);
+        resources.predefined_resources[i].available - 
+            task_req.predefined_resources[i].demand;
+    if (resources.predefined_resources[i].available < zero) {
+      resources.predefined_resources[i].available = zero;
+    }        
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
     if (it != resources.custom_resources.end()) {
-      it->second.available =
-          std::max(0., it->second.available - task_req_custom_resource.demand);
+      it->second.available = it->second.available - task_req_custom_resource.demand;
+      if (it->second.available < zero) {
+        it->second.available = zero;
+      }
     }
   }
   return true;
@@ -592,16 +618,22 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        std::min(resources.predefined_resources[i].available +
-                     task_req.predefined_resources[i].demand,
-                 resources.predefined_resources[i].total);
+        resources.predefined_resources[i].available +
+            task_req.predefined_resources[i].demand;
+    if (resources.predefined_resources[i].available > 
+        resources.predefined_resources[i].total) {
+      resources.predefined_resources[i].available = 
+          resources.predefined_resources[i].total;
+    }
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
     if (it != resources.custom_resources.end()) {
-      it->second.available = std::min(
-          it->second.available + task_req_custom_resource.demand, it->second.total);
+      it->second.available = it->second.available + task_req_custom_resource.demand;
+      if (it->second.available > it->second.total) {
+        it->second.available = it->second.total;
+      }
     }
   }
   return true;
@@ -629,7 +661,7 @@ int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
                                                       const std::string &resource_name,
-                                                      int64_t resource_total) {
+                                                      double resource_total) {
   int64_t client_id = string_to_int_map_.Get(client_id_string);
 
   auto it = nodes_.find(client_id);
@@ -652,8 +684,11 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
+
+  ResourceUnit resource_total_ru(resource_total);
   if (idx != -1) {
-    int64_t diff_capacity = resource_total - it->second.predefined_resources[idx].total;
+    auto diff_capacity = resource_total_ru - 
+        it->second.predefined_resources[idx].total;
     it->second.predefined_resources[idx].total += diff_capacity;
     it->second.predefined_resources[idx].available += diff_capacity;
     if (it->second.predefined_resources[idx].available < 0) {
@@ -666,7 +701,7 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
     int64_t resource_id = string_to_int_map_.Insert(resource_name);
     auto itr = it->second.custom_resources.find(resource_id);
     if (itr != it->second.custom_resources.end()) {
-      int64_t diff_capacity = resource_total - itr->second.total;
+      auto diff_capacity = resource_total_ru - itr->second.total;
       itr->second.total += diff_capacity;
       itr->second.available += diff_capacity;
       if (itr->second.available < 0) {
@@ -677,7 +712,7 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
       }
     } else {
       ResourceCapacity resource_capacity;
-      resource_capacity.total = resource_capacity.available = resource_total;
+      resource_capacity.total = resource_capacity.available = resource_total_ru;
       it->second.custom_resources.emplace(resource_id, resource_capacity);
     }
   }
@@ -725,9 +760,9 @@ std::string ClusterResourceScheduler::DebugString(void) const {
 }
 
 void ClusterResourceScheduler::InitResourceInstances(
-    double total, bool unit_instances, ResourceInstanceCapacities *instance_list) {
+    ResourceUnit total, bool unit_instances, ResourceInstanceCapacities *instance_list) {
   if (unit_instances) {
-    size_t num_instances = static_cast<size_t>(total);
+    size_t num_instances = static_cast<size_t>(total.GetDouble());
     instance_list->total.resize(num_instances);
     instance_list->available.resize(num_instances);
     for (size_t i = 0; i < num_instances; i++) {
@@ -766,13 +801,13 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
   }
 }
 
-std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
-    std::vector<double> available, ResourceInstanceCapacities *resource_instances) {
-  std::vector<double> overflow(available.size(), 0.);
+std::vector<ResourceUnit> ClusterResourceScheduler::AddAvailableResourceInstances(
+    std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances) {
+  std::vector<ResourceUnit> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] + available[i];
     if (resource_instances->available[i] > resource_instances->total[i]) {
-      overflow[i] = resource_instances->available[i] - resource_instances->total[i];
+      overflow[i] = (resource_instances->available[i] - resource_instances->total[i]);
       resource_instances->available[i] = resource_instances->total[i];
     }
   }
@@ -780,11 +815,11 @@ std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
   return overflow;
 }
 
-std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances(
-    std::vector<double> available, ResourceInstanceCapacities *resource_instances) {
+std::vector<ResourceUnit> ClusterResourceScheduler::SubtractAvailableResourceInstances(
+    std::vector<ResourceUnit> available, ResourceInstanceCapacities *resource_instances) {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
-  std::vector<double> underflow(available.size(), 0.);
+  std::vector<ResourceUnit> underflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] - available[i];
     if (resource_instances->available[i] < 0) {
@@ -796,10 +831,12 @@ std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances
 }
 
 bool ClusterResourceScheduler::AllocateResourceInstances(
-    double demand, bool soft, std::vector<double> &available,
-    std::vector<double> *allocation) {
+    ResourceUnit demand, bool soft, std::vector<ResourceUnit> &available,
+    std::vector<ResourceUnit> *allocation) {
+
+
   allocation->resize(available.size());
-  double remaining_demand = demand;
+  ResourceUnit remaining_demand = demand;
 
   if (available.size() == 1) {
     // This resource has just an instance.
@@ -866,7 +903,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   // Remaining demand is fractional. Find the best fit, if exists.
   if (remaining_demand > 0.) {
     int64_t idx_best_fit = -1;
-    double available_best_fit = 1.;
+    ResourceUnit available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] >= remaining_demand) {
         if (idx_best_fit == -1 ||
@@ -912,7 +949,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     auto it = local_resources_.custom_resources.find(task_req_custom_resource.id);
     if (it != local_resources_.custom_resources.end()) {
       if (task_req_custom_resource.demand > 0) {
-        std::vector<double> allocation;
+        std::vector<ResourceUnit> allocation;
         bool success = AllocateResourceInstances(task_req_custom_resource.demand,
                                                  task_req_custom_resource.soft,
                                                  it->second.available, &allocation);
@@ -976,30 +1013,38 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
+
+  std::vector<ResourceUnit> cpu_instances_ru = 
+      VectorDoubleToVectorResourceUnit(cpu_instances);
+
   if (cpu_instances.size() == 0) {
     return cpu_instances;  // No oveerflow.
   }
   RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
   auto overflow = AddAvailableResourceInstances(
-      cpu_instances, &local_resources_.predefined_resources[CPU]);
+      cpu_instances_ru, &local_resources_.predefined_resources[CPU]);
   UpdateLocalAvailableResourcesFromResourceInstances();
 
-  return overflow;
+  return VectorResourceUnitToVectorDouble(overflow);
 }
 
 std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
     std::vector<double> &cpu_instances) {
+
+  std::vector<ResourceUnit> cpu_instances_ru = 
+      VectorDoubleToVectorResourceUnit(cpu_instances);
+
   if (cpu_instances.size() == 0) {
     return cpu_instances;  // No underflow.
   }
   RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
   auto underflow = SubtractAvailableResourceInstances(
-      cpu_instances, &local_resources_.predefined_resources[CPU]);
+      cpu_instances_ru, &local_resources_.predefined_resources[CPU]);
   UpdateLocalAvailableResourcesFromResourceInstances();
 
-  return underflow;
+  return VectorResourceUnitToVectorDouble(underflow);
 }
 
 bool ClusterResourceScheduler::AllocateTaskResources(

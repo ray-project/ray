@@ -1693,8 +1693,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
             leased_workers_[worker->WorkerId()] = worker;
-// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
-#define ZERO_CAPACITY 1.0e-5
             std::shared_ptr<TaskResourceInstances> allocated_resources;
             if (task_spec.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();
@@ -1708,7 +1706,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                   // instances has available capacity.
               for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
                    inst_idx++) {
-                if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
+                if (predefined_resources[res_idx][inst_idx] > 0.) {
                   if (first) {
                     resource = reply->add_resource_mapping();
                     resource->set_name(
@@ -1717,7 +1715,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+                  rid->set_quantity(predefined_resources[res_idx][inst_idx].GetDouble());
                 }
               }
             }
@@ -1726,7 +1724,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
               bool first = true;  // Set resource name only if at least one of its
                                   // instances has available capacity.
               for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-                if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+                if (it->second[inst_idx] > 0.) {
                   if (first) {
                     resource = reply->add_resource_mapping();
                     resource->set_name(
@@ -1735,7 +1733,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(it->second[inst_idx]);
+                  rid->set_quantity(it->second[inst_idx].GetDouble());
                 }
               }
             }
@@ -2241,7 +2239,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     }
     std::vector<double> cpu_instances;
     if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
       std::vector<double> borrowed_cpu_instances =
@@ -2270,7 +2268,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     }
     std::vector<double> cpu_instances;
     if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
