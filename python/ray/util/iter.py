@@ -218,7 +218,7 @@ class ParallelIterator(Generic[T]):
 
 
         Examples:
-            >>> next(from_range(4).for_each_concur(
+            >>> next(from_range(4).for_each(
                         lambda x: x * 2,
                         max_concur=2,
                         resources={"num_cpus": 0.1}).gather_sync()
