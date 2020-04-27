@@ -229,6 +229,7 @@ class ValueNetworkMixin:
 
             @make_tf_callable(self.get_session())
             def value(ob, prev_action, prev_reward, *state):
+                print()
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
                     SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
