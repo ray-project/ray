@@ -98,12 +98,10 @@ class FixedPoint {
 };
 
 /// Helper function to compare two vectors with FixedPoint values.
-bool EqualVectors(const std::vector<FixedPoint> &v1,
-                  const std::vector<FixedPoint> &v2);
+bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(
-    const std::vector<double> &vector);
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
 
 /// Convert a vector of resource units to a vector of doubles.
 std::vector<double> VectorFixedPointToVectorDouble(
@@ -471,8 +469,7 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
   std::vector<FixedPoint> AddAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -482,8 +479,7 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///

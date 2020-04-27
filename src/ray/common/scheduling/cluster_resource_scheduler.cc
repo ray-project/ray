@@ -362,8 +362,7 @@ std::string TaskResourceInstances::DebugString() const {
   return buffer.str();
 }
 
-bool EqualVectors(const std::vector<FixedPoint> &v1,
-                  const std::vector<FixedPoint> &v2) {
+bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2) {
   return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
 }
 
