@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 from ray.streaming import function
 from ray.streaming import partition
-from ray.streaming.runtime import gateway_client
 
 
 class Stream(ABC):

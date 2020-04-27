@@ -116,4 +116,3 @@ def load_partition(descriptor_partition_bytes: bytes):
         else:
             assert issubclass(func, Partition)
             return func()
-

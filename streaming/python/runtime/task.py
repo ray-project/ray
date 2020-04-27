@@ -1,14 +1,14 @@
 import logging
-import pickle
 import threading
 from abc import ABC, abstractmethod
 
 from ray.streaming.collector import OutputCollector
 from ray.streaming.config import Config
 from ray.streaming.context import RuntimeContextImpl
-from ray.streaming.runtime.transfer import ChannelID, DataWriter, DataReader
 from ray.streaming.runtime import serialization
-from ray.streaming.runtime.serialization import PythonSerializer, CrossLangSerializer
+from ray.streaming.runtime.serialization import \
+    PythonSerializer, CrossLangSerializer
+from ray.streaming.runtime.transfer import ChannelID, DataWriter, DataReader
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,9 @@ class StreamTask(ABC):
             if len(output_actors_map) > 0:
                 channel_ids = list(output_actors_map.keys())
                 target_actors = list(output_actors_map.values())
-                logger.info("Create DataWriter channel_ids {}, target_actors {}."
-                            .format(channel_ids, target_actors))
+                logger.info(
+                    "Create DataWriter channel_ids {}, target_actors {}."
+                    .format(channel_ids, target_actors))
                 writer = DataWriter(channel_ids, target_actors, channel_conf)
                 self.writers[edge] = writer
                 collectors.append(
@@ -128,7 +129,6 @@ class InputStreamTask(StreamTask):
             if item is not None:
                 msg_data = item.body()
                 type_id = msg_data[:1]
-                print("type id", type_id)
                 if (type_id == serialization._PYTHON_TYPE_ID):
                     msg = self.python_serializer.deserialize(msg_data[1:])
                 else:
