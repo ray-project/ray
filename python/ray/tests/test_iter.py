@@ -199,7 +199,7 @@ def test_for_each_concur(ray_start_regular_shared):
 
 def test_combine(ray_start_regular_shared):
     it = from_range(4, 1).combine(lambda x: [x, x])
-    assert repr(it) == "ParallelIterator[from_items[4, shards=1].combine()]"
+    assert repr(it) == "ParallelIterator[from_range[4, shards=1].combine()]"
     assert list(it.gather_sync()) == [0, 0, 1, 1, 2, 2, 3, 3]
 
 
