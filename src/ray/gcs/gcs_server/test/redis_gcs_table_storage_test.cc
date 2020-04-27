@@ -22,18 +22,11 @@ namespace ray {
 
 class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
-  RedisGcsTableStorageTest() {}
-
-  virtual ~RedisGcsTableStorageTest() {}
-
   static void SetUpTestCase() { RedisServiceManagerForTest::SetUpTestCase(); }
 
   static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
 
   void InitTableStorage() override {
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
-    io_service_pool_->Run();
-
     gcs::RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
     redis_client_ = std::make_shared<gcs::RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
@@ -41,15 +34,9 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
   }
 
-  void DeInitTableStorage() override {
-    redis_client_->Disconnect();
-    io_service_pool_->Stop();
-  }
+  void DeInitTableStorage() override { redis_client_->Disconnect(); }
 
  protected:
-  size_t io_service_num_{2};
-  std::shared_ptr<IOServicePool> io_service_pool_;
-
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 

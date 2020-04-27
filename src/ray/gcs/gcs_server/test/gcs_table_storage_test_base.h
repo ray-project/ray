@@ -23,9 +23,12 @@ namespace gcs {
 
 class GcsTableStorageTestBase : public ::testing::Test {
  public:
-  GcsTableStorageTestBase() {}
+  GcsTableStorageTestBase() {
+    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_->Run();
+  }
 
-  virtual ~GcsTableStorageTestBase() {}
+  virtual ~GcsTableStorageTestBase() { io_service_pool_->Stop(); }
 
   void SetUp() override { InitTableStorage(); }
 
@@ -140,6 +143,9 @@ class GcsTableStorageTestBase : public ::testing::Test {
     actor_table_data->set_remaining_reconstructions(1);
     return actor_table_data;
   }
+
+  size_t io_service_num_{2};
+  std::shared_ptr<IOServicePool> io_service_pool_;
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
