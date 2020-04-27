@@ -78,6 +78,7 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
+from ray.includes.ray_config cimport RayConfig
 
 import ray
 from ray.async_compat import (sync_to_async,

@@ -265,7 +265,28 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  // Initialize task receivers.
+  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
+    RAY_CHECK(options_.task_execution_callback != nullptr);
+    auto execute_task =
+        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    raylet_task_receiver_ =
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task,
+            [this] { return local_raylet_client_->TaskDone(); }));
+  }
+
+  // Start RPC server after all the task receivers are properly initialized.
+  core_worker_server_.RegisterService(grpc_service_);
+  core_worker_server_.Run();
+
   // Initialize raylet client.
+  // NOTE(edoakes): the core_worker_server_ must be running before registering with
+  // the raylet, as the raylet will start sending some RPC messages immediately.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
@@ -316,25 +337,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
-
-  // Initialize task receivers.
-  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
-    RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task =
-        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
-    direct_task_receiver_ =
-        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task,
-            [this] { return local_raylet_client_->TaskDone(); }));
-  }
-
-  // Start RPC server after all the task receivers are properly initialized.
-  core_worker_server_.RegisterService(grpc_service_);
-  core_worker_server_.Run();
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
