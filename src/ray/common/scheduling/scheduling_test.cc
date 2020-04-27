@@ -221,7 +221,7 @@ TEST_F(SchedulingTest, SchedulingFixedPointTest) {
   {
     FixedPoint fp1(1.);
 
-    ASSERT_TRUE(fp1.GetDouble() == 1.);
+    ASSERT_TRUE(fp1.Double() == 1.);
   }
 }
 
