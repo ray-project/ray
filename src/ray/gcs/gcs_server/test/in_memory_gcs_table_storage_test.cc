@@ -22,12 +22,10 @@ namespace ray {
 
 class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
-  void InitTableStorage() override {
+  void SetUp() override {
     gcs_table_storage_ =
         std::make_shared<gcs::InMemoryGcsTableStorage>(*(io_service_pool_->Get()));
   }
-
-  void DeInitTableStorage() override {}
 };
 
 TEST_F(InMemoryGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
