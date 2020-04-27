@@ -16,9 +16,9 @@ Take a look at any of the below tutorials to get started with Tune.
     <div class="sphx-glr-bigcontainer">
 
 .. customgalleryitem::
-   :tooltip: A gentle 60 second tour of core Tune concepts.
+   :tooltip: Tune concepts in 60 seconds.
    :figure: /images/tune-workflow.png
-   :description: :doc:`A gentle 60 second tour of Tune <tune-60-seconds>`
+   :description: :doc:`Tune concepts in 60 seconds <tune-60-seconds>`
 
 .. customgalleryitem::
    :tooltip: A simple Tune walkthrough.
