@@ -206,6 +206,7 @@ def execution_plan(workers, config):
         ConcatBatches(min_batch_size=config["train_batch_size"]))
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
+    # Callback to update the KL based on optimization info.
     def update_kl(item):
         _, fetches = item
 
