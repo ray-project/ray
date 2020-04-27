@@ -20,7 +20,7 @@ from timm.data import Dataset, create_loader
 from timm.data import resolve_data_config, FastCollateMixup
 from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
-from timm.utils import setup_default_logging
+from timm.utils import setup_default_logging, distribute_bn
 
 import ray
 from ray.util.sgd.utils import BATCH_SIZE
@@ -31,9 +31,75 @@ from ray.util.sgd.torch import TrainingOperator
 import ray.util.sgd.torch.examples.image_models.util as util
 from ray.util.sgd.torch.examples.image_models.args import parse_args
 
+# todo: none of the custom checkpointing actually works. at all
 class SegOperator(TrainingOperator):
     def setup(self):
+        has_apex = False
+        try:
+            from apex.parallel import DistributedDataParallel as DDP
+            from apex import convert_syncbn_model
+            has_apex = True
+        except ImportError:
+            from torch.nn.parallel import DistributedDataParallel as DDP
+            pass
+
+        args = self.config["args"]
+        if self.world_rank == 0:
+            logging.info(
+                "NVIDIA APEX {}. AMP {}.".format(
+                "installed" if has_apex else 'not installed',
+                "on" if (has_apex and args.amp) else "off"))
+            # todo: this is not exactly what they do in the original,
+            # instead they print right after initializing AMP
+
         self.model_ema = None
+        if args.model_ema:
+            # Important to create EMA model after cuda(),
+            # DP wrapper, and AMP but before SyncBN and DDP wrapper
+            self.model_ema = ModelEma(
+                self.model,
+                decay=args.model_ema_decay,
+                device='cpu' if args.model_ema_force_cpu else '',
+                resume=args.resume)
+
+        if args.sync_bn:
+            try:
+                if has_apex:
+                    self.mymodel = convert_syncbn_model(self.model)
+                else:
+                    self.mymodel = (
+                        nn.SyncBatchNorm.convert_sync_batchnorm(self.model))
+                if args.world_rank == 0:
+                    logging.info(
+                        "Converted model to use Synchronized BatchNorm. "
+                        "WARNING: You may have issues if "
+                        "using zero initialized BN layers "
+                        "(enabled by default for ResNets) "
+                        "while sync-bn enabled.")
+            except Exception as e:
+                logging.error(
+                    "Failed to enable Synchronized BatchNorm. "
+                    "Install Apex or Torch >= 1.1")
+
+            if has_apex:
+                self.mymodel = DDP(self.model, delay_allreduce=True)
+            else:
+                if args.world_rank == 0:
+                    logging.info(
+                        "Using torch DistributedDataParallel. "
+                        "Install NVIDIA Apex for Apex DDP.")
+
+                # can use device str in Torch >= 1.1
+                self.mymodel = DDP(self.model, device_ids=[0])
+            # NOTE: EMA model does not need to be wrapped by DDP
+
+        real_start_epoch = 0
+        if args.start_epoch is not None:
+            real_start_epoch = args.start_epoch
+            self.scheduler.step(real_start_epoch)
+
+        if self.world_rank == 0:
+            logging.info("Scheduled epochs: {}".format(real_start_epoch))
 
     def train_batch(self, batch, batch_info):
         input, target = batch
@@ -80,6 +146,9 @@ class SegOperator(TrainingOperator):
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def train_epoch(self, iterator, info):
+        # todo: we need to do this, but we cant
+        # loader_train.sampler.set_epoch(epoch)
+
         args = self.config["args"]
 
         if self.use_tqdm and self.world_rank == 0:
@@ -191,11 +260,16 @@ class SegOperator(TrainingOperator):
         if hasattr(self.optimizer, 'sync_lookahead'):
             self.optimizer.sync_lookahead()
 
+        if args.dist_bn in ('broadcast', 'reduce'):
+            if self.world_rank == 0:
+                logging.info("Distributing BatchNorm running means and vars")
+            distribute_bn(model, self.world_size, args.dist_bn == "reduce")
+
         # return OrderedDict([('loss', losses_m.avg)])
 
         # return metric_meters.summary()
 
-def model_creator(config):
+def model_creator(config, sys_info):
     args = config["args"]
 
     model = create_model(
@@ -212,16 +286,24 @@ def model_creator(config):
         bn_eps=args.bn_eps,
         checkpoint_path=args.initial_checkpoint)
 
-    # always false right now
+    if sys_info["world_rank"] == 0:
+        logging.info(
+            "Model %s created, param count: %d" %
+            (args.model, sum([m.numel() for m in model.parameters()])))
+
     if args.split_bn:
-        assert args.num_aug_splits > 1 or args.resplit
         model = convert_splitbn_model(model, max(args.num_aug_splits, 2))
+
+    if not args.no_gpu:
+        model = model.cuda()
 
     return model
 
 
 def data_creator(config, sys_info):
-    # torch.manual_seed(args.seed + torch.distributed.get_rank())
+    # todo: does Ray break this?
+    # we kinda do it out of order
+    torch.manual_seed(args.seed + sys_info["world_rank"])
 
     args = config["args"]
 
@@ -235,8 +317,21 @@ def data_creator(config, sys_info):
     data_config = resolve_data_config(
         vars(args), verbose=sys_info["world_rank"] == 0)
 
-    dataset_train = Dataset(join(args.data, "train"))
-    dataset_eval = Dataset(join(args.data, "val"))
+    if not os.path.exists(train_dir):
+        logging.error(
+            "Training folder does not exist at: {}".format(train_dir))
+        # throwing makes more sense, but we have to preserve the exit code
+        exit(1)
+    if not os.path.exists(val_dir):
+        val_dir = os.path.join(args.data, 'validation')
+        if not os.path.isdir(val_dir):
+            logging.error(
+                "Validation folder does not exist at: {}".format(val_dir))
+            # throwing makes more sense, but we have to preserve the exit code
+            exit(1)
+
+    dataset_train = Dataset(train_dir)
+    dataset_eval = Dataset(val_dir)
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -285,10 +380,33 @@ def optimizer_creator(model, config):
 
 
 def loss_creator(config):
+    # todo:
     # there should be more complicated logic here, but we don't support
     # separate train and eval losses yet
+
+    # if args.jsd:
+    #     assert num_aug_splits > 1  # JSD only valid with aug splits set
+    #     train_loss_fn =
+    # JsdCrossEntropy(num_splits=num_aug_splits,
+    # smoothing=args.smoothing).cuda()
+    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    # elif args.mixup > 0.:
+    #     # smoothing is handled with mixup label transform
+    #     train_loss_fn = SoftTargetCrossEntropy().cuda()
+    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    # elif args.smoothing:
+    #     train_loss_fn =
+    # LabelSmoothingCrossEntropy(smoothing=args.smoothing).cuda()
+    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    # else:
+    #     train_loss_fn = nn.CrossEntropyLoss().cuda()
+    #     validate_loss_fn = train_loss_fn
+
     return nn.CrossEntropyLoss()
 
+def scheduler_creator(optimizer, config):
+    args = config["args"]
+    return create_scheduler(args, optimizer)
 
 def main():
     setup_default_logging()
@@ -304,6 +422,8 @@ def main():
         loss_creator=loss_creator,
         use_tqdm=True,
         use_fp16=args.amp,
+        wrap_ddp=False,
+        add_dist_sampler=False,
         apex_args={"opt_level": "O1"},
         config={
             "args": args,
@@ -321,9 +441,7 @@ def main():
         val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
-    print('Done')
     trainer.shutdown()
-    print('Shutdown')
 
 
 if __name__ == "__main__":

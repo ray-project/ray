@@ -34,24 +34,24 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Start with pretrained version of specified network (if avail)")
-parser.add_argument(
-    "--initial-checkpoint",
-    default="",
-    type=str,
-    metavar="PATH",
-    help="Initialize model from this checkpoint (default: none)")
-parser.add_argument(
-    "--resume",
-    default="",
-    type=str,
-    metavar="PATH",
-    help="Resume full model and optimizer state from checkpoint "
-    "(default: none)")
-parser.add_argument(
-    "--no-resume-opt",
-    action="store_true",
-    default=False,
-    help="prevent resume of optimizer state when resuming model")
+# parser.add_argument(
+#     "--initial-checkpoint",
+#     default="",
+#     type=str,
+#     metavar="PATH",
+#     help="Initialize model from this checkpoint (default: none)")
+# parser.add_argument(
+#     "--resume",
+#     default="",
+#     type=str,
+#     metavar="PATH",
+#     help="Resume full model and optimizer state from checkpoint "
+#     "(default: none)")
+# parser.add_argument(
+#     "--no-resume-opt",
+#     action="store_true",
+#     default=False,
+#     help="prevent resume of optimizer state when resuming model")
 parser.add_argument(
     "--num-classes",
     type=int,
@@ -135,12 +135,12 @@ parser.add_argument(
     default=None,
     metavar="PCT",
     help="Drop block rate (default: None)")
-parser.add_argument(
-    "--jsd",
-    action="store_true",
-    default=False,
-    help="Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`."
-)
+# parser.add_argument(
+#     "--jsd",
+#     action="store_true",
+#     default=False,
+#     help="Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`."
+# )
 # Optimizer parameters
 parser.add_argument(
     "--opt",
@@ -265,11 +265,11 @@ parser.add_argument(
     default=None,
     metavar="NAME",
     help="Use AutoAugment policy. 'v0' or 'original'. (default: None)"),
-# parser.add_argument(
-#     "--aug-splits",
-#     type=int,
-#     default=0,
-#     help="Number of augmentation splits (default: 0, valid: 0 or >=2)")
+parser.add_argument(
+    "--aug-splits",
+    type=int,
+    default=0,
+    help="Number of augmentation splits (default: 0, valid: 0 or >=2)")
 parser.add_argument(
     "--reprob",
     type=float,
@@ -288,6 +288,7 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Do not random erase first (clean) augmentation split")
+# todo: mixup has the wrong evaluation loss currently
 parser.add_argument(
     "--mixup",
     type=float,
@@ -299,6 +300,7 @@ parser.add_argument(
     type=int,
     metavar="N",
     help="turn off mixup after this epoch, disabled if 0 (default: 0)")
+# todo: smoothing has the wrong evaluation loss currently
 parser.add_argument(
     "--smoothing",
     type=float,
@@ -338,10 +340,10 @@ parser.add_argument(
     default="",
     help=("Distribute BatchNorm stats between nodes after each epoch "
           "('broadcast', 'reduce', or '')"))
-# parser.add_argument(
-#     "--split-bn",
-#     action="store_true",
-#     help="Enable separate BN layers per augmentation split.")
+parser.add_argument(
+    "--split-bn",
+    action="store_true",
+    help="Enable separate BN layers per augmentation split.")
 # Model Exponential Moving Average
 parser.add_argument(
     "--model-ema",
@@ -372,12 +374,14 @@ parser.add_argument(
     default=50,
     metavar="N",
     help="how many batches to wait before logging training status")
-parser.add_argument(
-    "--recovery-interval",
-    type=int,
-    default=0,
-    metavar="N",
-    help="how many batches to wait before writing recovery checkpoint")
+# parser.add_argument(
+#     "--recovery-interval",
+#     type=int,
+#     default=0,
+#     metavar="N",
+#     help="how many batches to wait before writing recovery checkpoint")
+parser.add_argument('--num-gpu', type=int, default=1, required=False,
+                    help='Number of GPUS to use')
 parser.add_argument(
     "--no-gpu",
     action="store_true",
@@ -462,15 +466,34 @@ def parse_args():
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
 
+    # todo:
+    args.initial_checkpoint = ""
+    args.resume = False
+    args.no_resume_opt = False
+
+    args.recovery_interval = 0
+
+    # Restore original arguments that we replaced
+    # todo:
+
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
 
     # Arguments pre-processing from the original train.py
     args.prefetcher = not args.no_prefetcher
-    args.distributed = False  # ray SGD handles this (DistributedSampler)
+    # we only support distributed mode
+    # you can always use just 1 distributed worker
+    args.distributed = True
     args.device = "cuda"  # ray should handle this
     # args.world_size = 1
     # args.rank = 0  # global rank
+
+    if args.num_gpu is not None:
+        logging.warning("--num-gpu is not fully supported. "
+                        "GPU training is ON by default, use --no-gpu "
+                        "to disable it.")
+        assert args.num_gpu == 0 or args.num_gpu == 1
+        args.no_gpu = args.num_gpu == 0
 
     if args.no_gpu and args.prefetcher:
         logging.warning("Prefetcher needs CUDA currently "
@@ -478,12 +501,13 @@ def parse_args():
                         "Disabling it.")
         args.prefetcher = False
 
-    # assert args.aug_splits == 0 or args.aug_splits > 1, (
-    #     "Split must be 0 or 2+")
+    # Augmentation splits argument preprocessing
+    assert args.aug_splits == 0 or args.aug_splits > 1, (
+        "Split must be 0 or 2+")
+    args.num_aug_splits = args.aug_splits
 
-    # args.num_aug_splits = args.aug_splits
-    args.num_aug_splits = 0  # todo:
-
-    args.split_bn = False  # todo:
+    if args.split_bn:
+        assert args.num_aug_splits > 1 or args.resplit
+        assert not args.sync_bn
 
     return args, args_text
