@@ -581,9 +581,9 @@ def init(address=None,
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen.
         num_cpus (int): Number of CPUs the user wishes to assign to each
-        raylet.
+            raylet.
         num_gpus (int): Number of GPUs the user wishes to assign to each
-        raylet.
+            raylet.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         memory: The amount of memory (in bytes) that is available for use by
@@ -606,7 +606,7 @@ def init(address=None,
             manner. However, the same ID should not be used for different
             drivers.
         local_mode (bool): If true, the code will be executed serially. This
-        is useful for debugging.
+            is useful for debugging.
         driver_object_store_memory (int): Limit the amount of memory the driver
             can use in the object store for creating objects. By default, this
             is autoset based on available system memory, subject to a 20GB cap.
@@ -1691,7 +1691,7 @@ def cancel(object_id, force=False):
 
     Args:
         id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
-        of the task to kill.
+            of the task to kill.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
