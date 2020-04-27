@@ -3,6 +3,10 @@ import logging
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
+    StandardizeFields
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
 
@@ -71,7 +75,9 @@ DEFAULT_CONFIG = with_common_config({
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
     # Use PyTorch as framework?
-    "use_pytorch": False
+    "use_pytorch": False,
+    # Use the execution plan API instead of policy optimizers.
+    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -186,12 +192,34 @@ def get_policy_class(config):
         return PPOTFPolicy
 
 
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # Collect large batches of experiences & standardize.
+    rollouts = rollouts.combine(
+        ConcatBatches(min_batch_size=config["train_batch_size"]))
+    rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+
+    if config["simple_optimizer"]:
+        train_op = rollouts.for_each(
+            TrainOneStep(
+                workers,
+                num_sgd_iter=config["num_sgd_iter"],
+                sgd_minibatch_size=config["sgd_minibatch_size"]))
+    else:
+        raise NotImplementedError
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 PPOTrainer = build_trainer(
     name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
+    execution_plan=execution_plan,
     validate_config=validate_config,
     after_optimizer_step=update_kl,
     after_train_result=warn_about_bad_reward_scales)

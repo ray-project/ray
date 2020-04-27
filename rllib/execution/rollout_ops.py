@@ -9,7 +9,9 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
     STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
     GRAD_WAIT_TIMER, _check_sample_batch_type
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
+from ray.rllib.utils.sgd import standardized
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -162,3 +164,40 @@ class ConcatBatches:
             self.count = 0
             return [out]
         return []
+
+
+class StandardizeFields:
+    """Callable used to standardize fields of batches.
+
+    This should be used with the .for_each() operator. Note that the input
+    may be mutated by this operator for efficiency.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+        >>> print(np.std(next(rollouts)["advantages"]))
+        1.0
+    """
+
+    def __init__(self, fields: List[str]):
+        self.fields = fields
+
+    def __call__(self, samples: SampleBatchType) -> SampleBatchType:
+        _check_sample_batch_type(samples)
+        wrapped = False
+
+        if isinstance(samples, SampleBatch):
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: samples
+            }, samples.count)
+            wrapped = True
+
+        for policy_id in samples.policy_batches:
+            batch = samples.policy_batches[policy_id]
+            for field in self.fields:
+                batch[field] = standardized(batch[field])
+
+        if wrapped:
+            samples = samples.policy_batches[DEFAULT_POLICY_ID]
+
+        return samples

@@ -10,6 +10,7 @@ from ray.rllib.execution.common import SampleBatchType, \
     APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
     LEARN_ON_BATCH_TIMER, LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, \
     _get_global_vars, _check_sample_batch_type
+from ray.rllib.utils.sgd import do_minibatch_sgd
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,15 @@ class TrainOneStep:
     local iterator context.
     """
 
-    def __init__(self, workers: WorkerSet):
+    def __init__(self,
+                 workers: WorkerSet,
+                 num_sgd_iter: int = 1,
+                 sgd_minibatch_size: int = 0):
         self.workers = workers
+        self.policies = dict(self.workers.local_worker()
+                             .foreach_trainable_policy(lambda p, i: (i, p)))
+        self.num_sgd_iter = num_sgd_iter
+        self.sgd_minibatch_size = sgd_minibatch_size
 
     def __call__(self,
                  batch: SampleBatchType) -> (SampleBatchType, List[dict]):
@@ -39,7 +47,11 @@ class TrainOneStep:
         metrics = LocalIterator.get_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
-            info = self.workers.local_worker().learn_on_batch(batch)
+            info = do_minibatch_sgd(batch, self.policies,
+                                    self.workers.local_worker(),
+                                    self.num_sgd_iter, self.sgd_minibatch_size,
+                                    [])
+            # info = self.workers.local_worker().learn_on_batch(batch)
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         metrics.info[LEARNER_INFO] = get_learner_stats(info)
