@@ -4,6 +4,7 @@ def gen_java_deps():
     maven_install(
         artifacts = [
             "com.beust:jcommander:1.72",
+            "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:27.0.1-jre",
             "com.google.protobuf:protobuf-java:3.8.0",
             "com.puppycrawl.tools:checkstyle:8.15",
@@ -14,12 +15,14 @@ def gen_java_deps():
             "de.ruedigermoeller:fst:2.57",
             "javax.xml.bind:jaxb-api:2.3.0",
             "org.apache.commons:commons-lang3:3.4",
+            "org.msgpack:msgpack-core:0.8.20",
             "org.ow2.asm:asm:6.0",
             "org.slf4j:slf4j-log4j12:1.7.25",
             "org.testng:testng:6.9.10",
             "redis.clients:jedis:2.8.0",
+            "net.java.dev.jna:jna:5.5.0",
         ],
         repositories = [
-            "https://repo1.maven.org/maven2",
+            "https://repo1.maven.org/maven2/",
         ],
     )

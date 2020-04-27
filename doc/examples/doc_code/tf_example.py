@@ -9,12 +9,12 @@ in the documentation.
 
 # yapf: disable
 # __tf_model_start__
-from tensorflow.keras import layers
 
 
 def create_keras_model():
-    import tensorflow as tf
-    model = tf.keras.Sequential()
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    model = keras.Sequential()
     # Adds a densely-connected layer with 64 units to the model:
     model.add(layers.Dense(64, activation="relu", input_shape=(32, )))
     # Add another:
@@ -23,9 +23,9 @@ def create_keras_model():
     model.add(layers.Dense(10, activation="softmax"))
 
     model.compile(
-        optimizer=tf.keras.optimizers.RMSprop(0.01),
-        loss=tf.keras.losses.categorical_crossentropy,
-        metrics=[tf.keras.metrics.categorical_accuracy])
+        optimizer=keras.optimizers.RMSprop(0.01),
+        loss=keras.losses.categorical_crossentropy,
+        metrics=[keras.metrics.categorical_accuracy])
     return model
 # __tf_model_end__
 # yapf: enable

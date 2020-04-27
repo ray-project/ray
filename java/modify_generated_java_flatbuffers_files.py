@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 """
@@ -17,7 +13,7 @@ RAY_HOME: The root directory of Ray project.
 """
 
 # constants declarations
-PACKAGE_DECLARATION = "package org.ray.runtime.generated;"
+PACKAGE_DECLARATION = "package io.ray.runtime.generated;"
 
 
 def add_package(file):
@@ -45,5 +41,5 @@ def add_package_declarations(generated_root_path):
 if __name__ == "__main__":
     ray_home = sys.argv[1]
     root_path = os.path.join(
-        ray_home, "java/runtime/src/main/java/org/ray/runtime/generated")
+        ray_home, "java/runtime/src/main/java/io/ray/runtime/generated")
     add_package_declarations(root_path)

@@ -5,26 +5,24 @@ a custom Policy class and manually coordinate distributed sample
 collection and policy optimization.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import gym
 
 import ray
 from ray import tune
-from ray.rllib.policy import Policy
-from ray.rllib.evaluation import RolloutWorker, SampleBatch
+from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tests.test_policy import TestPolicy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
 parser.add_argument("--num-iters", type=int, default=20)
 parser.add_argument("--num-workers", type=int, default=2)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
-class CustomPolicy(Policy):
+class CustomPolicy(TestPolicy):
     """Example of a custom policy written from scratch.
 
     You might find it more convenient to extend TF/TorchPolicy instead
@@ -32,13 +30,13 @@ class CustomPolicy(Policy):
     """
 
     def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
+        super().__init__(observation_space, action_space, config)
         # example parameter
         self.w = 1.0
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -102,7 +100,7 @@ def training_workflow(config, reporter):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
 
     tune.run(
         training_workflow,

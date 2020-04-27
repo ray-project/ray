@@ -30,7 +30,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -51,11 +51,17 @@ py_test(
 )
 
 py_test(
+    name = "test_experiment_analysis_mem",
+    size = "small",
+    srcs = ["tests/test_experiment_analysis_mem.py"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_experiment",
     size = "small",
     srcs = ["tests/test_experiment.py"],
     deps = [":tune_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -64,6 +70,13 @@ py_test(
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
     tags = ["jenkins_only"],
+)
+
+py_test(
+    name = "test_progress_reporter",
+    size = "medium",
+    srcs = ["tests/test_progress_reporter.py"],
+    deps = [":tune_lib"],
 )
 
 py_test(
@@ -97,8 +110,24 @@ py_test(
 )
 
 py_test(
-    name = "test_var",
+    name = "test_trial_runner_2",
     size = "medium",
+    srcs = ["tests/test_trial_runner_2.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_trial_runner_3",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_3.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_var",
+    size = "small",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -119,7 +148,14 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
- 
+
+py_test(
+    name = "test_trainable_util",
+    size = "small",
+    srcs = ["tests/test_trainable_util.py"],
+    deps = [":tune_lib"],
+)
+
 py_test(
     name = "test_trial_scheduler",
     size = "medium",
@@ -138,7 +174,7 @@ py_test(
 
 py_test(
     name = "test_tune_save_restore",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_tune_save_restore.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -146,7 +182,7 @@ py_test(
 
 py_test(
     name = "test_tune_server",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

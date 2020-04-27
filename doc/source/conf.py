@@ -23,32 +23,17 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
-    "gym",
-    "gym.spaces",
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.core.generated.gcs_pb2",
-    "ray.core.generated.ray.protocol.Task",
-    "scipy",
-    "scipy.signal",
-    "scipy.stats",
-    "tensorflow_probability",
-    "tensorflow",
-    "tensorflow.contrib",
-    "tensorflow.contrib.all_reduce",
-    "tensorflow.contrib.all_reduce.python",
-    "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn",
-    "tensorflow.contrib.slim",
-    "tensorflow.core",
-    "tensorflow.core.util",
-    "tensorflow.python",
-    "tensorflow.python.client",
-    "tensorflow.python.util",
-    "torch",
-    "torch.distributed",
-    "torch.nn",
-    "torch.utils.data",
+    "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
+    "ray.core.generated", "ray.core.generated.gcs_pb2",
+    "ray.core.generated.ray.protocol.Task", "scipy", "scipy.signal",
+    "scipy.stats", "setproctitle", "tensorflow_probability", "tensorflow",
+    "tensorflow.contrib", "tensorflow.contrib.all_reduce", "tree",
+    "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
+    "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
+    "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
+    "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
+    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
+    "zoopt"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
@@ -61,6 +46,8 @@ sys.modules["tensorflow"].VERSION = "9.9.9"
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
 
+import ray
+
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -70,17 +57,36 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
-    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
+    'sphinx_click.ext',
+    'sphinx-jsonschema',
+    'sphinx_gallery.gen_gallery',
+    'sphinx_copybutton',
+    'versionwarning.extension',
 ]
 
+versionwarning_messages = {
+    "master": (
+        "This document is for the master branch. "
+        'Visit the <a href="/en/latest/">latest pip release documentation here</a>.'
+    ),
+    "latest": (
+        "This document is for the latest pip release. "
+        'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    ),
+}
+
+versionwarning_body_selector = "div.document"
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples"],  # path to example scripts
-    "gallery_dirs": ["auto_examples"],  # path where to save generated examples
+    "examples_dirs": ["../examples", "tune/_tutorials"],  # path to example scripts
+    # path where to save generated examples
+    "gallery_dirs": ["auto_examples", "tune/tutorials"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
-    "backreferences_dir": False
+    # "backreferences_dir": "False",
     # "show_memory': False,
     # 'min_reported_time': False
 }
@@ -147,7 +153,6 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
 exclude_patterns += sphinx_gallery_conf['examples_dirs']
-exclude_patterns += ["*/README.rst"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
@@ -384,5 +389,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
+    app.add_stylesheet('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

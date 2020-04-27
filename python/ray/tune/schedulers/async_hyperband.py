@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 
@@ -128,12 +124,12 @@ class _Bracket():
     the correct rung corresponding to the current iteration of the result.
 
     Example:
-        >>> b = _Bracket(1, 10, 2, 3)
+        >>> b = _Bracket(1, 10, 2, 0)
         >>> b.on_result(trial1, 1, 2)  # CONTINUE
         >>> b.on_result(trial2, 1, 4)  # CONTINUE
         >>> b.cutoff(b._rungs[-1][1]) == 3.0  # rungs are reversed
         >>> b.on_result(trial3, 1, 1)  # STOP
-        >>> b.cutoff(b._rungs[0][1]) == 2.0
+        >>> b.cutoff(b._rungs[3][1]) == 2.0
     """
 
     def __init__(self, min_t, max_t, reduction_factor, s):
@@ -145,7 +141,8 @@ class _Bracket():
     def cutoff(self, recorded):
         if not recorded:
             return None
-        return np.percentile(list(recorded.values()), (1 - 1 / self.rf) * 100)
+        return np.nanpercentile(
+            list(recorded.values()), (1 - 1 / self.rf) * 100)
 
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE

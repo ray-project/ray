@@ -1,8 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
+from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
@@ -15,6 +11,9 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vtrace": False,
 
     # == These two options only apply if vtrace: False ==
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
@@ -30,7 +29,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "kl_target": 0.01,
 
     # == IMPALA optimizer params (see documentation in impala.py) ==
-    "sample_batch_size": 50,
+    "rollout_fragment_length": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
@@ -82,10 +81,24 @@ def initialize_target(trainer):
         * trainer.config["minibatch_buffer_size"]
 
 
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+        return AsyncPPOTorchPolicy
+    else:
+        return AsyncPPOTFPolicy
+
+
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
+
+
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=AsyncPPOTFPolicy,
-    get_policy_class=lambda _: AsyncPPOTFPolicy,
+    get_policy_class=get_policy_class,
     after_init=initialize_target,
     after_optimizer_step=update_target_and_kl)

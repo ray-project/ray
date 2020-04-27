@@ -1,17 +1,16 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import shutil
 
 import copy
 import os
 import time
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import Trainable, TuneError
+from ray.tune import DurableTrainable, Trainable, TuneError, Stopper
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.trial import Trial
@@ -20,11 +19,13 @@ from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
                              TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.utils import (flatten_dict, get_pinned_object,
+                            pin_in_object_store)
+from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -192,7 +193,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def train(config, reporter):
             pass
 
-        class A(object):
+        class A:
             pass
 
         class B(Trainable):
@@ -293,14 +294,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLogdir(self):
         def train(config, reporter):
-            assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
+            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
+                                "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": "/tmp/logdir",
+                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
+                                          "logdir"),
                 "config": {
                     "a": "b"
                 },
@@ -329,14 +332,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLongFilename(self):
         def train(config, reporter):
-            assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
+            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
+                                "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": "/tmp/logdir",
+                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
+                                          "logdir"),
                 "config": {
                     "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
                     "b" * 50: tune.sample_from(lambda spec: "long" * 40),
@@ -451,28 +456,52 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test=i)
 
-        class Stopper:
+        class Stopclass:
             def stop(self, trial_id, result):
                 return result["test"] > 6
 
-        [trial] = tune.run(train, stop=Stopper().stop).trials
+        [trial] = tune.run(train, stop=Stopclass().stop).trials
         self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testStopper(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class CustomStopper(Stopper):
+            def __init__(self):
+                self._count = 0
+
+            def __call__(self, trial_id, result):
+                print("called")
+                self._count += 1
+                return result["test"] > 6
+
+            def stop_all(self):
+                return self._count > 5
+
+        trials = tune.run(train, num_samples=5, stop=CustomStopper()).trials
+        self.assertTrue(all(t.status == Trial.TERMINATED for t in trials))
+        self.assertTrue(
+            any(
+                t.last_result.get("training_iteration") is None
+                for t in trials))
 
     def testBadStoppingFunction(self):
         def train(config, reporter):
             for i in range(10):
                 reporter(test=i)
 
-        class Stopper:
+        class CustomStopper:
             def stop(self, result):
                 return result["test"] > 6
 
         def stop(result):
             return result["test"] > 6
 
-        with self.assertRaises(ValueError):
-            tune.run(train, stop=Stopper().stop)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TuneError):
+            tune.run(train, stop=CustomStopper().stop)
+        with self.assertRaises(TuneError):
             tune.run(train, stop=stop)
 
     def testEarlyReturn(self):
@@ -554,6 +583,55 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
+
+    def testTrialInfoAccess(self):
+        class TestTrainable(Trainable):
+            def _train(self):
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                print(result)
+                return result
+
+        analysis = tune.run(TestTrainable, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+    def testTrialInfoAccessFunction(self):
+        def train(config, reporter):
+            reporter(name=reporter.trial_name, trial_id=reporter.trial_id)
+
+        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+        def track_train(config):
+            tune.track.log(
+                name=tune.track.trial_name(), trial_id=tune.track.trial_id())
+
+        analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
+    def testLotsOfStops(self):
+        class TestTrainable(Trainable):
+            def _train(self):
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                return result
+
+            def _stop(self):
+                time.sleep(2)
+                open(os.path.join(self.logdir, "marker"), "a").close()
+                return 1
+
+        analysis = tune.run(
+            TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
+        ray.shutdown()
+        for trial in analysis.trials:
+            path = os.path.join(trial.logdir, "marker")
+            assert os.path.exists(path)
 
     def testNestedResults(self):
         def create_result(i):
@@ -702,6 +780,34 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for log, result in zip(logs1, results1)
         ]
         self.assertTrue(all(complete_results1))
+
+    def testDurableTrainable(self):
+        class TestTrain(DurableTrainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        sync_client = mock_storage_client()
+        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
+        with patch(mock_get_client) as mock_get_cloud_sync_client:
+            mock_get_cloud_sync_client.return_value = sync_client
+            test_trainable = TestTrain(remote_checkpoint_dir=MOCK_REMOTE_DIR)
+            checkpoint_path = test_trainable.save()
+            test_trainable.train()
+            test_trainable.state["hi"] = 2
+            test_trainable.restore(checkpoint_path)
+            self.assertEqual(test_trainable.state["hi"], 1)
+
+        self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):

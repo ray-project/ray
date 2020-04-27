@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import numpy as np
 import random
@@ -118,31 +114,37 @@ class MultiServing(ExternalEnv):
 
 
 class TestExternalEnv(unittest.TestCase):
-    def testExternalEnvCompleteEpisodes(self):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
 
-    def testExternalEnvTruncateEpisodes(self):
+    def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
 
-    def testExternalEnvOffPolicy(self):
+    def test_external_env_off_policy(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -150,20 +152,24 @@ class TestExternalEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][0], 42)
             self.assertEqual(batch["actions"][-1], 42)
 
-    def testExternalEnvBadActions(self):
+    def test_external_env_bad_actions(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=BadPolicy,
             sample_async=True,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         self.assertRaises(Exception, lambda: ev.sample())
 
-    def testTrainCartpoleOffPolicy(self):
+    def test_train_cartpole_off_policy(self):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
                 gym.make("CartPole-v0"), off_pol_frac=0.2))
-        dqn = DQNTrainer(env="test3", config={"exploration_fraction": 0.001})
+        dqn = DQNTrainer(
+            env="test3",
+            config={"exploration_config": {
+                "epsilon_timesteps": 100
+            }})
         for i in range(100):
             result = dqn.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -172,7 +178,7 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainCartpole(self):
+    def test_train_cartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         pg = PGTrainer(env="test", config={"num_workers": 0})
         for i in range(100):
@@ -183,7 +189,7 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainCartpoleMulti(self):
+    def test_train_cartpole_multi(self):
         register_env("test2",
                      lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         pg = PGTrainer(env="test2", config={"num_workers": 0})
@@ -195,16 +201,17 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testExternalEnvHorizonNotSupported(self):
+    def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
             episode_horizon=20,
-            batch_steps=10,
+            rollout_fragment_length=10,
             batch_mode="complete_episodes")
         self.assertRaises(ValueError, lambda: ev.sample())
 
 
 if __name__ == "__main__":
-    ray.init()
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

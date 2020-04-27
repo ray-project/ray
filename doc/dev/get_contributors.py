@@ -16,18 +16,24 @@ Create them at https://github.com/settings/tokens/new
 """,
 )
 @click.option(
-    "--prev-branch",
+    "--prev-release-commit",
     required=True,
-    help="Previous version branch like ray-0.7.1")
+    help="Last commit SHA of the previous release.")
 @click.option(
-    "--curr-branch",
+    "--curr-release-commit",
     required=True,
-    help="Current version branch like ray-0.7.2")
-def run(access_token, prev_branch, curr_branch):
+    help="Last commit SHA of the current release.")
+def run(access_token, prev_release_commit, curr_release_commit):
+    print("Writing commit descriptions to 'commits.txt'...")
+    check_output(
+        (f"git log {prev_release_commit}..{curr_release_commit} "
+         f"--pretty=format:'%s' > commits.txt"),
+        shell=True)
     # Generate command
     cmd = []
-    cmd.append(f'git log {prev_branch}..{curr_branch} --pretty=format:"%s" '
-               ' | grep -Eo "#(\d+)"')
+    cmd.append((f"git log {prev_release_commit}..{curr_release_commit} "
+                f"--pretty=format:\"%s\" "
+                f" | grep -Eo \"#(\d+)\""))
     joined = " && ".join(cmd)
     cmd = f"bash -c '{joined}'"
     cmd = shlex.split(cmd)

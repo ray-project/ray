@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import shutil
 import tempfile
 import threading
@@ -9,6 +5,7 @@ import time
 import unittest
 import yaml
 import copy
+from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
@@ -21,7 +18,7 @@ from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
-class MockNode(object):
+class MockNode:
     def __init__(self, node_id, tags):
         self.node_id = node_id
         self.state = "pending"
@@ -36,7 +33,7 @@ class MockNode(object):
         return True
 
 
-class MockProcessRunner(object):
+class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds
@@ -327,17 +324,12 @@ class AutoscalingTest(unittest.TestCase):
             self.fail("Test config did not pass validation test!")
 
         config["blah"] = "blah"
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             validate_config(config)
         del config["blah"]
 
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValueError):
-            validate_config(config)
-        del config["provider"]["blah"]
-
         del config["provider"]
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             validate_config(config)
 
     def testValidateDefaultConfig(self):
@@ -350,7 +342,7 @@ class AutoscalingTest(unittest.TestCase):
         config = fillout_defaults(config)
         try:
             validate_config(config)
-        except Exception:
+        except ValidationError:
             self.fail("Default config did not pass validation test!")
 
     def testScaleUp(self):

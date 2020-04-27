@@ -1,19 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import pickle
-
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
-import torch.nn as nn
+import pickle
 import unittest
 
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
@@ -24,9 +18,10 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+_, nn = try_import_torch()
 
 DICT_SPACE = spaces.Dict({
     "sensors": spaces.Dict({
@@ -221,7 +216,15 @@ class TupleSpyModel(Model):
 
 
 class NestedSpacesTest(unittest.TestCase):
-    def testInvalidModel(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_invalid_model(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
         self.assertRaises(ValueError, lambda: PGTrainer(
             env="CartPole-v0", config={
@@ -230,7 +233,7 @@ class NestedSpacesTest(unittest.TestCase):
                 },
             }))
 
-    def testInvalidModel2(self):
+    def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
             ValueError, "Expected output.*",
@@ -241,14 +244,14 @@ class NestedSpacesTest(unittest.TestCase):
                     },
                 }))
 
-    def doTestNestedDict(self, make_env, test_lstm=False):
+    def do_test_nested_dict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         pg = PGTrainer(
             env="nested",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
@@ -270,14 +273,14 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
 
-    def doTestNestedTuple(self, make_env):
+    def do_test_nested_tuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
         pg = PGTrainer(
             env="nested2",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite2",
@@ -297,36 +300,38 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
 
-    def testNestedDictGym(self):
-        self.doTestNestedDict(lambda _: NestedDictEnv())
+    def test_nested_dict_gym(self):
+        self.do_test_nested_dict(lambda _: NestedDictEnv())
 
-    def testNestedDictGymLSTM(self):
-        self.doTestNestedDict(lambda _: NestedDictEnv(), test_lstm=True)
+    def test_nested_dict_gym_lstm(self):
+        self.do_test_nested_dict(lambda _: NestedDictEnv(), test_lstm=True)
 
-    def testNestedDictVector(self):
-        self.doTestNestedDict(
+    def test_nested_dict_vector(self):
+        self.do_test_nested_dict(
             lambda _: VectorEnv.wrap(lambda i: NestedDictEnv()))
 
-    def testNestedDictServing(self):
-        self.doTestNestedDict(lambda _: SimpleServing(NestedDictEnv()))
+    def test_nested_dict_serving(self):
+        self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
 
-    def testNestedDictAsync(self):
-        self.doTestNestedDict(lambda _: BaseEnv.to_base_env(NestedDictEnv()))
+    def test_nested_dict_async(self):
+        self.do_test_nested_dict(
+            lambda _: BaseEnv.to_base_env(NestedDictEnv()))
 
-    def testNestedTupleGym(self):
-        self.doTestNestedTuple(lambda _: NestedTupleEnv())
+    def test_nested_tuple_gym(self):
+        self.do_test_nested_tuple(lambda _: NestedTupleEnv())
 
-    def testNestedTupleVector(self):
-        self.doTestNestedTuple(
+    def test_nested_tuple_vector(self):
+        self.do_test_nested_tuple(
             lambda _: VectorEnv.wrap(lambda i: NestedTupleEnv()))
 
-    def testNestedTupleServing(self):
-        self.doTestNestedTuple(lambda _: SimpleServing(NestedTupleEnv()))
+    def test_nested_tuple_serving(self):
+        self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
-    def testNestedTupleAsync(self):
-        self.doTestNestedTuple(lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
+    def test_nested_tuple_async(self):
+        self.do_test_nested_tuple(
+            lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
 
-    def testMultiAgentComplexSpaces(self):
+    def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
         ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
         register_env("nested_ma", lambda _: NestedMultiAgentEnv())
@@ -335,7 +340,7 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested_ma",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "multiagent": {
                     "policies": {
@@ -376,7 +381,7 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
 
-    def testRolloutDictSpace(self):
+    def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
         agent = PGTrainer(env="nested")
         agent.train()
@@ -391,7 +396,7 @@ class NestedSpacesTest(unittest.TestCase):
         # Test rollout works on restore
         rollout(agent2, "nested", 100)
 
-    def testPyTorchModel(self):
+    def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
         a2c = A2CTrainer(
@@ -399,7 +404,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "use_pytorch": True,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
@@ -423,5 +428,6 @@ class NestedSpacesTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=5)
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

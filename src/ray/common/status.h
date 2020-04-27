@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
@@ -22,6 +36,16 @@
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
+
+namespace boost {
+
+namespace system {
+
+class error_code;
+
+}  // namespace system
+
+}  // namespace boost
 
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
@@ -81,7 +105,8 @@ enum class StatusCode : char {
   RedisError = 11,
   TimedOut = 12,
   Interrupted = 13,
-  SystemExit = 14,
+  IntentionalSystemExit = 14,
+  UnexpectedSystemExit = 15,
 };
 
 #if defined(__clang__)
@@ -153,8 +178,12 @@ class RAY_EXPORT Status {
     return Status(StatusCode::Interrupted, msg);
   }
 
-  static Status SystemExit() {
-    return Status(StatusCode::SystemExit, "process requested exit");
+  static Status IntentionalSystemExit() {
+    return Status(StatusCode::IntentionalSystemExit, "intentional system exit");
+  }
+
+  static Status UnexpectedSystemExit() {
+    return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
   // Returns true iff the status indicates success.
@@ -172,7 +201,13 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool IsSystemExit() const { return code() == StatusCode::SystemExit; }
+  bool IsSystemExit() const {
+    return code() == StatusCode::IntentionalSystemExit ||
+           code() == StatusCode::UnexpectedSystemExit;
+  }
+  bool IsIntentionalSystemExit() const {
+    return code() == StatusCode::IntentionalSystemExit;
+  }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -213,6 +248,8 @@ inline void Status::operator=(const Status &s) {
     CopyFrom(s.state_);
   }
 }
+
+Status boost_to_ray_status(const boost::system::error_code &error);
 
 }  // namespace ray
 

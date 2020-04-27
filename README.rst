@@ -4,7 +4,7 @@
     :target: https://travis-ci.com/ray-project/ray
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
-    :target: http://ray.readthedocs.io/en/latest/?badge=latest
+    :target: http://docs.ray.io/en/latest/?badge=latest
 
 |
 
@@ -15,9 +15,14 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <https://ray.readthedocs.io/en/latest/distributed_training.html>`__
+- `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 
-Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <https://ray.readthedocs.io/en/latest/installation.html>`__.
+Install Ray with: ``pip install ray``. For nightly wheels, see the
+`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+
+**NOTE:** `We are deprecating Python 2 support soon.`_
+
+.. _`We are deprecating Python 2 support soon.`: https://github.com/ray-project/ray/issues/6580
 
 Quick Start
 -----------
@@ -65,7 +70,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://ray.readthedocs.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/latest/autoscaling.html>`_.
 
 Tune Quick Start
 ----------------
@@ -122,10 +127,10 @@ If TensorBoard is installed, automatically visualize all trial results:
 
     tensorboard --logdir ~/ray_results
 
-.. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
-.. _`Population Based Training (PBT)`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#asynchronous-hyperband
+.. _`Tune`: https://docs.ray.io/en/latest/tune.html
+.. _`Population Based Training (PBT)`: https://docs.ray.io/en/latest/tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/latest/tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: https://docs.ray.io/en/latest/tune-schedulers.html#asynchronous-hyperband
 
 RLlib Quick Start
 -----------------
@@ -171,7 +176,7 @@ RLlib Quick Start
             "num_workers": 4,
             "env_config": {"corridor_length": 5}})
 
-.. _`RLlib`: https://ray.readthedocs.io/en/latest/rllib.html
+.. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
 
 
 More Information
@@ -185,7 +190,7 @@ More Information
 - `RLlib paper`_
 - `Tune paper`_
 
-.. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
+.. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889

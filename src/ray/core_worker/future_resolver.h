@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_FUTURE_RESOLVER_H
 #define RAY_CORE_WORKER_FUTURE_RESOLVER_H
 
@@ -10,22 +24,13 @@
 
 namespace ray {
 
-/// Max time between requests to the owner to check whether the object is still
-/// being computed.
-const int kWaitObjectEvictionMilliseconds = 100;
-
 // Resolve values for futures that were given to us before the value
 // was available. This class is thread-safe.
 class FutureResolver {
  public:
-  FutureResolver(
-      std::shared_ptr<CoreWorkerMemoryStore> store, rpc::ClientFactoryFn client_factory,
-      boost::asio::io_service &io_service,
-      int wait_future_resolution_milliseconds = kWaitObjectEvictionMilliseconds)
-      : in_memory_store_(store),
-        client_factory_(client_factory),
-        io_service_(io_service),
-        wait_future_resolution_milliseconds_(wait_future_resolution_milliseconds) {}
+  FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
+                 rpc::ClientFactoryFn client_factory)
+      : in_memory_store_(store), client_factory_(client_factory) {}
 
   /// Resolve the value for a future. This will periodically contact the given
   /// owner until the owner dies or the owner has finished creating the object.
@@ -40,23 +45,11 @@ class FutureResolver {
                           const rpc::Address &owner_address);
 
  private:
-  // Attempt to contact the owner to ask about the future's current status.
-  void AttemptFutureResolution(const ObjectID &object_id, const TaskID &owner_id,
-                               std::shared_ptr<boost::asio::deadline_timer> timer)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Used to set timers.
-  boost::asio::io_service &io_service_;
-
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Factory for producing new core worker clients.
   const rpc::ClientFactoryFn client_factory_;
-
-  /// The amount of time to wait between requests to a future's owner to get
-  /// the object's current status.
-  const int wait_future_resolution_milliseconds_;
 
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;

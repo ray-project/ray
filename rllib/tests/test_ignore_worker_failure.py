@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import unittest
 
@@ -29,8 +25,8 @@ class FaultInjectEnv(gym.Env):
 
 
 class IgnoresWorkerFailure(unittest.TestCase):
-    def doTest(self, alg, config, fn=None):
-        fn = fn or self._doTestFaultRecover
+    def do_test(self, alg, config, fn=None):
+        fn = fn or self._do_test_fault_recover
         try:
             ray.init(num_cpus=6)
             fn(alg, config)
@@ -38,7 +34,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
             ray.shutdown()
             _register_all()  # re-register the evicted objects
 
-    def _doTestFaultRecover(self, alg, config):
+    def _do_test_fault_recover(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         agent_cls = get_agent_class(alg)
 
@@ -51,7 +47,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
         self.assertTrue(result["num_healthy_workers"], 1)
         a.stop()
 
-    def _doTestFaultFatal(self, alg, config):
+    def _do_test_fault_fatal(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         agent_cls = get_agent_class(alg)
 
@@ -63,19 +59,20 @@ class IgnoresWorkerFailure(unittest.TestCase):
         self.assertRaises(Exception, lambda: a.train())
         a.stop()
 
-    def testFatal(self):
+    def test_fatal(self):
         # test the case where all workers fail
-        self.doTest("PG", {"optimizer": {}}, fn=self._doTestFaultFatal)
+        self.do_test("PG", {"optimizer": {}}, fn=self._do_test_fault_fatal)
 
-    def testAsyncGrads(self):
-        self.doTest("A3C", {"optimizer": {"grads_per_step": 1}})
+    def test_async_grads(self):
+        self.do_test("A3C", {"optimizer": {"grads_per_step": 1}})
 
-    def testAsyncReplay(self):
-        self.doTest(
+    def test_async_replay(self):
+        self.do_test(
             "APEX", {
                 "timesteps_per_iteration": 1000,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
+                "explore": False,
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
                 "optimizer": {
@@ -83,27 +80,29 @@ class IgnoresWorkerFailure(unittest.TestCase):
                 },
             })
 
-    def testAsyncSamples(self):
-        self.doTest("IMPALA", {"num_gpus": 0})
+    def test_async_samples(self):
+        self.do_test("IMPALA", {"num_gpus": 0})
 
-    def testSyncReplay(self):
-        self.doTest("DQN", {"timesteps_per_iteration": 1})
+    def test_sync_replay(self):
+        self.do_test("DQN", {"timesteps_per_iteration": 1})
 
-    def testMultiGPU(self):
-        self.doTest(
+    def test_multi_g_p_u(self):
+        self.do_test(
             "PPO", {
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
-                "sample_batch_size": 10,
+                "rollout_fragment_length": 10,
                 "sgd_minibatch_size": 1,
             })
 
-    def testSyncSamples(self):
-        self.doTest("PG", {"optimizer": {}})
+    def test_sync_samples(self):
+        self.do_test("PG", {"optimizer": {}})
 
-    def testAsyncSamplingOption(self):
-        self.doTest("PG", {"optimizer": {}, "sample_async": True})
+    def test_async_sampling_option(self):
+        self.do_test("PG", {"optimizer": {}, "sample_async": True})
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

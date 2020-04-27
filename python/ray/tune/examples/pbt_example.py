@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import argparse
 import random
@@ -81,6 +77,7 @@ class PBTBenchmarkExample(Trainable):
 
     def reset_config(self, new_config):
         self.lr = new_config["lr"]
+        self.config = new_config
         return True
 
 
@@ -111,11 +108,12 @@ if __name__ == "__main__":
         name="pbt_test",
         scheduler=pbt,
         reuse_actors=True,
+        checkpoint_freq=20,
         verbose=False,
         stop={
-            "training_iteration": 2000,
+            "training_iteration": 200,
         },
-        num_samples=4,
+        num_samples=8,
         config={
             "lr": 0.0001,
             # note: this parameter is perturbed but has no effect on

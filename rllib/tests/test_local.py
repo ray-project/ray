@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 
 from ray.rllib.agents.ppo import PPOTrainer, DEFAULT_CONFIG
@@ -9,12 +5,19 @@ import ray
 
 
 class LocalModeTest(unittest.TestCase):
-    def testLocal(self):
+    def setUp(self) -> None:
         ray.init(local_mode=True)
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_local(self):
         cf = DEFAULT_CONFIG.copy()
         agent = PPOTrainer(cf, "CartPole-v0")
         print(agent.train())
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 from collections import namedtuple
 import logging
@@ -148,9 +144,9 @@ class ResourceSpec(
         # excede the amount allowed by CUDA_VISIBLE_DEVICES.
         if (num_gpus is not None and gpu_ids is not None
                 and num_gpus > len(gpu_ids)):
-            raise Exception("Attempting to start raylet with {} GPUs, "
-                            "but CUDA_VISIBLE_DEVICES contains {}.".format(
-                                num_gpus, gpu_ids))
+            raise ValueError("Attempting to start raylet with {} GPUs, "
+                             "but CUDA_VISIBLE_DEVICES contains {}.".format(
+                                 num_gpus, gpu_ids))
         if num_gpus is None:
             # Try to automatically detect the number of GPUs.
             num_gpus = _autodetect_num_gpus()

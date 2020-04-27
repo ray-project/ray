@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import argparse
 import click
 import copy
 import jsonschema
@@ -26,11 +23,11 @@ logger = logging.getLogger(__file__)
 
 # File layout for generated project files
 # user-dir/
-#   .rayproject/
+#   ray-project/
 #     project.yaml
 #     cluster.yaml
 #     requirements.txt
-PROJECT_DIR = ".rayproject"
+PROJECT_DIR = "ray-project"
 PROJECT_YAML = os.path.join(PROJECT_DIR, "project.yaml")
 CLUSTER_YAML = os.path.join(PROJECT_DIR, "cluster.yaml")
 REQUIREMENTS_TXT = os.path.join(PROJECT_DIR, "requirements.txt")
@@ -147,7 +144,7 @@ def load_project_or_throw():
             "`ray project validate` to inspect the error.")
 
 
-class SessionRunner(object):
+class SessionRunner:
     """Class for setting up a session and executing commands in it."""
 
     def __init__(self, session_name=None):
@@ -202,9 +199,9 @@ class SessionRunner(object):
             requirements_txt = project_environment["requirements"]
 
             # Create a temporary requirements_txt in the head node.
-            remote_requirements_txt = (
-                "/tmp/" + "ray_project_requirements_txt_{}".format(
-                    time.time()))
+            remote_requirements_txt = os.path.join(
+                ray.utils.get_user_temp_dir(),
+                "ray_project_requirements_txt_{}".format(time.time()))
 
             rsync(
                 self.project_definition.cluster_yaml(),
@@ -270,10 +267,11 @@ def get_session_runs(name, command, parsed_args):
         List of sessions to start, which are dictionaries with keys:
             "name": Name of the session to start,
             "command": Command to run after starting the session,
+            "params": Parameters for this run,
             "num_steps": 4 if a command should be run, 3 if not.
     """
     if not command:
-        return [{"name": name, "command": None, "num_steps": 3}]
+        return [{"name": name, "command": None, "params": {}, "num_steps": 3}]
 
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
@@ -290,6 +288,7 @@ def get_session_runs(name, command, parsed_args):
         session_run = {
             "name": name,
             "command": format_command(command, parsed_args),
+            "params": parsed_args,
             "num_steps": 4
         }
         return [session_run]
@@ -301,6 +300,7 @@ def get_session_runs(name, command, parsed_args):
             session_run = {
                 "name": "{}-{}-{}".format(name, wildcard_arg, val),
                 "command": format_command(command, parsed_args),
+                "params": parsed_args,
                 "num_steps": 4
             }
             session_runs.append(session_run)
@@ -327,6 +327,10 @@ def attach(screen, tmux):
 @click.option("--name", help="Name of the session to stop", default=None)
 def stop(name):
     project_definition = load_project_or_throw()
+
+    if not name:
+        name = project_definition.config["name"]
+
     teardown_cluster(
         project_definition.cluster_yaml(),
         yes=True,
@@ -381,6 +385,31 @@ def session_start(command, args, shell, name):
             # Run the actual command.
             logger.info("[4/4] Running command")
             runner.execute_command(run["command"], config)
+
+
+@session_cli.command(
+    name="commands",
+    help="Print available commands for sessions of this project.")
+def session_commands():
+    project_definition = load_project_or_throw()
+    print("Active project: " + project_definition.config["name"])
+    print()
+
+    commands = project_definition.config["commands"]
+
+    for command in commands:
+        print("Command \"{}\":".format(command["name"]))
+        parser = argparse.ArgumentParser(
+            command["name"], description=command.get("help"), add_help=False)
+        params = command.get("params", [])
+        for param in params:
+            name = param.pop("name")
+            if "type" in param:
+                param.pop("type")
+            parser.add_argument("--" + name, **param)
+        help_string = parser.format_help()
+        # Indent the help message by two spaces and print it.
+        print("\n".join(["  " + line for line in help_string.split("\n")]))
 
 
 @session_cli.command(

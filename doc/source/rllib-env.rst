@@ -3,32 +3,11 @@ RLlib Environments
 
 RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
 
+.. tip::
+
+    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+
 .. image:: rllib-envs.svg
-
-Feature Compatibility Matrix
-----------------------------
-
-=============  =======================  ==================  ===========  ===========================
-Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
-=============  =======================  ==================  ===========  ===========================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
-DDPG, TD3       No                      **Yes**             **Yes**
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
-APEX-DDPG       No                      **Yes**             **Yes**
-SAC             (todo)                  **Yes**             **Yes**
-ES              **Yes**                 **Yes**             No
-ARS             **Yes**                 **Yes**             No
-QMIX            **Yes**                 No                  **Yes**      `+RNN`_
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
-=============  =======================  ==================  ===========  ===========================
-
-.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
-.. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
 
 Configuring Environments
 ------------------------
@@ -100,6 +79,10 @@ RLlib uses Gym as its environment interface for single-agent training. For more 
 
 Performance
 ~~~~~~~~~~~
+
+.. tip::
+
+    Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
 
 There are two ways to scale experience collection with Gym environments:
 
@@ -186,7 +169,7 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
 
 .. code-block:: bash
    :emphasize-lines: 6,14,22
@@ -244,7 +227,7 @@ RLlib will create each policy's model in a separate ``tf.variable_scope``. Howev
                 auxiliary_name_scope=False):
             <create the shared layers here>
 
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__.
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__.
 
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -277,7 +260,7 @@ Alternatively, the env itself can be modified to share observations between agen
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as :ref:`Q-Mix <qmix>` that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
 .. literalinclude:: ../../rllib/env/multi_agent_env.py
    :language: python
@@ -319,30 +302,96 @@ In this setup, the appropriate rewards for training lower-level agents must be p
 
 See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
 
-Interfacing with External Agents
+External Agents and Applications
 --------------------------------
 
 In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
 
 RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
-ExternalEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
-
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-ExternalEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
-
-Data ingest
-~~~~~~~~~~~
-
-The ``log_action`` API of ExternalEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ExternalEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
-
-Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/rllib/env/env_context.py>`__ passed into the environment constructor.
+ExternalEnv provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
 
 .. seealso::
 
-    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with offline experience datasets.
+    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with off-policy experience datasets.
+
+External Application Clients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput`` application connector, which can be connected to over the network using ``PolicyClient`` instances.
+
+You can configure any Trainer to launch a policy server with the following config:
+
+.. code-block:: python
+
+    trainer_config = {
+        # An environment class is still required, but it doesn't need to be runnable.
+        # You only need to define its action and observation space attributes.
+        "env": YOUR_ENV_STUB,
+
+        # Use the policy server to generate experiences.
+        "input": (
+            lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, SERVER_PORT)
+        ),
+        # Use the existing trainer process to run the server.
+        "num_workers": 0,
+        # Disable OPE, since the rollouts are coming from online clients.
+        "input_evaluation": [],
+    }
+
+Clients can then connect in either *local* or *remote* inference mode. In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
+
+Example:
+
+.. code-block:: python
+
+    client = PolicyClient("http://localhost:9900", inference_mode="local")
+    episode_id = client.start_episode()
+    ...
+    action = client.get_action(episode_id, cur_obs)
+    ...
+    client.end_episode(episode_id, last_obs)
+
+To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
+
+.. https://docs.google.com/drawings/d/1hJvT9bVGHVrGTbnCZK29BYQIcYNRbZ4Dr6FOPMJDjUs/edit
+.. image:: rllib-external.svg
+
+Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):
+
+.. code-block:: bash
+
+    # Start the server by running:
+    >>> python rllib/examples/serving/cartpole_server.py --run=PPO
+    --
+    -- Starting policy server at localhost:9900
+    --
+
+    # To connect from a client with inference_mode="remote".
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=remote
+    Total reward: 10.0
+    Total reward: 58.0
+    ...
+    Total reward: 200.0
+    ...
+
+    # To connect from a client with inference_mode="local" (faster).
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
+    Querying server for new policy weights.
+    Generating new batch of experiences.
+    Total reward: 13.0
+    Total reward: 11.0
+    ...
+    Sending batch of 1000 steps back to server.
+    Querying server for new policy weights.
+    ...
+    Total reward: 200.0
+    ...
+
+For the best performance, when possible we recommend using ``inference_mode="local"`` when possible.
 
 Advanced Integrations
 ---------------------

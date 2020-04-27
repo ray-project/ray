@@ -1,9 +1,5 @@
 """BOHB (Bayesian Optimization with HyperBand)"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import logging
 
@@ -26,7 +22,7 @@ class TuneBOHB(SuggestionAlgorithm):
 
 
     Requires HpBandSter and ConfigSpace to be installed. You can install
-    HpBandSter and ConfigSpace with: `pip install hpbandster ConfigSpace`.
+    HpBandSter and ConfigSpace with: ``pip install hpbandster ConfigSpace``.
 
     This should be used in conjunction with HyperBandForBOHB.
 
@@ -42,23 +38,28 @@ class TuneBOHB(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        >>> import ConfigSpace as CS
-        >>> config_space = CS.ConfigurationSpace()
-        >>> config_space.add_hyperparameter(
-                CS.UniformFloatHyperparameter('width', lower=0, upper=20))
-        >>> config_space.add_hyperparameter(
-                CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
-        >>> config_space.add_hyperparameter(
-                CS.CategoricalHyperparameter(
-                    name='activation', choices=['relu', 'tanh']))
-        >>> algo = TuneBOHB(
-                config_space, max_concurrent=4, metric='mean_loss', mode='min')
-        >>> bohb = HyperBandForBOHB(
-                time_attr='training_iteration',
-                metric='mean_loss',
-                mode='min',
-                max_t=100)
-        >>> run(MyTrainableClass, scheduler=bohb, search_alg=algo)
+
+    .. code-block:: python
+
+        import ConfigSpace as CS
+
+        config_space = CS.ConfigurationSpace()
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+        config_space.add_hyperparameter(
+            CS.CategoricalHyperparameter(
+                name='activation', choices=['relu', 'tanh']))
+
+        algo = TuneBOHB(
+            config_space, max_concurrent=4, metric='mean_loss', mode='min')
+        bohb = HyperBandForBOHB(
+            time_attr='training_iteration',
+            metric='mean_loss',
+            mode='min',
+            max_t=100)
+        run(MyTrainableClass, scheduler=bohb, search_alg=algo)
 
     """
 
@@ -75,16 +76,16 @@ class TuneBOHB(SuggestionAlgorithm):
         self.trial_to_params = {}
         self.running = set()
         self.paused = set()
-        self.metric = metric
+        self._metric = metric
         if mode == "max":
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
         bohb_config = bohb_config or {}
         self.bohber = BOHB(space, **bohb_config)
-        super(TuneBOHB, self).__init__()
+        super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if len(self.running) < self._max_concurrent:
             # This parameter is not used in hpbandster implementation.
             config, info = self.bohber.get_config(None)

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 import collections
@@ -85,13 +81,17 @@ def collect_episodes(local_worker=None,
 
 
 @DeveloperAPI
-def summarize_episodes(episodes, new_episodes):
+def summarize_episodes(episodes, new_episodes=None):
     """Summarizes a set of episode metrics tuples.
 
     Arguments:
         episodes: smoothed set of episodes including historical ones
-        new_episodes: just the new episodes in this iteration
+        new_episodes: just the new episodes in this iteration. This must be
+            a subset of `episodes`. If None, assumes all episodes are new.
     """
+
+    if new_episodes is None:
+        new_episodes = episodes
 
     episodes, estimates = _partition(episodes)
     new_episodes, _ = _partition(new_episodes)
@@ -101,6 +101,7 @@ def summarize_episodes(episodes, new_episodes):
     policy_rewards = collections.defaultdict(list)
     custom_metrics = collections.defaultdict(list)
     perf_stats = collections.defaultdict(list)
+    hist_stats = collections.defaultdict(list)
     for episode in episodes:
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
@@ -111,14 +112,24 @@ def summarize_episodes(episodes, new_episodes):
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
+        for k, v in episode.hist_data.items():
+            hist_stats[k] += v
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
+        avg_reward = np.mean(episode_rewards)
     else:
         min_reward = float("nan")
         max_reward = float("nan")
-    avg_reward = np.mean(episode_rewards)
-    avg_length = np.mean(episode_lengths)
+        avg_reward = float("nan")
+    if episode_lengths:
+        avg_length = np.mean(episode_lengths)
+    else:
+        avg_length = float("nan")
+
+    # Show as histogram distributions.
+    hist_stats["episode_reward"] = episode_rewards
+    hist_stats["episode_lengths"] = episode_lengths
 
     policy_reward_min = {}
     policy_reward_mean = {}
@@ -128,9 +139,12 @@ def summarize_episodes(episodes, new_episodes):
         policy_reward_mean[policy_id] = np.mean(rewards)
         policy_reward_max[policy_id] = np.max(rewards)
 
+        # Show as histogram distributions.
+        hist_stats["policy_{}_reward".format(policy_id)] = rewards
+
     for k, v_list in custom_metrics.copy().items():
-        custom_metrics[k + "_mean"] = np.mean(v_list)
         filt = [v for v in v_list if not np.isnan(v)]
+        custom_metrics[k + "_mean"] = np.mean(filt)
         if filt:
             custom_metrics[k + "_min"] = np.min(filt)
             custom_metrics[k + "_max"] = np.max(filt)
@@ -162,6 +176,7 @@ def summarize_episodes(episodes, new_episodes):
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,
         custom_metrics=dict(custom_metrics),
+        hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
         off_policy_estimator=dict(estimators))
 

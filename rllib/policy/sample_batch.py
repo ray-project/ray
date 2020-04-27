@@ -1,8 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
 import collections
 import numpy as np
 
@@ -15,7 +10,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class SampleBatch(object):
+class SampleBatch:
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
@@ -31,6 +26,11 @@ class SampleBatch(object):
     PREV_REWARDS = "prev_rewards"
     DONES = "dones"
     INFOS = "infos"
+
+    # Extra action fetches keys.
+    ACTION_DIST_INPUTS = "action_dist_inputs"
+    ACTION_PROB = "action_prob"
+    ACTION_LOGP = "action_logp"
 
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
@@ -53,7 +53,7 @@ class SampleBatch(object):
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert isinstance(k, six.string_types), self
+            assert isinstance(k, str), self
             lengths.append(len(v))
             self.data[k] = np.array(v, copy=False)
         if not lengths:
@@ -231,7 +231,7 @@ class SampleBatch(object):
 
 
 @PublicAPI
-class MultiAgentBatch(object):
+class MultiAgentBatch:
     """A batch of experiences from multiple policies in the environment.
 
     Attributes:

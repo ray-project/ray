@@ -121,9 +121,9 @@ requirements, you can do so as follows.
           self.value += 1
           return self.value
 
-  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
-  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
-  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
+  a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
+  a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
+  a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
@@ -143,7 +143,13 @@ If necessary, you can manually terminate an actor by calling
 ``ray.actor.exit_actor()`` from within one of the actor methods. This will kill
 the actor process and release resources associated/assigned to the actor. This
 approach should generally not be necessary as actors are automatically garbage
-collected.
+collected. The ``ObjectID`` resulting from the task can be waited on to wait
+for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
+Note that this method of termination will wait until any previously submitted
+tasks finish executing. If you want to terminate an actor immediately, you can
+call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
+and any pending tasks to fail. Any exit handlers installed in the actor using
+``atexit`` will be called.
 
 Passing Around Actor Handles
 ----------------------------
@@ -189,3 +195,21 @@ If we instantiate an actor, we can pass the handle around to various tasks.
   for _ in range(10):
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
+
+
+Actor Pool
+----------
+
+The ``ray.util`` module contains a utility class, ``ActorPool``.
+This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
+
+.. code-block::
+
+  from ray.util import ActorPool
+
+  a1, a2 = Actor.remote(), Actor.remote()
+  pool = ActorPool([a1, a2])
+  print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+  # [2, 4, 6, 8]
+
+See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.

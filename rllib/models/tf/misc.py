@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from ray.rllib.utils import try_import_tf
 
@@ -15,10 +11,6 @@ def normc_initializer(std=1.0):
         return tf.constant(out)
 
     return _initializer
-
-
-def get_activation_fn(name):
-    return getattr(tf.nn, name)
 
 
 def conv2d(x,

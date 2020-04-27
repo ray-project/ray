@@ -6,7 +6,7 @@ This page describes the internal concepts used to implement algorithms in RLlib.
 Policies
 --------
 
-Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__.
+Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__.
 
 Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates. You can also write your own from scratch. Here is an example:
 
@@ -233,7 +233,7 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             sgd_batch_size=config["sgd_minibatch_size"],
             num_sgd_iter=config["num_sgd_iter"],
             num_gpus=config["num_gpus"],
-            sample_batch_size=config["sample_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             num_envs_per_worker=config["num_envs_per_worker"],
             train_batch_size=config["train_batch_size"],
             standardize_fields=["advantages"],
@@ -275,7 +275,7 @@ Now let's take a look at the ``update_kl`` function. This is used to adaptively 
             # multi-agent
             trainer.workers.local_worker().foreach_trainable_policy(update)
 
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
 
 .. code-block:: python
 
@@ -418,11 +418,22 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+can be run in eager mode by setting
+the ``"eager": True`` / ``"eager_tracing": True`` config options or
+using ``rllib train --eager [--trace]``.
+This will tell RLlib to execute the model forward pass, action distribution,
+loss, and stats functions in eager mode.
 
-Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
+Eager mode makes debugging much easier, since you can now use line-by-line
+debugging with breakpoints or Python ``print()`` to inspect
+intermediate tensor values.
+However, eager can be slower than graph mode unless tracing is enabled.
 
-You can also selectively leverage eager operations within graph mode execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager ops embedded `within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+You can also selectively leverage eager operations within graph mode
+execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__.
+Here's an example of using eager ops embedded
+`within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -526,7 +537,7 @@ You can use the ``with_updates`` method on Trainers and Policy objects built wit
 .. code-block:: python
 
     from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+    from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 
     CustomPolicy = PPOTFPolicy.with_updates(
         name="MyCustomPPOTFPolicy",
@@ -594,7 +605,7 @@ This is how the example in the previous section looks when written using a polic
 Trainers
 --------
 
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <tune-usage.html#trainable-api>`__ for easy experiment management.
+Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
 
 Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
 

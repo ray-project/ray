@@ -80,4 +80,4 @@ head_start_ray_commands:
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379
+    - ray start --address=$RAY_HEAD_IP:6379

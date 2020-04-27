@@ -1,10 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import argparse
 import json
 import os
 
@@ -14,14 +9,6 @@ import ray
 from ray.tune import Trainable, run
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing")
-parser.add_argument(
-    "--ray-address",
-    help="Address of Ray cluster for seamless distributed execution.")
-args, _ = parser.parse_known_args()
 
 
 class MyTrainableClass(Trainable):
@@ -56,7 +43,7 @@ class MyTrainableClass(Trainable):
 
 if __name__ == "__main__":
     import ConfigSpace as CS
-    ray.init(address=args.ray_address)
+    ray.init(num_cpus=8)
 
     # BOHB uses ConfigSpace for their hyperparameter search space
     config_space = CS.ConfigurationSpace()
@@ -79,4 +66,4 @@ if __name__ == "__main__":
         scheduler=bohb_hyperband,
         search_alg=bohb_search,
         num_samples=10,
-        stop={"training_iteration": 10 if args.smoke_test else 100})
+        stop={"training_iteration": 100})

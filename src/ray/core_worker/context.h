@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_CONTEXT_H
 #define RAY_CORE_WORKER_CONTEXT_H
 
@@ -12,7 +26,7 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 
@@ -58,13 +72,16 @@ class WorkerContext {
 
   int GetNextPutIndex();
 
+ protected:
+  // allow unit test to set.
+  bool current_actor_is_direct_call_ = false;
+  bool current_task_is_direct_call_ = false;
+
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
   JobID current_job_id_;
   ActorID current_actor_id_;
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
 
@@ -72,7 +89,7 @@ class WorkerContext {
   boost::thread::id main_thread_id_;
 
  private:
-  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
+  static WorkerThreadContext &GetThreadContext();
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

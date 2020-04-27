@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_COMMON_BUFFER_H
 #define RAY_COMMON_BUFFER_H
 
@@ -55,7 +69,8 @@ class LocalMemoryBuffer : public Buffer {
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
-      buffer_.insert(buffer_.end(), data, data + size);
+      buffer_.resize(size);
+      std::copy(data, data + size, buffer_.begin());
       data_ = buffer_.data();
       size_ = buffer_.size();
     } else {
@@ -79,7 +94,7 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() {}
+  ~LocalMemoryBuffer() { size_ = 0; }
 
  private:
   /// Disable copy constructor and assignment, as default copy will
@@ -101,7 +116,9 @@ class LocalMemoryBuffer : public Buffer {
 /// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
-  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
+  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer,
+               std::function<void(PlasmaBuffer *)> on_delete = nullptr)
+      : buffer_(buffer), on_delete_(on_delete) {}
 
   uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
 
@@ -111,10 +128,18 @@ class PlasmaBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return true; }
 
+  ~PlasmaBuffer() {
+    if (on_delete_ != nullptr) {
+      on_delete_(this);
+    }
+  };
+
  private:
   /// shared_ptr to arrow buffer which can potentially hold a reference
   /// for the object (when it's a plasma::PlasmaBuffer).
   std::shared_ptr<arrow::Buffer> buffer_;
+  /// Callback to run on destruction.
+  std::function<void(PlasmaBuffer *)> on_delete_;
 };
 
 }  // namespace ray

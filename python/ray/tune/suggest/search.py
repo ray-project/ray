@@ -1,9 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-
-class SearchAlgorithm(object):
+class SearchAlgorithm:
     """Interface of an event handler API for hyperparameter search.
 
     Unlike TrialSchedulers, SearchAlgorithms will not have the ability
@@ -15,6 +10,7 @@ class SearchAlgorithm(object):
 
     See also: `ray.tune.suggest.BasicVariantGenerator`.
     """
+    _finished = False
 
     def add_configurations(self, experiments):
         """Tracks given experiment specifications.
@@ -67,4 +63,8 @@ class SearchAlgorithm(object):
 
         Can return True before all trials have finished executing.
         """
-        raise NotImplementedError
+        return self._finished
+
+    def set_finished(self):
+        """Marks the search algorithm as finished."""
+        self._finished = True

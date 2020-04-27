@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options include ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,6 +61,8 @@ and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
+For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
 Configuration
 -------------
 
@@ -81,7 +83,24 @@ Specifying Resources
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
 
+.. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
+
+Scaling Guide
+~~~~~~~~~~~~~
+
+Here are some rules of thumb for scaling training with RLlib.
+
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+
+
+2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, :ref:`IMPALA <impala>`, or :ref:`APEX <apex>`. These can be scaled by increasing ``num_workers`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting ``num_gpus > 1``.
+
+
+3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
+
+
+4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -107,8 +126,8 @@ You can run these with the ``rllib train`` command as follows:
 
     rllib train -f /path/to/tuned/example.yaml
 
-Python API
-----------
+Basic Python API
+----------------
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
@@ -138,12 +157,24 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # an h5-file with weight values in it, e.g.
+    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
+    # (see: https://keras.io/models/about-keras-models/)
+
+    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
-    It's recommended that you run RLlib trainers with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib trainers with :ref:`Tune <tune-index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Tune <tune-index>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -177,12 +208,77 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-Custom Training Workflows
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Computing Actions
+~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
+This method preprocesses and filters the observation before passing it to the agent policy.
+For more advanced usage, you can access the ``workers`` and policies held by the trainer
+directly as ``compute_action()`` does:
 
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+.. code-block:: python
+
+  class Trainer(Trainable):
+
+    @PublicAPI
+    def compute_action(self,
+                       observation,
+                       state=None,
+                       prev_action=None,
+                       prev_reward=None,
+                       info=None,
+                       policy_id=DEFAULT_POLICY_ID,
+                       full_fetch=False):
+        """Computes an action for the specified policy.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): policy to query (only applies to multi-agent).
+            full_fetch (bool): whether to return extra action fetch results.
+                This is always set to true if RNN state is specified.
+
+        Returns:
+            Just the computed action if full_fetch=False, or the full output
+            of policy.compute_actions() otherwise.
+        """
+
+        if state is None:
+            state = []
+        preprocessed = self.workers.local_worker().preprocessors[
+            policy_id].transform(observation)
+        filtered_obs = self.workers.local_worker().filters[policy_id](
+            preprocessed, update=False)
+        if state:
+            return self.get_policy(policy_id).compute_single_action(
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
+                clip_actions=self.config["clip_actions"])
+        res = self.get_policy(policy_id).compute_single_action(
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"])
+        if full_fetch:
+            return res
+        else:
+            return res[0]  # backwards compatibility
+
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -262,21 +358,21 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> policy.model.base_model.summary()
     Model: "model"
     _____________________________________________________________________
-    Layer (type)               Output Shape  Param #  Connected to       
+    Layer (type)               Output Shape  Param #  Connected to
     =====================================================================
-    observations (InputLayer)  [(None, 4)]   0                           
+    observations (InputLayer)  [(None, 4)]   0
     _____________________________________________________________________
-    fc_1 (Dense)               (None, 256)   1280     observations[0][0] 
+    fc_1 (Dense)               (None, 256)   1280     observations[0][0]
     _____________________________________________________________________
-    fc_value_1 (Dense)         (None, 256)   1280     observations[0][0] 
+    fc_value_1 (Dense)         (None, 256)   1280     observations[0][0]
     _____________________________________________________________________
-    fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]         
+    fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]
     _____________________________________________________________________
-    fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]   
+    fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]
     _____________________________________________________________________
-    fc_out (Dense)             (None, 2)     514      fc_2[0][0]         
+    fc_out (Dense)             (None, 2)     514      fc_2[0][0]
     _____________________________________________________________________
-    value_out (Dense)          (None, 1)     257      fc_value_2[0][0]   
+    value_out (Dense)          (None, 1)     257      fc_value_2[0][0]
     =====================================================================
     Total params: 134,915
     Trainable params: 134,915
@@ -306,15 +402,15 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.base_model.summary()
     Model: "model"
     _______________________________________________________________________
-    Layer (type)                Output Shape    Param #  Connected to      
+    Layer (type)                Output Shape    Param #  Connected to
     =======================================================================
-    observations (InputLayer)   [(None, 4)]     0                          
+    observations (InputLayer)   [(None, 4)]     0
     _______________________________________________________________________
     fc_1 (Dense)                (None, 256)     1280     observations[0][0]
     _______________________________________________________________________
-    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]        
+    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]
     _______________________________________________________________________
-    value_out (Dense)           (None, 1)       257      fc_1[0][0]        
+    value_out (Dense)           (None, 1)       257      fc_1[0][0]
     =======================================================================
     Total params: 67,329
     Trainable params: 67,329
@@ -328,11 +424,11 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.q_value_head.summary()
     Model: "model_1"
     _________________________________________________________________
-    Layer (type)                 Output Shape              Param #   
+    Layer (type)                 Output Shape              Param #
     =================================================================
-    model_out (InputLayer)       [(None, 256)]             0         
+    model_out (InputLayer)       [(None, 256)]             0
     _________________________________________________________________
-    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306     
+    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306
     =================================================================
     Total params: 66,306
     Trainable params: 66,306
@@ -346,11 +442,11 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.state_value_head.summary()
     Model: "model_2"
     _________________________________________________________________
-    Layer (type)                 Output Shape              Param #   
+    Layer (type)                 Output Shape              Param #
     =================================================================
-    model_out (InputLayer)       [(None, 256)]             0         
+    model_out (InputLayer)       [(None, 256)]             0
     _________________________________________________________________
-    lambda_1 (Lambda)            (None, 1)                 66049     
+    lambda_1 (Lambda)            (None, 1)                 66049
     =================================================================
     Total params: 66,049
     Trainable params: 66,049
@@ -359,13 +455,23 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
+Advanced Python APIs
+--------------------
+
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+
+For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
-    from ray.experimental import named_actors
+    from ray.util import named_actors
 
     @ray.remote
     class Counter:
@@ -390,51 +496,12 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callbacks to be called at points during policy evaluation. These callbacks have access to state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``, and ``on_train_result`` are also places where custom postprocessing can be applied to intermediate data or results.
 
-.. code-block:: python
+User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
-    def on_episode_start(info):
-        print(info.keys())  # -> "env", 'episode"
-        episode = info["episode"]
-        print("episode {} started".format(episode.episode_id))
-        episode.user_data["pole_angles"] = []
-
-    def on_episode_step(info):
-        episode = info["episode"]
-        pole_angle = abs(episode.last_observation_for()[2])
-        episode.user_data["pole_angles"].append(pole_angle)
-
-    def on_episode_end(info):
-        episode = info["episode"]
-        pole_angle = np.mean(episode.user_data["pole_angles"])
-        print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, pole_angle))
-        episode.custom_metrics["pole_angle"] = pole_angle
-
-    def on_train_result(info):
-        print("trainer.train() result: {} -> {} episodes".format(
-            info["trainer"].__name__, info["result"]["episodes_this_iter"]))
-
-    def on_postprocess_traj(info):
-        episode = info["episode"]
-        batch = info["post_batch"]  # note: you can mutate this
-        print("postprocessed {} steps".format(batch.count))
-
-    ray.init()
-    analysis = tune.run(
-        "PG",
-        config={
-            "env": "CartPole-v0",
-            "callbacks": {
-                "on_episode_start": on_episode_start,
-                "on_episode_step": on_episode_step,
-                "on_episode_end": on_episode_end,
-                "on_train_result": on_train_result,
-                "on_postprocess_traj": on_postprocess_traj,
-            },
-        },
-    )
+.. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
+    :members:
 
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -443,13 +510,247 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
+Customizing Exploration Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib offers a unified top-level API to configure and customize an agent’s
+exploration behavior, including the decisions (how and whether) to sample
+actions from distributions (stochastically or deterministically).
+The setup can be done via using built-in Exploration classes
+(see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
+which are specified (and further configured) inside ``Trainer.config["exploration_config"]``.
+Besides using built-in classes, one can sub-class any of
+these built-ins, add custom behavior to it, and use that new class in
+the config instead.
+
+Every policy has-an instantiation of one of the Exploration (sub-)classes.
+This Exploration object is created from the Trainer’s
+``config[“exploration_config”]`` dict, which specifies the class to use via the
+special “type” key, as well as constructor arguments via all other keys,
+e.g.:
+
+.. code-block:: python
+
+    # in Trainer.config:
+    "exploration_config": {
+        "type": "StochasticSampling",  # <- Special `type` key provides class information
+        "[c'tor arg]" : "[value]",  # <- Add any needed constructor args here.
+        # etc
+    }
+    # ...
+
+The following table lists all built-in Exploration sub-classes and the agents
+that currently used these by default:
+
+.. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
+.. image:: images/rllib-exploration-api-table.svg
+
+An Exploration class implements the ``get_exploration_action`` method,
+in which the exact exploratory behavior is defined.
+It takes the model’s output, the action distribution class, the model itself,
+a timestep (the global env-sampling steps already taken),
+and an ``explore`` switch and outputs a tuple of 1) action and
+2) log-likelihood:
+
+.. code-block:: python
+
+    def get_exploration_action(self,
+                               distribution_inputs,
+                               action_dist_class,
+                               model=None,
+                               explore=True,
+                               timestep=None):
+        """Returns a (possibly) exploratory action and its log-likelihood.
+
+        Given the Model's logits outputs and action distribution, returns an
+        exploratory action.
+
+        Args:
+            distribution_inputs (any): The output coming from the model,
+                ready for parameterizing a distribution
+                (e.g. q-values or PG-logits).
+            action_dist_class (class): The action distribution class
+                to use.
+            model (ModelV2): The Model object.
+            explore (bool): True: "Normal" exploration behavior.
+                False: Suppress all exploratory behavior and return
+                    a deterministic action.
+            timestep (int): The current sampling time step. If None, the
+                component should try to use an internal counter, which it
+                then increments by 1. If provided, will set the internal
+                counter to the given value.
+
+        Returns:
+            Tuple:
+            - The chosen exploration action or a tf-op to fetch the exploration
+              action from the graph.
+            - The log-likelihood of the exploration action.
+        """
+        pass
+
+
+On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
+methods have a boolean ``explore`` switch, which is passed into
+``Exploration.get_exploration_action``. If ``None``, the value of
+``Trainer.config[“explore”]`` is used.
+Hence ``config[“explore”]`` describes the default behavior of the policy and
+e.g. allows switching off any exploration easily for evaluation purposes
+(see :ref:`CustomEvaluation`).
+
+The following are example excerpts from different Trainers' configs
+(see rllib/agents/trainer.py) to setup different exploration behaviors:
+
+.. code-block:: python
+
+    # All of the following configs go into Trainer.config.
+
+    # 1) Switching *off* exploration by default.
+    # Behavior: Calling `compute_action(s)` without explicitly setting its `explore`
+    # param will result in no exploration.
+    # However, explicitly calling `compute_action(s)` with `explore=True` will
+    # still(!) result in exploration (per-call overrides default).
+    "explore": False,
+
+    # 2) Switching *on* exploration by default.
+    # Behavior: Calling `compute_action(s)` without explicitly setting its
+    # explore param will result in exploration.
+    # However, explicitly calling `compute_action(s)` with `explore=False`
+    # will result in no(!) exploration (per-call overrides default).
+    "explore": True,
+
+    # 3) Example exploration_config usages:
+    # a) DQN: see rllib/agents/dqn/dqn.py
+    "explore": True,
+    "exploration_config": {
+       # Exploration sub-class by name or full path to module+class
+       # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       "type": "EpsilonGreedy",
+       # Parameters for the Exploration class' constructor:
+       "initial_epsilon": 1.0,
+       "final_epsilon": 0.02,
+       "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+    },
+
+    # b) DQN Soft-Q: In order to switch to Soft-Q exploration, do instead:
+    "explore": True,
+    "exploration_config": {
+       "type": "SoftQ",
+       # Parameters for the Exploration class' constructor:
+       "temperature": 1.0,
+    },
+
+    # c) PPO: see rllib/agents/ppo/ppo.py
+    # Behavior: The algo samples stochastically by default from the
+    # model-parameterized distribution. This is the global Trainer default
+    # setting defined in trainer.py and used by all PG-type algos.
+    "explore": True,
+    "exploration_config": {
+       "type": "StochasticSampling",
+    },
+
+
+.. _CustomEvaluation:
+
+Customized Evaluation During Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib will report online training rewards, however in some cases you may want to compute
+rewards with different settings (e.g., with exploration turned off, or on a specific set
+of environment configurations). You can evaluate policies during training by setting
+the ``evaluation_interval`` config, and optionally also ``evaluation_num_episodes``,
+``evaluation_config``, ``evaluation_num_workers``, and ``custom_eval_function``
+(see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+
+By default, exploration is left as-is within ``evaluation_config``.
+However, you can switch off any exploration behavior for the evaluation workers
+via:
+
+.. code-block:: python
+
+    # Switching off exploration behavior for evaluation workers
+    # (see rllib/agents/trainer.py)
+    "evaluation_config": {
+       "explore": False
+    }
+
+.. note::
+
+    Policy gradient algorithms are able to find the optimal
+    policy, even if this is a stochastic one. Setting "explore=False" above
+    will result in the evaluation workers not using this stochastic policy.
+
+There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+
+Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
+    INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+    INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+    INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+    INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+    INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+
+    Result for PG_SimpleCorridor_2c6b27dc:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 15.864661654135338
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.49624060150375937
+        episode_reward_min: 0.0
+        episodes_this_iter: 133
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py --custom-eval`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:631 -- Running custom eval function <function ...>
+    Update corridor length to 4
+    Update corridor length to 7
+    Custom evaluation round 1
+    Custom evaluation round 2
+    Custom evaluation round 3
+    Custom evaluation round 4
+
+    Result for PG_SimpleCorridor_0de4e686:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 9.15695067264574
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.9596412556053812
+        episode_reward_min: 0.0
+        episodes_this_iter: 223
+        foo: 1
+
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+Note that in the ``on_postprocess_traj`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
+
+To access the policy / model (``policy.model``) in the callbacks, note that ``info['pre_batch']`` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+
+.. code-block:: python
+
+    from ray.rllib.evaluation.rollout_worker import get_global_worker
+
+    # You can use this from any callback to get a reference to the
+    # RolloutWorker running in the process, which in turn has references to
+    # all the policies, etc: see rollout_worker.py for more info.
+    rollout_worker = get_global_worker()
+
+Policy losses are defined over the ``post_batch`` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
 
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
@@ -546,9 +847,26 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 Eager Mode
 ~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+can be run in eager mode by setting the
+``"eager": True`` / ``"eager_tracing": True`` config options or using
+``rllib train --eager [--trace]``.
+This will tell RLlib to execute the model forward pass, action distribution,
+loss, and stats functions in eager mode.
 
-Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
+Eager mode makes debugging much easier, since you can now use line-by-line
+debugging with breakpoints or Python ``print()`` to inspect
+intermediate tensor values.
+However, eager can be slower than graph mode unless tracing is enabled.
+
+Using PyTorch
+~~~~~~~~~~~~~
+
+Trainers that have an implemented TorchPolicy, will allow you to run
+`rllib train` using the the command line ``--torch`` flag.
+Algorithms that do not have a torch version yet will complain with an error in
+this case.
+
 
 Episode Traces
 ~~~~~~~~~~~~~~
@@ -584,15 +902,13 @@ Stack Traces
 
 You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
-REST API
---------
+External Application API
+------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if it were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
 
-.. autoclass:: ray.rllib.utils.policy_client.PolicyClient
+.. autoclass:: ray.rllib.env.policy_client.PolicyClient
     :members:
 
-.. autoclass:: ray.rllib.utils.policy_server.PolicyServer
+.. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
-
-For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

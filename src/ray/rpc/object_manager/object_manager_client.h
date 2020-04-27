@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_OBJECT_MANAGER_CLIENT_H
 #define RAY_RPC_OBJECT_MANAGER_CLIENT_H
 
@@ -11,7 +25,7 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
-#include "src/ray/rpc/client_call.h"
+#include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace rpc {
@@ -30,16 +44,10 @@ class ObjectManagerClient {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;
     freeobjects_rr_index_ = rand() % num_connections_;
-    stubs_.reserve(num_connections_);
+    grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      grpc::ResourceQuota quota;
-      quota.SetMaxThreads(num_connections_);
-      grpc::ChannelArguments argument;
-      argument.SetResourceQuota(quota);
-      std::shared_ptr<grpc::Channel> channel =
-          grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                    grpc::InsecureChannelCredentials(), argument);
-      stubs_.push_back(ObjectManagerService::NewStub(channel));
+      grpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
+          address, port, client_call_manager, num_connections_));
     }
   };
 
@@ -47,43 +55,37 @@ class ObjectManagerClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server
-  void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
-    client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
-        *stubs_[push_rr_index_++ % num_connections_],
-        &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Push,
+                         grpc_clients_[push_rr_index_++ % num_connections_], )
 
   /// Pull object from remote object manager
   ///
   /// \param request The request message
   /// \param callback The callback function that handles reply from server
-  void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
-    client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
-        *stubs_[pull_rr_index_++ % num_connections_],
-        &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Pull,
+                         grpc_clients_[pull_rr_index_++ % num_connections_], )
 
   /// Tell remote object manager to free objects
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  void FreeObjects(const FreeObjectsRequest &request,
-                   const ClientCallback<FreeObjectsReply> &callback) {
-    client_call_manager_
-        .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(
-            *stubs_[freeobjects_rr_index_++ % num_connections_],
-            &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, FreeObjects,
+                         grpc_clients_[freeobjects_rr_index_++ % num_connections_], )
 
  private:
+  /// To optimize object manager performance we create multiple concurrent
+  /// GRPC connections, and use these connections in a round-robin way.
   int num_connections_;
 
+  /// Current connection index for `Push`.
   std::atomic<unsigned int> push_rr_index_;
+  /// Current connection index for `Pull`.
   std::atomic<unsigned int> pull_rr_index_;
+  /// Current connection index for `FreeObjects`.
   std::atomic<unsigned int> freeobjects_rr_index_;
 
-  /// The gRPC-generated stub.
-  std::vector<std::unique_ptr<ObjectManagerService::Stub>> stubs_;
+  /// The RPC clients.
+  std::vector<std::unique_ptr<GrpcClient<ObjectManagerService>>> grpc_clients_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

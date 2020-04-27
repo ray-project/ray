@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_SUBSCRIPTION_EXECUTOR_H
 #define RAY_GCS_SUBSCRIPTION_EXECUTOR_H
 
@@ -18,7 +32,7 @@ namespace gcs {
 template <typename ID, typename Data, typename Table>
 class SubscriptionExecutor {
  public:
-  SubscriptionExecutor(Table &table) : table_(table) {}
+  explicit SubscriptionExecutor(Table &table) : table_(table) {}
 
   ~SubscriptionExecutor() {}
 
@@ -32,9 +46,9 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id,
-                        const SubscribeCallback<ID, Data> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const ClientID &client_id,
+                           const SubscribeCallback<ID, Data> &subscribe,
+                           const StatusCallback &done);
 
   /// Subscribe to operations of an element.
   /// Repeated subscription to an element will return a failure.

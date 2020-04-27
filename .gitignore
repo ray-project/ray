@@ -3,6 +3,8 @@
 /python/ray/core
 /python/ray/pyarrow_files/
 /python/ray/pickle5_files/
+/python/ray/thirdparty_files/
+/python/ray/jars/
 /python/build
 /python/dist
 /python/python-driver-*
@@ -13,7 +15,7 @@
 /src/ray/gcs/format/*_generated.h
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
-/java/runtime/src/main/java/org/ray/runtime/generated/*
+/java/runtime/src/main/java/io/ray/runtime/generated/*
 
 # Redis temporary files
 *dump.rdb
@@ -56,6 +58,7 @@ python/.eggs
 
 # Fortran module files
 *.mod
+!deploy/ray-operator/go.mod
 
 # Compiled Static libraries
 *.lai
@@ -103,6 +106,7 @@ scripts/nodes.txt
 # Generated documentation files
 /doc/_build
 /doc/source/_static/thumbs
+/doc/source/tune/generated_guides/
 
 # User-specific stuff:
 .idea/**/workspace.xml
@@ -130,7 +134,9 @@ scripts/nodes.txt
 
 # Pytest Cache
 **/.pytest_cache
+**/.cache
 .benchmarks
+python-driver-*
 
 # Vscode
 .vscode/
@@ -145,6 +151,17 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+# streaming/python
+streaming/python/generated/
+streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/
+streaming/build/java
+.clwb
+streaming/**/.settings
+streaming/java/**/target
+streaming/java/**/.classpath
+streaming/java/**/.project
+streaming/java/**/*.log
+
 # python virtual env
 venv
 
@@ -154,3 +171,6 @@ venv
 
 # tools
 tools/prometheus*
+
+# ray project files
+project-id

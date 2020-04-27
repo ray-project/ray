@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import errno
 import hashlib
@@ -9,15 +5,43 @@ import inspect
 import logging
 import numpy as np
 import os
-import six
+import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import psutil
+
+logger = logging.getLogger(__name__)
+
+# Linux can bind child processes' lifetimes to that of their parents via prctl.
+# prctl support is detected dynamically once, and assumed thereafter.
+linux_prctl = None
+
+# Windows can bind processes' lifetimes to that of kernel-level "job objects".
+# We keep a global job object to tie its lifetime to that of our own process.
+win32_job = None
+win32_AssignProcessToJobObject = None
+
+
+def get_user_temp_dir():
+    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tempdir = os.path.join(os.sep, "tmp")
+    else:
+        tempdir = tempfile.gettempdir()
+    return tempdir
+
+
+def get_ray_temp_dir():
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def _random_string():
@@ -64,7 +88,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -131,6 +155,21 @@ def is_class_method(f):
     return hasattr(f, "__self__") and f.__self__ is not None
 
 
+def is_static_method(cls, f_name):
+    """Returns whether the class has a static method with the given name.
+
+    Args:
+        cls: The Python class (i.e. object of type `type`) to
+            search for the method in.
+        f_name: The name of the method to look up in this class
+            and check whether or not it is static.
+    """
+    for cls in inspect.getmro(cls):
+        if f_name in cls.__dict__:
+            return isinstance(cls.__dict__[f_name], staticmethod)
+    return False
+
+
 def random_string():
     """Generate a random string to use as an ID.
 
@@ -184,32 +223,14 @@ def decode(byte_str, allow_none=False):
 def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
-    To keep six with lower version, see Issue 4169, we copy this function
-    from six == 1.12.0.
-
-    TODO(yuhguo): remove this function when six >= 1.12.0.
-
-    For Python 2:
-      - `unicode` -> encoded to `str`
-      - `str` -> `str`
-
-    For Python 3:
       - `str` -> `str`
       - `bytes` -> decoded to `str`
     """
-    if six.PY3:
-        text_type = str
-        binary_type = bytes
+    if isinstance(s, str):
+        return s
     else:
-        text_type = unicode  # noqa: F821
-        binary_type = str
-    if not isinstance(s, (text_type, binary_type)):
-        raise TypeError("not expecting type '%s'" % type(s))
-    if six.PY2 and isinstance(s, text_type):
-        s = s.encode(encoding, errors)
-    elif six.PY3 and isinstance(s, binary_type):
-        s = s.decode(encoding, errors)
-    return s
+        assert isinstance(s, bytes)
+        return s.decode(encoding, errors)
 
 
 def binary_to_object_id(binary_object_id):
@@ -250,7 +271,8 @@ def get_cuda_visible_devices():
 
     Returns:
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set, this returns None.
+            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
+            this returns None.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -258,6 +280,9 @@ def get_cuda_visible_devices():
         return None
 
     if gpu_ids_str == "":
+        return []
+
+    if gpu_ids_str == "NoDevFiles":
         return []
 
     return [int(i) for i in gpu_ids_str.split(",")]
@@ -365,46 +390,6 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
-def vmstat(stat):
-    """Run vmstat and get a particular statistic.
-
-    Args:
-        stat: The statistic that we are interested in retrieving.
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(["vmstat", "-s"])
-    stat = stat.encode("ascii")
-    for line in out.split(b"\n"):
-        line = line.strip()
-        if stat in line:
-            return int(line.split(b" ")[0])
-    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
-
-
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
-def sysctl(command):
-    """Run a sysctl command and parse the output.
-
-    Args:
-        command: A sysctl command with an argument, for example,
-            ["sysctl", "hw.memsize"].
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(command)
-    result = out.split(b" ")[1]
-    try:
-        return int(result)
-    except ValueError:
-        return result
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -421,62 +406,50 @@ def get_system_memory():
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().total
-    except ImportError:
-        pass
-
-    if psutil_memory_in_bytes is not None:
-        memory_in_bytes = psutil_memory_in_bytes
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        # Handle Linux.
-        bytes_in_kilobyte = 1024
-        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
-    else:
-        # Handle MacOS.
-        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+    psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if docker_limit is not None:
-        return min(docker_limit, memory_in_bytes)
-    else:
-        return memory_in_bytes
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_limit, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
+
+
+def get_used_memory():
+    """Return the currently used system memory in bytes
+
+    Returns:
+        The total amount of used memory
+    """
+    # Try to accurately figure out the memory usage if we are in a docker
+    # container.
+    docker_usage = None
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    if os.path.exists(memory_usage_filename):
+        with open(memory_usage_filename, "r") as f:
+            docker_usage = int(f.read())
+
+    # Use psutil if it is available.
+    psutil_memory_in_bytes = psutil.virtual_memory().used
+
+    if docker_usage is not None:
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_usage, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
 
 
 def estimate_available_memory():
     """Return the currently available amount of system memory in bytes.
 
     Returns:
-        The total amount of available memory in bytes. It may be an
-        overestimate if psutil is not installed.
+        The total amount of available memory in bytes. Based on the used
+        and total memory.
+
     """
-
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
-
-    # Use psutil if it is available.
-    try:
-        import psutil
-        return psutil.virtual_memory().available
-    except ImportError:
-        pass
-
-    # Handle Linux.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        bytes_in_kilobyte = 1024
-        return (
-            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
-
-    # Give up
-    return get_system_memory()
+    return get_system_memory() - get_used_memory()
 
 
 def get_shared_memory_bytes():
@@ -530,6 +503,157 @@ def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 
 
+def detect_fate_sharing_support_win32():
+    global win32_job, win32_AssignProcessToJobObject
+    if win32_job is None and sys.platform == "win32":
+        import ctypes
+        try:
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            kernel32 = ctypes.WinDLL("kernel32")
+            kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
+            kernel32.CreateJobObjectW.restype = HANDLE
+            sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
+            kernel32.SetInformationJobObject.argtypes = sijo_argtypes
+            kernel32.SetInformationJobObject.restype = BOOL
+            kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
+            kernel32.AssignProcessToJobObject.restype = BOOL
+            kernel32.IsDebuggerPresent.argtypes = ()
+            kernel32.IsDebuggerPresent.restype = BOOL
+        except (AttributeError, TypeError, ImportError):
+            kernel32 = None
+        job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
+        job = subprocess.Handle(job) if job else job
+        if job:
+            from ctypes.wintypes import DWORD, LARGE_INTEGER, ULARGE_INTEGER
+
+            class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("PerProcessUserTimeLimit", LARGE_INTEGER),
+                    ("PerJobUserTimeLimit", LARGE_INTEGER),
+                    ("LimitFlags", DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", DWORD),
+                    ("SchedulingClass", DWORD),
+                ]
+
+            class IO_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("ReadOperationCount", ULARGE_INTEGER),
+                    ("WriteOperationCount", ULARGE_INTEGER),
+                    ("OtherOperationCount", ULARGE_INTEGER),
+                    ("ReadTransferCount", ULARGE_INTEGER),
+                    ("WriteTransferCount", ULARGE_INTEGER),
+                    ("OtherTransferCount", ULARGE_INTEGER),
+                ]
+
+            class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("BasicLimitInformation",
+                     JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("IoInfo", IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t),
+                ]
+
+            debug = kernel32.IsDebuggerPresent()
+
+            # Defined in <WinNT.h>; also available here:
+            # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
+            JobObjectExtendedLimitInformation = 9
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+            buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            buf.BasicLimitInformation.LimitFlags = (
+                (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+            infoclass = JobObjectExtendedLimitInformation
+            if not kernel32.SetInformationJobObject(
+                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)):
+                job = None
+        win32_AssignProcessToJobObject = (kernel32.AssignProcessToJobObject
+                                          if kernel32 is not None else False)
+        win32_job = job if job else False
+    return bool(win32_job)
+
+
+def detect_fate_sharing_support_linux():
+    global linux_prctl
+    if linux_prctl is None and sys.platform.startswith("linux"):
+        try:
+            from ctypes import c_int, c_ulong, CDLL
+            prctl = CDLL(None).prctl
+            prctl.restype = c_int
+            prctl.argtypes = [c_int, c_ulong, c_ulong, c_ulong, c_ulong]
+        except (AttributeError, TypeError):
+            prctl = None
+        linux_prctl = prctl if prctl else False
+    return bool(linux_prctl)
+
+
+def detect_fate_sharing_support():
+    result = None
+    if sys.platform == "win32":
+        result = detect_fate_sharing_support_win32()
+    elif sys.platform.startswith("linux"):
+        result = detect_fate_sharing_support_linux()
+    return result
+
+
+def set_kill_on_parent_death_linux():
+    """Ensures this process dies if its parent dies (fate-sharing).
+
+    Linux-only. Must be called in preexec_fn (i.e. by the child).
+    """
+    if detect_fate_sharing_support_linux():
+        import signal
+        PR_SET_PDEATHSIG = 1
+        if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+            import ctypes
+            raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
+    else:
+        assert False, "PR_SET_PDEATHSIG used despite being unavailable"
+
+
+def set_kill_child_on_death_win32(child_proc):
+    """Ensures the child process dies if this process dies (fate-sharing).
+
+    Windows-only. Must be called by the parent, after spawning the child.
+
+    Args:
+        child_proc: The subprocess.Popen or subprocess.Handle object.
+    """
+
+    if isinstance(child_proc, subprocess.Popen):
+        child_proc = child_proc._handle
+    assert isinstance(child_proc, subprocess.Handle)
+
+    if detect_fate_sharing_support_win32():
+        if not win32_AssignProcessToJobObject(win32_job, int(child_proc)):
+            import ctypes
+            raise OSError(ctypes.get_last_error(),
+                          "AssignProcessToJobObject() failed")
+    else:
+        assert False, "AssignProcessToJobObject used despite being unavailable"
+
+
+def set_sigterm_handler(sigterm_handler):
+    """Registers a handler for SIGTERM in a platform-compatible manner."""
+    if sys.platform == "win32":
+        # Note that these signal handlers only work for console applications.
+        # TODO(mehrdadn): implement graceful process termination mechanism
+        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
+        signal.signal(signal.SIGBREAK, sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
+
+
 def try_make_directory_shared(directory_path):
     try:
         os.chmod(directory_path, 0o0777)
@@ -545,26 +669,14 @@ def try_make_directory_shared(directory_path):
             raise
 
 
-def try_to_create_directory(directory_path, warn_if_exist=True):
+def try_to_create_directory(directory_path):
     """Attempt to create a directory that is globally readable/writable.
 
     Args:
         directory_path: The path of the directory to create.
-        warn_if_exist (bool): Warn if the directory already exists.
     """
-    logger = logging.getLogger("ray")
     directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            if warn_if_exist:
-                logger.warning(
-                    "Attempted to create '{}', but the directory already "
-                    "exists.".format(directory_path))
-
+    os.makedirs(directory_path, exist_ok=True)
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)

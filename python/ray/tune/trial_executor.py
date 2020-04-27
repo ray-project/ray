@@ -1,8 +1,4 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.tune.trial import Trial, Checkpoint
@@ -11,8 +7,10 @@ from ray.tune.error import TuneError
 logger = logging.getLogger(__name__)
 
 
-class TrialExecutor(object):
-    """Manages platform-specific details such as resource handling
+class TrialExecutor:
+    """Module for interacting with remote trainables.
+
+    Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
 
@@ -39,14 +37,17 @@ class TrialExecutor(object):
             trial (Trial): Trial to checkpoint.
             status (Trial.status): Status to set trial to.
         """
-        logger.debug("Trial %s: Changing status from %s to %s.", trial,
-                     trial.status, status)
-        trial.status = status
+        if trial.status == status:
+            logger.debug("Trial %s: Status %s unchanged.", trial, trial.status)
+        else:
+            logger.debug("Trial %s: Changing status from %s to %s.", trial,
+                         trial.status, status)
+        trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
 
     def try_checkpoint_metadata(self, trial):
-        """Checkpoints metadata.
+        """Checkpoints trial metadata.
 
         Args:
             trial (Trial): Trial to checkpoint.
@@ -71,13 +72,14 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None):
+    def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint(Checkpoint): A Python object or path storing the state
+            checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
+            train (bool): Whether or not to start training.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
@@ -197,7 +199,7 @@ class TrialExecutor(object):
 
         Assumes the trial is running.
 
-        Return:
+        Returns:
             Result object for the trial.
         """
         raise NotImplementedError
@@ -210,7 +212,7 @@ class TrialExecutor(object):
         """Returns a string describing the total resources available."""
         raise NotImplementedError
 
-    def restore(self, trial, checkpoint=None):
+    def restore(self, trial, checkpoint=None, block=False):
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -219,23 +221,27 @@ class TrialExecutor(object):
         Args:
             trial (Trial): Trial to be restored.
             checkpoint (Checkpoint): Checkpoint to restore from.
+            block (bool): Whether or not to block on restore before returning.
 
-        Return:
+        Returns:
             False if error occurred, otherwise return True.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "restore() method")
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves training state of this trial to a checkpoint.
+
+        If result is None, this trial's last result will be used.
 
         Args:
             trial (Trial): The state of this trial to be saved.
-            storage (str): Where to store the checkpoint. Defaults to DISK.
+            storage (str): Where to store the checkpoint. Defaults to
+                PERSISTENT.
+            result (dict): The state of this trial as a dictionary to be saved.
 
-        Return:
-            A Python object if storage==Checkpoint.MEMORY otherwise
-            a path to the checkpoint.
+        Returns:
+            A Checkpoint object.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
@@ -246,7 +252,7 @@ class TrialExecutor(object):
         Args:
             trial (Trial): The state of this trial to be saved.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -255,3 +261,7 @@ class TrialExecutor(object):
     def has_gpus(self):
         """Returns True if GPUs are detected on the cluster."""
         return None
+
+    def cleanup(self, trial):
+        """Ensures that trials are cleaned up after stopping."""
+        pass

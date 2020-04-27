@@ -1,18 +1,18 @@
 import gym
+from gym.spaces import Box, Discrete, Tuple
 import numpy as np
 import unittest
-from gym.spaces import Box, Discrete, Tuple
 
 import ray
-
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -33,6 +33,16 @@ class CustomModel(Model):
 
 
 class CustomActionDistribution(TFActionDistribution):
+    def __init__(self, inputs, model):
+        # Store our output shape.
+        custom_options = model.model_config["custom_options"]
+        if "output_dim" in custom_options:
+            self.output_shape = tf.concat(
+                [tf.shape(inputs)[:1], custom_options["output_dim"]], axis=0)
+        else:
+            self.output_shape = tf.shape(inputs)
+        super().__init__(inputs, model)
+
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
         custom_options = model_config["custom_options"] or {}
@@ -40,32 +50,30 @@ class CustomActionDistribution(TFActionDistribution):
             return custom_options.get("output_dim")
         return action_space.shape
 
+    @override(TFActionDistribution)
     def _build_sample_op(self):
-        custom_options = self.model.model_config["custom_options"]
-        if "output_dim" in custom_options:
-            output_shape = tf.concat(
-                [tf.shape(self.inputs)[:1], custom_options["output_dim"]],
-                axis=0)
-        else:
-            output_shape = tf.shape(self.inputs)
-        return tf.random_uniform(output_shape)
+        return tf.random_uniform(self.output_shape)
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        return tf.zeros(self.output_shape)
 
 
 class ModelCatalogTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testGymPreprocessors(self):
+    def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
         self.assertEqual(type(p1), NoPreprocessor)
 
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-    def testTuplePreprocessor(self):
+    def test_tuple_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        class TupleEnv(object):
+        class TupleEnv:
             def __init__(self):
                 self.observation_space = Tuple(
                     [Discrete(5),
@@ -77,7 +85,7 @@ class ModelCatalogTest(unittest.TestCase):
             list(p1.transform((0, np.array([1, 2, 3])))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
-    def testCustomPreprocessor(self):
+    def test_custom_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
         ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
@@ -89,7 +97,7 @@ class ModelCatalogTest(unittest.TestCase):
         p3 = ModelCatalog.get_preprocessor(env)
         self.assertEqual(type(p3), NoPreprocessor)
 
-    def testDefaultModels(self):
+    def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
         with tf.variable_scope("test1"):
@@ -105,7 +113,7 @@ class ModelCatalogTest(unittest.TestCase):
                                         {})
             self.assertEqual(type(p2), VisionNetwork)
 
-    def testCustomModel(self):
+    def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model({
@@ -114,11 +122,13 @@ class ModelCatalogTest(unittest.TestCase):
                                     {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
-    def testCustomActionDistribution(self):
+    def test_custom_action_distribution(self):
         class Model():
             pass
 
-        ray.init(object_store_memory=1000 * 1024 * 1024)
+        ray.init(
+            object_store_memory=1000 * 1024 * 1024,
+            ignore_reinit_error=True)  # otherwise fails sometimes locally
         # registration
         ModelCatalog.register_custom_action_dist("test",
                                                  CustomActionDistribution)
@@ -157,4 +167,6 @@ class ModelCatalogTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

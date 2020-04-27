@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/common/id.h"
 
 #include <limits.h>
@@ -348,11 +362,17 @@ ObjectID ObjectID::FromRandom() {
       flags);
 }
 
+ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
+  return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
+                                 /*return_index=*/1,
+                                 static_cast<int>(TaskTransportType::DIRECT));
+}
+
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
                                     ObjectIDFlagsType flags,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
-  ObjectID ret = ObjectID::Nil();
+  ObjectID ret;
   std::memcpy(ret.id_, task_id_binary.c_str(), TaskID::kLength);
   std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));
   std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &object_index,
@@ -360,7 +380,7 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
   return ret;
 }
 
-JobID JobID::FromInt(uint32_t value) {
+JobID JobID::FromInt(uint16_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(

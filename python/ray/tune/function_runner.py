@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 import inspect
@@ -24,7 +20,7 @@ ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
 
-class StatusReporter(object):
+class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
@@ -33,10 +29,17 @@ class StatusReporter(object):
         >>>     reporter(timesteps_this_iter=1)
     """
 
-    def __init__(self, result_queue, continue_semaphore, logdir=None):
+    def __init__(self,
+                 result_queue,
+                 continue_semaphore,
+                 trial_name=None,
+                 trial_id=None,
+                 logdir=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
+        self._trial_name = trial_name
+        self._trial_id = trial_id
         self._logdir = logdir
 
     def __call__(self, **kwargs):
@@ -81,6 +84,16 @@ class StatusReporter(object):
     @property
     def logdir(self):
         return self._logdir
+
+    @property
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable."""
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        """Trial id for the corresponding trial of this Trainable."""
+        return self._trial_id
 
 
 class _RunnerThread(threading.Thread):
@@ -137,7 +150,11 @@ class FunctionRunner(Trainable):
         self._error_queue = queue.Queue(1)
 
         self._status_reporter = StatusReporter(
-            self._results_queue, self._continue_semaphore, self.logdir)
+            self._results_queue,
+            self._continue_semaphore,
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
+            logdir=self.logdir)
         self._last_result = {}
         config = config.copy()
 
@@ -248,10 +265,10 @@ def wrap_function(train_func):
 
     use_track = False
     try:
-        func_args = inspect.getargspec(train_func).args
+        func_args = inspect.getfullargspec(train_func).args
         use_track = ("reporter" not in func_args and len(func_args) == 1)
         if use_track:
-            logger.info("tune.track signature detected.")
+            logger.debug("tune.track signature detected.")
     except Exception:
         logger.info(
             "Function inspection failed - assuming reporter signature.")

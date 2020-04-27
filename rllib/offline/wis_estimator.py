@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.utils.annotations import override
@@ -13,7 +9,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
     Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf"""
 
     def __init__(self, policy, gamma):
-        OffPolicyEstimator.__init__(self, policy, gamma)
+        super().__init__(policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 

@@ -1,9 +1,6 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import numpy as np
 from gym.spaces import Tuple, Discrete, Dict, Box
+import numpy as np
+import unittest
 
 import ray
 from ray.tune import register_env
@@ -44,26 +41,33 @@ class AvailActionsTestEnv(MultiAgentEnv):
         return obs, rewards, dones, {}
 
 
-if __name__ == "__main__":
-    grouping = {
-        "group_1": ["agent_1"],  # trivial grouping for testing
-    }
-    obs_space = Tuple([AvailActionsTestEnv.observation_space])
-    act_space = Tuple([AvailActionsTestEnv.action_space])
-    register_env(
-        "action_mask_test",
-        lambda config: AvailActionsTestEnv(config).with_agent_groups(
-            grouping, obs_space=obs_space, act_space=act_space))
+class TestAvailActionsQMix(unittest.TestCase):
+    def test_avail_actions_qmix(self):
+        grouping = {
+            "group_1": ["agent_1"],  # trivial grouping for testing
+        }
+        obs_space = Tuple([AvailActionsTestEnv.observation_space])
+        act_space = Tuple([AvailActionsTestEnv.action_space])
+        register_env(
+            "action_mask_test",
+            lambda config: AvailActionsTestEnv(config).with_agent_groups(
+                grouping, obs_space=obs_space, act_space=act_space))
 
-    ray.init()
-    agent = QMixTrainer(
-        env="action_mask_test",
-        config={
-            "num_envs_per_worker": 5,  # test with vectorization on
-            "env_config": {
-                "avail_action": 3,
-            },
-        })
-    for _ in range(5):
-        agent.train()  # OK if it doesn't trip the action assertion error
-    assert agent.train()["episode_reward_mean"] == 21.0
+        ray.init()
+        agent = QMixTrainer(
+            env="action_mask_test",
+            config={
+                "num_envs_per_worker": 5,  # test with vectorization on
+                "env_config": {
+                    "avail_action": 3,
+                },
+            })
+        for _ in range(5):
+            agent.train()  # OK if it doesn't trip the action assertion error
+        assert agent.train()["episode_reward_mean"] == 21.0
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

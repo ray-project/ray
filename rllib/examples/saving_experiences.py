@@ -1,11 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Simple example of writing experiences to a file using JsonWriter."""
 
 # __sphinx_doc_begin__
 import gym
 import numpy as np
+import os
+
+import ray.utils
 
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
@@ -13,7 +13,8 @@ from ray.rllib.offline.json_writer import JsonWriter
 
 if __name__ == "__main__":
     batch_builder = SampleBatchBuilder()  # or MultiAgentSampleBatchBuilder
-    writer = JsonWriter("/tmp/demo-out")
+    writer = JsonWriter(
+        os.path.join(ray.utils.get_user_temp_dir(), "demo-out"))
 
     # You normally wouldn't want to manually create sample batches if a
     # simulator is available, but let's do it anyways for example purposes:

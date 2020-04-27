@@ -1,0 +1,39 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+message GetProfilingStatsRequest {
+  // PID of the worker process.
+  uint32 pid = 1;
+  // Duration of the profiling in seconds.
+  int32 duration = 2;
+}
+
+message GetProfilingStatsReply {
+  // Profiling stats.
+  string profiling_stats = 1;
+  // Standard output of the profiler process.
+  string stdout = 2;
+  // Standard error of the profiler process.
+  string stderr = 3;
+}
+
+// Service for communicating with the reporter.py process on a remote node.
+service ReporterService {
+  // Get the profiling stats.
+  rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
+}

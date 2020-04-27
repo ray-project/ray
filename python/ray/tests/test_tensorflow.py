@@ -1,12 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from numpy.testing import assert_almost_equal
-import tensorflow.compat.v1 as tf
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.utils.framework import try_import_tf
+
+tf = try_import_tf()
 
 
 def make_linear_network(w_name=None, b_name=None):
@@ -22,7 +20,7 @@ def make_linear_network(w_name=None, b_name=None):
             tf.global_variables_initializer(), x_data, y_data)
 
 
-class LossActor(object):
+class LossActor:
     def __init__(self, use_loss=True):
         # Uses a separate graph for each network.
         with tf.Graph().as_default():
@@ -45,7 +43,7 @@ class LossActor(object):
         return self.values[0].get_weights()
 
 
-class NetActor(object):
+class NetActor:
     def __init__(self):
         # Uses a separate graph for each network.
         with tf.Graph().as_default():
@@ -67,7 +65,7 @@ class NetActor(object):
         return self.values[0].get_weights()
 
 
-class TrainActor(object):
+class TrainActor:
     def __init__(self):
         # Almost the same as above, but now returns the placeholders and
         # gradient.

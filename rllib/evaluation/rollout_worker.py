@@ -1,14 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import numpy as np
 import gym
 import logging
 import pickle
+import os
 
 import ray
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
+from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -21,6 +21,7 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
@@ -28,13 +29,15 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
-    summarize, enable_periodic_logging
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
+
 logger = logging.getLogger(__name__)
 
 # Handle to the current rollout worker, which will be set to the most recently
@@ -52,7 +55,7 @@ def get_global_worker():
 
 
 @DeveloperAPI
-class RolloutWorker(EvaluatorInterface):
+class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -117,7 +120,7 @@ class RolloutWorker(EvaluatorInterface):
                  policy_mapping_fn=None,
                  policies_to_train=None,
                  tf_session_creator=None,
-                 batch_steps=100,
+                 rollout_fragment_length=100,
                  batch_mode="truncate_episodes",
                  episode_horizon=None,
                  preprocessor_pref="deepmind",
@@ -131,6 +134,7 @@ class RolloutWorker(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
+                 num_workers=0,
                  monitor_path=None,
                  log_dir=None,
                  log_level=None,
@@ -143,7 +147,8 @@ class RolloutWorker(EvaluatorInterface):
                  soft_horizon=False,
                  no_done_at_end=False,
                  seed=None,
-                 _fake_sampler=False):
+                 _fake_sampler=False,
+                 extra_python_environs=None):
         """Initialize a rollout worker.
 
         Arguments:
@@ -162,20 +167,21 @@ class RolloutWorker(EvaluatorInterface):
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
-            batch_steps (int): The target number of env transitions to include
-                in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of env transitions
+                to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `batch_steps * num_envs` in size. The batch will
-                    be exactly `batch_steps * num_envs` in size if
+                    of at most `rollout_fragment_length * num_envs` in size.
+                    The batch will be exactly
+                    `rollout_fragment_length * num_envs` in size if
                     postprocessing does not change batch sizes. Episodes may be
                     truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `batch_steps * num_envs` in size. Episodes will
-                    not be truncated, but multiple episodes may be packed
-                    within one batch to meet the batch size. Note that when
-                    `num_envs > 1`, episode steps will be buffered until the
-                    episode completes, and hence batches may contain
+                    of at least `rollout_fragment_length * num_envs` in size.
+                    Episodes will not be truncated, but multiple episodes may
+                    be packed within one batch to meet the batch size. Note
+                    that when `num_envs > 1`, episode steps will be buffered
+                    until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
@@ -202,11 +208,13 @@ class RolloutWorker(EvaluatorInterface):
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
+            num_workers (int): For remote workers, how many workers altogether
+                have been created?
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (dict): Dict of custom debug callbacks.
+            callbacks (DefaultCallbacks): Custom training callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
             input_evaluation (list): How to evaluate the policy performance.
@@ -233,14 +241,32 @@ class RolloutWorker(EvaluatorInterface):
             seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
+            extra_python_environs (dict): Extra python environments need to
+                be set.
         """
+        self._original_kwargs = locals().copy()
+        del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
 
+        # set extra environs first
+        if extra_python_environs:
+            for key, value in extra_python_environs.items():
+                os.environ[key] = str(value)
+
+        def gen_rollouts():
+            while True:
+                yield self.sample()
+
+        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
+
         policy_config = policy_config or {}
         if (tf and policy_config.get("eager")
-                and not policy_config.get("no_eager_on_workers")):
+                and not policy_config.get("no_eager_on_workers")
+                # This eager check is necessary for certain all-framework tests
+                # that use tf's eager_mode() context generator.
+                and not tf.executing_eagerly()):
             tf.enable_eager_execution()
 
         if log_level:
@@ -253,19 +279,25 @@ class RolloutWorker(EvaluatorInterface):
 
         env_context = EnvContext(env_config or {}, worker_index)
         self.policy_config = policy_config
-        self.callbacks = callbacks or {}
+        if callbacks:
+            self.callbacks = callbacks()
+        else:
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks = DefaultCallbacks()
         self.worker_index = worker_index
+        self.num_workers = num_workers
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         if not callable(policy_mapping_fn):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator = env_creator
-        self.sample_batch_size = batch_steps * num_envs
+        self.rollout_fragment_length = rollout_fragment_length * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
         self.last_batch = None
+        self.global_vars = None
         self._fake_sampler = _fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
@@ -321,18 +353,12 @@ class RolloutWorker(EvaluatorInterface):
                     self.env))
             self.env.seed(seed)
             try:
-                import torch
+                assert torch is not None
                 torch.manual_seed(seed)
-            except ImportError:
+            except AssertionError:
                 logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict) and not (tf and
                                                        tf.executing_eagerly()):
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE
-                    and not ray.get_gpu_ids()):
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
             if not tf:
                 raise ImportError("Could not import tensorflow")
             with tf.Graph().as_default():
@@ -348,6 +374,18 @@ class RolloutWorker(EvaluatorInterface):
                         tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
+            if (ray.is_initialized()
+                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
+                if not ray.get_gpu_ids():
+                    logger.debug(
+                        "Creating policy evaluation worker {}".format(
+                            worker_index) +
+                        " on CPU (please ignore any CUDA init errors)")
+                elif not tf.test.is_gpu_available():
+                    raise RuntimeError(
+                        "GPUs were assigned to this worker by Ray, but "
+                        "TensorFlow reports GPU acceleration is disabled. "
+                        "This could be due to a bad CUDA or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
@@ -381,10 +419,9 @@ class RolloutWorker(EvaluatorInterface):
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
-            unroll_length = batch_steps
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
-            unroll_length = float("inf")  # never cut episodes
+            rollout_fragment_length = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
             raise ValueError("Unsupported batch mode: {}".format(
@@ -411,13 +448,14 @@ class RolloutWorker(EvaluatorInterface):
 
         if sample_async:
             self.sampler = AsyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                unroll_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -429,13 +467,14 @@ class RolloutWorker(EvaluatorInterface):
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                unroll_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -466,7 +505,7 @@ class RolloutWorker(EvaluatorInterface):
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
-                self.sample_batch_size))
+                self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
@@ -478,15 +517,14 @@ class RolloutWorker(EvaluatorInterface):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.sample_batch_size and len(
-                batches) < max_batches:
+        while (steps_so_far < self.rollout_fragment_length
+               and len(batches) < max_batches):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
         batch = batches[0].concat_samples(batches)
 
-        if self.callbacks.get("on_sample_end"):
-            self.callbacks["on_sample_end"]({"worker": self, "samples": batch})
+        self.callbacks.on_sample_end(worker=self, samples=batch)
 
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
@@ -528,9 +566,11 @@ class RolloutWorker(EvaluatorInterface):
         }
 
     @override(EvaluatorInterface)
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars=None):
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
+        if global_vars:
+            self.set_global_vars(global_vars)
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):
@@ -615,6 +655,33 @@ class RolloutWorker(EvaluatorInterface):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
+    def sample_and_learn(self, expected_batch_size, num_sgd_iter,
+                         sgd_minibatch_size, standardize_fields):
+        """Sample and batch and learn on it.
+
+        This is typically used in combination with distributed allreduce.
+
+        Arguments:
+            expected_batch_size (int): Expected number of samples to learn on.
+            num_sgd_iter (int): Number of SGD iterations.
+            sgd_minibatch_size (int): SGD minibatch size.
+            standardize_fields (list): List of sample fields to normalize.
+
+        Returns:
+            info: dictionary of extra metadata from learn_on_batch().
+            count: number of samples learned on.
+        """
+        batch = self.sample()
+        assert batch.count == expected_batch_size, \
+            ("Batch size possibly out of sync between workers, expected:",
+             expected_batch_size, "got:", batch.count)
+        logger.info("Executing distributed minibatch SGD "
+                    "with epoch size {}, minibatch size {}".format(
+                        batch.count, sgd_minibatch_size))
+        info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
+                                sgd_minibatch_size, standardize_fields)
+        return info, batch.count
+
     @DeveloperAPI
     def get_metrics(self):
         """Returns a list of new RolloutMetric objects from evaluation."""
@@ -658,10 +725,18 @@ class RolloutWorker(EvaluatorInterface):
 
     @DeveloperAPI
     def foreach_trainable_policy(self, func):
-        """Apply the given function to each (policy, policy_id) tuple.
+        """
+        Applies the given function to each (policy, policy_id) tuple, which
+        can be found in `self.policies_to_train`.
 
-        This only applies func to policies in `self.policies_to_train`."""
+        Args:
+            func (callable): A function - taking a Policy and its ID - that is
+                called on all Policies within `self.policies_to_train`.
 
+        Returns:
+            List[any]: The list of n return values of all
+                `func([policy], [ID])`-calls.
+        """
         return [
             func(policy, pid) for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
@@ -714,10 +789,21 @@ class RolloutWorker(EvaluatorInterface):
     @DeveloperAPI
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        self.global_vars = global_vars
+
+    @DeveloperAPI
+    def get_global_vars(self):
+        return self.global_vars
 
     @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         self.policy_map[policy_id].export_model(export_dir)
+
+    @DeveloperAPI
+    def import_policy_model_from_h5(self,
+                                    import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        self.policy_map[policy_id].import_model_from_h5(import_file)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -731,6 +817,11 @@ class RolloutWorker(EvaluatorInterface):
     def stop(self):
         self.async_env.stop()
 
+    @DeveloperAPI
+    def creation_args(self):
+        """Returns the args used to create this worker."""
+        return self._original_kwargs
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         preprocessors = {}
@@ -738,6 +829,8 @@ class RolloutWorker(EvaluatorInterface):
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
+            merged_conf["num_workers"] = self.num_workers
+            merged_conf["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
@@ -770,6 +863,33 @@ class RolloutWorker(EvaluatorInterface):
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
+
+    def setup_torch_data_parallel(self, url, world_rank, world_size, backend):
+        """Join a torch process group for distributed SGD."""
+
+        logger.info("Joining process group, url={}, world_rank={}, "
+                    "world_size={}, backend={}".format(url, world_rank,
+                                                       world_size, backend))
+        torch.distributed.init_process_group(
+            backend=backend,
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
+
+        for pid, policy in self.policy_map.items():
+            if not isinstance(policy, TorchPolicy):
+                raise ValueError(
+                    "This policy does not support torch distributed", policy)
+            policy.distributed_world_size = world_size
+
+    def get_node_ip(self):
+        """Returns the IP address of the current node."""
+        return ray.services.get_node_ip_address()
+
+    def find_free_port(self):
+        """Finds a free port on the current node."""
+        from ray.util.sgd import utils
+        return utils.find_free_port()
 
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):

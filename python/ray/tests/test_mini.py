@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 
 test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
@@ -53,7 +49,7 @@ def test_put_api(ray_start_regular):
 
 def test_actor_api(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self, val):
             self.x = val
 

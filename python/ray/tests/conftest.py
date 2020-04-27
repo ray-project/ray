@@ -22,6 +22,8 @@ def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
+        "object_store_full_max_retries": 3,
+        "object_store_full_initial_delay_ms": 100,
     })
     return internal_config
 
@@ -58,6 +60,13 @@ def ray_start_no_cpu(request):
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="session")
+def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -149,17 +158,23 @@ def call_ray_start(request):
     out = ray.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
-    redis_substring_prefix = "redis_address=\""
+    redis_substring_prefix = "--address='"
     address_location = (
         out.find(redis_substring_prefix) + len(redis_substring_prefix))
     address = out[address_location:]
-    address = address.split("\"")[0]
+    address = address.split("'")[0]
 
     yield address
 
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
+    subprocess.check_output(["ray", "stop"])
+
+
+@pytest.fixture
+def call_ray_stop_only():
+    yield
     subprocess.check_output(["ray", "stop"])
 
 

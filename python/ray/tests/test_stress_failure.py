@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import numpy as np
 import os
@@ -299,8 +295,6 @@ def test_nondeterministic_task(ray_start_reconstruction):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory):
@@ -338,8 +332,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.raylet_client.fetch_or_reconstruct([args[0]],
-                                                                False)
+    ray.wait([args[0]], timeout=30)
 
     def error_check(errors):
         return len(errors) > 1
@@ -375,5 +368,4 @@ def test_driver_put_errors(ray_start_object_store_memory):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import random
 import sys
@@ -13,7 +9,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 
 @DeveloperAPI
-class ReplayBuffer(object):
+class ReplayBuffer:
     @DeveloperAPI
     def __init__(self, size):
         """Create Prioritized Replay buffer.
@@ -70,10 +66,7 @@ class ReplayBuffer(object):
 
     @DeveloperAPI
     def sample_idxes(self, batch_size):
-        return [
-            random.randint(0,
-                           len(self._storage) - 1) for _ in range(batch_size)
-        ]
+        return np.random.randint(0, len(self._storage), batch_size)
 
     @DeveloperAPI
     def sample_with_idxes(self, idxes):
@@ -234,7 +227,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
           Array of shape (batch_size,) and dtype np.int32
           idexes in buffer of sampled experiences
         """
-        assert beta > 0
+        assert beta >= 0.0
         self._num_sampled += batch_size
 
         idxes = self._sample_proportional(batch_size)

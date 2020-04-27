@@ -1,0 +1,14 @@
+single client get calls per second 30526.52 +- 1121.22
+single client put calls per second 6428.11 +- 51.25
+single client put gigabytes per second 12.85 +- 5.45
+multi client put calls per second 16976.5 +- 60.13
+multi client put gigabytes per second 22.54 +- 0.86
+single client tasks sync per second 1223.63 +- 18.36
+single client tasks async per second 13715.93 +- 229.68
+multi client tasks async per second 38344.2 +- 4336.41
+1:1 actor calls sync per second 2318.72 +- 24.19
+1:1 actor calls async per second 7530.01 +- 222.72
+1:1 actor calls concurrent per second 6981.48 +- 228.29
+1:n actor calls async per second 13974.54 +- 41.26
+n:n actor calls async per second 43835.4 +- 400.04
+n:n actor calls with arg async per second 14775.69 +- 295.24

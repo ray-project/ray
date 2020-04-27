@@ -1,9 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import errno
-import glob
 import io
 import os
 import re
@@ -19,8 +14,8 @@ from itertools import chain
 import setuptools.command.build_ext as _build_ext
 from setuptools import setup, find_packages, Distribution
 
-import urllib.parse as urllib_parse
-import urllib.request as urllib_request
+import urllib.parse
+import urllib.request
 
 try:
     import requests
@@ -33,41 +28,55 @@ except ImportError:
 # before these files have been created, so we have to move the files
 # manually.
 
-# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
+SUPPORTED_PYTHONS = [(3, 5), (3, 6), (3, 7), (3, 8)]
 
-pyarrow_url = (
-    "https://s3-us-west-2.amazonaws.com/"
-    "arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html")
-pyarrow_version = "0.14.0.RAY"
+exe_suffix = ".exe" if sys.platform == "win32" else ""
+
+# .pyd is the extension Python requires on Windows for shared libraries.
+# https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
+pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
+
+root_dir = os.path.dirname(__file__)
+
 pickle5_url = (
-    "https://files.pythonhosted.org/packages/"
-    "cd/5a/cbdf36134804809d55ffd4c248343bd36680a92b6425885a3fd204d32f7b"
-    "/pickle5-0.0.9.tar.gz")
+    "https://github.com/suquark/pickle5-backport/archive/"
+    "8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.tar.gz")
 
+# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server",
-    "ray/_raylet.so",
-    "ray/core/src/ray/raylet/raylet_monitor",
-    "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
+    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
+    "ray/_raylet" + pyd_suffix,
+    "ray/core/src/ray/raylet/raylet_monitor" + exe_suffix,
+    "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
+    "ray/core/src/ray/raylet/raylet" + exe_suffix,
+    "ray/streaming/_streaming.so",
 ]
+
+build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
+if build_java:
+    ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
+    "ray/streaming/generated",
 ]
 
 optional_ray_files = []
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
+    "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/azure/azure-vm-template.json",
+    "ray/autoscaler/azure/azure-config-template.json",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/ray-schema.json"
 ]
 
 ray_project_files = [
@@ -77,18 +86,16 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    "ray/dashboard/client/build/favicon.ico",
-    "ray/dashboard/client/build/index.html",
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
-for dirname in ["css", "js", "media"]:
-    ray_dashboard_files += glob.glob(
-        "ray/dashboard/client/build/static/{}/*".format(dirname))
 
 optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
 optional_ray_files += ray_dashboard_files
 
-if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
+if os.getenv("RAY_USE_NEW_GCS") == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
         "ray/core/src/credis/build/src/libmaster.so",
@@ -96,15 +103,23 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ]
 
 extras = {
-    "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
-        "tabulate"
-    ],
-    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
-    "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
-    "tune": ["tabulate"],
+    "debug": [],
+    "dashboard": ["requests"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "tune": ["tabulate", "tensorboardX", "pandas"]
 }
+
+extras["rllib"] = extras["tune"] + [
+    "atari_py",
+    "dm_tree",
+    "gym[atari]",
+    "lz4",
+    "opencv-python-headless",
+    "pyyaml",
+    "scipy",
+]
+
+extras["streaming"] = ["msgpack >= 0.6.2"]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
@@ -127,18 +142,24 @@ def download(url):
     if requests:
         result = requests.get(url).content
     else:
-        result = urllib_request.urlopen(url).read()
+        result = urllib.request.urlopen(url).read()
     return result
 
 
 class build_ext(_build_ext.build_ext):
     def run(self):
+        if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
+            msg = ("Detected Python version {}, which is not supported. "
+                   "Only Python {} are supported.").format(
+                ".".join(map(str, sys.version_info[:2])),
+                ", ".join(".".join(map(str, v)) for v in SUPPORTED_PYTHONS))
+            raise RuntimeError(msg)
+
         if is_invalid_windows_platform():
             msg = ("Please use official native CPython on Windows,"
                    " not Cygwin/MSYS/MSYS2/MinGW/etc.")
             raise OSError(msg)
 
-        root_dir = os.path.dirname(os.getcwd())
         if is_native_windows_or_msys():
             BAZEL_SH = os.getenv("BAZEL_SH")
             SYSTEMROOT = os.getenv("SystemRoot")
@@ -152,28 +173,18 @@ class build_ext(_build_ext.build_ext):
                     " environment variable for Bazel.").format(name="BAZEL_SH")
                 raise ValueError(msg)
 
-        if not os.path.isabs(root_dir):
-            raise ValueError("root_dir must be an absolute path")
+        pickle5_dir = os.path.join(root_dir, "python", "ray", "pickle5_files")
 
         # Note: We are passing in sys.executable so that we use the same
-        # version of Python to build pyarrow inside the build.sh script. Note
+        # version of Python to build packages inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-q",
-            "pyarrow==" + pyarrow_version, "--find-links", pyarrow_url,
-            "--target",
-            os.path.join(root_dir, "python", "ray", "pyarrow_files")
-        ])
         if (3, 6) <= sys.version_info[:2] <= (3, 7):
-            subdir = os.path.join("python", "ray", "pickle5_files")
-            pickle5_dir = os.path.join(root_dir, subdir)
-            work_dir = tempfile.mkdtemp()
-            try:
-                urlpath = urllib_parse.urlparse(pickle5_url).path
-                pickle5_name = os.path.basename(urllib_parse.unquote(urlpath))
-                tgz = re.sub("\\.tar\\.gz$", ".tgz", pickle5_name, flags=re.I)
-                pickle5_dirname = os.path.splitext(tgz)[0]
+            pickle5_file = os.path.basename(urllib.parse.unquote(
+                urllib.parse.urlparse(pickle5_url).path))
+            pickle5_name = os.path.basename(
+                re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I))
+            with tempfile.TemporaryDirectory() as work_dir:
                 tf = tarfile.open(None, "r", io.BytesIO(download(pickle5_url)))
                 try:
                     tf.extractall(work_dir)
@@ -181,7 +192,8 @@ class build_ext(_build_ext.build_ext):
                     tf.close()
                 subprocess.check_call(
                     [sys.executable, "setup.py", "bdist_wheel"],
-                    cwd=os.path.join(work_dir, pickle5_dirname))
+                    cwd=os.path.join(work_dir,
+                                     os.path.splitext(pickle5_name)[0]))
                 wheel_glob = os.path.join(work_dir, "dist", "*.whl")
                 for wheel in glob.glob(wheel_glob):
                     wzf = zipfile.ZipFile(wheel, "r")
@@ -189,35 +201,33 @@ class build_ext(_build_ext.build_ext):
                         wzf.extractall(pickle5_dir)
                     finally:
                         wzf.close()
-            finally:
-                shutil.rmtree(work_dir)
 
-        bazel_env = os.environ.copy()
-        # Apparently both Python 2 and 3 should be set to the same executable?
-        bazel_env["PYTHON2_BIN_PATH"] = sys.executable
-        bazel_env["PYTHON3_BIN_PATH"] = sys.executable
-        bazel_build_cmd = ["bazel", "build", "--verbose_failures"]
-        bazel_build_cmd.append("//:ray_pkg")
-        if os.getenv("RAY_INSTALL_JAVA") == "1":
-            # Also build binaries for Java if the above env variable exists.
-            bazel_build_cmd.append("//java:all")
-        subprocess.check_call(bazel_build_cmd, env=bazel_env)
+        thirdparty_dir = os.path.join(
+            root_dir, "python", "ray", "thirdparty_files")
 
-        # We also need to install pyarrow along with Ray, so make sure that the
-        # relevant non-Python pyarrow files get copied.
-        pyarrow_files = []
-        for (root, dirs, filenames) in os.walk("./ray/pyarrow_files/pyarrow"):
-            for name in filenames:
-                pyarrow_files.append(os.path.join(root, name))
+        if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
+            pip_packages = ["psutil", "setproctitle"]
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-q",
+                 "--target=" + thirdparty_dir] + pip_packages,
+                env=dict(os.environ, CC="gcc"))
+
+        bazel = os.getenv("BAZEL_EXECUTABLE", "bazel")
+        bazel_targets = ["//:ray_pkg"]
+        if build_java:
+            bazel_targets += ["//java:ray_java_pkg"]
+        subprocess.check_call(
+            [bazel, "build", "--verbose_failures"] + bazel_targets,
+            env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
 
         # We also need to install pickle5 along with Ray, so make sure that the
         # relevant non-Python pickle5 files get copied.
-        pickle5_files = []
-        for (root, dirs, filenames) in os.walk("./ray/pickle5_files/pickle5"):
-            for name in filenames:
-                pickle5_files.append(os.path.join(root, name))
+        pickle5_files = self.walk_directory(os.path.join(pickle5_dir,
+                                                         "pickle5"))
 
-        files_to_include = ray_files + pyarrow_files + pickle5_files
+        thirdparty_files = self.walk_directory(thirdparty_dir)
+
+        files_to_include = ray_files + pickle5_files + thirdparty_files
 
         # Copy over the autogenerated protobuf Python bindings.
         for directory in generated_python_directories:
@@ -236,6 +246,13 @@ class build_ext(_build_ext.build_ext):
                 print("Failed to copy optional file {}. This is ok."
                       .format(filename))
 
+    def walk_directory(self, directory):
+        file_list = []
+        for (root, dirs, filenames) in os.walk(directory):
+            for name in filenames:
+                file_list.append(os.path.join(root, name))
+        return file_list
+
     def move_file(self, filename):
         # TODO(rkn): This feels very brittle. It may not handle all cases. See
         # https://github.com/apache/arrow/blob/master/python/setup.py for an
@@ -246,7 +263,7 @@ class build_ext(_build_ext.build_ext):
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination)
+            shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):
@@ -256,8 +273,7 @@ class BinaryDistribution(Distribution):
 
 def find_version(*filepath):
     # Extract version information from filepath
-    here = os.path.abspath(os.path.dirname(__file__))
-    with open(os.path.join(here, *filepath)) as fp:
+    with open(os.path.join(root_dir, *filepath)) as fp:
         version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
                                   fp.read(), re.M)
         if version_match:
@@ -266,20 +282,19 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.14",
-    "filelock",
-    "jsonschema",
-    "funcsigs",
+    "aiohttp",
     "click",
     "colorama",
-    "pytest",
-    "pyyaml",
-    "redis>=3.3.2",
-    # NOTE: Don't upgrade the version of six! Doing so causes installation
-    # problems. See https://github.com/ray-project/ray/issues/4169.
-    "six >= 1.0.0",
-    "faulthandler;python_version<'3.3'",
+    "filelock",
+    "google",
+    "grpcio",
+    "jsonschema",
+    "msgpack >= 0.6.0, < 1.0.0",
+    "numpy >= 1.16",
     "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "redis >= 3.3.2",
 ]
 
 setup(
@@ -289,9 +304,7 @@ setup(
     author_email="ray-dev@googlegroups.com",
     description=("A system for parallel and distributed Python that unifies "
                  "the ML ecosystem."),
-    long_description=open(
-        os.path.join(
-            os.path.dirname(__file__), os.path.pardir, "README.rst"),
+    long_description=open(os.path.join(root_dir, os.path.pardir, "README.rst"),
         "r").read(),
     url="https://github.com/ray-project/ray",
     keywords=("ray distributed parallel machine-learning "
@@ -301,7 +314,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.29"],
+    setup_requires=["cython >= 0.29.14", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

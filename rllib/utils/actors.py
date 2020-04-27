@@ -1,21 +1,18 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 import ray
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
 
-class TaskPool(object):
+class TaskPool:
     """Helper class for tracking the status of many in-flight actor tasks."""
 
     def __init__(self):
         self._tasks = {}
         self._objects = {}
-        self._fetching = []
+        self._fetching = deque()
 
     def add(self, worker, all_obj_ids):
         if isinstance(all_obj_ids, list):
@@ -42,15 +39,11 @@ class TaskPool(object):
         for worker, obj_id in self.completed(blocking_wait=blocking_wait):
             self._fetching.append((worker, obj_id))
 
-        remaining = []
-        num_yielded = 0
-        for worker, obj_id in self._fetching:
-            if num_yielded < max_yield:
-                yield (worker, obj_id)
-                num_yielded += 1
-            else:
-                remaining.append((worker, obj_id))
-        self._fetching = remaining
+        for _ in range(max_yield):
+            if not self._fetching:
+                break
+
+            yield self._fetching.popleft()
 
     def reset_workers(self, workers):
         """Notify that some workers may be removed."""
@@ -58,11 +51,14 @@ class TaskPool(object):
             if ev not in workers:
                 del self._tasks[obj_id]
                 del self._objects[obj_id]
-        ok = []
-        for ev, obj_id in self._fetching:
+
+        # We want to keep the same deque reference so that we don't suffer from
+        # stale references in generators that are still in flight
+        for _ in range(len(self._fetching)):
+            ev, obj_id = self._fetching.popleft()
             if ev in workers:
-                ok.append((ev, obj_id))
-        self._fetching = ok
+                # Re-queue items that are still valid
+                self._fetching.append((ev, obj_id))
 
     @property
     def count(self):

@@ -1,15 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.sac.sac_policy import SACTFPolicy
+from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"
+    "prioritized_replay_beta", "prioritized_replay_eps",
+    "rollout_fragment_length", "train_batch_size", "learning_starts"
 ]
 
 # yapf: disable
@@ -18,56 +15,54 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "twin_q": True,
     "use_state_preprocessor": False,
-    "policy": "GaussianLatentSpacePolicy",
-    # RLlib model options for the Q function
+    # RLlib model options for the Q function(s).
     "Q_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
+        "hidden_activation": DEPRECATED_VALUE,
+        "hidden_layer_sizes": DEPRECATED_VALUE,
     },
-    # RLlib model options for the policy function
+    # RLlib model options for the policy function.
     "policy_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
+        "hidden_activation": DEPRECATED_VALUE,
+        "hidden_layer_sizes": DEPRECATED_VALUE,
     },
+    # Unsquash actions to the upper and lower bounds of env's action space.
+    # Ignored for discrete action spaces.
+    "normalize_actions": True,
 
     # === Learning ===
-    # Update the target by \tau * policy + (1-\tau) * target_policy
+    # Disable setting done=True at end of episode. This should be set to True
+    # for infinite-horizon MDPs (e.g., many continuous control problems).
+    "no_done_at_end": False,
+    # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
-    # Target entropy lower bound. This is the inverse of reward scale,
-    # and will be optimized automatically.
+    # Initial value to use for the entropy weight alpha.
+    "initial_alpha": 1.0,
+    # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
+    # Discrete(2), -3.0 for Box(shape=(3,))).
+    # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
-    # Disable setting done=True at end of episode.
-    "no_done_at_end": True,
-    # N-step target updates
+    # N-step target updates.
     "n_step": 1,
 
-    # === Evaluation ===
-    # The evaluation stats will be reported under the "evaluation" metric key.
-    "evaluation_interval": 1,
-    # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 1,
-    # Extra configuration that disables exploration.
-    "evaluation_config": {
-        "exploration_enabled": False,
-    },
-
-    # === Exploration ===
-    # Number of env steps to optimize for before returning
+    # Number of env steps to optimize for before returning.
     "timesteps_per_iteration": 100,
-    "exploration_enabled": True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": int(1e6),
     # If True prioritized replay buffer will be used.
-    # TODO(hartikainen): Make sure this works or remove the option.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
-    "beta_annealing_fraction": 0.2,
+    "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
+
     "compress_observations": False,
 
     # === Optimization ===
@@ -76,13 +71,13 @@ DEFAULT_CONFIG = with_common_config({
         "critic_learning_rate": 3e-4,
         "entropy_learning_rate": 3e-4,
     },
-    # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": None,
+    # If not None, clip gradients during optimization at this value.
+    "grad_clip": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 1,
+    "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -103,17 +98,59 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
+    # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
 
-    # TODO(ekl) these are unused; remove them from sac config
-    "per_worker_exploration": False,
-    "exploration_fraction": 0.1,
-    "schedule_max_timesteps": 100000,
-    "exploration_final_eps": 0.02,
+    # Whether the loss should be calculated deterministically (w/o the
+    # stochastic action sampling step). True only useful for cont. actions and
+    # for debugging!
+    "_deterministic_loss": False,
+    # Use a Beta-distribution instead of a SquashedGaussian for bounded,
+    # continuous action spaces (not recommended, for debugging only).
+    "_use_beta_distribution": False,
+
+    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
+    # by user's config). If we don't set them here, we will get an error
+    # from the config-key checker.
+    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
+
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
+        return SACTorchPolicy
+    else:
+        return SACTFPolicy
+
+
+def validate_config(config):
+    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning("grad_norm_clipping", "grad_clip")
+        config["grad_clip"] = config.pop("grad_norm_clipping")
+
+    # Use same keys as for standard Trainer "model" config.
+    for model in ["Q_model", "policy_model"]:
+        if config[model].get("hidden_activation", DEPRECATED_VALUE) != \
+                DEPRECATED_VALUE:
+            deprecation_warning(
+                "{}.hidden_activation".format(model),
+                "{}.fcnet_activation".format(model),
+                error=True)
+        if config[model].get("hidden_layer_sizes", DEPRECATED_VALUE) != \
+                DEPRECATED_VALUE:
+            deprecation_warning(
+                "{}.hidden_layer_sizes".format(model),
+                "{}.fcnet_hiddens".format(model),
+                error=True)
+
+
 SACTrainer = GenericOffPolicyTrainer.with_updates(
-    name="SAC", default_config=DEFAULT_CONFIG, default_policy=SACTFPolicy)
+    name="SAC",
+    default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
+    default_policy=SACTFPolicy,
+    get_policy_class=get_policy_class,
+)

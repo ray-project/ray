@@ -1,8 +1,22 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
 enum Language {
@@ -25,6 +39,8 @@ enum TaskType {
   ACTOR_CREATION_TASK = 1;
   // Actor task.
   ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
 }
 
 // Address of a worker or node manager.
@@ -32,6 +48,42 @@ message Address {
   bytes raylet_id = 1;
   string ip_address = 2;
   int32 port = 3;
+  // Optional unique id for the worker.
+  bytes worker_id = 4;
+}
+
+/// Function descriptor for Java.
+message JavaFunctionDescriptor {
+  string class_name = 1;
+  string function_name = 2;
+  string signature = 3;
+}
+
+/// Function descriptor for Python.
+message PythonFunctionDescriptor {
+  string module_name = 1;
+  string class_name = 2;
+  string function_name = 3;
+  string function_hash = 4;
+}
+
+/// Function descriptor for C/C++.
+message CppFunctionDescriptor {
+  /// Dynamic library name which contains the remote function.
+  string lib_name = 1;
+  /// Remote function offset from base address.
+  string function_offset = 2;
+  /// Executable function offset from base address.
+  string exec_function_offset = 3;
+}
+
+// A union wrapper for various function descriptor types.
+message FunctionDescriptor {
+  oneof function_descriptor {
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
+    CppFunctionDescriptor cpp_function_descriptor = 3;
+  }
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -42,11 +94,8 @@ message TaskSpec {
   TaskType type = 1;
   // Language of this task.
   Language language = 2;
-  // Function descriptor of this task, which is a list of strings that can
-  // uniquely describe the function to execute.
-  // For a Python function, it should be: [module_name, class_name, function_name]
-  // For a Java function, it should be: [class_name, method_name, type_descriptor]
-  repeated bytes function_descriptor = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  FunctionDescriptor function_descriptor = 3;
   // ID of the job that this task belongs to.
   bytes job_id = 4;
   // Task ID of the task.
@@ -75,8 +124,8 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
-  // Whether this task is a direct call task.
-  bool is_direct_call = 16;
+  // Number of times this task may be retried on worker failure.
+  int32 max_retries = 16;
 }
 
 // Argument in the task.
@@ -90,6 +139,8 @@ message TaskArg {
   bytes data = 2;
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
+  // ObjectIDs that were nested in the inlined arguments of the data field.
+  repeated bytes nested_inlined_ids = 4;
 }
 
 // Task spec of an actor creation task.
@@ -104,14 +155,12 @@ message ActorCreationTaskSpec {
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
   // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
-  // Whether direct actor call is used.
-  bool is_direct_call = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Whether the actor use async actor calls
-  bool is_asyncio = 8;
+  bool is_asyncio = 7;
 }
 
 // Task spec of an actor task.
@@ -140,4 +189,98 @@ message TaskExecutionSpec {
 message Task {
   TaskSpec task_spec = 1;
   TaskExecutionSpec task_execution_spec = 2;
+}
+
+// Represents a resource id.
+message ResourceId {
+  // The index of the resource (i.e., CPU #3).
+  int64 index = 1;
+  // The quantity of the resource assigned (i.e., 0.5 CPU).
+  double quantity = 2;
+}
+
+// Represents a set of resource ids.
+message ResourceMapEntry {
+  // The name of the resource (i.e., "CPU").
+  string name = 1;
+  // The set of resource ids assigned.
+  repeated ResourceId resource_ids = 2;
+}
+
+message ViewData {
+  message Measure {
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+    string tags = 1;
+    // Int64 type value (if present).
+    int64 int_value = 2;
+    // Double type value (if present).
+    double double_value = 3;
+    // Distribution type value (if present).
+    double distribution_min = 4;
+    double distribution_mean = 5;
+    double distribution_max = 6;
+    double distribution_count = 7;
+    repeated double distribution_bucket_boundaries = 8;
+    repeated double distribution_bucket_counts = 9;
+  }
+
+  // The name of this Census view.
+  string view_name = 1;
+  // The list of measures recorded under this view.
+  repeated Measure measures = 2;
+}
+
+// Debug info for a referenced object.
+message ObjectRefInfo {
+  // Object id that is referenced.
+  bytes object_id = 1;
+  // Language call site of the object reference (i.e., file and line number).
+  string call_site = 2;
+  // Size of the object if this core worker is the owner, otherwise -1.
+  int64 object_size = 3;
+  // Number of local references to the object.
+  int64 local_ref_count = 4;
+  // Number of references in submitted tasks.
+  int64 submitted_task_ref_count = 5;
+  // Object ids that contain this object.
+  repeated bytes contained_in_owned = 6;
+  // True if this object is pinned in memory by the current process.
+  bool pinned_in_memory = 7;
+}
+
+// Debug info returned from the core worker.
+message CoreWorkerStats {
+  // Debug string of the currently executing task.
+  string current_task_desc = 1;
+  // Number of pending normal and actor tasks.
+  int32 num_pending_tasks = 2;
+  // Number of object ids in local scope.
+  int32 num_object_ids_in_scope = 3;
+  // String representation of the function descriptor of the currently executing task.
+  string current_task_func_desc = 4;
+  // IP address of the core worker.
+  string ip_address = 6;
+  // Port of the core worker.
+  int64 port = 7;
+  // Actor ID.
+  bytes actor_id = 8;
+  // A map from the resource name (e.g. "CPU") to the amount of resource used.
+  map<string, double> used_resources = 9;
+  // A string displayed on Dashboard.
+  map<string, string> webui_display = 10;
+  // Number of objects that are IN_PLASMA_ERROR in the local memory store.
+  int32 num_in_plasma = 11;
+  // Number of objects stored in local memory.
+  int32 num_local_objects = 12;
+  // Used local object store memory.
+  int64 used_object_store_memory = 13;
+  // Length of the task queue.
+  int32 task_queue_length = 14;
+  // Number of executed tasks.
+  int32 num_executed_tasks = 15;
+  // Actor constructor.
+  string actor_title = 16;
+  // Local reference table.
+  repeated ObjectRefInfo object_refs = 17;
 }

@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """A simple multi-agent env with two agents playing rock paper scissors.
 
 This demonstrates running the following policies in competition:
@@ -10,15 +7,19 @@ This demonstrates running the following policies in competition:
     (4) LSTM policy with custom entropy loss
 """
 
+import argparse
 import random
 from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.pg.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stop", type=int, default=1000)
 
 tf = try_import_tf()
 
@@ -81,15 +82,16 @@ class RockPaperScissorsEnv(MultiAgentEnv):
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
 
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -110,12 +112,13 @@ class AlwaysSameHeuristic(Policy):
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -141,13 +144,16 @@ class BeatLastHeuristic(Policy):
         pass
 
 
-def run_same_policy():
+def run_same_policy(args):
     """Use the same policy for both agents (trivial case)."""
 
-    tune.run("PG", config={"env": RockPaperScissorsEnv})
+    tune.run(
+        "PG",
+        stop={"timesteps_total": args.stop},
+        config={"env": RockPaperScissorsEnv})
 
 
-def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
+def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     """Run heuristic policies vs a learned agent.
 
     The learned agent should eventually reach a reward of ~5 with
@@ -164,13 +170,13 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
 
     tune.run(
         trainer,
-        stop={"timesteps_total": 400000},
+        stop={"timesteps_total": args.stop},
         config={
             "env": RockPaperScissorsEnv,
             "gamma": 0.9,
-            "num_workers": 4,
+            "num_workers": 0,
             "num_envs_per_worker": 4,
-            "sample_batch_size": 10,
+            "rollout_fragment_length": 10,
             "train_batch_size": 200,
             "multiagent": {
                 "policies_to_train": ["learned"],
@@ -190,7 +196,7 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
         })
 
 
-def run_with_custom_entropy_loss():
+def run_with_custom_entropy_loss(args):
     """Example of customizing the loss function of an existing policy.
 
     This performs about the same as the default loss does."""
@@ -206,11 +212,16 @@ def run_with_custom_entropy_loss():
         loss_fn=entropy_policy_gradient_loss)
     EntropyLossPG = PGTrainer.with_updates(
         name="EntropyPG", get_policy_class=lambda _: EntropyPolicy)
-    run_heuristic_vs_learned(use_lstm=True, trainer=EntropyLossPG)
+    run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
 
 if __name__ == "__main__":
-    # run_same_policy()
-    # run_heuristic_vs_learned(use_lstm=False)
-    run_heuristic_vs_learned(use_lstm=False)
-    # run_with_custom_entropy_loss()
+    args = parser.parse_args()
+    run_same_policy(args)
+    print("run_same_policy: ok.")
+    run_heuristic_vs_learned(args, use_lstm=True)
+    print("run_heuristic_vs_learned(w/ lstm): ok.")
+    run_heuristic_vs_learned(args, use_lstm=False)
+    print("run_heuristic_vs_learned (w/o lstm): ok.")
+    run_with_custom_entropy_loss(args)
+    print("run_with_custom_entropy_loss: ok.")

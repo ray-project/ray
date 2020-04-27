@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <iostream>
 
 #include "ray/common/ray_config.h"
@@ -24,6 +38,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   gflags::ShutDownCommandLineFlags();
 
+  ray::gcs::GcsClientOptions gcs_client_options(redis_address, redis_port,
+                                                redis_password);
+
   std::unordered_map<std::string, std::string> raylet_config;
 
   // Parse the configuration list.
@@ -48,11 +65,16 @@ int main(int argc, char *argv[]) {
   // // instead of returning immediately.
   // auto handler = [&io_service](const boost::system::error_code &error,
   //                              int signal_number) { io_service.stop(); };
-  // boost::asio::signal_set signals(io_service, SIGTERM);
+  // boost::asio::signal_set signals(io_service);
+  // #ifdef _WIN32
+  //   signals.add(SIGBREAK);
+  // #else
+  //   signals.add(SIGTERM);
+  // #endif
   // signals.async_wait(handler);
 
   // Initialize the monitor.
-  ray::raylet::Monitor monitor(io_service, redis_address, redis_port, redis_password);
+  ray::raylet::Monitor monitor(io_service, gcs_client_options);
   monitor.Start();
   io_service.run();
 }

@@ -1,10 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
 
 tf = try_import_tf()
 
@@ -69,7 +66,7 @@ class TFModelV2(ModelV2):
 
         Custom models should override this instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "obs_flat", "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
@@ -80,24 +77,11 @@ class TFModelV2(ModelV2):
             (outputs, state): The model output tensor of size
                 [BATCH, num_outputs]
 
-        Sample implementation for the ``MyModelClass`` example::
-
-            def forward(self, input_dict, state, seq_lens):
-                model_out, self._value_out = self.base_model(input_dict["obs"])
-                return model_out, state
-        """
-        raise NotImplementedError
-
-    def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
-
-        Returns:
-            value estimate tensor of shape [BATCH].
-
-        Sample implementation for the ``MyModelClass`` example::
-
-            def value_function(self):
-                return self._value_out
+        Examples:
+            >>> def forward(self, input_dict, state, seq_lens):
+            >>>     model_out, self._value_out = self.base_model(
+            ...         input_dict["obs"])
+            >>>     return model_out, state
         """
         raise NotImplementedError
 
@@ -111,10 +95,17 @@ class TFModelV2(ModelV2):
         """Register the given list of variables with this model."""
         self.var_list.extend(variables)
 
-    def variables(self):
-        """Returns the list of variables for this model."""
+    @override(ModelV2)
+    def variables(self, as_dict=False):
+        if as_dict:
+            return {v.name: v for v in self.var_list}
         return list(self.var_list)
 
-    def trainable_variables(self):
-        """Returns the list of trainable variables for this model."""
+    @override(ModelV2)
+    def trainable_variables(self, as_dict=False):
+        if as_dict:
+            return {
+                k: v
+                for k, v in self.variables(as_dict=True).items() if v.trainable
+            }
         return [v for v in self.variables() if v.trainable]

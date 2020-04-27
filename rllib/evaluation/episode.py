@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import random
 
@@ -9,10 +5,11 @@ import numpy as np
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 
 @DeveloperAPI
-class MultiAgentEpisode(object):
+class MultiAgentEpisode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
     Attributes:
@@ -51,6 +48,7 @@ class MultiAgentEpisode(object):
         self.agent_rewards = defaultdict(float)
         self.custom_metrics = {}
         self.user_data = {}
+        self.hist_data = {}
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
         self._next_agent_index = 0
@@ -113,10 +111,11 @@ class MultiAgentEpisode(object):
         """Returns the last action for the specified agent, or zeros."""
 
         if agent_id in self._agent_to_last_action:
-            return _flatten_action(self._agent_to_last_action[agent_id])
+            return flatten_to_single_ndarray(
+                self._agent_to_last_action[agent_id])
         else:
             policy = self._policies[self.policy_for(agent_id)]
-            flat = _flatten_action(policy.action_space.sample())
+            flat = flatten_to_single_ndarray(policy.action_space.sample())
             return np.zeros_like(flat)
 
     @DeveloperAPI
@@ -124,7 +123,8 @@ class MultiAgentEpisode(object):
         """Returns the previous action for the specified agent."""
 
         if agent_id in self._agent_to_prev_action:
-            return _flatten_action(self._agent_to_prev_action[agent_id])
+            return flatten_to_single_ndarray(
+                self._agent_to_prev_action[agent_id])
         else:
             # We're at t=0, so return all zeros.
             return np.zeros_like(self.last_action_for(agent_id))
@@ -189,13 +189,3 @@ class MultiAgentEpisode(object):
             self._agent_to_index[agent_id] = self._next_agent_index
             self._next_agent_index += 1
         return self._agent_to_index[agent_id]
-
-
-def _flatten_action(action):
-    # Concatenate tuple actions
-    if isinstance(action, list) or isinstance(action, tuple):
-        expanded = []
-        for a in action:
-            expanded.append(np.reshape(a, [-1]))
-        action = np.concatenate(expanded, axis=0).flatten()
-    return action

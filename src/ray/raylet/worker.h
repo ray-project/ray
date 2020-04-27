@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RAYLET_WORKER_H
 #define RAY_RAYLET_WORKER_H
 
@@ -5,12 +19,13 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/core_worker_client.h"
-
-#include <unistd.h>  // pid_t
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -22,8 +37,10 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-         std::shared_ptr<LocalClientConnection> connection,
+  /// NOTE: You MUST manually set the worker process.
+  Worker(const WorkerID &worker_id, const Language &language,
+         const std::string &ip_address, int port,
+         std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -34,9 +51,11 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's ID.
   WorkerID WorkerId() const;
-  /// Return the worker's PID.
-  pid_t Pid() const;
+  /// Return the worker process.
+  Process GetProcess() const;
+  void SetProcess(Process proc);
   Language GetLanguage() const;
+  const std::string IpAddress() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
@@ -49,7 +68,9 @@ class Worker {
   const ActorID &GetActorId() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
-  const std::shared_ptr<LocalClientConnection> Connection() const;
+  const std::shared_ptr<ClientConnection> Connection() const;
+  void SetOwnerAddress(const rpc::Address &address);
+  const rpc::Address &GetOwnerAddress() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
   void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
@@ -64,23 +85,61 @@ class Worker {
   const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
   void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
 
-  void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-                  const std::function<void(Status)> finish_assign_callback);
+  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
   void DirectActorCallArgWaitComplete(int64_t tag);
   void WorkerLeaseGranted(const std::string &address, int port);
+
+  // Setter, geter, and clear methods  for allocated_instances_.
+  void SetAllocatedInstances(
+      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+    allocated_instances_ = allocated_instances;
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+    return allocated_instances_;
+  };
+
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
+
+  void SetLifetimeAllocatedInstances(
+      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+    lifetime_allocated_instances_ = allocated_instances;
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
+    return lifetime_allocated_instances_;
+  };
+
+  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
+
+  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
+    borrowed_cpu_instances_ = cpu_instances;
+  };
+
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
+
+  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
+
+  Task &GetAssignedTask() { return assigned_task_; };
+
+  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
+
+  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
 
  private:
   /// The worker's ID.
   WorkerID worker_id_;
-  /// The worker's PID.
-  pid_t pid_;
+  /// The worker's process.
+  Process proc_;
   /// The language type of this worker.
   Language language_;
+  /// IP address of this worker.
+  std::string ip_address_;
   /// Port that this worker listens on.
   /// If port <= 0, this indicates that the worker will not listen to a port.
   int port_;
   /// Connection state of a worker.
-  std::shared_ptr<LocalClientConnection> connection_;
+  std::shared_ptr<ClientConnection> connection_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
@@ -99,8 +158,6 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// The set of object IDs that are currently in use on the worker.
-  std::unordered_set<ObjectID> active_object_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
@@ -109,6 +166,25 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
+  /// The address of this worker's owner. The owner is the worker that
+  /// currently holds the lease on this worker, if any.
+  rpc::Address owner_address_;
+  /// The capacity of each resource instance allocated to this worker in order
+  /// to satisfy the resource requests of the task is currently running.
+  std::shared_ptr<TaskResourceInstances> allocated_instances_;
+  /// The capacity of each resource instance allocated to this worker
+  /// when running as an actor.
+  std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  /// CPUs borrowed by the worker. This happens in the following scenario:
+  /// 1) Worker A is blocked, so it donates its CPUs back to the node.
+  /// 2) Other workers are scheduled and are allocated some of the CPUs donated by A.
+  /// 3) Task A is unblocked, but it cannot get all CPUs back. At this point,
+  /// the node is oversubscribed. borrowed_cpu_instances_ represents the number
+  /// of CPUs this node is oversubscribed by.
+  /// TODO (Ion): Investigate a more intuitive alternative to track these Cpus.
+  std::vector<double> borrowed_cpu_instances_;
+  /// Task being assigned to this worker.
+  Task assigned_task_;
 };
 
 }  // namespace raylet

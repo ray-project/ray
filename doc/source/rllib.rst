@@ -7,10 +7,12 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
+
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
+The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are `available <rllib-toc.html#algorithms>`__ for each framework.
 
 Running RLlib
 ~~~~~~~~~~~~~
@@ -25,13 +27,17 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # --eager [--trace] for eager execution
+  rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
+                                           # --eager [--trace] for eager execution,
+                                           # --torch to use PyTorch
 
 .. code-block:: python
 
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "eager": True for eager execution
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
+                                                       # "eager": True for eager execution,
+                                                       # "torch": True for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
@@ -60,7 +66,7 @@ Policies can be implemented using `any framework <https://github.com/ray-project
 Sample Batches
 ~~~~~~~~~~~~~~
 
-Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``sample_batch_size`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
+Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
 
 A typical sample batch looks something like the following when summarized. Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
 
@@ -82,7 +88,7 @@ Training
 
 Policies each define a ``learn_on_batch()`` method that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented using a `loss function` that takes as input sample batch tensors and outputs a scalar loss. Here are a few example loss functions:
 
-- Simple `policy gradient loss <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__
+- Simple `policy gradient loss <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
 - Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
 
@@ -92,7 +98,12 @@ RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distribu
 
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
-RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
+RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter. Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+
+Application Support
+~~~~~~~~~~~~~~~~~~~
+
+Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__.
 
 Customization
 ~~~~~~~~~~~~~
@@ -102,3 +113,9 @@ RLlib provides ways to customize almost all aspects of training, including the `
 .. image:: rllib-components.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
+
+.. |tensorflow| image:: tensorflow.png
+    :width: 24
+
+.. |pytorch| image:: pytorch.png
+    :width: 24

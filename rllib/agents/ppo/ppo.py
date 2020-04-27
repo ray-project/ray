@@ -1,21 +1,21 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
+
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
@@ -24,7 +24,7 @@ DEFAULT_CONFIG = with_common_config({
     # Initial coefficient for KL divergence.
     "kl_coeff": 0.2,
     # Size of batches collected from each worker.
-    "sample_batch_size": 200,
+    "rollout_fragment_length": 200,
     # Number of timesteps collected for each SGD round. This defines the size
     # of each SGD epoch.
     "train_batch_size": 4000,
@@ -67,6 +67,11 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
+    # Whether to fake GPUs (using CPUs).
+    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
+    "_fake_gpus": False,
+    # Use PyTorch as framework?
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -86,18 +91,21 @@ def choose_policy_optimizer(workers, config):
         sgd_batch_size=config["sgd_minibatch_size"],
         num_sgd_iter=config["num_sgd_iter"],
         num_gpus=config["num_gpus"],
-        sample_batch_size=config["sample_batch_size"],
+        rollout_fragment_length=config["rollout_fragment_length"],
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        shuffle_sequences=config["shuffle_sequences"])
+        shuffle_sequences=config["shuffle_sequences"],
+        _fake_gpus=config["_fake_gpus"])
 
 
 def update_kl(trainer, fetches):
+    # Single-agent.
     if "kl" in fetches:
-        # single-agent
         trainer.workers.local_worker().for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
+
+    # Multi-agent.
     else:
 
         def update(pi, pi_id):
@@ -106,7 +114,6 @@ def update_kl(trainer, fetches):
             else:
                 logger.debug("No data for {}, not updating kl".format(pi_id))
 
-        # multi-agent
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 
@@ -167,14 +174,23 @@ def validate_config(config):
         logger.warning(
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
-    elif tf and tf.executing_eagerly():
+    elif config["use_pytorch"] or (tf and tf.executing_eagerly()):
         config["simple_optimizer"] = True  # multi-gpu not supported
+
+
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+        return PPOTorchPolicy
+    else:
+        return PPOTFPolicy
 
 
 PPOTrainer = build_trainer(
     name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
+    get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,

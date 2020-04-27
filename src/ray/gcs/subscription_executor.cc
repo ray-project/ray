@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/subscription_executor.h"
 
 namespace ray {
@@ -5,7 +19,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data, typename Table>
-Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
+Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
     const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
@@ -51,8 +65,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     if (result.empty()) {
       return;
     }
-
-    RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
 
     SubscribeCallback<ID, Data> sub_one_callback = nullptr;
     SubscribeCallback<ID, Data> sub_all_callback = nullptr;
@@ -138,7 +150,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     id_to_callback_map_[id] = subscribe;
   }
 
-  auto status = AsyncSubscribe(client_id, nullptr, on_subscribe_done);
+  auto status = AsyncSubscribeAll(client_id, nullptr, on_subscribe_done);
   if (!status.ok()) {
     std::unique_lock<std::mutex> lock(mutex_);
     id_to_callback_map_.erase(id);
@@ -186,7 +198,19 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
+template class SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>;
 template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
+template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
+template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
+template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
+template class SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>,
+                                    TaskLeaseTable>;
+template class SubscriptionExecutor<ClientID, ResourceChangeNotification,
+                                    DynamicResourceTable>;
+template class SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>;
+template class SubscriptionExecutor<ClientID, HeartbeatBatchTableData,
+                                    HeartbeatBatchTable>;
+template class SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>;
 
 }  // namespace gcs
 

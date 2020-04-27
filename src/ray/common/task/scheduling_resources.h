@@ -16,6 +16,9 @@ namespace ray {
 constexpr double kResourceConversionFactor = 10000;
 
 const std::string kCPU_ResourceLabel = "CPU";
+const std::string kGPU_ResourceLabel = "GPU";
+const std::string kTPU_ResourceLabel = "TPU";
+const std::string kMemory_ResourceLabel = "memory";
 
 /// \class FractionalResourceQuantity
 /// \brief Converts the resource quantities to an internal representation to
@@ -64,6 +67,11 @@ class FractionalResourceQuantity {
 /// GPUs, and custom labels.
 class ResourceSet {
  public:
+  static std::shared_ptr<ResourceSet> Nil() {
+    static auto nil = std::make_shared<ResourceSet>();
+    return nil;
+  }
+
   /// \brief empty ResourceSet constructor.
   ResourceSet();
 

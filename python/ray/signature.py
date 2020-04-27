@@ -1,10 +1,5 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from collections import namedtuple
-import funcsigs
-from funcsigs import Parameter
+import inspect
+from inspect import Parameter
 import logging
 
 from ray.utils import is_cython
@@ -14,30 +9,9 @@ from ray.utils import is_cython
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-RayParameter = namedtuple(
-    "RayParameter",
-    ["name", "kind_int", "default", "annotation", "partial_kwarg"])
-"""This class is used to represent a function parameter in Ray.
-
-Note that this is different from the funcsigs.Parameter object because
-we replace the funcsigs ParameterKind with an int. This is needed because
-ParameterKind objects are currently non-serializable and the package is not
-being updated. Replacement is done in `_scrub_parameters` and
-`_restore_parameters`.
-
-Attributes:
-    name (str): The name of the parameter as a string.
-    kind (int): Describes how argument values are bound to the parameter. See
-        funcsigs.Parameter and `_convert_to_parameter_kind`.
-    default (object): The default value for the parameter if specified. If the
-        parameter has no default value, this attribute is not set.
-    annotation: The annotation for the parameter if specified.  If the
-        parameter has no annotation, this attribute is not set.
-    partial_kwarg (bool): True if the parameter is mapped
-        by 'functools.partial'.
-"""
-
-DUMMY_TYPE = "__RAY_DUMMY__"
+# This dummy type is also defined in ArgumentsBuilder.java. Please keep it
+# synced.
+DUMMY_TYPE = b"__RAY_DUMMY__"
 
 
 def get_signature(func):
@@ -45,7 +19,7 @@ def get_signature(func):
 
     Support Cython functions by grabbing relevant attributes from the Cython
     function and attaching to a no-op function. This is somewhat brittle, since
-    funcsigs may change, but given that funcsigs is written to a PEP, we hope
+    inspect may change, but given that inspect is written to a PEP, we hope
     it is relatively stable. Future versions of Python may allow overloading
     the inspect 'isfunction' and 'ismethod' functions / create ABC for Python
     functions. Until then, it appears that Cython won't do anything about
@@ -80,7 +54,7 @@ def get_signature(func):
             raise TypeError("{!r} is not a Python function we can process"
                             .format(func))
 
-    return funcsigs.signature(func)
+    return inspect.signature(func)
 
 
 def extract_signature(func, ignore_first=False):
@@ -92,18 +66,18 @@ def extract_signature(func, ignore_first=False):
             be used when func is a method of a class.
 
     Returns:
-        List of RayParameter objects representing the function signature.
+        List of Parameter objects representing the function signature.
     """
     signature_parameters = list(get_signature(func).parameters.values())
 
     if ignore_first:
         if len(signature_parameters) == 0:
-            raise Exception("Methods must take a 'self' argument, but the "
-                            "method '{}' does not have one.".format(
-                                func.__name__))
+            raise ValueError("Methods must take a 'self' argument, but the "
+                             "method '{}' does not have one.".format(
+                                 func.__name__))
         signature_parameters = signature_parameters[1:]
 
-    return _scrub_parameters(signature_parameters)
+    return signature_parameters
 
 
 def flatten_args(signature_parameters, args, kwargs):
@@ -117,7 +91,7 @@ def flatten_args(signature_parameters, args, kwargs):
     See `recover_args` for logic restoring the flat list back to args/kwargs.
 
     Args:
-        signature_parameters (list): The list of RayParameter objects
+        signature_parameters (list): The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
         args: The non-keyword arguments passed into the function.
@@ -135,8 +109,8 @@ def flatten_args(signature_parameters, args, kwargs):
         [None, 1, None, 2, None, 3, "a", 4]
     """
 
-    restored = _restore_parameters(signature_parameters)
-    reconstructed_signature = funcsigs.Signature(parameters=restored)
+    reconstructed_signature = inspect.Signature(
+        parameters=signature_parameters)
     try:
         reconstructed_signature.bind(*args, **kwargs)
     except TypeError as exc:
@@ -173,31 +147,6 @@ def recover_args(flattened_args):
             kwargs[name] = arg
 
     return args, kwargs
-
-
-def _scrub_parameters(parameters):
-    """Returns a scrubbed list of RayParameters."""
-    return [
-        RayParameter(
-            name=param.name,
-            kind_int=_convert_from_parameter_kind(param.kind),
-            default=param.default,
-            annotation=param.annotation,
-            partial_kwarg=param._partial_kwarg) for param in parameters
-    ]
-
-
-def _restore_parameters(ray_parameters):
-    """Reconstructs the funcsigs.Parameter objects."""
-    return [
-        Parameter(
-            rayparam.name,
-            _convert_to_parameter_kind(rayparam.kind_int),
-            default=rayparam.default,
-            annotation=rayparam.annotation,
-            _partial_kwarg=rayparam.partial_kwarg)
-        for rayparam in ray_parameters
-    ]
 
 
 def _convert_from_parameter_kind(kind):

@@ -1,46 +1,45 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "src/ray/rpc/grpc_server.h"
+
 #include <grpcpp/impl/service_type.h>
+#include <boost/asio/detail/socket_holder.hpp>
 
-namespace {
-
-bool PortNotInUse(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd == -1) {
-    return false;
-  }
-  struct sockaddr_in server_addr = {0};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  server_addr.sin_port = htons(port);
-  int err = bind(fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-  close(fd);
-  return err == 0;
-}
-
-}  // namespace
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace rpc {
 
 GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
     : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
-  cqs_.reserve(num_threads_);
+  cqs_.resize(num_threads_);
 }
 
 void GrpcServer::Run() {
+  uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
-  // Unfortunately, grpc will not return an error if the specified port is in
-  // use. There is a race condition here where two servers could check the same
-  // port, but only one would succeed in binding.
-  if (port_ > 0) {
-    RAY_CHECK(PortNotInUse(port_))
-        << "Port " << port_
-        << " specified by caller already in use. Try passing node_manager_port=... into "
-           "ray.init() to pick a specific port";
-  }
 
   grpc::ServerBuilder builder;
+  // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
+  // (default behavior in grpc), we may see multiple workers listen on the same port and
+  // the requests sent to this port may be handled by any of the workers.
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
@@ -53,17 +52,26 @@ void GrpcServer::Run() {
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   for (int i = 0; i < num_threads_; i++) {
-    cqs_.push_back(builder.AddCompletionQueue());
+    cqs_[i] = builder.AddCompletionQueue();
   }
   // Build and start server.
   server_ = builder.BuildAndStart();
+  // If the grpc server failed to bind the port, the `port_` will be set to 0.
+  RAY_CHECK(port_ > 0)
+      << "Port " << specified_port
+      << " specified by caller already in use. Try passing node_manager_port=... into "
+         "ray.init() to pick a specific port";
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
-  for (auto &entry : server_call_factories_and_concurrencies_) {
-    for (int i = 0; i < entry.second; i++) {
-      // Create and request calls from the factory.
-      entry.first->CreateCall();
+  for (auto &entry : server_call_factories_) {
+    for (int i = 0; i < num_threads_; i++) {
+      // Create a buffer of 100 calls for each RPC handler.
+      // TODO(edoakes): a small buffer should be fine and seems to have better
+      // performance, but we don't currently handle backpressure on the client.
+      for (int j = 0; j < 100; j++) {
+        entry->CreateCall();
+      }
     }
   }
   // Start threads that polls incoming requests.
@@ -78,7 +86,7 @@ void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_and_concurrencies_);
+    service.InitServerCallFactories(cqs_[i], &server_call_factories_);
   }
 }
 

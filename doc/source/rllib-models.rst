@@ -14,7 +14,7 @@ Default Behaviours
 Built-in Models and Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib picks default models based on a simple heuristic: a `vision network <https://github.com/ray-project/ray/blob/master/rllib/models/tf/visionnet_v1.py>`__ for image observations, and a `fully connected network <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet_v1.py>`__ for everything else. These models can be configured via the ``model`` config key, documented in the model `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__. Note that you'll probably have to configure ``conv_filters`` if your environment observations have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
+RLlib picks default models based on a simple heuristic: a `vision network <https://github.com/ray-project/ray/blob/master/rllib/models/tf/visionnet_v1.py>`__ for observations that have shape of length larger than 2 (for example, (84 x 84 x 3)), and a `fully connected network <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet_v1.py>`__ for everything else. These models can be configured via the ``model`` config key, documented in the model `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__. Note that you'll probably have to configure ``conv_filters`` if your environment observations have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 
 In addition, if you set ``"model": {"use_lstm": true}``, then the model output will be further processed by a `LSTM cell <https://github.com/ray-project/ray/blob/master/rllib/models/tf/lstm_v1.py>`__. More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into its policy evaluation utilities.
 
@@ -139,7 +139,11 @@ Once implemented, the model can then be registered and used in place of a built-
 Custom Preprocessors
 --------------------
 
-Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+.. warning::
+
+    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces. Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+
+Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
 
 .. code-block:: python
 
@@ -208,6 +212,10 @@ You can mix supervised losses into any RLlib algorithm through custom models. Fo
 
 **PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
 
+Self-Supervised Model Losses
+----------------------------
+
+You can also use the ``custom_loss()`` API to add in self-supervised losses such as VAE reconstruction loss and L2-regularization.
 
 Variable-length / Parametric Action Spaces
 ------------------------------------------

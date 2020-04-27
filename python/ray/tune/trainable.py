@@ -1,14 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from datetime import datetime
 
 import copy
 import io
 import logging
+import glob
 import os
 import pickle
+import pandas as pd
 from six import string_types
 import shutil
 import tempfile
@@ -20,16 +18,95 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE)
-
-from ray.tune.util import UtilMonitor
+                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
+from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 
 
-class Trainable(object):
+class TrainableUtil:
+    @staticmethod
+    def pickle_checkpoint(checkpoint_path):
+        """Pickles checkpoint data."""
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        data = {}
+        for basedir, _, file_names in os.walk(checkpoint_dir):
+            for file_name in file_names:
+                path = os.path.join(basedir, file_name)
+                with open(path, "rb") as f:
+                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
+        # Use normpath so that a directory path isn't mapped to empty string.
+        name = os.path.basename(os.path.normpath(checkpoint_path))
+        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
+        data_dict = pickle.dumps({
+            "checkpoint_name": name,
+            "data": data,
+        })
+        return data_dict
+
+    @staticmethod
+    def find_checkpoint_dir(checkpoint_path):
+        """Returns the directory containing the checkpoint path.
+
+        Raises:
+            FileNotFoundError if the directory is not found.
+        """
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError("Path does not exist", checkpoint_path)
+        if os.path.isdir(checkpoint_path):
+            checkpoint_dir = checkpoint_path
+        else:
+            checkpoint_dir = os.path.dirname(checkpoint_path)
+        while checkpoint_dir != os.path.dirname(checkpoint_dir):
+            if os.path.exists(os.path.join(checkpoint_dir, ".is_checkpoint")):
+                break
+            checkpoint_dir = os.path.dirname(checkpoint_dir)
+        else:
+            raise FileNotFoundError("Checkpoint directory not found for {}"
+                                    .format(checkpoint_path))
+        return checkpoint_dir
+
+    @staticmethod
+    def make_checkpoint_dir(checkpoint_dir):
+        """Creates a checkpoint directory at the provided path."""
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        # Drop marker in directory to identify it as a checkpoint dir.
+        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+    @staticmethod
+    def get_checkpoints_paths(logdir):
+        """ Finds the checkpoints within a specific folder.
+
+        Returns a pandas DataFrame of training iterations and checkpoint
+        paths within a specific folder.
+
+        Raises:
+            FileNotFoundError if the directory is not found.
+        """
+        marker_paths = glob.glob(
+            os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
+        iter_chkpt_pairs = []
+        for marker_path in marker_paths:
+            chkpt_dir = os.path.dirname(marker_path)
+            metadata_file = glob.glob(
+                os.path.join(chkpt_dir, "*.tune_metadata"))
+            if len(metadata_file) != 1:
+                raise ValueError(
+                    "{} has zero or more than one tune_metadata.".format(
+                        chkpt_dir))
+
+            chkpt_path = metadata_file[0][:-len(".tune_metadata")]
+            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
+            iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
+
+        chkpt_df = pd.DataFrame(
+            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
+        return chkpt_df
+
+
+class Trainable:
     """Abstract class for trainable models, functions, etc.
 
     A call to ``train()`` on a trainable will execute one logical iteration of
@@ -48,7 +125,7 @@ class Trainable(object):
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to `self.logdir`.
+    directory of this process to ``self.logdir``.
 
     """
 
@@ -70,14 +147,14 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        trial_info = self.config.pop(TRIAL_INFO, None)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
@@ -91,6 +168,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        self._trial_info = trial_info
 
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
@@ -100,36 +178,43 @@ class Trainable(object):
                         "slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
     def default_resource_request(cls, config):
-        """Returns the resource requirement for the given configuration.
+        """Provides a static resource requirement for the given configuration.
 
-        This can be overriden by sub-classes to set the correct trial resource
+        This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        Example:
-            >>> def default_resource_request(cls, config):
-            >>>     return Resources(
-            >>>         cpu=0,
-            >>>         gpu=0,
-            >>>         extra_cpu=config["workers"],
-            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
-        """
+        .. code-block:: python
 
+            @classmethod
+            def default_resource_request(cls, config):
+                return Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=config["workers"],
+                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+
+        Returns:
+            Resources: A Resources object consumed by Tune for queueing.
+        """
         return None
 
     @classmethod
     def resource_help(cls, config):
-        """Returns a help string for configuring this trainable's resources."""
+        """Returns a help string for configuring this trainable's resources.
 
+        Args:
+            config (dict): The Trainer's config dict.
+        """
         return ""
 
-    def current_ip(self):
-        logger.warning("Getting current IP.")
+    def get_current_ip(self):
+        logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -249,13 +334,11 @@ class Trainable(object):
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path or prefix that may be passed to restore().
+            str: Checkpoint path or prefix that may be passed to restore().
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
-
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        TrainableUtil.make_checkpoint_dir(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -265,6 +348,10 @@ class Trainable(object):
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
             checkpoint_path = checkpoint
+            if os.path.isdir(checkpoint_path):
+                # Add trailing slash to prevent tune metadata from
+                # being written outside the directory.
+                checkpoint_path = os.path.join(checkpoint_path, "")
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
@@ -297,19 +384,8 @@ class Trainable(object):
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
         # Save all files in subtree.
-        data = {}
-        for basedir, _, file_names in os.walk(tmpdir):
-            for file_name in file_names:
-                path = os.path.join(basedir, file_name)
-
-                with open(path, "rb") as f:
-                    data[os.path.relpath(path, tmpdir)] = f.read()
-
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
         out = io.BytesIO()
-        data_dict = pickle.dumps({
-            "checkpoint_name": os.path.relpath(checkpoint_path, tmpdir),
-            "data": data,
-        })
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
@@ -343,14 +419,15 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored from checkpoint: %s", checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s",
+                    self.get_current_ip(), checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
             "_time_total": self._time_total,
             "_episodes_total": self._episodes_total,
         }
-        logger.info("Current state after restoring: {}".format(state))
+        logger.info("Current state after restoring: %s", state)
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -366,13 +443,28 @@ class Trainable(object):
             path = os.path.join(tmpdir, relpath_name)
 
             # This may be a subdirectory, hence not just using tmpdir
-            if not os.path.exists(os.path.dirname(path)):
-                os.makedirs(os.path.dirname(path))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(file_contents)
 
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
+
+    def delete_checkpoint(self, checkpoint_path):
+        """Deletes local copy of checkpoint.
+
+        Args:
+            checkpoint_path (str): Path to checkpoint.
+        """
+        try:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        except FileNotFoundError:
+            # The checkpoint won't exist locally if the
+            # trial was rescheduled to another worker.
+            logger.debug("Checkpoint not found during garbage collection.")
+            return
+        if os.path.exists(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.
@@ -381,13 +473,16 @@ class Trainable(object):
         export model to local directory.
 
         Args:
-            export_formats (list): List of formats that should be exported.
+            export_formats (Union[list,str]): Format or list of (str) formats
+                that should be exported.
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
+        if isinstance(export_formats, str):
+            export_formats = [export_formats]
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
@@ -396,7 +491,8 @@ class Trainable(object):
 
         This method is optional, but can be implemented to speed up algorithms
         such as PBT, and to allow performance optimizations such as running
-        experiments with reuse_actors=True.
+        experiments with reuse_actors=True. Note that self.config need to
+        be updated to reflect the latest parameter information in Ray logs.
 
         Args:
             new_config (dir): Updated hyperparameter configuration
@@ -423,11 +519,45 @@ class Trainable(object):
         Note that the current working directory will also be changed to this.
 
         """
-        return self._logdir
+        return os.path.join(self._logdir, "")
+
+    @property
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            name = self.trial_name
+        """
+        return self._trial_info.trial_name
+
+    @property
+    def trial_id(self):
+        """Trial ID for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_id = self.trial_id
+        """
+        return self._trial_info.trial_id
 
     @property
     def iteration(self):
         """Current training iteration.
+
+        This value is automatically incremented every time `train()` is called
+        and is automatically inserted into the training result dict.
+
+        """
+        return self._iteration
+
+    @property
+    def training_iteration(self):
+        """Current training iteration (same as `self.iteration`).
 
         This value is automatically incremented every time `train()` is called
         and is automatically inserted into the training result dict.
@@ -465,7 +595,7 @@ class Trainable(object):
         Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors
         before execution.
 
-        >>> from ray.tune.util import validate_save_restore
+        >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
         >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 
@@ -545,6 +675,10 @@ class Trainable(object):
 
     def _log_result(self, result):
         """Subclasses can optionally override this to customize logging.
+
+        The logging here is done on the worker process rather than
+        the driver. You may want to turn off driver logging via the
+        ``loggers`` parameter in ``tune.run`` when overriding this function.
 
         Args:
             result (dict): Training result returned by _train().

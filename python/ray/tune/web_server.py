@@ -1,24 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import logging
-import sys
 import threading
+
+from urllib.parse import urljoin, urlparse
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.utils import binary_to_hex, hex_to_binary
-
-if sys.version_info[0] == 2:
-    from urlparse import urljoin, urlparse
-    from SimpleHTTPServer import SimpleHTTPRequestHandler
-    from SocketServer import TCPServer as HTTPServer
-elif sys.version_info[0] == 3:
-    from urllib.parse import urljoin, urlparse
-    from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +20,7 @@ except ImportError:
                      "Be sure to install it on the client side.")
 
 
-class TuneClient(object):
+class TuneClient:
     """Client to interact with an ongoing Tune experiment.
 
     Requires a TuneServer to have started running.
@@ -45,15 +35,15 @@ class TuneClient(object):
         self._port_forward = port_forward
         self._path = "http://{}:{}".format(tune_address, port_forward)
 
-    def get_all_trials(self):
+    def get_all_trials(self, timeout=None):
         """Returns a list of all trials' information."""
-        response = requests.get(urljoin(self._path, "trials"))
+        response = requests.get(urljoin(self._path, "trials"), timeout=timeout)
         return self._deserialize(response)
 
-    def get_trial(self, trial_id):
+    def get_trial(self, trial_id, timeout=None):
         """Returns trial information by trial_id."""
         response = requests.get(
-            urljoin(self._path, "trials/{}".format(trial_id)))
+            urljoin(self._path, "trials/{}".format(trial_id)), timeout=timeout)
         return self._deserialize(response)
 
     def add_trial(self, name, specification):
@@ -66,6 +56,11 @@ class TuneClient(object):
         """Requests to stop trial by trial_id."""
         response = requests.put(
             urljoin(self._path, "trials/{}".format(trial_id)))
+        return self._deserialize(response)
+
+    def stop_experiment(self):
+        """Requests to stop the entire experiment."""
+        response = requests.put(urljoin(self._path, "stop_experiment"))
         return self._deserialize(response)
 
     @property
@@ -147,17 +142,20 @@ def RunnerHandler(runner):
             response_code = 200
             message = ""
             try:
-                result = self._get_trial_by_url(self.path)
                 resource = {}
-                if result:
-                    if isinstance(result, list):
-                        infos = [self._trial_info(t) for t in result]
-                        resource["trials"] = infos
-                        for t in result:
+
+                if self.path.endswith("stop_experiment"):
+                    runner.request_stop_experiment()
+                    trials = list(runner.get_trials())
+                else:
+                    trials = self._get_trial_by_url(self.path)
+                    if trials:
+                        if not isinstance(trials, list):
+                            trials = [trials]
+                        for t in trials:
                             runner.request_stop_trial(t)
-                    else:
-                        resource["trial"] = self._trial_info(result)
-                        runner.request_stop_trial(result)
+
+                resource["trials"] = [self._trial_info(t) for t in trials]
                 message = json.dumps(resource)
             except TuneError as e:
                 response_code = 404

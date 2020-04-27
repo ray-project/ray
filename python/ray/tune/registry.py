@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 from types import FunctionType
 
@@ -45,6 +41,9 @@ def validate_trainable(trainable_name):
 def register_trainable(name, trainable):
     """Register a trainable function or class.
 
+    This enables a class or function to be accessed on every Ray process
+    in the cluster.
+
     Args:
         name (str): Name to register.
         trainable (obj): Function or tune.Trainable class. Functions must
@@ -74,6 +73,9 @@ def register_trainable(name, trainable):
 def register_env(name, env_creator):
     """Register a custom environment for use with RLlib.
 
+    This enables the environment to be accessed on every Ray process
+    in the cluster.
+
     Args:
         name (str): Name to register.
         env_creator (obj): Function that creates an env.
@@ -98,7 +100,7 @@ def _make_key(category, key):
             key.encode("ascii"))
 
 
-class _Registry(object):
+class _Registry:
     def __init__(self):
         self._to_flush = {}
 

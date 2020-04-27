@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import ray
 
@@ -58,8 +54,8 @@ def restore_checkpoint(export_dir, prefix):
 
 if __name__ == "__main__":
     algo = "DQN"
-    model_dir = "/tmp/model_export_dir"
-    ckpt_dir = "/tmp/ckpt_export_dir"
+    model_dir = os.path.join(ray.utils.get_user_temp_dir(), "model_export_dir")
+    ckpt_dir = os.path.join(ray.utils.get_user_temp_dir(), "ckpt_export_dir")
     prefix = "model.ckpt"
     num_steps = 3
     train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "task_dependency_manager.h"
 
 #include "absl/time/clock.h"
@@ -12,14 +26,13 @@ TaskDependencyManager::TaskDependencyManager(
     ObjectManagerInterface &object_manager,
     ReconstructionPolicyInterface &reconstruction_policy,
     boost::asio::io_service &io_service, const ClientID &client_id,
-    int64_t initial_lease_period_ms,
-    gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
+    int64_t initial_lease_period_ms, std::shared_ptr<gcs::GcsClient> gcs_client)
     : object_manager_(object_manager),
       reconstruction_policy_(reconstruction_policy),
       io_service_(io_service),
       client_id_(client_id),
       initial_lease_period_ms_(initial_lease_period_ms),
-      task_lease_table_(task_lease_table) {}
+      gcs_client_(gcs_client) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
@@ -310,7 +323,34 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 
 void TaskDependencyManager::TaskPending(const Task &task) {
   // Direct tasks are not tracked by the raylet.
-  if (task.GetTaskSpecification().IsDirectCall()) {
+  // NOTE(zhijunfu): Direct tasks are not tracked by the raylet,
+  // but we still need raylet to reconstruct the actors.
+  // For direct actor creation task:
+  //   - Initially the caller leases a worker from raylet and
+  //     then pushes actor creation task directly to the worker,
+  //     thus it doesn't need task lease. And actually if we
+  //     acquire a lease in this case and forget to cancel it,
+  //     the lease would never expire which will prevent the
+  //     actor from being reconstructed;
+  //   - When a direct actor is reconstructed, raylet resubmits
+  //     the task, and the task can be forwarded to another raylet,
+  //     and eventually assigned to a worker. In this case we need
+  //     the task lease to make sure there's only one raylet can
+  //     resubmit the task.
+  //
+  // We can use `OnDispatch` to differeniate whether this task is
+  // a worker lease request.
+  // For direct actor creation task:
+  //   - when it's submitted by core worker, we guarantee that
+  //     we always request a new worker lease, in that case
+  //     `OnDispatch` is overriden to an actual callback.
+  //   - when it's resubmitted by raylet because of reconstruction,
+  //     `OnDispatch` will not be overriden and thus is nullptr.
+  if (task.GetTaskSpecification().IsActorCreationTask() && task.OnDispatch() == nullptr) {
+    // This is an actor creation task, and it's being reconstructed,
+    // in this case we still need the task lease. Note that we don't
+    // require task lease for direct actor creation task.
+  } else {
     return;
   }
 
@@ -354,10 +394,11 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   }
 
   auto task_lease_data = std::make_shared<TaskLeaseData>();
-  task_lease_data->set_node_manager_id(client_id_.Hex());
+  task_lease_data->set_task_id(task_id.Binary());
+  task_lease_data->set_node_manager_id(client_id_.Binary());
   task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
   task_lease_data->set_timeout(it->second.lease_period);
-  RAY_CHECK_OK(task_lease_table_.Add(JobID::Nil(), task_id, task_lease_data, nullptr));
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(task_lease_data, nullptr));
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
   it->second.lease_timer->expires_from_now(period);

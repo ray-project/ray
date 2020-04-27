@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import logging
 import os
@@ -20,6 +16,12 @@ def import_gcp():
     from ray.autoscaler.gcp.config import bootstrap_gcp
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
     return bootstrap_gcp, GCPNodeProvider
+
+
+def import_azure():
+    from ray.autoscaler.azure.config import bootstrap_azure
+    from ray.autoscaler.azure.node_provider import AzureNodeProvider
+    return bootstrap_azure, AzureNodeProvider
 
 
 def import_local():
@@ -56,6 +58,12 @@ def load_gcp_example_config():
     return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
 
 
+def load_azure_example_config():
+    import ray.autoscaler.azure as ray_azure
+    return os.path.join(
+        os.path.dirname(ray_azure.__file__), "example-full.yaml")
+
+
 def import_external():
     """Mock a normal provider importer."""
 
@@ -69,7 +77,7 @@ NODE_PROVIDERS = {
     "local": import_local,
     "aws": import_aws,
     "gcp": import_gcp,
-    "azure": None,  # TODO: support more node providers
+    "azure": import_azure,
     "kubernetes": import_kubernetes,
     "docker": None,
     "external": import_external  # Import an external module
@@ -79,7 +87,7 @@ DEFAULT_CONFIGS = {
     "local": load_local_example_config,
     "aws": load_aws_example_config,
     "gcp": load_gcp_example_config,
-    "azure": None,  # TODO: support more node providers
+    "azure": load_azure_example_config,
     "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
@@ -129,7 +137,7 @@ def get_default_config(provider_config):
     return defaults
 
 
-class NodeProvider(object):
+class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 
     NodeProviders are namespaced by the `cluster_name` parameter; they only

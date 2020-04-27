@@ -27,6 +27,13 @@ markdown: kramdown
 theme: minima
 gems:
   - jekyll-feed
+include: 
+  - index.html
+  - blog.html
+  - get_ray.html
 exclude:
+  - community.html
   - Gemfile
   - Gemfile.lock
+  - README.md
+#permalink: /:categories/:year/:month/:day/:title

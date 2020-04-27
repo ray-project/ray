@@ -1,18 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
-import inspect
 import logging
 import os
-import six
-import types
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable
+from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import sample_from
+from ray.tune.stopper import FunctionStopper, Stopper
 
 logger = logging.getLogger(__name__)
 
@@ -34,28 +28,46 @@ def _raise_deprecation_note(deprecated, replacement, soft=False):
         raise DeprecationWarning(error_msg)
 
 
-class Experiment(object):
+def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
+    trainable_cls = get_trainable_cls(trainable_name)
+    from ray.tune.durable_trainable import DurableTrainable
+    if issubclass(trainable_cls, DurableTrainable):
+        if sync_to_driver is not False:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "Set `sync_to_driver=False` to avoid data inconsistencies.")
+        if not upload_dir:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "`upload_dir` must be provided.")
+
+
+class Experiment:
     """Tracks experiment specifications.
 
-    Implicitly registers the Trainable if needed.
+    Implicitly registers the Trainable if needed. The args here take
+    the same meaning as the arguments defined `tune.py:run`.
 
-    Examples:
-        >>> experiment_spec = Experiment(
-        >>>     "my_experiment_name",
-        >>>     my_func,
-        >>>     stop={"mean_accuracy": 100},
-        >>>     config={
-        >>>         "alpha": tune.grid_search([0.2, 0.4, 0.6]),
-        >>>         "beta": tune.grid_search([1, 2]),
-        >>>     },
-        >>>     resources_per_trial={
-        >>>         "cpu": 1,
-        >>>         "gpu": 0
-        >>>     },
-        >>>     num_samples=10,
-        >>>     local_dir="~/ray_results",
-        >>>     checkpoint_freq=10,
-        >>>     max_failures=2)
+    .. code-block:: python
+
+        experiment_spec = Experiment(
+            "my_experiment_name",
+            my_func,
+            stop={"mean_accuracy": 100},
+            config={
+                "alpha": tune.grid_search([0.2, 0.4, 0.6]),
+                "beta": tune.grid_search([1, 2]),
+            },
+            resources_per_trial={
+                "cpu": 1,
+                "gpu": 0
+            },
+            num_samples=10,
+            local_dir="~/ray_results",
+            checkpoint_freq=10,
+            max_failures=2)
     """
 
     def __init__(self,
@@ -76,48 +88,48 @@ class Experiment(object):
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
-                 max_failures=3,
-                 restore=None,
-                 repeat=None,
-                 trial_resources=None,
-                 sync_function=None):
-        """Initialize a new Experiment.
-
-        The args here take the same meaning as the command line flags defined
-        in `tune.py:run`.
-        """
-        if repeat:
-            _raise_deprecation_note("repeat", "num_samples", soft=False)
-        if trial_resources:
-            _raise_deprecation_note(
-                "trial_resources", "resources_per_trial", soft=False)
-        if sync_function:
-            _raise_deprecation_note(
-                "sync_function", "sync_to_driver", soft=False)
-
-        stop = stop or {}
-        if not isinstance(stop, dict) and not callable(stop):
-            raise ValueError("Invalid stop criteria: {}. Must be a callable "
-                             "or dict".format(stop))
-        if callable(stop):
-            nargs = len(inspect.getargspec(stop).args)
-            is_method = isinstance(stop, types.MethodType)
-            if (is_method and nargs != 3) or (not is_method and nargs != 2):
-                raise ValueError(
-                    "Invalid stop criteria: {}. Callable "
-                    "criteria must take exactly 2 parameters.".format(stop))
+                 max_failures=0,
+                 restore=None):
 
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
+        self.name = name or self._run_identifier
+        if upload_dir:
+            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
+        else:
+            self.remote_checkpoint_dir = None
+
+        self._stopper = None
+        stopping_criteria = {}
+        if not stop:
+            pass
+        elif isinstance(stop, dict):
+            stopping_criteria = stop
+        elif callable(stop):
+            if FunctionStopper.is_valid_function(stop):
+                self._stopper = FunctionStopper(stop)
+            elif issubclass(type(stop), Stopper):
+                self._stopper = stop
+            else:
+                raise ValueError("Provided stop object must be either a dict, "
+                                 "a function, or a subclass of "
+                                 "`ray.tune.Stopper`.")
+        else:
+            raise ValueError("Invalid stop criteria: {}. Must be a "
+                             "callable or dict".format(stop))
+
+        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
+
         spec = {
             "run": self._run_identifier,
-            "stop": stop,
+            "stop": stopping_criteria,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.abspath(
                 os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
             "upload_dir": upload_dir,
+            "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_to_driver": sync_to_driver,
@@ -131,8 +143,6 @@ class Experiment(object):
             "restore": os.path.abspath(os.path.expanduser(restore))
             if restore else None
         }
-
-        self.name = name or self._run_identifier
         self.spec = spec
 
     @classmethod
@@ -178,7 +188,7 @@ class Experiment(object):
             A string representing the trainable identifier.
         """
 
-        if isinstance(run_object, six.string_types):
+        if isinstance(run_object, str):
             return run_object
         elif isinstance(run_object, sample_from):
             logger.warning("Not registering trainable. Resolving as variant.")
@@ -196,6 +206,10 @@ class Experiment(object):
             raise TuneError("Improper 'run' - not string nor trainable.")
 
     @property
+    def stopper(self):
+        return self._stopper
+
+    @property
     def local_dir(self):
         return self.spec.get("local_dir")
 
@@ -203,11 +217,6 @@ class Experiment(object):
     def checkpoint_dir(self):
         if self.local_dir:
             return os.path.join(self.local_dir, self.name)
-
-    @property
-    def remote_checkpoint_dir(self):
-        if self.spec["upload_dir"]:
-            return os.path.join(self.spec["upload_dir"], self.name)
 
     @property
     def run_identifier(self):
@@ -245,8 +254,9 @@ def convert_to_experiment_list(experiments):
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
-            logger.warning("All experiments will be "
-                           "using the same SearchAlgorithm.")
+            logger.info(
+                "Running with multiple concurrent experiments. "
+                "All experiments will be using the same SearchAlgorithm.")
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 

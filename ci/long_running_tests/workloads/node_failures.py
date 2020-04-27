@@ -1,13 +1,9 @@
 # This workload tests repeatedly killing a node and adding a new node.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -30,7 +26,8 @@ for i in range(num_nodes):
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory)
+        redis_max_memory=redis_max_memory,
+        webui_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.

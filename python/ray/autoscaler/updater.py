@@ -1,11 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import click
 import hashlib
 import logging
 import os
@@ -37,7 +34,7 @@ def with_interactive(cmd):
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
-class KubernetesCommandRunner(object):
+class KubernetesCommandRunner:
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
 
@@ -48,13 +45,16 @@ class KubernetesCommandRunner(object):
         self.kubectl = ["kubectl", "-n", self.namespace]
 
     def run(self,
-            cmd,
+            cmd=None,
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
-            port_forward=None):
-
-        logger.info(self.log_prefix + "Running {}...".format(cmd))
+            port_forward=None,
+            with_output=False):
+        if cmd and port_forward:
+            raise Exception(
+                "exec with Kubernetes can't forward ports and execute"
+                "commands together.")
 
         if port_forward:
             if not isinstance(port_forward, list):
@@ -62,47 +62,44 @@ class KubernetesCommandRunner(object):
             port_forward_cmd = self.kubectl + [
                 "port-forward",
                 self.node_id,
-            ] + [str(fwd) for fwd in port_forward]
+            ] + [
+                "{}:{}".format(local, remote) for local, remote in port_forward
+            ]
+            logger.info("Port forwarding with: {}".format(
+                " ".join(port_forward_cmd)))
             port_forward_process = subprocess.Popen(port_forward_cmd)
-            # Give port-forward a grace period to run and print output before
-            # running the actual command. This is a little ugly, but it should
-            # work in most scenarios and nothing should go very wrong if the
-            # command starts running before the port forward starts.
-            time.sleep(1)
-
-        final_cmd = self.kubectl + [
-            "exec",
-            "-it" if allocate_tty else "-i",
-            self.node_id,
-            "--",
-        ] + with_interactive(cmd)
-        try:
-            self.process_runner.check_call(" ".join(final_cmd), shell=True)
-        except subprocess.CalledProcessError:
-            if exit_on_fail:
-                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                logger.error(self.log_prefix +
-                             "Command failed: \n\n  {}\n".format(quoted_cmd))
-                sys.exit(1)
-            else:
-                raise
-        finally:
-            # Clean up the port forward process. First, try to let it exit
-            # gracefull with SIGTERM. If that doesn't work after 1s, send
-            # SIGKILL.
-            if port_forward:
-                port_forward_process.terminate()
-                for _ in range(10):
-                    time.sleep(0.1)
-                    port_forward_process.poll()
-                    if port_forward_process.returncode:
-                        break
-                    logger.info(self.log_prefix +
-                                "Waiting for port forward to die...")
+            port_forward_process.wait()
+            # We should never get here, this indicates that port forwarding
+            # failed, likely because we couldn't bind to a port.
+            pout, perr = port_forward_process.communicate()
+            exception_str = " ".join(
+                port_forward_cmd) + " failed with error: " + perr
+            raise Exception(exception_str)
+        else:
+            logger.info(self.log_prefix + "Running {}...".format(cmd))
+            final_cmd = self.kubectl + [
+                "exec",
+                "-it" if allocate_tty else "-i",
+                self.node_id,
+                "--",
+            ] + with_interactive(cmd)
+            try:
+                if with_output:
+                    return self.process_runner.check_output(
+                        " ".join(final_cmd), shell=True)
                 else:
-                    logger.warning(self.log_prefix +
-                                   "Killing port forward with SIGKILL.")
-                    port_forward_process.kill()
+                    self.process_runner.check_call(
+                        " ".join(final_cmd), shell=True)
+            except subprocess.CalledProcessError:
+                if exit_on_fail:
+                    quoted_cmd = " ".join(final_cmd[:-1] +
+                                          [quote(final_cmd[-1])])
+                    logger.error(
+                        self.log_prefix +
+                        "Command failed: \n\n  {}\n".format(quoted_cmd))
+                    sys.exit(1)
+                else:
+                    raise
 
     def run_rsync_up(self, source, target):
         if target.startswith("~"):
@@ -149,7 +146,7 @@ class KubernetesCommandRunner(object):
                                             self.node_id)
 
 
-class SSHCommandRunner(object):
+class SSHCommandRunner:
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
 
@@ -176,6 +173,15 @@ class SSHCommandRunner(object):
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
+            # Try fewer extraneous key pairs.
+            ("IdentitiesOnly", "yes"),
+            # Abort if port forwarding fails (instead of just printing to
+            # stderr).
+            ("ExitOnForwardFailure", "yes"),
+            # Quickly kill the connection if network connection breaks (as
+            # opposed to hanging/blocking).
+            ("ServerAliveInterval", 5),
+            ("ServerAliveCountMax", 3),
         ]
 
         return ["-i", self.ssh_private_key] + [
@@ -233,12 +239,11 @@ class SSHCommandRunner(object):
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
-            port_forward=None):
+            port_forward=None,
+            with_output=False):
 
         self.set_ssh_ip_if_required()
 
-        logger.info(self.log_prefix +
-                    "Running {} on {}...".format(cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
@@ -246,20 +251,32 @@ class SSHCommandRunner(object):
         if port_forward:
             if not isinstance(port_forward, list):
                 port_forward = [port_forward]
-            for fwd in port_forward:
-                ssh += ["-L", "{}:localhost:{}".format(fwd, fwd)]
+            for local, remote in port_forward:
+                logger.info(self.log_prefix + "Forwarding " +
+                            "{} -> localhost:{}".format(local, remote))
+                ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + self.get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
-        ] + with_interactive(cmd)
+        ]
+        if cmd:
+            logger.info(self.log_prefix +
+                        "Running {} on {}...".format(cmd, self.ssh_ip))
+            final_cmd += with_interactive(cmd)
+        else:
+            # We do this because `-o ControlMaster` causes the `-N` flag to
+            # still create an interactive shell in some ssh versions.
+            final_cmd.append("while true; do sleep 86400; done")
         try:
-            self.process_runner.check_call(final_cmd)
+            if with_output:
+                return self.process_runner.check_output(final_cmd)
+            else:
+                self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                logger.error(self.log_prefix +
-                             "Command failed: \n\n  {}\n".format(quoted_cmd))
-                sys.exit(1)
+                raise click.ClickException(
+                    "Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise
 
@@ -280,11 +297,11 @@ class SSHCommandRunner(object):
         ])
 
     def remote_shell_command_str(self):
-        return "ssh -i {} {}@{}\n".format(self.ssh_private_key, self.ssh_user,
-                                          self.ssh_ip)
+        return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
+            self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
-class NodeUpdater(object):
+class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
     def __init__(self,
@@ -396,7 +413,6 @@ class NodeUpdater(object):
     def do_update(self):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
-
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
 

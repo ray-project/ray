@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import os
@@ -9,21 +5,18 @@ import time
 import traceback
 import json
 
-import redis
-
 import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
-import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
-                       hex_to_binary, setup_logger)
+from ray.utils import binary_to_hex, setup_logger
+from ray.autoscaler.commands import teardown_cluster
 
 logger = logging.getLogger(__name__)
 
 
-class Monitor(object):
+class Monitor:
     """A monitor for Ray processes.
 
     The monitor is in charge of cleaning up the tables in the global state
@@ -52,36 +45,10 @@ class Monitor(object):
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)
+            self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
-
-        # Experimental feature: GCS flushing.
-        self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
-        self.gcs_flush_policy = None
-        if self.issue_gcs_flushes:
-            # Data is stored under the first data shard, so we issue flushes to
-            # that redis server.
-            addr_port = self.redis.lrange("RedisShards", 0, -1)
-            if len(addr_port) > 1:
-                logger.warning(
-                    "Monitor: "
-                    "TODO: if launching > 1 redis shard, flushing needs to "
-                    "touch shards in parallel.")
-                self.issue_gcs_flushes = False
-            else:
-                addr_port = addr_port[0].split(b":")
-                self.redis_shard = redis.StrictRedis(
-                    host=addr_port[0],
-                    port=addr_port[1],
-                    password=redis_password)
-                try:
-                    self.redis_shard.execute_command("HEAD.FLUSH 0")
-                except redis.exceptions.ResponseError as e:
-                    logger.info(
-                        "Monitor: "
-                        "Turning off flushing due to exception: {}".format(
-                            str(e)))
-                    self.issue_gcs_flushes = False
+            self.autoscaling_config = None
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -131,74 +98,6 @@ class Monitor(object):
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
 
-    def _xray_clean_up_entries_for_job(self, job_id):
-        """Remove this job's object/task entries from redis.
-
-        Removes control-state entries of all tasks and task return
-        objects belonging to the driver.
-
-        Args:
-            job_id: The job id.
-        """
-
-        xray_task_table_prefix = (
-            ray.gcs_utils.TablePrefix_RAYLET_TASK_string.encode("ascii"))
-        xray_object_table_prefix = (
-            ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
-
-        task_table_objects = ray.tasks()
-        job_id_hex = binary_to_hex(job_id)
-        job_task_id_bins = set()
-        for task_id_hex, task_info in task_table_objects.items():
-            task_table_object = task_info["TaskSpec"]
-            task_job_id_hex = task_table_object["JobID"]
-            if job_id_hex != task_job_id_hex:
-                # Ignore tasks that aren't from this driver.
-                continue
-            job_task_id_bins.add(hex_to_binary(task_id_hex))
-
-        # Get objects associated with the driver.
-        object_table_objects = ray.objects()
-        job_object_id_bins = set()
-        for object_id, _ in object_table_objects.items():
-            task_id_bin = ray._raylet.compute_task_id(object_id).binary()
-            if task_id_bin in job_task_id_bins:
-                job_object_id_bins.add(object_id.binary())
-
-        def to_shard_index(id_bin):
-            if len(id_bin) == ray.TaskID.size():
-                return binary_to_task_id(id_bin).redis_shard_hash() % len(
-                    ray.state.state.redis_clients)
-            else:
-                return binary_to_object_id(id_bin).redis_shard_hash() % len(
-                    ray.state.state.redis_clients)
-
-        # Form the redis keys to delete.
-        sharded_keys = [[] for _ in range(len(ray.state.state.redis_clients))]
-        for task_id_bin in job_task_id_bins:
-            sharded_keys[to_shard_index(task_id_bin)].append(
-                xray_task_table_prefix + task_id_bin)
-        for object_id_bin in job_object_id_bins:
-            sharded_keys[to_shard_index(object_id_bin)].append(
-                xray_object_table_prefix + object_id_bin)
-
-        # Remove with best effort.
-        for shard_index in range(len(sharded_keys)):
-            keys = sharded_keys[shard_index]
-            if len(keys) == 0:
-                continue
-            redis = ray.state.state.redis_clients[shard_index]
-            num_deleted = redis.delete(*keys)
-            logger.info("Monitor: "
-                        "Removed {} dead redis entries of the "
-                        "driver from redis shard {}.".format(
-                            num_deleted, shard_index))
-            if num_deleted != len(keys):
-                logger.warning("Monitor: "
-                               "Failed to remove {} relevant redis "
-                               "entries from redis shard {}.".format(
-                                   len(keys) - num_deleted, shard_index))
-
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
 
@@ -214,7 +113,6 @@ class Monitor(object):
             logger.info("Monitor: "
                         "XRay Driver {} has been removed.".format(
                             binary_to_hex(job_id)))
-            self._xray_clean_up_entries_for_job(job_id)
 
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
@@ -266,7 +164,7 @@ class Monitor(object):
                       ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
                     message_handler = self.autoscaler_resource_request_handler
                 else:
-                    raise Exception("This code should be unreachable.")
+                    assert False, "This code should be unreachable."
 
                 # Call the handler.
                 message_handler(channel, data)
@@ -288,37 +186,6 @@ class Monitor(object):
             if _append_port:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[node_id] = ip_address
-
-    def _maybe_flush_gcs(self):
-        """Experimental: issue a flush request to the GCS.
-
-        The purpose of this feature is to control GCS memory usage.
-
-        To activate this feature, Ray must be compiled with the flag
-        RAY_USE_NEW_GCS set, and Ray must be started at run time with the flag
-        as well.
-        """
-        if not self.issue_gcs_flushes:
-            return
-        if self.gcs_flush_policy is None:
-            serialized = self.redis.get("gcs_flushing_policy")
-            if serialized is None:
-                # Client has not set any policy; by default flushing is off.
-                return
-            self.gcs_flush_policy = pickle.loads(serialized)
-
-        if not self.gcs_flush_policy.should_flush(self.redis_shard):
-            return
-
-        max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
-        num_flushed = self.redis_shard.execute_command(
-            "HEAD.FLUSH {}".format(max_entries_to_flush))
-        logger.info("Monitor: num_flushed {}".format(num_flushed))
-
-        # This flushes event log and log files.
-        ray.experimental.flush_redis_unsafe(self.redis)
-
-        self.gcs_flush_policy.record_flush()
 
     def _run(self):
         """Run the monitor.
@@ -347,8 +214,6 @@ class Monitor(object):
             if self.autoscaler:
                 self.autoscaler.update()
 
-            self._maybe_flush_gcs()
-
             # Process a round of messages.
             self.process_messages()
 
@@ -356,6 +221,39 @@ class Monitor(object):
             # messages.
             time.sleep(
                 ray._config.raylet_heartbeat_timeout_milliseconds() * 1e-3)
+
+    def destroy_autoscaler_workers(self):
+        """Cleanup the autoscaler, in case of an exception in the run() method.
+
+        We kill the worker nodes, but retain the head node in order to keep
+        logs around, keeping costs minimal. This monitor process runs on the
+        head node anyway, so this is more reliable."""
+
+        if self.autoscaler is None:
+            return  # Nothing to clean up.
+
+        if self.autoscaling_config is None:
+            # This is a logic error in the program. Can't do anything.
+            logger.error(
+                "Monitor: Cleanup failed due to lack of autoscaler config.")
+            return
+
+        logger.info("Monitor: Exception caught. Taking down workers...")
+        clean = False
+        while not clean:
+            try:
+                teardown_cluster(
+                    config_file=self.autoscaling_config,
+                    yes=True,  # Non-interactive.
+                    workers_only=True,  # Retain head node for logs.
+                    override_cluster_name=None,
+                    keep_min_workers=True,  # Retain minimal amount of workers.
+                )
+                clean = True
+                logger.info("Monitor: Workers taken down.")
+            except Exception:
+                logger.error("Monitor: Cleanup exception. Trying again...")
+                time.sleep(2)
 
     def run(self):
         try:
@@ -416,6 +314,9 @@ if __name__ == "__main__":
     try:
         monitor.run()
     except Exception as e:
+        # Take down autoscaler workers if necessary.
+        monitor.destroy_autoscaler_workers()
+
         # Something went wrong, so push an error to all drivers.
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)

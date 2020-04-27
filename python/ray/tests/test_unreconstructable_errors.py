@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import unittest
 
@@ -23,22 +19,6 @@ class TestUnreconstructableErrors(unittest.TestCase):
         ray.get(x_id)
         for _ in range(20):
             ray.put(np.zeros(10 * 1024 * 1024))
-        self.assertRaises(ray.exceptions.UnreconstructableError,
-                          lambda: ray.get(x_id))
-
-    def testLineageEvictedReconstructionFails(self):
-        @ray.remote
-        def f(data):
-            return 0
-
-        x_id = f.remote(None)
-        ray.get(x_id)
-        # Hold references to the ray.put objects so they aren't LRU'd.
-        oids = []
-        for _ in range(400):
-            new_oids = [f.remote(np.zeros(10000)) for _ in range(50)]
-            oids.extend(new_oids)
-            ray.get(new_oids)
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
 

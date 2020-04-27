@@ -7,19 +7,30 @@ from ray.rllib.agents.registry import get_agent_class
 
 def check_support(alg, config, test_trace=True):
     config["eager"] = True
-    if alg in ["APEX_DDPG", "TD3", "DDPG", "SAC"]:
-        config["env"] = "Pendulum-v0"
-    else:
-        config["env"] = "CartPole-v0"
-    a = get_agent_class(alg)
-    config["log_level"] = "ERROR"
 
-    config["eager_tracing"] = False
-    tune.run(a, config=config, stop={"training_iteration": 0})
+    # Test both continuous and discrete actions.
+    for cont in [True, False]:
+        if cont and alg in ["DQN", "APEX", "SimpleQ"]:
+            continue
+        elif not cont and alg in ["DDPG", "APEX_DDPG", "TD3"]:
+            continue
 
-    if test_trace:
-        config["eager_tracing"] = True
-        tune.run(a, config=config, stop={"training_iteration": 0})
+        print("run={} cont. actions={}".format(alg, cont))
+
+        if cont:
+            config["env"] = "Pendulum-v0"
+        else:
+            config["env"] = "CartPole-v0"
+
+        a = get_agent_class(alg)
+        config["log_level"] = "ERROR"
+
+        config["eager_tracing"] = False
+        tune.run(a, config=config, stop={"training_iteration": 1})
+
+        if test_trace:
+            config["eager_tracing"] = True
+            tune.run(a, config=config, stop={"training_iteration": 1})
 
 
 class TestEagerSupport(unittest.TestCase):
@@ -29,48 +40,59 @@ class TestEagerSupport(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testSimpleQ(self):
+    def test_simple_q(self):
         check_support("SimpleQ", {"num_workers": 0, "learning_starts": 0})
 
-    def testDQN(self):
+    def test_dqn(self):
         check_support("DQN", {"num_workers": 0, "learning_starts": 0})
 
-    def testA2C(self):
+    # TODO(sven): Add these once DDPG supports eager.
+    # def test_ddpg(self):
+    #     check_support("DDPG", {"num_workers": 0})
+
+    # def test_apex_ddpg(self):
+    #     check_support("APEX_DDPG", {"num_workers": 1})
+
+    # def test_td3(self):
+    #     check_support("TD3", {"num_workers": 0})
+
+    def test_a2c(self):
         check_support("A2C", {"num_workers": 0})
 
-    def testA3C(self):
-        # TODO(ekl) trace on is flaky
-        check_support("A3C", {"num_workers": 1}, test_trace=False)
+    def test_a3c(self):
+        check_support("A3C", {"num_workers": 1})
 
-    def testPG(self):
+    def test_pg(self):
         check_support("PG", {"num_workers": 0})
 
-    def testPPO(self):
+    def test_ppo(self):
         check_support("PPO", {"num_workers": 0})
 
-    def testAPPO(self):
+    def test_appo(self):
         check_support("APPO", {"num_workers": 1, "num_gpus": 0})
 
-    def testIMPALA(self):
+    def test_impala(self):
         check_support("IMPALA", {"num_workers": 1, "num_gpus": 0})
 
-    def testAPEX_DQN(self):
+    def test_apex_dqn(self):
         check_support(
             "APEX", {
                 "num_workers": 2,
                 "learning_starts": 0,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
-                "timesteps_per_iteration": 100
+                "timesteps_per_iteration": 100,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
             })
 
-    def testSAC(self):
-        check_support("SAC", {
-            "num_workers": 0,
-            "learning_starts": 0,
-            "timesteps_per_iteration": 100
-        })
+    # TODO(sven): Add this once SAC supports eager.
+    # def test_sac(self):
+    #    check_support("SAC", {"num_workers": 0, "learning_starts": 0})
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

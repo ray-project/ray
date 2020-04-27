@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pytest
 import subprocess
@@ -142,7 +138,7 @@ def test_driver_exiting_quickly(call_ray_start):
 import ray
 ray.init(address="{}")
 @ray.remote
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 Foo.remote()
@@ -171,6 +167,39 @@ print("success")
         assert "success" in out
 
 
+def test_cleanup_on_driver_exit(call_ray_start):
+    # This test will create a driver that creates a bunch of objects and then
+    # exits. The entries in the object table should be cleaned up.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a bunch of objects and exits.
+    driver_script = """
+import time
+import ray
+ray.init(address="{}")
+object_ids = [ray.put(i) for i in range(1000)]
+start_time = time.time()
+while time.time() - start_time < 30:
+    if len(ray.objects()) == 1000:
+        break
+else:
+    raise Exception("Objects did not appear in object table.")
+print("success")
+""".format(address)
+
+    run_string_as_driver(driver_script)
+
+    # Make sure the objects are removed from the object table.
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        if len(ray.objects()) == 0:
+            break
+    else:
+        raise Exception("Objects were not all removed from object table.")
+
+
 def test_drivers_named_actors(call_ray_start):
     # This test will create some drivers that submit some tasks to the same
     # named actor.
@@ -184,14 +213,14 @@ import ray
 import time
 ray.init(address="{}")
 @ray.remote
-class Counter(object):
+class Counter:
     def __init__(self):
         self.count = 0
     def increment(self):
         self.count += 1
         return self.count
 counter = Counter.remote()
-ray.experimental.register_actor("Counter", counter)
+ray.util.register_actor("Counter", counter)
 time.sleep(100)
 """.format(address)
 
@@ -202,7 +231,7 @@ import time
 ray.init(address="{}")
 while True:
     try:
-        counter = ray.experimental.get_actor("Counter")
+        counter = ray.util.get_actor("Counter")
         break
     except ValueError:
         time.sleep(1)
@@ -235,7 +264,7 @@ import time
 log_message = "{}"
 
 @ray.remote
-class Actor(object):
+class Actor:
     def log(self):
         print(log_message)
 
@@ -277,7 +306,7 @@ def g(duration):
     time.sleep(duration)
 
 @ray.remote(num_gpus=1)
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 
@@ -321,7 +350,7 @@ print("success")
         process_handle.kill()
 
 
-def test_calling_start_ray_head():
+def test_calling_start_ray_head(call_ray_stop_only):
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
@@ -379,7 +408,7 @@ def test_calling_start_ray_head():
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
-            ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
+            ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
     subprocess.check_output(["ray", "stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
@@ -483,6 +512,7 @@ print("success")
         assert "success" in out
 
 
+@pytest.mark.skip(reason="fate sharing not implemented yet")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
@@ -595,26 +625,6 @@ print("success")
 
     # Make sure we can still talk with the raylet.
     ray.get(f.remote())
-
-
-@pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --use-pickle"],
-    indirect=True)
-def test_use_pickle(call_ray_start):
-    address = call_ray_start
-
-    ray.init(address=address, use_pickle=True)
-
-    assert ray.worker.global_worker.use_pickle
-    x = (2, "hello")
-
-    @ray.remote
-    def f(x):
-        assert x == (2, "hello")
-        assert ray.worker.global_worker.use_pickle
-        return (3, "world")
-
-    assert ray.get(f.remote(x)) == (3, "world")
 
 
 if __name__ == "__main__":

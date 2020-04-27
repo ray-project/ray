@@ -1,16 +1,31 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_CORE_WORKER_CLIENT_H
 #define RAY_RPC_CORE_WORKER_CLIENT_H
+
+#include <grpcpp/grpcpp.h>
 
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
 
-#include <grpcpp/grpcpp.h>
 #include "absl/base/thread_annotations.h"
-
+#include "absl/hash/hash.h"
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -34,15 +49,56 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }
 
 // Shared between direct actor and task submitters.
-// TODO(swang): Remove and replace with rpc::Address.
 class CoreWorkerClientInterface;
-typedef std::pair<std::string, int> WorkerAddress;
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+
+// TODO(swang): Remove and replace with rpc::Address.
+class WorkerAddress {
+ public:
+  WorkerAddress(const rpc::Address &address)
+      : ip_address(address.ip_address()),
+        port(address.port()),
+        worker_id(WorkerID::FromBinary(address.worker_id())),
+        raylet_id(ClientID::FromBinary(address.raylet_id())) {}
+  template <typename H>
+  friend H AbslHashValue(H h, const WorkerAddress &w) {
+    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
+  }
+
+  bool operator==(const WorkerAddress &other) const {
+    return other.ip_address == ip_address && other.port == port &&
+           other.worker_id == worker_id && other.raylet_id == raylet_id;
+  }
+
+  rpc::Address ToProto() const {
+    rpc::Address addr;
+    addr.set_raylet_id(raylet_id.Binary());
+    addr.set_ip_address(ip_address);
+    addr.set_port(port);
+    addr.set_worker_id(worker_id.Binary());
+    return addr;
+  }
+
+  /// The ip address of the worker.
+  const std::string ip_address;
+  /// The local port of the worker.
+  const int port;
+  /// The unique id of the worker.
+  const WorkerID worker_id;
+  /// The unique id of the worker raylet.
+  const ClientID raylet_id;
+};
+
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
     ClientFactoryFn;
 
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
+  virtual const rpc::Address &Addr() const {
+    static const rpc::Address empty_addr_;
+    return empty_addr_;
+  }
+
   /// This is called by the Raylet to assign a task to the worker.
   ///
   /// \param[in] request The request message.
@@ -88,6 +144,47 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Notify the owner of an object that the object has been pinned.
+  virtual ray::Status WaitForObjectEviction(
+      const WaitForObjectEvictionRequest &request,
+      const ClientCallback<WaitForObjectEvictionReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  /// Tell this actor to exit immediately.
+  virtual ray::Status KillActor(const KillActorRequest &request,
+                                const ClientCallback<KillActorReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status CancelTask(const CancelTaskRequest &request,
+                                 const ClientCallback<CancelTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status GetCoreWorkerStats(
+      const GetCoreWorkerStatsRequest &request,
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status LocalGC(const LocalGCRequest &request,
+                              const ClientCallback<LocalGCReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status WaitForRefRemoved(
+      const WaitForRefRemovedRequest &request,
+      const ClientCallback<WaitForRefRemovedReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status PlasmaObjectReady(
+      const PlasmaObjectReadyRequest &request,
+      const ClientCallback<PlasmaObjectReadyReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -100,22 +197,35 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] address Address of the worker server.
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const std::string &address, const int port,
-                   ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = CoreWorkerService::NewStub(channel);
+  CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
+      : addr_(address), client_call_manager_(client_call_manager) {
+    grpc_client_ =
+        std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
+            addr_.ip_address(), addr_.port(), client_call_manager));
   };
 
-  ray::Status AssignTask(const AssignTaskRequest &request,
-                         const ClientCallback<AssignTaskReply> &callback) override {
-    auto call = client_call_manager_
-                    .CreateCall<CoreWorkerService, AssignTaskRequest, AssignTaskReply>(
-                        *stub_, &CoreWorkerService::Stub::PrepareAsyncAssignTask, request,
-                        callback);
-    return call->GetStatus();
-  }
+  const rpc::Address &Addr() const override { return addr_; }
+
+  RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, grpc_client_,
+                    override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
@@ -137,32 +247,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                              const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
-    auto call = client_call_manager_
-                    .CreateCall<CoreWorkerService, PushTaskRequest, PushTaskReply>(
-                        *stub_, &CoreWorkerService::Stub::PrepareAsyncPushTask, *request,
-                        callback);
-    return call->GetStatus();
+    return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
   }
 
-  ray::Status DirectActorCallArgWaitComplete(
-      const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) override {
-    auto call = client_call_manager_.CreateCall<CoreWorkerService,
-                                                DirectActorCallArgWaitCompleteRequest,
-                                                DirectActorCallArgWaitCompleteReply>(
-        *stub_, &CoreWorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
-        request, callback);
-    return call->GetStatus();
-  }
-
-  virtual ray::Status GetObjectStatus(
-      const GetObjectStatusRequest &request,
-      const ClientCallback<GetObjectStatusReply> &callback) {
-    auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
-                                                GetObjectStatusReply>(
-        *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
-    return call->GetStatus();
-  }
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
@@ -183,21 +270,21 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      client_call_manager_.CreateCall<CoreWorkerService, PushTaskRequest, PushTaskReply>(
-          *stub_, &CoreWorkerService::Stub::PrepareAsyncPushTask, *request,
-          [this, this_ptr, seq_no, task_size, callback](Status status,
-                                                        const rpc::PushTaskReply &reply) {
-            {
-              std::lock_guard<std::mutex> lock(mutex_);
-              if (seq_no > max_finished_seq_no_) {
-                max_finished_seq_no_ = seq_no;
-              }
-              rpc_bytes_in_flight_ -= task_size;
-              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
-            }
-            SendRequests();
-            callback(status, reply);
-          });
+      auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
+                              Status status, const rpc::PushTaskReply &reply) {
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          if (seq_no > max_finished_seq_no_) {
+            max_finished_seq_no_ = seq_no;
+          }
+          rpc_bytes_in_flight_ -= task_size;
+          RAY_CHECK(rpc_bytes_in_flight_ >= 0);
+        }
+        SendRequests();
+        callback(status, reply);
+      };
+
+      INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback, grpc_client_);
     }
 
     if (!send_queue_.empty()) {
@@ -209,8 +296,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// Protects against unsafe concurrent access from the callback thread.
   std::mutex mutex_;
 
-  /// The gRPC-generated stub.
-  std::unique_ptr<CoreWorkerService::Stub> stub_;
+  /// Address of the remote worker.
+  rpc::Address addr_;
+
+  /// The RPC client.
+  std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

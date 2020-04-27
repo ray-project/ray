@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -21,15 +18,15 @@ from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss, BEHAVIOUR_LOGITS
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
+    PPOLoss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.twostep_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_LOGP
+    EntropyCoeffSchedule
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.utils.explained_variance import explained_variance
@@ -84,7 +81,7 @@ class CentralizedCriticModel(TFModelV2):
         return self.model.value_function()  # not used
 
 
-class CentralizedValueMixin(object):
+class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
@@ -99,8 +96,6 @@ def centralized_critic_postprocessing(policy,
                                       other_agent_batches=None,
                                       episode=None):
     if policy.loss_initialized():
-        assert sample_batch["dones"][-1], \
-            "Not implemented for train_batch_mode=truncate_episodes"
         assert other_agent_batches is not None
         [(_, opponent_batch)] = list(other_agent_batches.values())
 
@@ -119,11 +114,17 @@ def centralized_critic_postprocessing(policy,
         sample_batch[OPPONENT_ACTION] = np.zeros_like(
             sample_batch[SampleBatch.ACTIONS])
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
-            sample_batch[SampleBatch.ACTIONS], dtype=np.float32)
+            sample_batch[SampleBatch.REWARDS], dtype=np.float32)
+
+    completed = sample_batch["dones"][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        last_r = sample_batch[SampleBatch.VF_PREDS][-1]
 
     train_batch = compute_advantages(
         sample_batch,
-        0.0,
+        last_r,
         policy.config["gamma"],
         policy.config["lambda"],
         use_gae=policy.config["use_gae"])
@@ -147,8 +148,8 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
-        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.ACTION_DIST_INPUTS],
+        train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
         policy.central_value_out,

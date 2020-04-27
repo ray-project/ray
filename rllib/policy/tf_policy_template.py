@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
@@ -15,6 +11,7 @@ tf = try_import_tf()
 
 @DeveloperAPI
 def build_tf_policy(name,
+                    *,
                     loss_fn,
                     get_default_config=None,
                     postprocess_fn=None,
@@ -30,6 +27,7 @@ def build_tf_policy(name,
                     after_init=None,
                     make_model=None,
                     action_sampler_fn=None,
+                    action_distribution_fn=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
                     obs_include_prev_action_reward=True):
@@ -85,10 +83,12 @@ def build_tf_policy(name,
             given (policy, obs_space, action_space, config).
             All policy variables should be created in this function. If not
             specified, a default model will be created.
-        action_sampler_fn (func): optional function that returns a
-            tuple of action and action prob tensors given
-            (policy, model, input_dict, obs_space, action_space, config).
-            If not specified, a default action distribution will be used.
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
+            action and its log-likelihood given some (obs and state) inputs.
+        action_distribution_fn (Optional[callable]): A callable returning
+            distribution inputs (parameters), a dist-class to generate an
+            action distribution object from, and internal-state outputs (or an
+            empty list if not applicable).
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
@@ -100,7 +100,6 @@ def build_tf_policy(name,
     Returns:
         a DynamicTFPolicy instance that uses the specified args
     """
-
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
 
@@ -137,6 +136,7 @@ def build_tf_policy(name,
                 before_loss_init=before_loss_init_wrapper,
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
+                action_distribution_fn=action_distribution_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,
                 get_batch_divisibility_req=get_batch_divisibility_req,
@@ -150,10 +150,10 @@ def build_tf_policy(name,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
-            if not postprocess_fn:
-                return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
+            if postprocess_fn:
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
+            return sample_batch
 
         @override(TFPolicy)
         def optimizer(self):
@@ -185,23 +185,21 @@ def build_tf_policy(name,
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
-                # auto-add empty learner stats dict if needed
+                # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}
                 }, **extra_learn_fetches_fn(self))
             else:
                 return base.extra_compute_grad_fetches(self)
 
-    @staticmethod
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
-    @staticmethod
     def as_eager():
         return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
 
-    policy_cls.with_updates = with_updates
-    policy_cls.as_eager = as_eager
+    policy_cls.with_updates = staticmethod(with_updates)
+    policy_cls.as_eager = staticmethod(as_eager)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

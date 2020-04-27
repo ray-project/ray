@@ -1,7 +1,21 @@
-#include "lineage_cache.h"
-#include "ray/stats/stats.h"
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
+#include "lineage_cache.h"
 #include <sstream>
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 
@@ -152,23 +166,20 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
   }
 }
 
-LineageCache::LineageCache(const ClientID &client_id,
-                           gcs::TableInterface<TaskID, TaskTableData> &task_storage,
-                           gcs::PubsubInterface<TaskID> &task_pubsub,
+LineageCache::LineageCache(const ClientID &self_node_id,
+                           std::shared_ptr<gcs::GcsClient> gcs_client,
                            uint64_t max_lineage_size)
-    : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
+    : self_node_id_(self_node_id), gcs_client_(gcs_client) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
-  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << client_id_;
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
+  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
   if (!entry) {
-    return;
-  } else if (entry->TaskData().GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
     return;
   }
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
@@ -187,12 +198,9 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
-  if (task.GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
-    return true;
-  }
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
 
   if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED) ||
       lineage_.GetEntry(task_id)->GetStatus() == GcsStatus::UNCOMMITTED) {
@@ -275,17 +283,17 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
 
-  gcs::raylet::TaskTable::WriteCallback task_callback =
-      [this](ray::gcs::RedisGcsClient *client, const TaskID &id,
-             const TaskTableData &data) { HandleEntryCommitted(id); };
+  auto task_callback = [this, task_id](Status status) {
+    RAY_CHECK(status.ok());
+    HandleEntryCommitted(task_id);
+  };
   auto task = lineage_.GetEntry(task_id);
   auto task_data = std::make_shared<TaskTableData>();
   task_data->mutable_task()->mutable_task_spec()->CopyFrom(
       task->TaskData().GetTaskSpecification().GetMessage());
   task_data->mutable_task()->mutable_task_execution_spec()->CopyFrom(
       task->TaskData().GetTaskExecutionSpec().GetMessage());
-  RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
-                                 task_id, task_data, task_callback));
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -296,10 +304,12 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   auto inserted = subscribed_tasks_.insert(task_id);
   bool unsubscribed = inserted.second;
   if (unsubscribed) {
-    // Request notifications for the task if we haven't already requested
-    // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::Nil(), task_id, client_id_,
-                                                   /*done*/ nullptr));
+    auto subscribe = [this](const TaskID &task_id, const TaskTableData) {
+      HandleEntryCommitted(task_id);
+    };
+    // Subscribe to the task.
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, subscribe,
+                                                     /*done*/ nullptr));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -310,10 +320,8 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   auto it = subscribed_tasks_.find(task_id);
   bool subscribed = (it != subscribed_tasks_.end());
   if (subscribed) {
-    // Cancel notifications for the task if we previously requested
-    // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::Nil(), task_id, client_id_,
-                                                  /*done*/ nullptr));
+    // Cancel subscribe to the task.
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, /*done*/ nullptr));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now
@@ -339,7 +347,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   }
 
   // Evict the task.
-  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << self_node_id_;
   lineage_.PopEntry(task_id);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.

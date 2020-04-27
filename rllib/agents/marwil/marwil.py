@@ -1,10 +1,6 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.marwil.marwil_policy import MARWILPolicy
+from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
 from ray.rllib.optimizers import SyncBatchReplayOptimizer
 
 # yapf: disable
@@ -34,6 +30,8 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
+    # Use PyTorch as framework?
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -48,8 +46,18 @@ def make_optimizer(workers, config):
     )
 
 
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.marwil.marwil_torch_policy import \
+            MARWILTorchPolicy
+        return MARWILTorchPolicy
+    else:
+        return MARWILTFPolicy
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
-    default_policy=MARWILPolicy,
+    default_policy=MARWILTFPolicy,
+    get_policy_class=get_policy_class,
     make_policy_optimizer=make_optimizer)

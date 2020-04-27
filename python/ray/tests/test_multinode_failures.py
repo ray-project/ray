@@ -1,14 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import signal
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -83,10 +78,16 @@ def _test_component_failed(cluster, component_type):
     # Submit many tasks with many dependencies.
     @ray.remote
     def f(x):
+        # Sleep to make sure that tasks actually fail mid-execution.
+        time.sleep(0.01)
         return x
 
     @ray.remote
     def g(*xs):
+        # Sleep to make sure that tasks actually fail mid-execution. We
+        # only use it for direct calls because the test already takes a
+        # long time to run with the raylet codepath.
+        time.sleep(0.01)
         return 1
 
     # Kill the component on all nodes except the head node as the tasks
@@ -138,11 +139,13 @@ def check_components_alive(cluster, component_type, check_component_alive):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 4,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10
         }),
     }],
     indirect=True)
@@ -160,11 +163,13 @@ def test_raylet_failed(ray_start_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 2,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10
         }),
     }],
     indirect=True)
@@ -177,95 +182,6 @@ def test_plasma_store_failed(ray_start_cluster):
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
                            False)
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 4,
-        "num_nodes": 3,
-        "do_init": True
-    }],
-    indirect=True)
-def test_actor_creation_node_failure(ray_start_cluster):
-    # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
-    cluster = ray_start_cluster
-
-    @ray.remote
-    class Child(object):
-        def __init__(self, death_probability):
-            self.death_probability = death_probability
-
-        def ping(self):
-            # Exit process with some probability.
-            exit_chance = np.random.rand()
-            if exit_chance < self.death_probability:
-                sys.exit(-1)
-
-    num_children = 50
-    # Children actors will die about half the time.
-    death_probability = 0.5
-
-    children = [Child.remote(death_probability) for _ in range(num_children)]
-    while len(cluster.list_all_nodes()) > 1:
-        for j in range(2):
-            # Submit some tasks on the actors. About half of the actors will
-            # fail.
-            children_out = [child.ping.remote() for child in children]
-            # Wait a while for all the tasks to complete. This should trigger
-            # reconstruction for any actor creation tasks that were forwarded
-            # to nodes that then failed.
-            ready, _ = ray.wait(
-                children_out, num_returns=len(children_out), timeout=5 * 60.0)
-            assert len(ready) == len(children_out)
-
-            # Replace any actors that died.
-            for i, out in enumerate(children_out):
-                try:
-                    ray.get(out)
-                except ray.exceptions.RayActorError:
-                    children[i] = Child.remote(death_probability)
-        # Remove a node. Any actor creation tasks that were forwarded to this
-        # node must be reconstructed.
-        cluster.remove_node(cluster.list_all_nodes()[-1])
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_driver_lives_sequential(ray_start_regular):
-    ray.worker._global_node.kill_raylet()
-    ray.worker._global_node.kill_plasma_store()
-    ray.worker._global_node.kill_log_monitor()
-    ray.worker._global_node.kill_monitor()
-    ray.worker._global_node.kill_raylet_monitor()
-
-    # If the driver can reach the tearDown method, then it is still alive.
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_driver_lives_parallel(ray_start_regular):
-    all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
-    assert len(process_infos) == 5
-
-    # Kill all the components in parallel.
-    for process_info in process_infos:
-        process_info.process.terminate()
-
-    time.sleep(0.1)
-    for process_info in process_infos:
-        process_info.process.kill()
-
-    for process_info in process_infos:
-        process_info.process.wait()
-
-    # If the driver can reach the tearDown method, then it is still alive.
 
 
 if __name__ == "__main__":

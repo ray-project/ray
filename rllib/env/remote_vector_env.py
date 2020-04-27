@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 import ray
@@ -89,7 +85,7 @@ class RemoteVectorEnv(BaseEnv):
 
 
 @ray.remote(num_cpus=0)
-class _RemoteMultiAgentEnv(object):
+class _RemoteMultiAgentEnv:
     """Wrapper class for making a multi-agent env a remote actor."""
 
     def __init__(self, make_env, i):
@@ -108,7 +104,7 @@ class _RemoteMultiAgentEnv(object):
 
 
 @ray.remote(num_cpus=0)
-class _RemoteSingleAgentEnv(object):
+class _RemoteSingleAgentEnv:
     """Wrapper class for making a gym env a remote actor."""
 
     def __init__(self, make_env, i):

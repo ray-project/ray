@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -22,11 +18,14 @@ def reduce_mean_ignore_inf(x, axis):
         tf.cast(mask, tf.float32), axis))
 
 
-def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
+def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
     """Minimized `objective` using `optimizer` w.r.t. variables in
     `var_list` while ensure the norm of the gradients for each
     variable is clipped to `clip_val`
     """
+    # Accidentally passing values < 0.0 will break all gradients.
+    assert clip_val > 0.0, clip_val
+
     gradients = optimizer.compute_gradients(objective, var_list=var_list)
     for i, (grad, var) in enumerate(gradients):
         if grad is not None:

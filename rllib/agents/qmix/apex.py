@@ -1,9 +1,5 @@
 """Experimental: scalable Ape-X variant of QMIX"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
 from ray.rllib.agents.qmix.qmix import QMixTrainer, \
     DEFAULT_CONFIG as QMIX_CONFIG
@@ -25,7 +21,7 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
         "buffer_size": 2000000,
         "learning_starts": 50000,
         "train_batch_size": 512,
-        "sample_batch_size": 50,
+        "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,

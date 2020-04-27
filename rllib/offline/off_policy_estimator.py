@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -15,7 +11,7 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate",
 
 
 @DeveloperAPI
-class OffPolicyEstimator(object):
+class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI
@@ -61,19 +57,13 @@ class OffPolicyEstimator(object):
             if k.startswith("state_in_"):
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-        _, _, info = self.policy.compute_actions(
-            obs_batch=batch["obs"],
+        log_likelihoods = self.policy.compute_log_likelihoods(
+            actions=batch[SampleBatch.ACTIONS],
+            obs_batch=batch[SampleBatch.CUR_OBS],
             state_batches=[batch[k] for k in state_keys],
-            prev_action_batch=batch.data.get("prev_action"),
-            prev_reward_batch=batch.data.get("prev_reward"),
-            info_batch=batch.data.get("info"))
-        if "action_prob" not in info:
-            raise ValueError(
-                "Off-policy estimation is not possible unless the policy "
-                "returns action probabilities when computing actions (i.e., "
-                "the 'action_prob' key is output by the policy). You "
-                "can set `input_evaluation: []` to resolve this.")
-        return info["action_prob"]
+            prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS))
+        return log_likelihoods
 
     @DeveloperAPI
     def process(self, batch):
@@ -93,8 +83,8 @@ class OffPolicyEstimator(object):
                 "Off-policy estimation is not possible unless the inputs "
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
-                "`soft_q: True`. You can also set `input_evaluation: []` to "
-                "disable estimation.")
+                "`exploration_config: {type: 'SoftQ'}`. You can also set "
+                "`input_evaluation: []` to disable estimation.")
 
     @DeveloperAPI
     def get_metrics(self):

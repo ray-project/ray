@@ -1,14 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import numpy as np
 import random
 import unittest
 
 import ray
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -22,31 +18,37 @@ SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
 
 class TestExternalMultiAgentEnv(unittest.TestCase):
-    def testExternalMultiAgentEnvCompleteEpisodes(self):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_external_multi_agent_env_complete_episodes(self):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
             self.assertEqual(len(np.unique(batch["agent_index"])), agents)
 
-    def testExternalMultiAgentEnvTruncateEpisodes(self):
+    def test_external_multi_agent_env_truncate_episodes(self):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 160)
             self.assertEqual(len(np.unique(batch["agent_index"])), agents)
 
-    def testExternalMultiAgentEnvSample(self):
+    def test_external_multi_agent_env_sample(self):
         agents = 2
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
@@ -57,11 +59,11 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
-            batch_steps=50)
+            rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
 
-    def testTrainExternalMultiCartpoleManyPolicies(self):
+    def test_train_external_multi_cartpole_many_policies(self):
         n = 20
         single_env = gym.make("CartPole-v0")
         act_space = single_env.action_space
@@ -75,7 +77,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: MultiCartpole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
-            batch_steps=100)
+            rollout_fragment_length=100)
         optimizer = SyncSamplesOptimizer(WorkerSet._from_existing(ev))
         for i in range(100):
             optimizer.step()
@@ -89,5 +91,6 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init()
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

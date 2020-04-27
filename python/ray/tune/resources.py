@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 import json
@@ -23,7 +19,7 @@ class Resources(
         ])):
     """Ray resources required to schedule a trial.
 
-    Attributes:
+    Parameters:
         cpu (float): Number of CPUs to allocate to the trial.
         gpu (float): Number of GPUs to allocate to the trial.
         memory (float): Memory to reserve for the trial.

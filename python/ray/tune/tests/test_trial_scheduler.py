@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import json
 import random
@@ -10,8 +6,10 @@ import numpy as np
 import sys
 import tempfile
 import shutil
-import ray
+from unittest.mock import MagicMock
 
+import ray
+from ray import tune
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -24,11 +22,6 @@ from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
 _register_all()
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 def result(t, rew):
@@ -194,7 +187,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialExecutor(TrialExecutor):
-    def start_trial(self, trial, checkpoint_obj=None):
+    def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
         trial.status = Trial.RUNNING
@@ -204,11 +197,11 @@ class _MockTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.logger_running = False
 
-    def restore(self, trial, checkpoint=None):
+    def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK):
-        return trial.trainable_name
+    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
+        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -696,7 +689,7 @@ class BOHBSuite(unittest.TestCase):
 class _MockTrial(Trial):
     def __init__(self, i, config):
         self.trainable_name = "trial_{}".format(i)
-        self.trial_id = Trial.generate_id()
+        self.trial_id = str(i)
         self.config = config
         self.experiment_tag = "{}tag".format(i)
         self.trial_name_creator = None
@@ -719,28 +712,31 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                    explore=None,
                    perturbation_interval=10,
                    log_config=False,
+                   hyperparams=None,
+                   hyperparam_mutations=None,
                    step_once=True):
+        hyperparam_mutations = hyperparam_mutations or {
+            "float_factor": lambda: 100.0,
+            "int_factor": lambda: 10,
+            "id_factor": [100]
+        }
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
             perturbation_interval=perturbation_interval,
             resample_probability=resample_prob,
             quantile_fraction=0.25,
-            hyperparam_mutations={
-                "id_factor": [100],
-                "float_factor": lambda: 100.0,
-                "int_factor": lambda: 10,
-            },
+            hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
             log_config=log_config)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
-            trial = _MockTrial(
-                i, {
-                    "id_factor": i,
-                    "float_factor": 2.0,
-                    "const_factor": 3,
-                    "int_factor": 10
-                })
+            trial_hyperparams = hyperparams or {
+                "float_factor": 2.0,
+                "const_factor": 3,
+                "int_factor": 10,
+                "id_factor": i
+            }
+            trial = _MockTrial(i, trial_hyperparams)
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
             if step_once:
@@ -966,6 +962,37 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Expect call count to be 100 because we call explore 100 times
         self.assertEqual(custom_explore_fn.call_count, 100)
 
+    def testDictPerturbation(self):
+        pbt, runner = self.basicSetup(
+            resample_prob=1.0,
+            hyperparams={
+                "float_factor": 2.0,
+                "nest": {
+                    "nest_float": 3.0
+                },
+                "int_factor": 10,
+                "const_factor": 3
+            },
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "nest": {
+                    "nest_float": lambda: 101.0
+                },
+                "int_factor": lambda: 10,
+            })
+        trials = runner.get_trials()
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(20, -100)),
+            TrialScheduler.CONTINUE)
+        self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
+        self.assertEqual(trials[0].config["float_factor"], 100.0)
+        self.assertIsInstance(trials[0].config["float_factor"], float)
+        self.assertEqual(trials[0].config["int_factor"], 10)
+        self.assertIsInstance(trials[0].config["int_factor"], int)
+        self.assertEqual(trials[0].config["const_factor"], 3)
+        self.assertEqual(trials[0].config["nest"]["nest_float"], 101.0)
+        self.assertIsInstance(trials[0].config["nest"]["nest_float"], float)
+
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
@@ -1076,6 +1103,106 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
 
+class E2EPopulationBasedTestingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=4)
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def basicSetup(self,
+                   resample_prob=0.0,
+                   explore=None,
+                   perturbation_interval=10,
+                   log_config=False,
+                   hyperparams=None,
+                   hyperparam_mutations=None,
+                   step_once=True):
+        hyperparam_mutations = hyperparam_mutations or {
+            "float_factor": lambda: 100.0,
+            "int_factor": lambda: 10,
+            "id_factor": [100]
+        }
+        pbt = PopulationBasedTraining(
+            metric="mean_accuracy",
+            time_attr="training_iteration",
+            perturbation_interval=perturbation_interval,
+            resample_probability=resample_prob,
+            quantile_fraction=0.25,
+            hyperparam_mutations=hyperparam_mutations,
+            custom_explore_fn=explore,
+            log_config=log_config)
+        return pbt
+
+    def testCheckpointing(self):
+        pbt = self.basicSetup(perturbation_interval=2)
+
+        class train(tune.Trainable):
+            def _train(self):
+                return {"mean_accuracy": self.training_iteration}
+
+            def _save(self, path):
+                checkpoint = path + "/checkpoint"
+                with open(checkpoint, "w") as f:
+                    f.write("OK")
+                return checkpoint
+
+        trial_hyperparams = {
+            "float_factor": 2.0,
+            "const_factor": 3,
+            "int_factor": 10,
+            "id_factor": 0
+        }
+
+        analysis = tune.run(
+            train,
+            num_samples=3,
+            scheduler=pbt,
+            checkpoint_freq=3,
+            config=trial_hyperparams,
+            stop={"training_iteration": 30})
+
+        for trial in analysis.trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+    def testCheckpointDict(self):
+        pbt = self.basicSetup(perturbation_interval=2)
+
+        class train_dict(tune.Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1}
+
+            def _train(self):
+                return {"mean_accuracy": self.training_iteration}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        trial_hyperparams = {
+            "float_factor": 2.0,
+            "const_factor": 3,
+            "int_factor": 10,
+            "id_factor": 0
+        }
+
+        analysis = tune.run(
+            train_dict,
+            num_samples=3,
+            scheduler=pbt,
+            checkpoint_freq=3,
+            config=trial_hyperparams,
+            stop={"training_iteration": 30})
+
+        for trial in analysis.trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+
 class AsyncHyperBandSuite(unittest.TestCase):
     def setUp(self):
         ray.init()
@@ -1096,6 +1223,21 @@ class AsyncHyperBandSuite(unittest.TestCase):
         for i in range(5):
             self.assertEqual(
                 scheduler.on_trial_result(None, t2, result(i, 450)),
+                TrialScheduler.CONTINUE)
+        return t1, t2
+
+    def nanSetup(self, scheduler):
+        t1 = Trial("PPO")  # mean is 450, max 450, t_max=10
+        t2 = Trial("PPO")  # mean is nan, max nan, t_max=10
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
+        for i in range(10):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t1, result(i, 450)),
+                TrialScheduler.CONTINUE)
+        for i in range(10):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t2, result(i, np.nan)),
                 TrialScheduler.CONTINUE)
         return t1, t2
 
@@ -1153,6 +1295,21 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
 
+    def testAsyncHBNanPercentile(self):
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=1, max_t=10, reduction_factor=2, brackets=1)
+        t1, t2 = self.nanSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, 450))
+        scheduler.on_trial_complete(None, t2, result(10, np.nan))
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(1, 260)),
+            TrialScheduler.STOP)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.STOP)
+
     def _test_metrics(self, result_func, metric, mode):
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
@@ -1195,5 +1352,4 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

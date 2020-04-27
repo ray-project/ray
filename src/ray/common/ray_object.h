@@ -1,7 +1,23 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_COMMON_RAY_OBJECT_H
 #define RAY_COMMON_RAY_OBJECT_H
 
+#include "absl/types/optional.h"
 #include "ray/common/buffer.h"
+#include "ray/common/id.h"
 #include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
 
@@ -21,10 +37,14 @@ class RayObject {
   ///
   /// \param[in] data Data of the ray object.
   /// \param[in] metadata Metadata of the ray object.
+  /// \param[in] nested_ids ObjectIDs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-            bool copy_data = false)
-      : data_(data), metadata_(metadata), has_data_copy_(copy_data) {
+            const std::vector<ObjectID> &nested_ids, bool copy_data = false)
+      : data_(data),
+        metadata_(metadata),
+        nested_ids_(nested_ids),
+        has_data_copy_(copy_data) {
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
@@ -45,10 +65,13 @@ class RayObject {
   RayObject(rpc::ErrorType error_type);
 
   /// Return the data of the ray object.
-  const std::shared_ptr<Buffer> &GetData() const { return data_; };
+  const std::shared_ptr<Buffer> &GetData() const { return data_; }
 
   /// Return the metadata of the ray object.
-  const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; };
+  const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
+
+  /// Return the object IDs that were serialized in data.
+  const std::vector<ObjectID> &GetNestedIds() const { return nested_ids_; }
 
   uint64_t GetSize() const {
     uint64_t size = 0;
@@ -73,6 +96,7 @@ class RayObject {
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
+  const std::vector<ObjectID> nested_ids_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
 };

@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package ray.streaming.proto;
+
+import "streaming/src/protobuf/streaming.proto";
+
+option java_package = "io.ray.streaming.runtime.generated";
+
+// Streaming execution graph
+message ExecutionGraph {
+  // A parallel operation consisting of multiple execution tasks
+  message ExecutionNode {
+    int32 node_id = 1;
+    int32 parallelism = 2;
+    NodeType node_type = 3;
+    Language language = 4;
+    // serialized user function
+    bytes function = 5;
+    repeated ExecutionTask execution_tasks = 6;
+    repeated ExecutionEdge input_edges = 7;
+    repeated ExecutionEdge output_edges = 8;
+  }
+
+  // execution edge
+  message ExecutionEdge {
+    // upstream execution node id
+    int32 src_node_id = 1;
+    // downstream execution node id
+    int32 target_node_id = 2;
+    // serialized partition between src/target node
+    bytes partition = 3;
+  }
+
+  // a parallel subtask of the execution
+  message ExecutionTask {
+    // unique execution task id
+    int32 task_id = 1;
+    // an ordered task index range from 0 to parallelism - 1
+    int32 task_index = 2;
+    // serialized actor handle
+    bytes worker_actor = 3;
+  }
+
+  // graph build time
+  uint64 build_time = 1;
+  repeated ExecutionNode execution_nodes = 2;
+}
+
+// Streaming worker context
+message WorkerContext {
+  // job name
+  string job_name = 1;
+  // unique execution task id
+  int32 task_id = 2;
+  // job config
+  map<string, string> conf = 3;
+  // execution graph
+  ExecutionGraph graph = 4;
+}

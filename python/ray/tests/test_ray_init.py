@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pytest
 import redis
@@ -18,7 +14,7 @@ def password():
     return random_bytes.encode("hex")  # Python 2
 
 
-class TestRedisPassword(object):
+class TestRedisPassword:
     @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")
@@ -61,6 +57,20 @@ class TestRedisPassword(object):
 
         object_id = f.remote()
         ray.get(object_id)
+
+    def test_redis_port(self, shutdown_only):
+        @ray.remote
+        def f():
+            return 1
+
+        info = ray.init(redis_port=1234, redis_password="testpassword")
+        address = info["redis_address"]
+        redis_ip, redis_port = address.split(":")
+        assert redis_port == "1234"
+
+        redis_client = redis.StrictRedis(
+            host=redis_ip, port=redis_port, password="testpassword")
+        assert redis_client.ping()
 
 
 if __name__ == "__main__":

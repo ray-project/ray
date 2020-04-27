@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import json
@@ -9,22 +5,49 @@ import os
 import traceback
 import time
 import datetime
+import grpc
+import socket
+import subprocess
+import sys
+from concurrent import futures
 
-try:
-    import psutil
-except ImportError:
-    print("The reporter requires psutil to run.")
-    import sys
-    sys.exit(1)
-
+import ray
+import psutil
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
+    def __init__(self):
+        pass
+
+    def GetProfilingStats(self, request, context):
+        pid = request.pid
+        duration = request.duration
+        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
+                                           "{}_profiling.txt".format(pid))
+        process = subprocess.Popen(
+            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
+            .format(profiling_file_path, pid, duration),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            profiling_stats = ""
+        else:
+            with open(profiling_file_path, "r") as f:
+                profiling_stats = f.read()
+        return reporter_pb2.GetProfilingStatsReply(
+            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
 
 def recursive_asdict(o):
@@ -49,14 +72,14 @@ def jsonify_asdict(o):
 
 
 def is_worker(cmdline):
-    return cmdline and cmdline[0].startswith("ray_")
+    return cmdline and cmdline[0].startswith("ray::")
 
 
 def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
-class Reporter(object):
+class Reporter:
     """A monitor process for monitoring Ray nodes.
 
     Attributes:
@@ -69,7 +92,7 @@ class Reporter(object):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = os.uname().nodename
+        self.hostname = socket.gethostname()
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -106,20 +129,32 @@ class Reporter(object):
 
     @staticmethod
     def get_disk_usage():
-        return {x: psutil.disk_usage(x) for x in ["/", "/tmp"]}
+        dirs = [
+            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
+            ray.utils.get_user_temp_dir(),
+        ]
+        return {x: psutil.disk_usage(x) for x in dirs}
 
     @staticmethod
     def get_workers():
         return [
             x.as_dict(attrs=[
-                "pid", "create_time", "cpu_percent", "cpu_times", "name",
-                "cmdline", "memory_info", "memory_full_info"
+                "pid",
+                "create_time",
+                "cpu_percent",
+                "cpu_times",
+                "cmdline",
+                "memory_info",
             ]) for x in psutil.process_iter(attrs=["cmdline"])
             if is_worker(x.info["cmdline"])
         ]
 
     def get_load_avg(self):
-        load = os.getloadavg()
+        if sys.platform == "win32":
+            cpu_percent = psutil.cpu_percent()
+            load = (cpu_percent, cpu_percent, cpu_percent)
+        else:
+            load = os.getloadavg()
         per_cpu_load = tuple((round(x / self.cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 
@@ -157,6 +192,14 @@ class Reporter(object):
         )
 
     def run(self):
+        """Publish the port."""
+        thread_pool = futures.ThreadPoolExecutor(max_workers=10)
+        server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
+        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
+            ReporterServer(), server)
+        port = server.add_insecure_port("[::]:0")
+        server.start()
+        self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
         """Run the reporter."""
         while True:
             try:

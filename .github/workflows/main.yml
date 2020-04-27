@@ -1,0 +1,55 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Useful info: https://help.github.com/en/articles/workflow-syntax-for-github-actions
+        include:
+          - name: ubuntu
+            os: ubuntu-16.04
+          - name: windows
+            os: windows-2019
+          - name: macos
+            os: macos-10.15
+    env:
+      PYTHON: 3.6
+    steps:
+    - name: Pre-checkout system configuration
+      # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
+      shell: bash -e -o pipefail -l {0}
+      run: |
+        # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
+        if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
+          echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
+        fi
+        git config --global core.symlinks true && git config --global core.autocrlf false
+        if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        # we need full history to diff against the original for linting etc.
+        fetch-depth: 0
+    - name: Run CI script
+      shell: bash -e -o pipefail -l {0}
+      env:
+        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        . ./ci/travis/ci.sh init
+        . ./ci/travis/ci.sh build
+    - name: Run Clang Include-What-You-Use
+      continue-on-error: true
+      if: runner.os == 'Linux'
+      shell: bash -e -o pipefail -l {0}
+      run: |
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
+        bazel build \
+          --keep_going \
+          --config=iwyu \
+          "//:*"

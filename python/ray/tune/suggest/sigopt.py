@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 import logging
@@ -34,27 +30,30 @@ class SigOptSearch(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        >>> space = [
-        >>>     {
-        >>>         'name': 'width',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': 0,
-        >>>             'max': 20
-        >>>         },
-        >>>     },
-        >>>     {
-        >>>         'name': 'height',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': -100,
-        >>>             'max': 100
-        >>>         },
-        >>>     },
-        >>> ]
-        >>> algo = SigOptSearch(
-        >>>     space, name="SigOpt Example Experiment",
-        >>>     max_concurrent=1, metric="mean_loss", mode="min")
+
+    .. code-block:: python
+
+        space = [
+            {
+                'name': 'width',
+                'type': 'int',
+                'bounds': {
+                    'min': 0,
+                    'max': 20
+                },
+            },
+            {
+                'name': 'height',
+                'type': 'int',
+                'bounds': {
+                    'min': -100,
+                    'max': 100
+                },
+            },
+        ]
+        algo = SigOptSearch(
+            space, name="SigOpt Example Experiment",
+            max_concurrent=1, metric="mean_loss", mode="min")
     """
 
     def __init__(self,
@@ -99,9 +98,9 @@ class SigOptSearch(SuggestionAlgorithm):
             parallel_bandwidth=self._max_concurrent,
         )
 
-        super(SigOptSearch, self).__init__(**kwargs)
+        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
 

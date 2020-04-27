@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
@@ -16,14 +30,12 @@
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/adapters/ae.h"
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 struct redisContext;
 struct redisAsyncContext;
-struct aeEventLoop;
 
 namespace ray {
 
@@ -50,12 +62,29 @@ class CallbackReply {
   ///
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
-  std::string ReadAsString() const;
+  const std::string &ReadAsString() const;
 
   /// Read this reply data as pub-sub data.
-  std::string ReadAsPubsubData() const;
+  const std::string &ReadAsPubsubData() const;
+
+  /// Read this reply data as a string array.
+  const std::vector<std::string> &ReadAsStringArray() const;
+
+  /// Read this reply data as a scan array.
+  ///
+  /// \param array The result array of scan.
+  /// \return size_t The next cursor for scan.
+  size_t ReadAsScanArray(std::vector<std::string> *array) const;
+
+  bool IsUnsubscribeCallback() const { return is_unsubscribe_callback_; }
 
  private:
+  /// Parse redis reply as string array or scan array.
+  void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
+
+  /// Parse redis reply as string array.
+  void ParseAsStringArray(redisReply *redis_reply);
+
   /// Flag indicating the type of reply this represents.
   int reply_type_;
 
@@ -65,9 +94,17 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STATUS.
   Status status_reply_;
 
-  /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
-  /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
+  /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
+  /// Represent the reply of StringArray or ScanArray.
+  std::vector<std::string> string_array_reply_;
+
+  bool is_unsubscribe_callback_ = false;
+
+  /// Represent the reply of SCanArray, means the next scan cursor for scan request.
+  size_t next_scan_cursor_reply_{0};
 };
 
 /// Every callback should take in a vector of the results from the Redis
@@ -91,19 +128,19 @@ class RedisCallbackManager {
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
-          io_service_(io_service) {}
+          io_service_(&io_service) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        io_service_.post([self, reply]() { self->callback_(std::move(reply)); });
+        io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
       }
     }
 
     RedisCallback callback_;
     bool is_subscription_;
     int64_t start_time_;
-    boost::asio::io_service &io_service_;
+    boost::asio::io_service *io_service_;
   };
 
   int64_t add(const RedisCallback &function, bool is_subscription,
@@ -135,6 +172,33 @@ class RedisContext {
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
 
+  /// Run an operation on some table key synchronously.
+  ///
+  /// \param command The command to run. This must match a registered Ray Redis
+  /// command. These are strings of the format "RAY.TABLE_*".
+  /// \param id The table key to run the operation at.
+  /// \param data The data to add to the table key, if any.
+  /// \param length The length of the data to be added, if data is provided.
+  /// \param prefix The prefix of table key.
+  /// \param pubsub_channel The channel that update operations to the table
+  /// should be published on.
+  /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
+  /// at which the data must be appended. For all other commands, set to
+  /// -1 for unused. If set, then data must be provided.
+  /// \return The reply from redis.
+  template <typename ID>
+  std::shared_ptr<CallbackReply> RunSync(const std::string &command, const ID &id,
+                                         const void *data, size_t length,
+                                         const TablePrefix prefix,
+                                         const TablePubsub pubsub_channel,
+                                         int log_length = -1);
+
+  /// Run an arbitrary Redis command synchronously.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return CallbackReply(The reply from redis).
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
+
   /// Run an operation on some table key.
   ///
   /// \param command The command to run. This must match a registered Ray Redis
@@ -142,8 +206,9 @@ class RedisContext {
   /// \param id The table key to run the operation at.
   /// \param data The data to add to the table key, if any.
   /// \param length The length of the data to be added, if data is provided.
-  /// \param prefix
-  /// \param pubsub_channel
+  /// \param prefix The prefix of table key.
+  /// \param pubsub_channel The channel that update operations to the table
+  /// should be published on.
   /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   /// at which the data must be appended. For all other commands, set to
@@ -158,8 +223,10 @@ class RedisContext {
   /// Run an arbitrary Redis command without a callback.
   ///
   /// \param args The vector of command args to pass to Redis.
+  /// \param redis_callback The Redis callback function.
   /// \return Status.
-  Status RunArgvAsync(const std::vector<std::string> &args);
+  Status RunArgvAsync(const std::vector<std::string> &args,
+                      const RedisCallback &redis_callback = nullptr);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
@@ -170,6 +237,30 @@ class RedisContext {
   /// \return Status.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
+
+  /// Subscribes the client to the given pattern.
+  ///
+  /// \param pattern The pattern of subscription channel.
+  /// \param redisCallback The callback function that the notification calls.
+  /// \param out_callback_index The output pointer to callback index.
+  /// \return Status.
+  Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
+                         int64_t *out_callback_index);
+
+  /// Unsubscribes the client from the given pattern.
+  ///
+  /// \param pattern The pattern of unsubscription channel.
+  /// \return Status.
+  Status PUnsubscribeAsync(const std::string &pattern);
+
+  /// Posts a message to the given channel.
+  ///
+  /// \param channel The channel for message publishing to redis.
+  /// \param message The message to be published to redis.
+  /// \param redisCallback The callback will be called when the message is published to
+  /// redis. \return Status.
+  Status PublishAsync(const std::string &channel, const std::string &message,
+                      const RedisCallback &redisCallback);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
@@ -185,6 +276,8 @@ class RedisContext {
     RAY_CHECK(async_redis_subscribe_context_);
     return *async_redis_subscribe_context_;
   }
+
+  boost::asio::io_service &io_service() { return io_service_; }
 
  private:
   boost::asio::io_service &io_service_;
@@ -225,6 +318,39 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
         pubsub_channel, id.Data(), id.Size());
   }
   return status;
+}
+
+template <typename ID>
+std::shared_ptr<CallbackReply> RedisContext::RunSync(
+    const std::string &command, const ID &id, const void *data, size_t length,
+    const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
+  RAY_CHECK(context_);
+  void *redis_reply = nullptr;
+  if (length > 0) {
+    if (log_length >= 0) {
+      std::string redis_command = command + " %d %d %b %b %d";
+      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                                 id.Data(), id.Size(), data, length, log_length);
+    } else {
+      std::string redis_command = command + " %d %d %b %b";
+      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                                 id.Data(), id.Size(), data, length);
+    }
+  } else {
+    RAY_CHECK(log_length == -1);
+    std::string redis_command = command + " %d %d %b";
+    redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                               id.Data(), id.Size());
+  }
+  if (redis_reply == nullptr) {
+    RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
+    return nullptr;
+  } else {
+    std::shared_ptr<CallbackReply> callback_reply =
+        std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
+    freeReplyObject(redis_reply);
+    return callback_reply;
+  }
 }
 
 }  // namespace gcs

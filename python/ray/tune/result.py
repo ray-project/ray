@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 # yapf: disable
@@ -68,6 +64,10 @@ DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.
 RESULT_DUPLICATE = "__duplicate__"
+
+# __trial_info__ is a magic keyword used internally to pass trial_info
+# to the Trainable via the constructor.
+TRIAL_INFO = "__trial_info__"
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TEST_TMPDIR")

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
 #define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
 
@@ -81,25 +95,25 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
   /// \param send_reply_callback Callback of the request
-  void HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle pull request from remote object manager
   ///
   /// \param request Pull request
   /// \param reply Reply
   /// \param send_reply_callback Callback of request
-  void HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle free objects request
   ///
   /// \param request Free objects request
   /// \param reply Reply
   /// \param send_reply_callback
-  void HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                rpc::FreeObjectsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+  void HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+                         rpc::FreeObjectsReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Send object to remote object manager
   ///
@@ -152,13 +166,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         const ObjectManagerConfig &config,
+                         const ClientID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
-
-  /// Register GCS-related functionality.
-  void RegisterGcs();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -189,7 +200,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id);
+  ray::Status Pull(const ObjectID &object_id) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -207,7 +218,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The ObjectID.
   /// \return Void.
-  void CancelPull(const ObjectID &object_id);
+  void CancelPull(const ObjectID &object_id) override;
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -238,7 +249,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \return All profiling information that has accumulated since the last call
   /// to this method.
-  rpc::ProfileTableData GetAndResetProfilingInfo();
+  std::shared_ptr<rpc::ProfileTableData> GetAndResetProfilingInfo();
 
   /// Returns debug string for class.
   ///
@@ -268,6 +279,8 @@ class ObjectManager : public ObjectManagerInterface,
           callback(callback) {}
     /// The period of time to wait before invoking the callback.
     int64_t timeout_ms;
+    /// Whether to wait for objects to become local before returning.
+    bool wait_local;
     /// The timer used whenever wait_ms > 0.
     std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when WaitCallback is complete.
@@ -276,7 +289,8 @@ class ObjectManager : public ObjectManagerInterface,
     std::vector<ObjectID> object_id_order;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
-    /// The objects that have been found.
+    /// The objects that have been found. Note that if wait_local is true, then
+    /// this will only contain objects that are in local_objects_ too.
     std::unordered_set<ObjectID> found;
     /// Objects that have been requested either by Lookup or Subscribe.
     std::unordered_set<ObjectID> requested_objects;
@@ -355,7 +369,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
-  ClientID client_id_;
+  ClientID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;

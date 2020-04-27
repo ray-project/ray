@@ -9,10 +9,6 @@ Configurations you can try:
 See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 from gym.spaces import Tuple, MultiDiscrete, Dict, Discrete
 import numpy as np
@@ -26,6 +22,7 @@ from ray.rllib.agents.qmix.qmix_policy import ENV_STATE
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=50000)
 parser.add_argument("--run", type=str, default="PG")
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class TwoStepGame(MultiAgentEnv):
@@ -185,7 +182,7 @@ if __name__ == "__main__":
         group = False
     elif args.run == "QMIX":
         config = {
-            "sample_batch_size": 4,
+            "rollout_fragment_length": 4,
             "train_batch_size": 32,
             "exploration_fraction": .4,
             "exploration_final_eps": 0.0,
@@ -208,7 +205,7 @@ if __name__ == "__main__":
             "buffer_size": 1000,
             "learning_starts": 1000,
             "train_batch_size": 128,
-            "sample_batch_size": 32,
+            "rollout_fragment_length": 32,
             "target_network_update_freq": 500,
             "timesteps_per_iteration": 1000,
             "env_config": {
@@ -221,7 +218,7 @@ if __name__ == "__main__":
         config = {}
         group = False
 
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
     tune.run(
         args.run,
         stop={

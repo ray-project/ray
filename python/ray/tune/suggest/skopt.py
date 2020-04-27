@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pickle
 try:
@@ -126,9 +122,10 @@ class SkOptSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
-        super(SkOptSearch, self).__init__(**kwargs)
+        super(SkOptSearch, self).__init__(
+            metric=self._metric, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
         if self._initial_points:

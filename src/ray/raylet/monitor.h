@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RAYLET_MONITOR_H
 #define RAY_RAYLET_MONITOR_H
 
@@ -22,8 +36,8 @@ class Monitor {
   /// \param io_service The event loop to run the monitor on.
   /// \param redis_address The GCS Redis address to connect to.
   /// \param redis_port The GCS Redis port to connect to.
-  Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-          int redis_port, const std::string &redis_password);
+  Monitor(boost::asio::io_service &io_service,
+          const gcs::GcsClientOptions &gcs_client_options);
 
   /// Start the monitor. Listen for heartbeats from Raylets and mark Raylets
   /// that do not send a heartbeat within a given period as dead.
@@ -43,7 +57,7 @@ class Monitor {
 
  private:
   /// A client to the GCS, through which heartbeats are received.
-  gcs::RedisGcsClient gcs_client_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
   /// The number of heartbeats that can be missed before a client is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
@@ -51,8 +65,8 @@ class Monitor {
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   std::unordered_map<ClientID, int64_t> heartbeats_;
-  /// The Raylets that have been marked as dead in the client table.
-  std::unordered_set<ClientID> dead_clients_;
+  /// The Raylets that have been marked as dead in gcs.
+  std::unordered_set<ClientID> dead_nodes_;
   /// A buffer containing heartbeats received from node managers in the last tick.
   std::unordered_map<ClientID, HeartbeatTableData> heartbeat_buffer_;
 };

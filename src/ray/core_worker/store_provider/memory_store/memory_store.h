@@ -12,6 +12,12 @@
 
 namespace ray {
 
+struct MemoryStoreStats {
+  int32_t num_in_plasma = 0;
+  int32_t num_local_objects = 0;
+  int64_t used_object_store_memory = 0;
+};
+
 class GetRequest;
 class CoreWorkerMemoryStore;
 
@@ -29,15 +35,17 @@ class CoreWorkerMemoryStore {
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
-      std::shared_ptr<RayletClient> raylet_client = nullptr);
+      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      std::function<Status()> check_signals = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  /// \return Whether the object was put into the memory store. If false, then
+  /// this is because the object was promoted to and stored in plasma instead.
+  bool Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -104,8 +112,10 @@ class CoreWorkerMemoryStore {
   /// Check whether this store contains the object.
   ///
   /// \param[in] object_id The object to check.
+  /// \param[out] in_plasma Set to true if the object was spilled to plasma.
+  /// Will only be true if the store contains the object.
   /// \return Whether the store has the object.
-  bool Contains(const ObjectID &object_id);
+  bool Contains(const ObjectID &object_id, bool *in_plasma);
 
   /// Returns the number of objects in this store.
   ///
@@ -115,7 +125,25 @@ class CoreWorkerMemoryStore {
     return objects_.size();
   }
 
+  /// Returns stats data of memory usage.
+  ///
+  /// \return number of local objects and used memory size.
+  MemoryStoreStats GetMemoryStoreStatisticalData();
+
+  /// Returns the memory usage of this store.
+  ///
+  /// \return Total size of objects in the store.
+  uint64_t UsedMemory();
+
  private:
+  /// See the public version of `Get` for meaning of the other arguments.
+  /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
+  /// is an exception.
+  Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
+                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
+                 std::vector<std::shared_ptr<RayObject>> *results,
+                 bool abort_if_any_object_is_exception);
+
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
 
@@ -124,10 +152,10 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Set of objects that should be promoted to plasma once available.
   absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
@@ -143,6 +171,9 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
+
+  /// Function passed in to be called to check for signals (e.g., Ctrl-C).
+  std::function<Status()> check_signals_;
 };
 
 }  // namespace ray

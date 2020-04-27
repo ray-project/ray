@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import dis
 import hashlib
 import importlib
@@ -21,10 +17,11 @@ import ray
 from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
+from ray._raylet import PythonFunctionDescriptor
 from ray.utils import (
-    binary_to_hex,
     is_function_or_method,
     is_class_method,
+    is_static_method,
     check_oversized_pickle,
     decode,
     ensure_str,
@@ -39,227 +36,7 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-class FunctionDescriptor(object):
-    """A class used to describe a python function.
-
-    Attributes:
-        module_name: the module name that the function belongs to.
-        class_name: the class name that the function belongs to if exists.
-            It could be empty is the function is not a class method.
-        function_name: the function name of the function.
-        function_hash: the hash code of the function source code if the
-            function code is available.
-        function_id: the function id calculated from this descriptor.
-        is_for_driver_task: whether this descriptor is for driver task.
-    """
-
-    def __init__(self,
-                 module_name,
-                 function_name,
-                 class_name="",
-                 function_source_hash=b""):
-        self._module_name = module_name
-        self._class_name = class_name
-        self._function_name = function_name
-        self._function_source_hash = function_source_hash
-        self._function_id = self._get_function_id()
-
-    def __repr__(self):
-        return ("FunctionDescriptor:" + self._module_name + "." +
-                self._class_name + "." + self._function_name + "." +
-                binary_to_hex(self._function_source_hash))
-
-    @classmethod
-    def from_bytes_list(cls, function_descriptor_list):
-        """Create a FunctionDescriptor instance from list of bytes.
-
-        This function is used to create the function descriptor from
-        backend data.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            function_descriptor_list: list of bytes to represent the
-                function descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created from the bytes list.
-        """
-        assert isinstance(function_descriptor_list, list)
-        if len(function_descriptor_list) == 0:
-            # This is a function descriptor of driver task.
-            return FunctionDescriptor.for_driver_task()
-        elif (len(function_descriptor_list) == 3
-              or len(function_descriptor_list) == 4):
-            module_name = ensure_str(function_descriptor_list[0])
-            class_name = ensure_str(function_descriptor_list[1])
-            function_name = ensure_str(function_descriptor_list[2])
-            if len(function_descriptor_list) == 4:
-                return cls(module_name, function_name, class_name,
-                           function_descriptor_list[3])
-            else:
-                return cls(module_name, function_name, class_name)
-        else:
-            raise Exception(
-                "Invalid input for FunctionDescriptor.from_bytes_list")
-
-    @classmethod
-    def from_function(cls, function, pickled_function):
-        """Create a FunctionDescriptor from a function instance.
-
-        This function is used to create the function descriptor from
-        a python function. If a function is a class function, it should
-        not be used by this function.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            function: the python function used to create the function
-                descriptor.
-            pickled_function: This is factored in to ensure that any
-                modifications to the function result in a different function
-                descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created according to the function.
-        """
-        module_name = function.__module__
-        function_name = function.__name__
-        class_name = ""
-
-        pickled_function_hash = hashlib.sha1(pickled_function).digest()
-
-        return cls(module_name, function_name, class_name,
-                   pickled_function_hash)
-
-    @classmethod
-    def from_class(cls, target_class):
-        """Create a FunctionDescriptor from a class.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            target_class: the python class used to create the function
-                descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created according to the class.
-        """
-        module_name = target_class.__module__
-        class_name = target_class.__name__
-        return cls(module_name, "__init__", class_name)
-
-    @classmethod
-    def for_driver_task(cls):
-        """Create a FunctionDescriptor instance for a driver task."""
-        return cls("", "", "", b"")
-
-    @property
-    def is_for_driver_task(self):
-        """See whether this function descriptor is for a driver or not.
-
-        Returns:
-            True if this function descriptor is for driver tasks.
-        """
-        return all(
-            len(x) == 0
-            for x in [self.module_name, self.class_name, self.function_name])
-
-    @property
-    def module_name(self):
-        """Get the module name of current function descriptor.
-
-        Returns:
-            The module name of the function descriptor.
-        """
-        return self._module_name
-
-    @property
-    def class_name(self):
-        """Get the class name of current function descriptor.
-
-        Returns:
-            The class name of the function descriptor. It could be
-                empty if the function is not a class method.
-        """
-        return self._class_name
-
-    @property
-    def function_name(self):
-        """Get the function name of current function descriptor.
-
-        Returns:
-            The function name of the function descriptor.
-        """
-        return self._function_name
-
-    @property
-    def function_hash(self):
-        """Get the hash code of the function source code.
-
-        Returns:
-            The bytes with length of ray_constants.ID_SIZE if the source
-                code is available. Otherwise, the bytes length will be 0.
-        """
-        return self._function_source_hash
-
-    @property
-    def function_id(self):
-        """Get the function id calculated from this descriptor.
-
-        Returns:
-            The value of ray.ObjectID that represents the function id.
-        """
-        return self._function_id
-
-    def _get_function_id(self):
-        """Calculate the function id of current function descriptor.
-
-        This function id is calculated from all the fields of function
-        descriptor.
-
-        Returns:
-            ray.ObjectID to represent the function descriptor.
-        """
-        if self.is_for_driver_task:
-            return ray.FunctionID.nil()
-        function_id_hash = hashlib.sha1()
-        # Include the function module and name in the hash.
-        function_id_hash.update(self.module_name.encode("ascii"))
-        function_id_hash.update(self.function_name.encode("ascii"))
-        function_id_hash.update(self.class_name.encode("ascii"))
-        function_id_hash.update(self._function_source_hash)
-        # Compute the function ID.
-        function_id = function_id_hash.digest()
-        return ray.FunctionID(function_id)
-
-    def get_function_descriptor_list(self):
-        """Return a list of bytes representing the function descriptor.
-
-        This function is used to pass this function descriptor to backend.
-
-        Returns:
-            A list of bytes.
-        """
-        descriptor_list = []
-        if self.is_for_driver_task:
-            # Driver task returns an empty list.
-            return descriptor_list
-        else:
-            descriptor_list.append(self.module_name.encode("ascii"))
-            descriptor_list.append(self.class_name.encode("ascii"))
-            descriptor_list.append(self.function_name.encode("ascii"))
-            if len(self._function_source_hash) != 0:
-                descriptor_list.append(self._function_source_hash)
-            return descriptor_list
-
-    def is_actor_method(self):
-        """Wether this function descriptor is an actor method.
-
-        Returns:
-            True if it's an actor method, False if it's a normal function.
-        """
-        return len(self._class_name) > 0
-
-
-class FunctionActorManager(object):
+class FunctionActorManager:
     """A class used to export/load remote functions and actors.
 
     Attributes:
@@ -292,7 +69,14 @@ class FunctionActorManager(object):
         # these types.
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
-        self.lock = threading.Lock()
+        # Deserialize an ActorHandle will call load_actor_class(). If a
+        # function closure captured an ActorHandle, the deserialization of the
+        # function will be:
+        #     import_thread.py
+        #         -> fetch_and_register_remote_function (acquire lock)
+        #         -> _load_actor_class_from_gcs (acquire lock, too)
+        # So, the lock should be a reentrant lock.
+        self.lock = threading.RLock()
         self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
@@ -326,17 +110,14 @@ class FunctionActorManager(object):
                 unnecessarily or fail to give warnings, but the application's
                 behavior won't change.
         """
-        if sys.version_info[0] >= 3:
-            import io
-            string_file = io.StringIO()
-            if sys.version_info[1] >= 7:
-                dis.dis(function_or_class, file=string_file, depth=2)
-            else:
-                dis.dis(function_or_class, file=string_file)
-            collision_identifier = (
-                function_or_class.__name__ + ":" + string_file.getvalue())
+        import io
+        string_file = io.StringIO()
+        if sys.version_info[1] >= 7:
+            dis.dis(function_or_class, file=string_file, depth=2)
         else:
-            collision_identifier = function_or_class.__name__
+            dis.dis(function_or_class, file=string_file)
+        collision_identifier = (
+            function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("ascii")).digest()
@@ -347,8 +128,6 @@ class FunctionActorManager(object):
         Args:
             remote_function: the RemoteFunction object.
         """
-        if self._worker.mode == ray.worker.LOCAL_MODE:
-            return
         if self._worker.load_code_from_local:
             return
 
@@ -377,36 +156,37 @@ class FunctionActorManager(object):
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         (job_id_str, function_id_str, function_name, serialized_function,
-         num_return_vals, module, resources,
-         max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "function_name", "function",
-             "num_return_vals", "module", "resources", "max_calls"
-         ])
+         module, max_calls) = self._worker.redis_client.hmget(
+             key, [
+                 "job_id", "function_id", "function_name", "function",
+                 "module", "max_calls"
+             ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
 
-        # This is a placeholder in case the function can't be unpickled. This
-        # will be overwritten if the function is successfully registered.
-        def f():
-            raise Exception("This function was not imported properly.")
-
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
         # the temporary function above before the real function is ready.
         with self.lock:
-            self._function_execution_info[job_id][function_id] = (
-                FunctionExecutionInfo(
-                    function=f,
-                    function_name=function_name,
-                    max_calls=max_calls))
             self._num_task_executions[job_id][function_id] = 0
 
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
+
+                def f(*args, **kwargs):
+                    raise RuntimeError(
+                        "This function was not imported properly.")
+
+                # Use a placeholder method when function pickled failed
+                self._function_execution_info[job_id][function_id] = (
+                    FunctionExecutionInfo(
+                        function=f,
+                        function_name=function_name,
+                        max_calls=max_calls))
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -476,7 +256,7 @@ class FunctionActorManager(object):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
         if (job_id in self._function_execution_info
-                and function_id in self._function_execution_info[function_id]):
+                and function_id in self._function_execution_info[job_id]):
             return
         module_name, function_name = (
             function_descriptor.module_name,
@@ -493,9 +273,8 @@ class FunctionActorManager(object):
                 ))
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
-            logger.exception(
-                "Failed to load function %s.".format(function_name))
-            raise Exception(
+            logger.exception("Failed to load function %s.", function_name)
+            raise RuntimeError(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
 
@@ -557,24 +336,25 @@ class FunctionActorManager(object):
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names):
+    def export_actor_class(self, Class, actor_creation_function_descriptor,
+                           actor_method_names):
         if self._worker.load_code_from_local:
             return
-        function_descriptor = FunctionDescriptor.from_class(Class)
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
         #    finish before the task finished, and still uses Ray API
         #    after that.
         assert not self._worker.current_job_id.is_nil(), (
-            "You might have started a background thread in a non-actor task, "
-            "please make sure the thread finishes before the task finishes.")
+            "You might have started a background thread in a non-actor "
+            "task, please make sure the thread finishes before the "
+            "task finishes.")
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": Class.__name__,
-            "module": Class.__module__,
+            "class_name": actor_creation_function_descriptor.class_name,
+            "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
@@ -590,17 +370,18 @@ class FunctionActorManager(object):
         # within tasks. I tried to disable this, but it may be necessary
         # because of https://github.com/ray-project/ray/issues/1146.
 
-    def load_actor_class(self, job_id, function_descriptor):
+    def load_actor_class(self, job_id, actor_creation_function_descriptor):
         """Load the actor class.
 
         Args:
             job_id: job ID of the actor.
-            function_descriptor: Function descriptor of the actor constructor.
+            actor_creation_function_descriptor: Function descriptor of
+                the actor constructor.
 
         Returns:
             The actor class.
         """
-        function_id = function_descriptor.function_id
+        function_id = actor_creation_function_descriptor.function_id
         # Check if the actor class already exists in the cache.
         actor_class = self._loaded_actor_classes.get(function_id, None)
         if actor_class is None:
@@ -608,23 +389,32 @@ class FunctionActorManager(object):
             if self._worker.load_code_from_local:
                 job_id = ray.JobID.nil()
                 # Load actor class from local code.
-                actor_class = self._load_actor_from_local(
-                    job_id, function_descriptor)
+                actor_class = self._load_actor_class_from_local(
+                    job_id, actor_creation_function_descriptor)
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
-                    job_id, function_descriptor)
+                    job_id, actor_creation_function_descriptor)
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
             # Generate execution info for the methods of this actor class.
-            module_name = function_descriptor.module_name
-            actor_class_name = function_descriptor.class_name
+            module_name = actor_creation_function_descriptor.module_name
+            actor_class_name = actor_creation_function_descriptor.class_name
             actor_methods = inspect.getmembers(
                 actor_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                method_descriptor = FunctionDescriptor(
-                    module_name, actor_method_name, actor_class_name)
+                # Actor creation function descriptor use a unique function
+                # hash to solve actor name conflict. When constructing an
+                # actor, the actor creation function descriptor will be the
+                # key to find __init__ method execution info. So, here we
+                # use actor creation function descriptor as method descriptor
+                # for generating __init__ method execution info.
+                if actor_method_name == "__init__":
+                    method_descriptor = actor_creation_function_descriptor
+                else:
+                    method_descriptor = PythonFunctionDescriptor(
+                        module_name, actor_method_name, actor_class_name)
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
                     actor_method_name,
@@ -641,11 +431,13 @@ class FunctionActorManager(object):
             self._num_task_executions[job_id][function_id] = 0
         return actor_class
 
-    def _load_actor_from_local(self, job_id, function_descriptor):
+    def _load_actor_class_from_local(self, job_id,
+                                     actor_creation_function_descriptor):
         """Load actor class from local code."""
         assert isinstance(job_id, ray.JobID)
-        module_name, class_name = (function_descriptor.module_name,
-                                   function_descriptor.class_name)
+        module_name, class_name = (
+            actor_creation_function_descriptor.module_name,
+            actor_creation_function_descriptor.class_name)
         try:
             module = importlib.import_module(module_name)
             actor_class = getattr(module, class_name)
@@ -654,18 +446,17 @@ class FunctionActorManager(object):
             else:
                 return actor_class
         except Exception:
-            logger.exception(
-                "Failed to load actor_class %s.".format(class_name))
-            raise Exception(
+            logger.exception("Failed to load actor_class %s.", class_name)
+            raise RuntimeError(
                 "Actor {} failed to be imported from local code.".format(
                     class_name))
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
-        class TemporaryActor(object):
+        class TemporaryActor:
             pass
 
-        def temporary_actor_method(*xs):
-            raise Exception(
+        def temporary_actor_method(*args, **kwargs):
+            raise RuntimeError(
                 "The actor with name {} failed to be imported, "
                 "and so cannot execute this method.".format(actor_class_name))
 
@@ -674,10 +465,11 @@ class FunctionActorManager(object):
 
         return TemporaryActor
 
-    def _load_actor_class_from_gcs(self, job_id, function_descriptor):
+    def _load_actor_class_from_gcs(self, job_id,
+                                   actor_creation_function_descriptor):
         """Load actor class from GCS."""
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
@@ -701,8 +493,7 @@ class FunctionActorManager(object):
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.exception(
-                "Failed to load actor class %s.".format(class_name))
+            logger.exception("Failed to load actor class %s.", class_name)
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
@@ -760,7 +551,9 @@ class FunctionActorManager(object):
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                if is_class_method(method):
+                is_bound = (is_class_method(method)
+                            or is_static_method(type(actor), method_name))
+                if is_bound:
                     method_returns = method(*args, **kwargs)
                 else:
                     method_returns = method(actor, *args, **kwargs)
@@ -821,8 +614,9 @@ class FunctionActorManager(object):
         if actor.should_checkpoint(checkpoint_context):
             try:
                 now = int(1000 * time.time())
-                checkpoint_id = (self._worker.raylet_client.
-                                 prepare_actor_checkpoint(actor_id))
+                checkpoint_id = (
+                    self._worker.core_worker.prepare_actor_checkpoint(actor_id)
+                )
                 checkpoint_info.checkpoint_ids.append(checkpoint_id)
                 actor.save_checkpoint(actor_id, checkpoint_id)
                 if (len(checkpoint_info.checkpoint_ids) >
@@ -869,7 +663,7 @@ class FunctionActorManager(object):
                                for checkpoint in checkpoints), msg
                     # Notify raylet that this actor has been resumed from
                     # a checkpoint.
-                    (self._worker.raylet_client.
+                    (self._worker.core_worker.
                      notify_actor_resumed_from_checkpoint(
                          actor_id, checkpoint_id))
         except Exception:

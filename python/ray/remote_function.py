@@ -1,29 +1,29 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
 import logging
 from functools import wraps
 
 from ray import cloudpickle as pickle
-from ray.function_manager import FunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
+from ray import cross_language, Language
 import ray.signature
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
 DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
+# Normal tasks may be retried on failure this many times.
+# TODO(swang): Allow this to be set globally for an application.
+DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
 
 logger = logging.getLogger(__name__)
 
 
-class RemoteFunction(object):
+class RemoteFunction:
     """A remote function.
 
     This is a decorated function. It can be used to spawn tasks.
 
     Attributes:
+        _language: The target language.
         _function: The original function.
         _function_descriptor: The function descriptor. This is not defined
             until the remote function is first invoked because that is when the
@@ -58,11 +58,15 @@ class RemoteFunction(object):
             different workers.
     """
 
-    def __init__(self, function, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, num_return_vals, max_calls):
+    def __init__(self, language, function, function_descriptor, num_cpus,
+                 num_gpus, memory, object_store_memory, resources,
+                 num_return_vals, max_calls, max_retries):
+        self._language = language
         self._function = function
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
+        self._function_descriptor = function_descriptor
+        self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
@@ -76,23 +80,24 @@ class RemoteFunction(object):
                                  num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
+        self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
+                             if max_retries is None else max_retries)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
-
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
+
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
-        self.direct_call_enabled = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Remote functions cannot be called directly. Instead "
+        raise TypeError("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
 
@@ -127,7 +132,7 @@ class RemoteFunction(object):
 
         func_cls = self
 
-        class FuncWrapper(object):
+        class FuncWrapper:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 
@@ -142,14 +147,17 @@ class RemoteFunction(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                max_retries=None):
         """Submit the remote function for execution."""
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
-        if self._last_export_session_and_job != worker.current_session_and_job:
+        if not self._is_cross_language and \
+                self._last_export_session_and_job != \
+                worker.current_session_and_job:
             # There is an interesting question here. If the remote function is
             # used by a subsequent driver (in the same script), should the
             # second driver pickle the function again? If yes, then the remote
@@ -161,10 +169,8 @@ class RemoteFunction(object):
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
 
-            self._function_descriptor = FunctionDescriptor.from_function(
+            self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._pickled_function)
-            self._function_descriptor_list = (
-                self._function_descriptor.get_function_descriptor_list())
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -174,8 +180,10 @@ class RemoteFunction(object):
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
-        if is_direct_call is None:
-            is_direct_call = self.direct_call_enabled
+        if is_direct_call is not None and not is_direct_call:
+            raise ValueError("Non-direct call tasks are no longer supported.")
+        if max_retries is None:
+            max_retries = self._max_retries
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -183,20 +191,21 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            if not args and not kwargs and not self._function_signature:
+            if self._is_cross_language:
+                list_args = cross_language.format_args(worker, args, kwargs)
+            elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
                 list_args = ray.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, args, kwargs,
-                    num_return_vals)
-            else:
-                object_ids = worker.core_worker.submit_task(
-                    self._function_descriptor_list, list_args, num_return_vals,
-                    is_direct_call, resources)
+                assert not self._is_cross_language, \
+                    "Cross language remote function " \
+                    "cannot be executed locally."
+            object_ids = worker.core_worker.submit_task(
+                self._language, self._function_descriptor, list_args,
+                num_return_vals, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 """This script allows you to develop RLlib without needing to compile Ray."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import click
 import os
@@ -18,7 +14,8 @@ def do_link(package, force=False, local_path=""):
         os.path.join(ray.__file__, "../{}".format(package)))
     local_home = os.path.abspath(
         os.path.join(__file__, local_path + "../{}".format(package)))
-    assert os.path.isdir(package_home), package_home
+    if not os.path.isdir(package_home):
+        print("{} does not exist. Continuing to link.".format(package_home))
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
             "This will replace:\n  {}\nwith a symlink to:\n  {}".format(
@@ -50,10 +47,12 @@ if __name__ == "__main__":
     do_link("internal", force=args.yes)
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
+    do_link("util", force=args.yes)
+    do_link("dashboard", force=args.yes)
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "
-          "https://ray.readthedocs.io/en/latest/installation.html, "
+          "https://docs.ray.io/en/latest/installation.html, "
           "and ensure you are up-to-date on the master branch on git).\n\n"
           "Note that you may need to delete the package symlinks when pip "
           "installing new Ray versions to prevent pip from overwriting files "

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_OBJECT_MANAGER_SERVER_H
 #define RAY_RPC_OBJECT_MANAGER_SERVER_H
 
@@ -10,6 +24,11 @@
 namespace ray {
 namespace rpc {
 
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
+
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
 class ObjectManagerServiceHandler {
@@ -21,15 +40,15 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePush(const PushRequest &request, PushReply *reply,
+                          SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePull(const PullRequest &request, PullReply *reply,
+                          SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
-                                        FreeObjectsReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
+                                 FreeObjectsReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.
@@ -48,35 +67,8 @@ class ObjectManagerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    // Initialize the factory for `Push` requests.
-    std::unique_ptr<ServerCallFactory> push_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  PushRequest, PushReply>(
-            service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
-            &ObjectManagerServiceHandler::HandlePushRequest, cq, main_service_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory),
-                                                          5);
-
-    // Initialize the factory for `Pull` requests.
-    std::unique_ptr<ServerCallFactory> pull_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  PullRequest, PullReply>(
-            service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
-            &ObjectManagerServiceHandler::HandlePullRequest, cq, main_service_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory),
-                                                          5);
-
-    // Initialize the factory for `FreeObjects` requests.
-    std::unique_ptr<ServerCallFactory> free_objects_call_factory(
-        new ServerCallFactoryImpl<ObjectManagerService, ObjectManagerServiceHandler,
-                                  FreeObjectsRequest, FreeObjectsReply>(
-            service_, &ObjectManagerService::AsyncService::RequestFreeObjects,
-            service_handler_, &ObjectManagerServiceHandler::HandleFreeObjectsRequest, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(free_objects_call_factory), 2);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
  private:

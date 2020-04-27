@@ -1,0 +1,6 @@
+{
+  "type": "ray.rllib.utils.tests.test_framework_agnostic_components.DummyComponent",
+  "prop_a": "some-value",
+  "prop_b": 2.0,
+  "some_other_kwarg": "this_is_a_component_from_json_file"
+}

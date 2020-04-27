@@ -1,11 +1,7 @@
 # This workload tests running APEX
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.tune import run_experiments
 
 num_redis_shards = 5
@@ -29,7 +25,8 @@ for i in range(num_nodes):
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory)
+        redis_max_memory=redis_max_memory,
+        webui_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
@@ -43,7 +40,7 @@ run_experiments({
             "num_gpus": 0,
             "buffer_size": 10000,
             "learning_starts": 0,
-            "sample_batch_size": 1,
+            "rollout_fragment_length": 1,
             "train_batch_size": 1,
             "min_iter_time_s": 10,
             "timesteps_per_iteration": 10,

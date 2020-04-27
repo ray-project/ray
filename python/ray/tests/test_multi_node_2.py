@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pytest
 import time
@@ -10,7 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_internal_config_map
+from ray.test_utils import generate_internal_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -60,15 +56,15 @@ def test_internal_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(address, None)
+    monitor = Monitor(
+        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
-    monitor._maybe_flush_gcs()
     return monitor
 
 
-def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
+def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     while True:
         monitor.process_messages()
         resource_usage = monitor.load_metrics.get_resource_usage()
@@ -118,32 +114,45 @@ def test_heartbeats_single(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 5
     monitor = setup_monitor(cluster.address)
     total_cpus = ray.state.cluster_resources()["CPU"]
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
 
     @ray.remote
-    def work(timeout):
-        time.sleep(timeout)
-        return True
+    def work(signal):
+        wait_signal = signal.wait.remote()
+        while True:
+            ready, not_ready = ray.wait([wait_signal], timeout=0)
+            if len(ready) == 1:
+                break
+            time.sleep(1)
 
-    work_handle = work.remote(timeout * 2)
+    signal = SignalActor.remote()
+
+    work_handle = work.remote(signal)
     verify_load_metrics(monitor, (1.0 / total_cpus, {
         "CPU": 1.0
     }, {
         "CPU": total_cpus
     }))
+
+    ray.get(signal.send.remote())
     ray.get(work_handle)
 
     @ray.remote
-    class Actor(object):
-        def work(self, timeout):
-            time.sleep(timeout)
-            return True
+    class Actor:
+        def work(self, signal):
+            wait_signal = signal.wait.remote()
+            while True:
+                ready, not_ready = ray.wait([wait_signal], timeout=0)
+                if len(ready) == 1:
+                    break
+                time.sleep(1)
+
+    signal = SignalActor.remote()
 
     test_actor = Actor.remote()
-    work_handle = test_actor.work.remote(timeout * 2)
+    work_handle = test_actor.work.remote(signal)
 
     verify_load_metrics(monitor, (1.0 / total_cpus, {
         "CPU": 1.0
@@ -151,44 +160,8 @@ def test_heartbeats_single(ray_start_cluster_head):
         "CPU": total_cpus
     }))
 
+    ray.get(signal.send.remote())
     ray.get(work_handle)
-
-
-@pytest.mark.flaky(reruns=4)
-def test_heartbeats_cluster(ray_start_cluster_head):
-    """Unit test for `Cluster.wait_for_nodes`.
-
-    Test proper metrics.
-    """
-    cluster = ray_start_cluster_head
-    timeout = 8
-    num_workers_nodes = 3
-    num_nodes_total = int(num_workers_nodes + 1)
-    [cluster.add_node() for i in range(num_workers_nodes)]
-    cluster.wait_for_nodes()
-    monitor = setup_monitor(cluster.address)
-
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
-
-    @ray.remote
-    class Actor(object):
-        def work(self, timeout):
-            time.sleep(timeout)
-            return True
-
-    test_actors = [Actor.remote() for i in range(num_nodes_total)]
-
-    work_handles = [actor.work.remote(timeout * 2) for actor in test_actors]
-
-    verify_load_metrics(monitor, (num_nodes_total, {
-        "CPU": num_nodes_total
-    }, {
-        "CPU": num_nodes_total
-    }))
-
-    ray.get(work_handles)
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
-    ray.shutdown()
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
@@ -217,7 +190,8 @@ def test_worker_plasma_store_failure(ray_start_cluster_head):
     cluster.wait_for_nodes()
     worker.kill_reporter()
     worker.kill_plasma_store()
-    worker.kill_reaper()
+    if ray_constants.PROCESS_TYPE_REAPER in worker.all_processes:
+        worker.kill_reaper()
     worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
 

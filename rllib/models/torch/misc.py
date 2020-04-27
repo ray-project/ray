@@ -1,11 +1,9 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-import torch
-import torch.nn as nn
+
+from ray.rllib.utils import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 def normc_initializer(std=1.0):
@@ -50,40 +48,35 @@ def valid_padding(in_size, filter_size, stride_size):
     return padding, output
 
 
-def _get_activation_fn(name):
-    activation = None
-    if name == "tanh":
-        activation = nn.Tanh
-    elif name == "relu":
-        activation = nn.ReLU
-    else:
-        raise ValueError("Unknown activation: {}".format(name))
-    return activation
-
-
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel,
-                 stride,
-                 padding,
-                 initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU,
-                 bias_init=0):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel,
+            stride,
+            padding,
+            # Defaulting these to nn.[..] will break soft torch import.
+            initializer="default",
+            activation_fn="default",
+            bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
             layers.append(nn.ZeroPad2d(padding))
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
+            if initializer == "default":
+                initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:
+            if activation_fn == "default":
+                activation_fn = nn.ReLU
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 
@@ -99,7 +92,7 @@ class SlimFC(nn.Module):
                  out_size,
                  initializer=None,
                  activation_fn=None,
-                 bias_init=0):
+                 bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size)

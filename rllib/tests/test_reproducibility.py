@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 
 import ray
@@ -12,7 +8,7 @@ import gym
 
 
 class TestReproducibility(unittest.TestCase):
-    def testReproducingTrajectory(self):
+    def test_reproducing_trajectory(self):
         class PickLargest(gym.Env):
             def __init__(self):
                 self.observation_space = gym.spaces.Box(
@@ -36,7 +32,11 @@ class TestReproducibility(unittest.TestCase):
             register_env("PickLargest", env_creator)
             agent = DQNTrainer(
                 env="PickLargest",
-                config={"seed": 666 if trial in [0, 1] else 999})
+                config={
+                    "seed": 666 if trial in [0, 1] else 999,
+                    "min_iter_time_s": 0,
+                    "timesteps_per_iteration": 100,
+                })
 
             trajectory = list()
             for _ in range(8):
@@ -65,4 +65,6 @@ class TestReproducibility(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

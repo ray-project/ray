@@ -20,6 +20,8 @@ import sys
 import types
 import weakref
 
+import numpy
+
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _is_global, _builtin_type,
@@ -50,7 +52,8 @@ def dump(obj, file, protocol=None, buffer_callback=None):
     Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
     compatibility with older versions of Python.
     """
-    CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback).dump(obj)
+    CloudPickler(file, protocol=protocol,
+                 buffer_callback=buffer_callback).dump(obj)
 
 
 def dumps(obj, protocol=None, buffer_callback=None):
@@ -64,7 +67,8 @@ def dumps(obj, protocol=None, buffer_callback=None):
     compatibility with older versions of Python.
     """
     with io.BytesIO() as file:
-        cp = CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback)
+        cp = CloudPickler(file, protocol=protocol,
+                          buffer_callback=buffer_callback)
         cp.dump(obj)
         return file.getvalue()
 
@@ -77,9 +81,9 @@ def _class_getnewargs(obj):
     if hasattr(obj, "__slots__"):
         type_kwargs["__slots__"] = obj.__slots__
 
-    __dict__ = obj.__dict__.get('__dict__', None)
+    __dict__ = obj.__dict__.get("__dict__", None)
     if isinstance(__dict__, property):
-        type_kwargs['__dict__'] = __dict__
+        type_kwargs["__dict__"] = __dict__
 
     return (type(obj), obj.__name__, obj.__bases__, type_kwargs,
             _ensure_tracking(obj), None)
@@ -139,7 +143,7 @@ def _function_getstate(func):
 
 def _class_getstate(obj):
     clsdict = _extract_class_dict(obj)
-    clsdict.pop('__weakref__', None)
+    clsdict.pop("__weakref__", None)
 
     # For ABCMeta in python3.7+, remove _abc_impl as it is not picklable.
     # This is a fix which breaks the cache but this only makes the first
@@ -158,7 +162,7 @@ def _class_getstate(obj):
             for k in obj.__slots__:
                 clsdict.pop(k, None)
 
-    clsdict.pop('__dict__', None)  # unpicklable property object
+    clsdict.pop("__dict__", None)  # unpicklable property object
 
     return (clsdict, {})
 
@@ -407,6 +411,51 @@ def _property_reduce(obj):
     return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
+def _numpy_frombuffer(buffer, dtype, shape, order):
+    # Get the _frombuffer() function for reconstruction
+    from numpy.core.numeric import _frombuffer
+    array = _frombuffer(buffer, dtype, shape, order)
+    # Unfortunately, numpy does not follow the standard, so we still
+    # have to set the readonly flag for it here.
+    array.setflags(write=isinstance(buffer, bytearray) or not buffer.readonly)
+    return array
+
+
+def _numpy_ndarray_reduce(array):
+    # This function is implemented according to 'array_reduce_ex_picklebuffer'
+    # in numpy C backend. This is a workaround for python3.5 pickling support.
+    if sys.version_info >= (3, 8):
+        import pickle
+        picklebuf_class = pickle.PickleBuffer
+    elif sys.version_info >= (3, 5):
+        try:
+            import pickle5
+            picklebuf_class = pickle5.PickleBuffer
+        except Exception:
+            raise ImportError("Using pickle protocol 5 requires the pickle5 "
+                              "module for Python >=3.5 and <3.8")
+    else:
+        raise ValueError("pickle protocol 5 is not available for Python < 3.5")
+    # if the array if Fortran-contiguous and not C-contiguous,
+    # the PickleBuffer instance will hold a view on the transpose
+    # of the initial array, that is C-contiguous.
+    if not array.flags.c_contiguous and array.flags.f_contiguous:
+        order = "F"
+        picklebuf_args = array.transpose()
+    else:
+        order = "C"
+        picklebuf_args = array
+    try:
+        buffer = picklebuf_class(picklebuf_args)
+    except Exception:
+        # Some arrays may refuse to export a buffer, in which case
+        # just fall back on regular __reduce_ex__ implementation
+        # (gh-12745).
+        return array.__reduce__()
+
+    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order)
+
+
 class CloudPickler(Pickler):
     """Fast C Pickler extension with additional reducing routines.
 
@@ -445,7 +494,8 @@ class CloudPickler(Pickler):
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
             protocol = DEFAULT_PROTOCOL
-        Pickler.__init__(self, file, protocol=protocol, buffer_callback=buffer_callback)
+        Pickler.__init__(self, file, protocol=protocol,
+                         buffer_callback=buffer_callback)
         # map functions __globals__ attribute ids, to ensure that functions
         # sharing the same global namespace at pickling time also share their
         # global namespace at unpickling time.
@@ -487,6 +537,16 @@ class CloudPickler(Pickler):
           for other types that suffered from type-specific reducers, such as
           Exceptions. See https://github.com/cloudpipe/cloudpickle/issues/248
         """
+
+        # This is a patch for python3.5
+        if isinstance(obj, numpy.ndarray):
+            if (self.proto < 5 or
+                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
+                    (issubclass(type(obj), numpy.ndarray) and type(obj) is not numpy.ndarray) or
+                    obj.dtype == "O" or obj.itemsize == 0):
+                return NotImplemented
+            return _numpy_ndarray_reduce(obj)
+
         t = type(obj)
         try:
             is_anyclass = issubclass(t, type)

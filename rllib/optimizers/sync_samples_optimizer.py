@@ -1,19 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
-import random
-from collections import defaultdict
 
 import ray
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.optimizers.multi_gpu_optimizer import _averaged
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
-    MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.memory import ray_get_and_free
 
@@ -71,40 +63,14 @@ class SyncSamplesOptimizer(PolicyOptimizer):
             samples = SampleBatch.concat_samples(samples)
             self.sample_timer.push_units_processed(samples.count)
 
-        # Handle everything as if multiagent
-        if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({
-                DEFAULT_POLICY_ID: samples
-            }, samples.count)
-
-        fetches = {}
         with self.grad_timer:
-            for policy_id, policy in self.policies.items():
-                if policy_id not in samples.policy_batches:
-                    continue
-
-                batch = samples.policy_batches[policy_id]
-                for field in self.standardize_fields:
-                    value = batch[field]
-                    standardized = (value - value.mean()) / max(
-                        1e-4, value.std())
-                    batch[field] = standardized
-
-                for i in range(self.num_sgd_iter):
-                    iter_extra_fetches = defaultdict(list)
-                    for minibatch in self._minibatches(batch):
-                        batch_fetches = (
-                            self.workers.local_worker().learn_on_batch(
-                                MultiAgentBatch({
-                                    policy_id: minibatch
-                                }, minibatch.count)))[policy_id]
-                        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
-                            iter_extra_fetches[k].append(v)
-                    logger.debug("{} {}".format(i,
-                                                _averaged(iter_extra_fetches)))
-                fetches[policy_id] = _averaged(iter_extra_fetches)
-
+            fetches = do_minibatch_sgd(samples, self.policies,
+                                       self.workers.local_worker(),
+                                       self.num_sgd_iter,
+                                       self.sgd_minibatch_size,
+                                       self.standardize_fields)
         self.grad_timer.push_units_processed(samples.count)
+
         if len(fetches) == 1 and DEFAULT_POLICY_ID in fetches:
             self.learner_stats = fetches[DEFAULT_POLICY_ID]
         else:
@@ -128,27 +94,3 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
                 "learner": self.learner_stats,
             })
-
-    def _minibatches(self, samples):
-        if not self.sgd_minibatch_size:
-            yield samples
-            return
-
-        if isinstance(samples, MultiAgentBatch):
-            raise NotImplementedError(
-                "Minibatching not implemented for multi-agent in simple mode")
-
-        if "state_in_0" in samples.data:
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
-        else:
-            samples.shuffle()
-
-        i = 0
-        slices = []
-        while i < samples.count:
-            slices.append((i, i + self.sgd_minibatch_size))
-            i += self.sgd_minibatch_size
-        random.shuffle(slices)
-
-        for i, j in slices:
-            yield samples.slice(i, j)

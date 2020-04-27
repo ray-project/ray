@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
@@ -13,32 +27,44 @@ message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
 
+  // The task or actor ID of the actor's owner.
+  bytes owner_id = 2;
+
+  // The address of the actor's owner.
+  Address owner_address = 3;
+
   // ID of the job that created the actor (it is possible that the handle
   // exists on a job with a different job ID).
-  bytes creation_job_id = 3;
+  bytes creation_job_id = 4;
 
   // Language of the actor.
-  Language actor_language = 4;
+  Language actor_language = 5;
 
   // Function descriptor of actor creation task.
-  repeated string actor_creation_task_function_descriptor = 5;
+  FunctionDescriptor actor_creation_task_function_descriptor = 6;
 
   // The unique id of the dummy object returned by the actor creation task.
   // It's used as a dependency for the first task.
   // TODO: Remove this once scheduling is done by task counter only.
-  bytes actor_cursor = 6;
+  bytes actor_cursor = 7;
 
-  // Whether direct actor call is used.
-  bool is_direct_call = 7;
+  // An extension field that is used for storing app-language-specific data.
+  bytes extension_data = 8;
 }
 
 message AssignTaskRequest {
+  // The ID of the worker this message is intended for. This is used to
+  // ensure that workers don't try to execute tasks assigned to workers
+  // that used to be bound to the same port.
+  bytes intended_worker_id = 1;
+
   // The task to be pushed.
-  Task task = 1;
+  Task task = 2;
+
   // A list of the resources reserved for this worker.
   // TODO(zhijunfu): `resource_ids` is represented as
   // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 2;
+  bytes resource_ids = 3;
 }
 
 message AssignTaskReply {
@@ -54,51 +80,202 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 5;
+  // Size of this object.
+  int64 size = 6;
 }
 
 message PushTaskRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Address of the caller.
+  Address caller_address = 2;
   // The task to be pushed.
-  TaskSpec task_spec = 1;
+  TaskSpec task_spec = 3;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
-  // This mode of behaviour is used for direct task submission only.
-  int64 sequence_number = 2;
+  int64 sequence_number = 4;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
   // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 3;
+  int64 client_processed_up_to = 5;
+  // Resource mapping ids assigned to the worker executing the task.
+  repeated ResourceMapEntry resource_mapping = 6;
+  // The version of the caller. This is used to distinguish on-the-fly
+  // requests from a caller before it die, and requests from the reconstructed
+  // caller, which might happen theoretically when network has issues.
+  // - For an actor, this is set to the timestamp when the actor is created,
+  //   so it can be used to differentiate which is the new reconstructed actor.
+  // - For a non-actor task, it's set to the timestamp the task starts
+  // execution.
+  int64 caller_version = 7;
 }
 
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Set to true if the worker will be exiting.
+  bool worker_exiting = 2;
+  // The references that the worker borrowed during the task execution. A
+  // borrower is a process that is currently using the object ID, in one of 3
+  // ways:
+  // 1. Has an ObjectID copy in Python.
+  // 2. Has submitted a task that depends on the object and that is still
+  // pending.
+  // 3. Owns another object that is in scope and whose value contains the
+  // ObjectID.
+  // This list includes the reference counts for any IDs that were passed to
+  // the worker in the task spec as an argument by reference, or an ObjectID
+  // that was serialized in an inlined argument. It also includes reference
+  // counts for any IDs that were nested inside these objects that the worker
+  // may now be borrowing. The reference counts also include any new borrowers
+  // that the worker created by passing a borrowed ID into a nested task.
+  repeated ObjectReferenceCount borrowed_refs = 3;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
-  int64 tag = 1;
+  int64 tag = 2;
 }
 
 message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
+  // The owner of the object. Note that we do not need to include
+  // intended_worker_id since the new worker can service this request too by
+  // inspecting the owner_id field.
   bytes owner_id = 1;
+  // Wait for this object's status.
   bytes object_id = 2;
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus {
-    PENDING = 0;
-    CREATED = 1;
-    WRONG_OWNER = 2;
-  }
+  enum ObjectStatus { CREATED = 0; }
   ObjectStatus status = 1;
+}
+
+message WaitForObjectEvictionRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
+}
+
+message WaitForObjectEvictionReply {
+}
+
+message KillActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
+  // If set to true, the killed actor will not be reconstructed anymore.
+  bool no_reconstruction = 3;
+}
+
+message KillActorReply {
+}
+
+message CancelTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+}
+
+message CancelTaskReply {
+  // Whether the requested task is the currently running task.
+  bool attempt_succeeded = 1;
+}
+
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 2;
+}
+
+message GetCoreWorkerStatsReply {
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 1;
+}
+
+message ObjectReference {
+  // ObjectID that the worker has a reference to.
+  bytes object_id = 1;
+  // The task or actor ID of the object's owner.
+  bytes owner_id = 2;
+  // The address of the object's owner.
+  Address owner_address = 3;
+}
+
+message WaitForRefRemovedRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Object whose removal we are waiting for.
+  ObjectReference reference = 2;
+  // ObjectID that contains object_id. This is used when an ObjectID is stored
+  // inside another object ID that we do not own. Then, we must notify the
+  // outer ID's owner that the ID contains object_id.
+  bytes contained_in_id = 3;
+}
+
+message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
+  ObjectReference reference = 1;
+  // Whether the worker is still using the ObjectID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the ObjectID.
+  bool has_local_ref = 2;
+  // Any other borrowers that the worker created (by passing the ID on to them).
+  repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
+  bytes contained_in_borrowed_id = 5;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
+  repeated bytes contains = 6;
+}
+
+message WaitForRefRemovedReply {
+  // The reference counts for the object that the worker was borrowing and
+  // any objects nested inside. The worker should no longer be using the object
+  // ID by the time it replies, but may have accumulated other borrowers or may
+  // still be borrowing an object ID that was nested inside.
+  repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message LocalGCRequest {
+}
+
+message LocalGCReply {
+}
+
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+message PlasmaObjectReadyReply {
 }
 
 service CoreWorkerService {
@@ -111,4 +288,20 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Notify the object's owner that it has been pinned by a raylet. Replying
+  // to this message indicates that the raylet should unpin the object.
+  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
+      returns (WaitForObjectEvictionReply);
+  // Request that the worker shut down without completing outstanding work.
+  rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Request that a worker cancels a task.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  // Wait for a borrower to finish using an object. Sent by the object's owner.
+  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
+  // Trigger local GC on the worker.
+  rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

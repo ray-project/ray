@@ -1,19 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import gym
 import unittest
 
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.a3c import A3CTrainer
-from ray.rllib.agents.dqn.dqn_policy import _adjust_nstep
+from ray.rllib.agents.dqn.dqn_tf_policy import _adjust_nstep
 from ray.tune.registry import register_env
-import gym
 
 
 class EvalTest(unittest.TestCase):
-    def testDqnNStep(self):
+    def test_dqn_n_step(self):
         obs = [1, 2, 3, 4, 5, 6, 7]
         actions = ["a", "b", "a", "a", "a", "b", "a"]
         rewards = [10.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0]
@@ -27,11 +23,11 @@ class EvalTest(unittest.TestCase):
         self.assertEqual(rewards,
                          [91.0, 171.0, 271.0, 271.0, 271.0, 190.0, 100.0])
 
-    def testEvaluationOption(self):
+    def test_evaluation_option(self):
         def env_creator(env_config):
             return gym.make("CartPole-v0")
 
-        agent_classes = [DQNTrainer, A3CTrainer]
+        agent_classes = [A3CTrainer, DQNTrainer]
 
         for agent_cls in agent_classes:
             ray.init(object_store_memory=1000 * 1024 * 1024)
@@ -65,4 +61,6 @@ class EvalTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

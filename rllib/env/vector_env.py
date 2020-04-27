@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 
@@ -11,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class VectorEnv(object):
+class VectorEnv:
     """An environment that supports batch evaluation.
 
     Subclasses must define the following attributes:
@@ -110,8 +106,8 @@ class _VectorizedGymEnv(VectorEnv):
             obs, r, done, info = self.envs[i].step(actions[i])
             if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
                 raise ValueError(
-                    "Reward should be finite scalar, got {} ({})".format(
-                        r, type(r)))
+                    "Reward should be finite scalar, got {} ({}). "
+                    "Actions={}.".format(r, type(r), actions[i]))
             if type(info) is not dict:
                 raise ValueError("Info should be a dict, got {} ({})".format(
                     info, type(info)))

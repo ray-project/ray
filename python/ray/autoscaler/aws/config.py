@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from distutils.version import StrictVersion
 import json
 import os
@@ -21,17 +17,41 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V26.0"
+
+# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 4/25/2020.
+DEFAULT_AMI = {
+    "us-east-1": "ami-0dbb717f493016a1a",  # US East (N. Virginia)
+    "us-east-2": "ami-0d6808451e868a339",  # US East (Ohio)
+    "us-west-1": "ami-09f2f73141c83d4fe",  # US West (N. California)
+    "us-west-2": "ami-008d8ed4bd7dc2485",  # US West (Oregon)
+    "ca-central-1": "ami-0142046278ba71f25",  # Canada (Central)
+    "eu-central-1": "ami-09633db638556dc39",  # EU (Frankfurt)
+    "eu-west-1": "ami-0c265211f000802b0",  # EU (Ireland)
+    "eu-west-2": "ami-0f532395ff8544941",  # EU (London)
+    "eu-west-3": "ami-03dbbdf69bbb06b29",  # EU (Paris)
+    "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
+}
+
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
 
-def key_pair(i, region):
-    """Returns the ith default (aws_key_pair_name, key_pair_path)."""
+def key_pair(i, region, key_name):
+    """
+    If key_name is not None, key_pair will be named after key_name.
+    Returns the ith default (aws_key_pair_name, key_pair_path).
+    """
     if i == 0:
-        return ("{}_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        key_pair_name = ("{}_{}".format(RAY, region)
+                         if key_name is None else key_name)
+        return (key_pair_name,
+                os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+
+    key_pair_name = ("{}_{}_{}".format(RAY, i, region)
+                     if key_name is None else key_name + "_key-{}".format(i))
+    return (key_pair_name,
+            os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
 
 
 # Suppress excessive connection dropped logs from boto
@@ -52,6 +72,9 @@ def bootstrap_aws(config):
     # Cluster workers should be in a security group that permits traffic within
     # the group, and also SSH access from outside.
     config = _configure_security_group(config)
+
+    # Provide a helpful message for missing AMI.
+    _check_ami(config)
 
     return config
 
@@ -119,9 +142,13 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    MAX_NUM_KEYS = 20
+    MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
-        key_name, key_path = key_pair(i, config["provider"]["region"])
+
+        key_name = config["provider"].get("key_pair", {}).get("key_name")
+
+        key_name, key_path = key_pair(i, config["provider"]["region"],
+                                      key_name)
         key = _get_key(key_name, config)
 
         # Found a good key.
@@ -221,7 +248,7 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
+        IpPermissions = [{
             "FromPort": -1,
             "ToPort": -1,
             "IpProtocol": "-1",
@@ -235,7 +262,13 @@ def _configure_security_group(config):
             "IpRanges": [{
                 "CidrIp": "0.0.0.0/0"
             }]
-        }])
+        }]
+
+        additional_IpPermissions = config["provider"].get(
+            "security_group", {}).get("IpPermissions", [])
+        IpPermissions.extend(additional_IpPermissions)
+
+        security_group.authorize_ingress(IpPermissions=IpPermissions)
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
@@ -252,6 +285,34 @@ def _configure_security_group(config):
         config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
 
     return config
+
+
+def _check_ami(config):
+    """Provide helpful message for missing ImageId for node configuration."""
+
+    region = config["provider"]["region"]
+    default_ami = DEFAULT_AMI.get(region)
+    if not default_ami:
+        # If we do not provide a default AMI for the given region, noop.
+        return
+
+    if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
+        config["head_node"]["ImageId"] = default_ami
+        logger.info("_check_ami: head node ImageId is 'latest_dlami'. "
+                    "Using '{ami_id}', which is the default {ami_name} "
+                    "for your region ({region}).".format(
+                        ami_id=default_ami,
+                        ami_name=DEFAULT_AMI_NAME,
+                        region=region))
+
+    if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
+        config["worker_nodes"]["ImageId"] = default_ami
+        logger.info("_check_ami: worker nodes ImageId is 'latest_dlami'. "
+                    "Using '{ami_id}', which is the default {ami_name} "
+                    "for your region ({region}).".format(
+                        ami_id=default_ami,
+                        ami_name=DEFAULT_AMI_NAME,
+                        region=region))
 
 
 def _get_vpc_id_or_die(config, subnet_id):
@@ -316,10 +377,19 @@ def _get_key(key_name, config):
 
 def _client(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.client(name, config["provider"]["region"], config=boto_config)
+    aws_credentials = config["provider"].get("aws_credentials", {})
+    return boto3.client(
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = config["provider"].get("aws_credentials", {})
     return boto3.resource(
-        name, config["provider"]["region"], config=boto_config)
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
