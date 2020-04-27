@@ -42,7 +42,7 @@ public abstract class StreamTask implements Runnable {
     prepareTask();
 
     this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
-      + "-" + System.currentTimeMillis());
+        + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
@@ -52,7 +52,9 @@ public abstract class StreamTask implements Runnable {
     String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    queueConf.put(Config.CHANNEL_TYPE, worker.getConfig().get(Config.CHANNEL_TYPE));
+    String channelType = Ray.getRuntimeContext().isSingleProcess() ?
+        Config.MEMORY_CHANNEL : Config.NATIVE_CHANNEL;
+    queueConf.put(Config.CHANNEL_TYPE, channelType);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
     ExecutionNode executionNode = worker.getExecutionNode();

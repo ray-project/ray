@@ -47,9 +47,9 @@ public class DataWriter {
     for (int i = 0; i < outputChannels.size(); i++) {
       msgIds[i] = 0;
     }
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    String channelType = conf.get(Config.CHANNEL_TYPE);
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (Config.MEMORY_CHANNEL.equalsIgnoreCase(channelType)) {
       isMock = true;
       LOGGER.info("Using memory channel");
     }
