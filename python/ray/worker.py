@@ -1692,15 +1692,19 @@ def cancel(object_id, force=False):
         force=True
             The worker executing the task will immediately exit.
     Task is FINISHED executing:
-        Nothing happens. 
+        Nothing happens.
 
-    Only non-actor tasks can be canceled. Canceled tasks will not be retried (max_retries will not be respected). 
+    Only non-actor tasks can be canceled. Canceled tasks will not be
+    retried (max_retries will not be respected).
 
     Args:
-            task_object_id (ObjectID): ObjectID returned by the task that should be canceled. 
-            force (boolean): Whether to force-kill a running task by killing the worker that is running the task. 
-    Raises: 
-            ValueError: This is also raised for actor tasks, already completed tasks, and non-locally submitted tasks.
+            task_object_id (ObjectID): ObjectID returned by the task
+                                        that should be canceled.
+            force (boolean): Whether to force-kill a running task by
+                            killing the worker that is running the task.
+    Raises:
+            ValueError: This is also raised for actor tasks, already
+                        completed tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
