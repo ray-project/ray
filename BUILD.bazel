@@ -362,10 +362,10 @@ cc_library(
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
+        ":gcs_table_storage_lib",
         ":node_manager_rpc",
         ":raylet_lib",
         ":worker_rpc",
-        ":gcs_table_storage_lib",
     ],
 )
 
@@ -825,8 +825,8 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
-        ":redis_store_client",
         ":ray_common",
+        ":redis_store_client",
     ],
 )
 
@@ -855,8 +855,8 @@ cc_test(
     ],
     deps = [
         ":gcs_table_storage_lib",
-        ":store_client_test_lib",
         ":gcs_table_storage_test_lib",
+        ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -869,8 +869,8 @@ cc_test(
     copts = COPTS,
     deps = [
         ":gcs_table_storage_lib",
-        ":store_client_test_lib",
         ":gcs_table_storage_test_lib",
+        ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
