@@ -118,22 +118,26 @@ def update_kl(trainer, fetches):
             if pi_id in fetches:
                 pi.update_kl(fetches[pi_id]["kl"])
             else:
-                logger.debug("No data for {}, not updating kl".format(pi_id))
+                logger.info("No data for {}, not updating kl".format(pi_id))
 
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 
 def warn_about_bad_reward_scales(trainer, result):
+    return _warn_about_bad_reward_scales(trainer.config, result)
+
+
+def _warn_about_bad_reward_scales(config, result):
     if result["policy_reward_mean"]:
-        return  # Punt on handling multiagent case.
+        return result  # Punt on handling multiagent case.
 
     # Warn about excessively high VF loss.
     learner_stats = result["info"]["learner"]
     if "default_policy" in learner_stats:
-        scaled_vf_loss = (trainer.config["vf_loss_coeff"] *
+        scaled_vf_loss = (config["vf_loss_coeff"] *
                           learner_stats["default_policy"]["vf_loss"])
         policy_loss = learner_stats["default_policy"]["policy_loss"]
-        if trainer.config["vf_share_layers"] and scaled_vf_loss > 100:
+        if config["vf_share_layers"] and scaled_vf_loss > 100:
             logger.warning(
                 "The magnitude of your value function loss is extremely large "
                 "({}) compared to the policy loss ({}). This can prevent the "
@@ -142,12 +146,11 @@ def warn_about_bad_reward_scales(trainer, result):
                     scaled_vf_loss, policy_loss))
 
     # Warn about bad clipping configs
-    if trainer.config["vf_clip_param"] <= 0:
+    if config["vf_clip_param"] <= 0:
         rew_scale = float("inf")
     else:
         rew_scale = round(
-            abs(result["episode_reward_mean"]) /
-            trainer.config["vf_clip_param"], 0)
+            abs(result["episode_reward_mean"]) / config["vf_clip_param"], 0)
     if rew_scale > 200:
         logger.warning(
             "The magnitude of your environment rewards are more than "
@@ -156,6 +159,8 @@ def warn_about_bad_reward_scales(trainer, result):
             "{} iterations for your value ".format(rew_scale) +
             "function to converge. If this is not intended, consider "
             "increasing `vf_clip_param`.")
+
+    return result
 
 
 def validate_config(config):
@@ -201,6 +206,17 @@ def execution_plan(workers, config):
         ConcatBatches(min_batch_size=config["train_batch_size"]))
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
+    def update_kl(item):
+        _, fetches = item
+
+        def update(pi, pi_id):
+            if pi_id in fetches:
+                pi.update_kl(fetches[pi_id]["kl"])
+            else:
+                logger.warning("No data for {}, not updating kl".format(pi_id))
+
+        workers.local_worker().foreach_trainable_policy(update)
+
     if config["simple_optimizer"]:
         train_op = rollouts.for_each(
             TrainOneStep(
@@ -210,7 +226,11 @@ def execution_plan(workers, config):
     else:
         raise NotImplementedError
 
-    return StandardMetricsReporting(train_op, workers, config)
+    # Update KL after each round of training.
+    train_op = train_op.for_each(update_kl)
+
+    return StandardMetricsReporting(train_op, workers, config) \
+        .for_each(lambda result: _warn_about_bad_reward_scales(config, result))
 
 
 PPOTrainer = build_trainer(
