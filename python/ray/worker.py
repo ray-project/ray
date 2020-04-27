@@ -1699,9 +1699,9 @@ def cancel(object_id, force=False):
 
     Args:
         task_object_id (ObjectID): ObjectID returned by the task
-                                    that should be canceled.
+                                   that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
-                        the worker that is running the task.
+                         the worker that is running the task.
     Raises:
         ValueError: This is also raised for actor tasks, already completed
                     tasks, and non-locally submitted tasks.
