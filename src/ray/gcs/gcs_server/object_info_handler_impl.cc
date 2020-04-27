@@ -62,7 +62,7 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Binary(),
-          gcs::CreateObjectChange(node_id, true)->SerializeAsString(), nullptr));
+          gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;
@@ -93,7 +93,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Binary(),
-          gcs::CreateObjectChange(node_id, false)->SerializeAsString(), nullptr));
+          gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;

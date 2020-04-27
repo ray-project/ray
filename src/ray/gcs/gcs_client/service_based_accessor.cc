@@ -799,12 +799,19 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::ObjectChange object_change;
-    object_change.ParseFromString(data);
+    rpc::ObjectLocationChange object_location_change;
+    object_location_change.ParseFromString(data);
     std::vector<rpc::ObjectTableData> object_data_vector;
-    object_data_vector.emplace_back(object_change.data());
-    auto change_mode = object_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
-                                              : rpc::GcsChangeMode::REMOVE;
+    rpc::ObjectTableData object_table_data;
+    auto change_mode = rpc::GcsChangeMode::APPEND_OR_ADD;
+    if (rpc::ObjectLocationChange::NodeIdCase::kAddedNodeId ==
+        object_location_change.node_id_case()) {
+      object_table_data.set_manager(object_location_change.added_node_id());
+    } else {
+      object_table_data.set_manager(object_location_change.removed_node_id());
+      change_mode = rpc::GcsChangeMode::REMOVE;
+    }
+    object_data_vector.emplace_back(object_table_data);
     gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };

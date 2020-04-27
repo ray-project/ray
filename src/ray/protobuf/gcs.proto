@@ -311,9 +311,14 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
-message ObjectChange {
-  bool is_add = 1;
-  ObjectTableData data = 2;
+// A notification message about one object's locations being changed.
+message ObjectLocationChange {
+  oneof node_id {
+    // Node id on which the object has appeared.
+    bytes added_node_id = 1;
+    // Node id on which the object was removed.
+    bytes removed_node_id = 2;
+  }
 }
 
 message PubSubMessage {
