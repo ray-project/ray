@@ -21,7 +21,7 @@ import io.ray.streaming.python.stream.PythonDataStream;
 /**
  * Represents a stream of data.
  * <p>
- * This class defines all the streaming operations.
+ * <p>This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
  */
