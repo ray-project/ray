@@ -135,7 +135,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id to cancel.
   /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id);
+  bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
