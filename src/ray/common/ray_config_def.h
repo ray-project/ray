@@ -278,6 +278,9 @@ RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
+/// Duration to wait between retrying to kill a task.
+RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
 /// Whether to enable gcs service.
 /// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
 /// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,

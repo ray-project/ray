@@ -79,6 +79,22 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                 initializer=torch.nn.init.xavier_uniform_,
                 activation_fn=None))
 
+        # Use sigmoid to scale to [0,1], but also double magnitude of input to
+        # emulate behaviour of tanh activation used in DDPG and TD3 papers.
+        class _Lambda(nn.Module):
+            def forward(self, x):
+                sigmoid_out = nn.Sigmoid()(2.0 * x)
+                # Rescale to actual env policy scale
+                # (shape of sigmoid_out is [batch_size, dim_actions],
+                # so we reshape to get same dims)
+                action_range = (action_space.high - action_space.low)[None]
+                low_action = action_space.low[None]
+                actions = torch.from_numpy(action_range) * sigmoid_out + \
+                    torch.from_numpy(low_action)
+                return actions
+
+        self.policy_model.add_module("action_out_squashed", _Lambda())
+
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
             activation = get_activation_fn(

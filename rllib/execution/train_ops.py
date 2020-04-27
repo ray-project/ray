@@ -17,13 +17,14 @@ logger = logging.getLogger(__name__)
 class TrainOneStep:
     """Callable that improves the policy and updates workers.
 
-    This should be used with the .for_each() operator.
+    This should be used with the .for_each() operator. A tuple of the input
+    and learner stats will be returned.
 
     Examples:
         >>> rollouts = ParallelRollouts(...)
         >>> train_op = rollouts.for_each(TrainOneStep(workers))
         >>> print(next(train_op))  # This trains the policy on one batch.
-        {"learner_stats": ...}
+        SampleBatch(...), {"learner_stats": ...}
 
     Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
     local iterator context.
@@ -32,7 +33,8 @@ class TrainOneStep:
     def __init__(self, workers: WorkerSet):
         self.workers = workers
 
-    def __call__(self, batch: SampleBatchType) -> List[dict]:
+    def __call__(self,
+                 batch: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(batch)
         metrics = LocalIterator.get_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
@@ -48,7 +50,7 @@ class TrainOneStep:
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
-        return info
+        return batch, info
 
 
 class ComputeGradients:
