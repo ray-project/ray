@@ -225,6 +225,21 @@ class SignalActor:
             await self.ready_event.wait()
 
 
+@ray.remote(num_cpus=0)
+class Semaphore:
+    def __init__(self, value=1):
+        self._sema = asyncio.Semaphore(value=value)
+
+    async def acquire(self):
+        self._sema.acquire()
+
+    async def release(self):
+        self._sema.release()
+
+    async def locked(self):
+        return self._sema.locked()
+
+
 @ray.remote
 def _put(obj):
     return obj
@@ -258,3 +273,4 @@ def wait_until_server_available(address,
         s.close()
         return True
     return False
+
