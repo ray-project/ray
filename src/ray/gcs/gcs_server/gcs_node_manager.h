@@ -19,14 +19,17 @@
 #include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
+#include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 
 namespace ray {
 namespace gcs {
-/// GcsNodeManager is responsible for managing and monitoring nodes.
+
+/// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
+/// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager {
+class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
@@ -38,6 +41,41 @@ class GcsNodeManager {
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor);
 
+  /// Handle register rpc request come from raylet.
+  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+                          rpc::RegisterNodeReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle unregister rpc request come from raylet.
+  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
+                            rpc::UnregisterNodeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all node info rpc request.
+  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+                            rpc::GetAllNodeInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle heartbeat rpc come from raylet.
+  void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
+                             rpc::ReportHeartbeatReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get resource rpc request.
+  void HandleGetResources(const rpc::GetResourcesRequest &request,
+                          rpc::GetResourcesReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle update resource rpc request.
+  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
+                             rpc::UpdateResourcesReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle delete resource rpc request.
+  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
+                             rpc::DeleteResourcesReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
@@ -46,7 +84,10 @@ class GcsNodeManager {
   /// Remove from alive nodes.
   ///
   /// \param node_id The ID of the node to be removed.
-  void RemoveNode(const ClientID &node_id);
+  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
+  /// True.
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const ClientID &node_id,
+                                               bool is_intended = false);
 
   /// Get alive node by ID.
   ///
@@ -58,7 +99,9 @@ class GcsNodeManager {
   ///
   /// \return all alive nodes.
   const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-      &GetAllAliveNodes() const;
+      &GetAllAliveNodes() const {
+    return alive_nodes_;
+  }
 
   /// Add listener to monitor the remove action of nodes.
   ///
@@ -78,51 +121,75 @@ class GcsNodeManager {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Handle a heartbeat from a Raylet.
-  ///
-  /// \param node_id The client ID of the Raylet that sent the heartbeat.
-  /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &node_id,
-                       const rpc::HeartbeatTableData &heartbeat_data);
-
  protected:
-  /// Listen for heartbeats from Raylets and mark Raylets
-  /// that do not send a heartbeat within a given period as dead.
-  void Start();
+  class NodeFailureDetector {
+   public:
+    /// Create a NodeFailureDetector.
+    ///
+    /// \param io_service The event loop to run the monitor on.
+    /// \param node_info_accessor The node info accessor.
+    explicit NodeFailureDetector(
+        boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+        std::function<void(const ClientID &)> on_node_death_callback);
 
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
+    /// Register node to this detector.
+    /// Only if the node has registered, its heartbeat data will be accepted.
+    ///
+    /// \param node_id ID of the node to be registered.
+    void AddNode(const ClientID &node_id);
 
-  /// Check that if any raylet is inactive due to no heartbeat for a period of time.
-  /// If found any, mark it as dead.
-  void DetectDeadNodes();
+    /// Handle a heartbeat from a Raylet.
+    ///
+    /// \param node_id The client ID of the Raylet that sent the heartbeat.
+    /// \param heartbeat_data The heartbeat sent by the client.
+    void HandleHeartbeat(const ClientID &node_id,
+                         const rpc::HeartbeatTableData &heartbeat_data);
 
-  /// Send any buffered heartbeats as a single publish.
-  void SendBatchedHeartbeat();
+   protected:
+    /// A periodic timer that fires on every heartbeat period. Raylets that have
+    /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
+    /// marked as dead in the client table.
+    void Tick();
 
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+    /// Check that if any raylet is inactive due to no heartbeat for a period of time.
+    /// If found any, mark it as dead.
+    void DetectDeadNodes();
+
+    /// Send any buffered heartbeats as a single publish.
+    void SendBatchedHeartbeat();
+
+    /// Schedule another tick after a short time.
+    void ScheduleTick();
+
+   protected:
+    /// Node info accessor.
+    gcs::NodeInfoAccessor &node_info_accessor_;
+    /// The callback of node death.
+    std::function<void(const ClientID &)> on_node_death_callback_;
+    /// The number of heartbeats that can be missed before a node is removed.
+    int64_t num_heartbeats_timeout_;
+    /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
+    boost::asio::deadline_timer detect_timer_;
+    /// For each Raylet that we receive a heartbeat from, the number of ticks
+    /// that may pass before the Raylet will be declared dead.
+    absl::flat_hash_map<ClientID, int64_t> heartbeats_;
+    /// A buffer containing heartbeats received from node managers in the last tick.
+    absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  };
 
  private:
-  /// Alive nodes.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Node info accessor.
   gcs::NodeInfoAccessor &node_info_accessor_;
   /// Error info accessor.
   gcs::ErrorInfoAccessor &error_info_accessor_;
-  /// The number of heartbeats that can be missed before a node is removed.
-  int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer heartbeat_timer_;
-  /// For each Raylet that we receive a heartbeat from, the number of ticks
-  /// that may pass before the Raylet will be declared dead.
-  absl::flat_hash_map<ClientID, int64_t> heartbeats_;
-  /// The Raylets that have been marked as dead in gcs.
-  absl::flat_hash_set<ClientID> dead_nodes_;
-  /// A buffer containing heartbeats received from node managers in the last tick.
-  absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  /// Detector to detect the failure of node.
+  std::unique_ptr<NodeFailureDetector> node_failure_detector_;
+  /// Alive nodes.
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Dead nodes.
+  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  /// Cluster resources.
+  absl::flat_hash_map<ClientID, gcs::NodeInfoAccessor::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;

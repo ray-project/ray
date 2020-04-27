@@ -45,9 +45,6 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
-  JobSubscriptionExecutor job_sub_executor_;
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -340,10 +337,6 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
-      WorkerFailureSubscriptionExecutor;
-  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
 }  // namespace gcs

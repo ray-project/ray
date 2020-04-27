@@ -97,6 +97,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_reconstruction)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -214,6 +215,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
+        (c_bool() nogil) kill_main
         CCoreWorkerOptions()
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
