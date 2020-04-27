@@ -1715,7 +1715,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(predefined_resources[res_idx][inst_idx].GetDouble());
+                  rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
                 }
               }
             }
@@ -1733,7 +1733,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(it->second[inst_idx].GetDouble());
+                  rid->set_quantity(it->second[inst_idx].Double());
                 }
               }
             }
@@ -2544,7 +2544,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   Task task;
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
-    // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
+    // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
       new_resource_scheduler_->SubtractCPUResourceInstances(
           worker.GetBorrowedCPUInstances());

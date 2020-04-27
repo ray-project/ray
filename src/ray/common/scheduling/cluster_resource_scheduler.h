@@ -30,122 +30,99 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
-class ResourceUnit {
+/// Fixed point data type.
+class FixedPoint {
 #define RESOURCE_UNIT_SCALING 1000
  private:
   int64_t i_;
 
  public:
-  ResourceUnit(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
+  FixedPoint(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
 
-  ResourceUnit operator+(ResourceUnit const &ru) {
-    ResourceUnit res;
+  FixedPoint operator+(FixedPoint const &ru) {
+    FixedPoint res;
     res.i_ = i_ + ru.i_;
     return res;
   }
 
-  ResourceUnit operator+=(ResourceUnit const &ru) {
+  FixedPoint operator+=(FixedPoint const &ru) {
     i_ += ru.i_;
     return *this;
   }
 
-  ResourceUnit operator-(ResourceUnit const &ru) {
-    ResourceUnit res;
+  FixedPoint operator-(FixedPoint const &ru) {
+    FixedPoint res;
     res.i_ = i_ - ru.i_;
     return res;
   }
 
-  ResourceUnit operator-=(ResourceUnit const &ru) {
+  FixedPoint operator-=(FixedPoint const &ru) {
     i_ -= ru.i_;
     return *this;
   }
 
-  ResourceUnit operator-() const {
-    ResourceUnit res;
+  FixedPoint operator-() const {
+    FixedPoint res;
     res.i_ = -i_;
     return res;
   }
 
-  ResourceUnit operator+(double const d) {
-    ResourceUnit res;
+  FixedPoint operator+(double const d) {
+    FixedPoint res;
     res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
     return res;
   }
 
-  ResourceUnit operator-(double const d) {
-    ResourceUnit res;
+  FixedPoint operator-(double const d) {
+    FixedPoint res;
     res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
     return res;
   }
 
-  ResourceUnit operator=(double const d) {
+  FixedPoint operator=(double const d) {
     i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
     ;
     return *this;
   }
 
-  friend bool operator<(ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator>(ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator<=(ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator>=(ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator==(ResourceUnit const &ru1, ResourceUnit const &ru2);
-  friend bool operator!=(ResourceUnit const &ru1, ResourceUnit const &ru2);
+  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
 
-  double GetDouble() { return (double)i_ / RESOURCE_UNIT_SCALING; };
+  double Double() { return (double)i_ / RESOURCE_UNIT_SCALING; };
 
-  friend std::ostream &operator<<(std::ostream &out, const ResourceUnit &ru);
-};
-
-bool operator<(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ < ru2.i_);
-};
-bool operator>(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ > ru2.i_);
-};
-bool operator<=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ <= ru2.i_);
-};
-bool operator>=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ >= ru2.i_);
-};
-bool operator==(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ == ru2.i_);
-};
-bool operator!=(ResourceUnit const &ru1, ResourceUnit const &ru2) {
-  return (ru1.i_ != ru2.i_);
+  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
 };
 
-std::ostream &operator<<(std::ostream &out, const ResourceUnit &ru) {
-  out << ru.i_;
-  return out;
-}
-
-// Helper function to compare two vectors with ResourceUnit values.
-bool EqualVectors(const std::vector<ResourceUnit> &v1,
-                  const std::vector<ResourceUnit> &v2);
+/// Helper function to compare two vectors with FixedPoint values.
+bool EqualVectors(const std::vector<FixedPoint> &v1,
+                  const std::vector<FixedPoint> &v2);
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<ResourceUnit> VectorDoubleToVectorResourceUnit(
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(
     const std::vector<double> &vector);
 
 /// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorResourceUnitToVectorDouble(
-    const std::vector<ResourceUnit> &vector_ru);
+std::vector<double> VectorFixedPointToVectorDouble(
+    const std::vector<FixedPoint> &vector_fp);
 
 struct ResourceCapacity {
-  ResourceUnit total;
-  ResourceUnit available;
+  FixedPoint total;
+  FixedPoint available;
 };
 
 /// Capacities of each instance of a resource.
 struct ResourceInstanceCapacities {
-  std::vector<ResourceUnit> total;
-  std::vector<ResourceUnit> available;
+  std::vector<FixedPoint> total;
+  std::vector<FixedPoint> available;
 };
 
 struct ResourceRequest {
   /// Amount of resource being requested.
-  ResourceUnit demand;
+  FixedPoint demand;
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
@@ -180,14 +157,14 @@ class TaskRequest {
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<ResourceUnit>> predefined_resources;
+  std::vector<std::vector<FixedPoint>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<ResourceUnit>> custom_resources;
+  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<ResourceUnit> GetCPUInstances() const {
+  std::vector<FixedPoint> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
       return this->predefined_resources[CPU];
     } else {
@@ -196,7 +173,7 @@ class TaskResourceInstances {
   };
   std::vector<double> GetCPUInstancesDouble() const {
     if (!this->predefined_resources.empty()) {
-      return VectorResourceUnitToVectorDouble(this->predefined_resources[CPU]);
+      return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
     } else {
       return {};
     }
@@ -430,7 +407,7 @@ class ClusterResourceScheduler {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(ResourceUnit total, bool unit_instances,
+  void InitResourceInstances(FixedPoint total, bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -464,9 +441,9 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(ResourceUnit demand, bool soft,
-                                 std::vector<ResourceUnit> &available,
-                                 std::vector<ResourceUnit> *allocation);
+  bool AllocateResourceInstances(FixedPoint demand, bool soft,
+                                 std::vector<FixedPoint> &available,
+                                 std::vector<FixedPoint> *allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
@@ -493,8 +470,8 @@ class ClusterResourceScheduler {
   /// \return Overflow capacities of "resource_instances" after adding instance
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
-  std::vector<ResourceUnit> AddAvailableResourceInstances(
-      std::vector<ResourceUnit> available,
+  std::vector<FixedPoint> AddAvailableResourceInstances(
+      std::vector<FixedPoint> available,
       ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
@@ -504,8 +481,8 @@ class ClusterResourceScheduler {
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
-  std::vector<ResourceUnit> SubtractAvailableResourceInstances(
-      std::vector<ResourceUnit> available,
+  std::vector<FixedPoint> SubtractAvailableResourceInstances(
+      std::vector<FixedPoint> available,
       ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
