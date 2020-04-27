@@ -190,6 +190,7 @@ class TorchRunner:
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
             world_rank=0,
+            world_size=1,
             schedulers=self.schedulers,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,

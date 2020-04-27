@@ -9,18 +9,25 @@
 
 import time
 import logging
+import os
 from os.path import join
 
-from tqdm import trange
+from tqdm import tqdm, trange
 
 import torchvision
+import torch
 import torch.nn as nn
+
+from timm.data.distributed_sampler import OrderedDistributedSampler
+from torch.utils.data.distributed import DistributedSampler
 
 from timm.data import Dataset, create_loader
 from timm.data import resolve_data_config, FastCollateMixup
 from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
-from timm.utils import setup_default_logging, distribute_bn
+from timm.utils import setup_default_logging, distribute_bn, AverageMeter
+from timm.utils import OrderedDict
+from timm.scheduler import create_scheduler
 
 import ray
 from ray.util.sgd.utils import BATCH_SIZE
@@ -28,12 +35,17 @@ from ray.util.sgd.utils import BATCH_SIZE
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
 
+from ray.util.sgd.torch.constants import NUM_STEPS
+from ray.util.sgd.utils import NUM_SAMPLES
+
 import ray.util.sgd.torch.examples.image_models.util as util
 from ray.util.sgd.torch.examples.image_models.args import parse_args
 
 # todo: none of the custom checkpointing actually works. at all
-class SegOperator(TrainingOperator):
-    def setup(self):
+class ImagenetOperator(TrainingOperator):
+    def setup(self, config):
+        args = self.config["args"]
+
         has_apex = False
         try:
             from apex.parallel import DistributedDataParallel as DDP
@@ -43,7 +55,6 @@ class SegOperator(TrainingOperator):
             from torch.nn.parallel import DistributedDataParallel as DDP
             pass
 
-        args = self.config["args"]
         if self.world_rank == 0:
             logging.info(
                 "NVIDIA APEX {}. AMP {}.".format(
@@ -101,6 +112,8 @@ class SegOperator(TrainingOperator):
         if self.world_rank == 0:
             logging.info("Scheduled epochs: {}".format(real_start_epoch))
 
+        print('ABCDEF')
+
     def train_batch(self, batch, batch_info):
         input, target = batch
 
@@ -146,17 +159,18 @@ class SegOperator(TrainingOperator):
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def train_epoch(self, iterator, info):
-        # todo: we need to do this, but we cant
+        # todo: we need to do this, but we cant (it's also epoch-dependent)
+        # so can't be done in setup
         # loader_train.sampler.set_epoch(epoch)
 
         loader = self.train_loader
+
+        args = self.config["args"]
 
         # todo: same here
         if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
             if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
                 loader.mixup_enabled = False
-
-        args = self.config["args"]
 
         if self.use_tqdm and self.world_rank == 0:
             desc = ""
@@ -180,7 +194,7 @@ class SegOperator(TrainingOperator):
 
         end = time.time()
         last_idx = len(loader) - 1
-        num_updates = epoch * len(loader)
+        num_updates = info["epoch_idx"] * len(loader)
         for batch_idx, batch in enumerate(iterator):
             last_batch = batch_idx == last_idx
             data_time_m.update(time.time() - end)
@@ -190,10 +204,12 @@ class SegOperator(TrainingOperator):
                 "global_step": self.global_step
             }
             batch_info.update(info)
+            print('HELLO', batch_idx)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
             batch_time_m.update(time.time() - end)
 
+            print('Test')
             if last_batch or batch_idx % args.log_interval == 0:
                 lrl = [
                     param_group['lr']
@@ -201,8 +217,10 @@ class SegOperator(TrainingOperator):
                 ]
                 lr = sum(lrl) / len(lrl)
 
-                reduced_loss = reduce_tensor(loss.data, args.world_size)
-                losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
+                print('HELLO', loss.data)
+                # todo: this won't work at all because we have to reduce first
+                # reduced_loss = reduce_tensor(loss.data, self.world_size)
+                # losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
 
                 if self.world_rank == 0:
                     total_samples = (
@@ -214,8 +232,9 @@ class SegOperator(TrainingOperator):
                         "Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  "
                         "({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  "
                         "LR: {lr:.3e}  "
-                        "Data: {data_time.val:.3f} ({data_time.avg:.3f})".format(
-                            epoch,
+                        "Data: {data_time.val:.3f} "
+                        "({data_time.avg:.3f})".format(
+                            info["epoch_idx"],
                             batch_idx, len(loader),
                             100. * batch_idx / last_idx,
                             loss=losses_m,
@@ -266,9 +285,7 @@ class SegOperator(TrainingOperator):
                 logging.info("Distributing BatchNorm running means and vars")
             distribute_bn(model, self.world_size, args.dist_bn == "reduce")
 
-        # return OrderedDict([('loss', losses_m.avg)])
-
-        # return metric_meters.summary()
+        return OrderedDict([('loss', losses_m.avg)])
 
 def model_creator(config, sys_info):
     args = config["args"]
@@ -302,11 +319,11 @@ def model_creator(config, sys_info):
 
 
 def data_creator(config, sys_info):
-    # todo: does Ray break this?
-    # we kinda do it out of order
-    torch.manual_seed(args.seed + sys_info["world_rank"])
-
     args = config["args"]
+
+    # todo: does Ray break this?
+    # we kinda do initialization out of order
+    torch.manual_seed(args.seed + sys_info["world_rank"])
 
     train_dir = join(args.data, "train")
     val_dir = join(args.data, "val")
@@ -347,8 +364,18 @@ def data_creator(config, sys_info):
         mean=data_config["mean"],
         std=data_config["std"],
         num_workers=1,
-        distributed=args.distributed,
+        distributed=False,  # we add the samplers ourselves
         pin_memory=args.pin_mem)
+
+    # todo: can't do this here since the process group was not init yet
+    # can't do this in setup cause there is no access to datasets there
+    # if args.distributed:
+    #     if is_training:
+    #         sampler = DistributedSampler(dataset)
+    #     else:
+    #         # This will add extra duplicate entries to result in equal num
+    #         # of samples per-process, will slightly alter validation results
+    #         sampler = OrderedDistributedSampler(dataset)
 
     train_loader = create_loader(
         dataset_train,
@@ -421,10 +448,12 @@ def main():
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=loss_creator,
+        scheduler_creator=scheduler_creator,
+        training_operator_cls=ImagenetOperator,
         use_tqdm=True,
         use_fp16=args.amp,
         wrap_ddp=False,
-        add_dist_sampler=False,
+        add_dist_sampler=True, # todo: handle this manually
         apex_args={"opt_level": "O1"},
         config={
             "args": args,
@@ -437,7 +466,11 @@ def main():
 
     pbar = trange(args.epochs, unit="epoch")
     for i in pbar:
-        trainer.train(num_steps=1 if args.smoke_test else None)
+        info = {}
+        info["epoch_idx"] = i
+        info["num_epochs"] = args.epochs
+
+        trainer.train(num_steps=1 if args.smoke_test else None, info=info)
 
         val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))

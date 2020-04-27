@@ -62,6 +62,7 @@ class TrainingOperator:
                  train_loader,
                  validation_loader,
                  world_rank,
+                 world_size,
                  criterion=None,
                  schedulers=None,
                  device_ids=None,
@@ -82,6 +83,7 @@ class TrainingOperator:
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
+        self._world_size = world_size
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
@@ -396,6 +398,11 @@ class TrainingOperator:
     def world_rank(self):
         """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
+
+    @property
+    def world_size(self):
+        """int: The total number of workers. Always 1 if not distributed."""
+        return self._world_size
 
     @property
     def criterion(self):

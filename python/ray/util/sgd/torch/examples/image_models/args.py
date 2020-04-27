@@ -380,8 +380,11 @@ parser.add_argument(
 #     default=0,
 #     metavar="N",
 #     help="how many batches to wait before writing recovery checkpoint")
-parser.add_argument('--num-gpu', type=int, default=1, required=False,
-                    help='Number of GPUS to use')
+parser.add_argument(
+    '--num-gpu',
+    type=int,
+    required=False,
+    help='Number of GPUS to use')
 parser.add_argument(
     "--no-gpu",
     action="store_true",
@@ -427,7 +430,7 @@ parser.add_argument(
     metavar="N",
     help="Test/inference time augmentation (oversampling) factor. 0=None "
     "(default: 0)")
-parser.add_argument("--local_rank", default=0, type=int)
+# parser.add_argument("--local_rank", default=0, type=int)
 
 # ray
 parser.add_argument(

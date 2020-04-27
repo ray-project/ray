@@ -111,6 +111,7 @@ class DistributedTorchRunner(TorchRunner):
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
+            world_size=self.world_size,
             schedulers=self.schedulers,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
