@@ -495,7 +495,7 @@ def parse_args():
         assert args.num_gpu == 0 or args.num_gpu == 1
         args.no_gpu = args.num_gpu == 0
 
-    if args.no_gpu and args.prefetcher:
+    if not args.no_gpu and args.prefetcher:
         logging.warning("Prefetcher needs CUDA currently "
                         "(might be a bug in timm). "
                         "Disabling it.")
