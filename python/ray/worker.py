@@ -1685,7 +1685,7 @@ def cancel(object_id, force=False):
     """Cancels a locally-submitted task according to the following pseudocode.
 
     Task is PENDING execution:
-        Pending task is canceled.
+        Task is not executed.
     Task is CURRENTLY executing:
         force=False:
             KeyboardInterrupt will be raised in Python.
@@ -1697,14 +1697,16 @@ def cancel(object_id, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
+    Calling ray.get on a canceled task will raise a RayCancellationError.
+
     Args:
-        task_object_id (ObjectID): ObjectID returned by the task
-                                   that should be canceled.
+        object_id (ObjectID): ObjectID returned by the task
+            that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
-                         the worker that is running the task.
+            the worker that is running the task.
     Raises:
         ValueError: This is also raised for actor tasks, already completed
-                    tasks, and non-locally submitted tasks.
+            tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
