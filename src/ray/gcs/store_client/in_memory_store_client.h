@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
+#ifndef RAY_GCS_STORE_CLIENT_IN_MEMORY_STORE_CLIENT_H
+#define RAY_GCS_STORE_CLIENT_IN_MEMORY_STORE_CLIENT_H
 
-#include <memory>
-#include <unordered_set>
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_context.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -26,10 +24,13 @@ namespace ray {
 
 namespace gcs {
 
-class RedisStoreClient : public StoreClient {
+/// \class InMemoryStoreClient
+///
+/// This class is thread safe.
+class InMemoryStoreClient : public StoreClient {
  public:
-  RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(std::move(redis_client)) {}
+  explicit InMemoryStoreClient(boost::asio::io_service &main_io_service)
+      : main_io_service_(main_io_service) {}
 
   Status AsyncPut(const std::string &table_name, const std::string &key,
                   const std::string &data, const StatusCallback &callback) override;
@@ -52,14 +53,31 @@ class RedisStoreClient : public StoreClient {
                             const StatusCallback &callback) override;
 
  private:
-  Status DoPut(const std::string &key, const std::string &data,
-               const StatusCallback &callback);
+  struct InMemoryTable {
+    /// Mutex to protect the records_ field and the index_keys_ field.
+    absl::Mutex mutex_;
+    // Mapping from key to data.
+    absl::flat_hash_map<std::string, std::string> records_ GUARDED_BY(mutex_);
+    // Mapping from index key to keys.
+    absl::flat_hash_map<std::string, std::vector<std::string>> index_keys_
+        GUARDED_BY(mutex_);
+  };
 
-  std::shared_ptr<RedisClient> redis_client_;
+  std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
+      const std::string &table_name);
+
+  /// Mutex to protect the tables_ field.
+  absl::Mutex mutex_;
+  absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
+      GUARDED_BY(mutex_);
+
+  /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
+  /// of the callback.
+  boost::asio::io_service &main_io_service_;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
 
-#endif  // RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
+#endif  // RAY_GCS_STORE_CLIENT_IN_MEMORY_STORE_CLIENT_H

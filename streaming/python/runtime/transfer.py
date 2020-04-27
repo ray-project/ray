@@ -193,8 +193,8 @@ class ChannelCreationParametersBuilder:
                               self._python_reader_sync_function_descriptor)
         return self
 
-    def build_parameters(self, actors, java_async_func,
-                         java_sync_func, py_async_func, py_sync_func):
+    def build_parameters(self, actors, java_async_func, java_sync_func,
+                         py_async_func, py_sync_func):
         for handle in actors:
             parameter = None
             if handle._ray_actor_language == Language.PYTHON:
@@ -251,8 +251,7 @@ class DataWriter:
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.writer = _streaming.DataWriter.create(
             py_output_channels, creation_parameters.get_parameters(),
-            channel_size, py_msg_ids,
-            config_bytes, is_mock)
+            channel_size, py_msg_ids, config_bytes, is_mock)
 
         logger.info("create DataWriter succeed")
 
@@ -307,8 +306,8 @@ class DataReader:
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.reader = _streaming.DataReader.create(
             py_input_channels, creation_parameters.get_parameters(),
-            py_seq_ids, py_msg_ids,
-            timer_interval, is_recreate, config_bytes, is_mock)
+            py_seq_ids, py_msg_ids, timer_interval, is_recreate, config_bytes,
+            is_mock)
         logger.info("create DataReader succeed")
 
     def read(self, timeout_millis):
