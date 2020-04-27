@@ -84,7 +84,7 @@ class TuneTensorBoard extends React.Component<
             "tensorboard --logdir" if not displaying below.
           </Typography>
         )}
-        {tuneInfo && !tuneInfo["tensorboard"]["tensorboard_current"] && (
+        {tuneInfo && !tuneInfo.tensorboard.tensorboard_current && (
           <Typography className={classes.warning} color="textSecondary">
             The below Tensorboard reflects a previously entered log directory.
             Restart the Ray Dashboard to change the Tensorboard logdir.
@@ -112,11 +112,12 @@ class TuneTensorBoard extends React.Component<
       <div className={classes.root}>
         {!enabled && (
           <div>
-            <Button variant="outlined" onClick={this.handleSubmit}>
-              <Typography color="textSecondary" className={classes.warning}>
-                {" "}
-                Enable TensorBoard{" "}
-              </Typography>
+            <Button
+              variant="outlined"
+              onClick={this.handleSubmit}
+              className={classes.warning}
+            >
+              Enable TensorBoard
             </Button>
             {loading && (
               <CircularProgress className={classes.progress} size={25} />

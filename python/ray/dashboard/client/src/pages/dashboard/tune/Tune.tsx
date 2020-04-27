@@ -31,11 +31,11 @@ const styles = (theme: Theme) =>
       borderBottomWidth: 1,
     },
     heading: {
-      fontsize: "0.9rem",
+      fontsize: "0.9em",
       marginTop: theme.spacing(2),
     },
     warning: {
-      fontSize: "0.8125rem",
+      fontSize: "1em",
     },
     warningIcon: {
       fontSize: "1.25em",
@@ -47,9 +47,10 @@ const styles = (theme: Theme) =>
     },
     submit: {
       marginLeft: theme.spacing(2),
+      fontSize: "0.8125em",
     },
     prompt: {
-      fontSize: "0.8125rem",
+      fontSize: "1em",
       marginTop: theme.spacing(1),
     },
     input: {
@@ -156,8 +157,7 @@ class Tune extends React.Component<
         )}
         <div>
           <Typography className={classes.prompt} color="textSecondary">
-            {" "}
-            Enter Tune Log Directory Here:{" "}
+            Enter Tune Log Directory Here:
           </Typography>
           <TextField
             className={classes.input}
@@ -170,10 +170,7 @@ class Tune extends React.Component<
             variant="outlined"
             onClick={this.handleExperimentSubmit}
           >
-            <Typography color="textSecondary" className={classes.warning}>
-              {" "}
-              Submit{" "}
-            </Typography>
+            Submit
           </Button>
           {loading && (
             <CircularProgress className={classes.progress} size={25} />
