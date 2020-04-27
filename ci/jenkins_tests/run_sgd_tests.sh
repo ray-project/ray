@@ -42,7 +42,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-python /ray/python/ray/util/sgd/torch/examples/image_models/train.py --mock-data --smoke-test --ray-num-workers=2 --model mobilenetv3_small_075 data
+python /ray/python/ray/util/sgd/torch/examples/image_models/train.py --no-gpu --mock-data --smoke-test --ray-num-workers=2 --model mobilenetv3_small_075 data
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/train_example.py
