@@ -166,7 +166,7 @@ def test_for_each_concur(ray_start_regular_shared):
     def task(x):
         i, main_wait, test_wait = x
         ray.get(main_wait.release.remote())
-        ray.get(test_wait.release.remote())
+        ray.get(test_wait.acquire.remote())
         return i + 10
 
     @ray.remote(num_cpus=0.1)
@@ -180,12 +180,15 @@ def test_for_each_concur(ray_start_regular_shared):
     for i in range(4):
         ray.get(main_wait.acquire.remote())
 
+    # There should be exactly 4 tasks executing at this point.
     assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
 
+    # When we finish one task, exactly one more should start.
     ray.get(test_wait.release.remote())
     ray.get(main_wait.acquire.remote())
     assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
 
+    # Finish everything and make sure the output matches a regular iterator.
     for i in range(3):
         ray.get(test_wait.release.remote())
 
