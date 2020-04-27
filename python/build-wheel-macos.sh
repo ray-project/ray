@@ -83,8 +83,6 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.29.0
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
-    # Install requests since it is used to download files in setup.py.
-    $PIP_CMD install -q requests[security]
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel

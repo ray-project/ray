@@ -62,8 +62,6 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
-    # Install requests since it is used to download files in setup.py.
-    /opt/python/${PYTHON}/bin/pip install -q requests[security]
     PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
