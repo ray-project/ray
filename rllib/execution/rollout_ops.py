@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 import time
 
@@ -12,6 +13,8 @@ from ray.rllib.execution.common import GradientType, SampleBatchType, \
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
+
+logger = logging.getLogger(__name__)
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -155,6 +158,12 @@ class ConcatBatches:
         self.buffer.append(batch)
         self.count += batch.count
         if self.count >= self.min_batch_size:
+            if self.count > self.min_batch_size * 2:
+                logger.info("Collected more training samples than expected "
+                            "(actual={}, train_batch_size={}). ".format(
+                                self.count, self.min_batch_size) +
+                            "This may be because you have many workers or "
+                            "long episodes in 'complete_episodes' batch mode.")
             out = SampleBatch.concat_samples(self.buffer)
             timer = LocalIterator.get_metrics().timers[SAMPLE_TIMER]
             timer.push(time.perf_counter() - self.batch_start_time)

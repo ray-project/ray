@@ -5,7 +5,7 @@ from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
@@ -225,7 +225,17 @@ def execution_plan(workers, config):
                 num_sgd_iter=config["num_sgd_iter"],
                 sgd_minibatch_size=config["sgd_minibatch_size"]))
     else:
-        raise NotImplementedError
+        train_op = rollouts.for_each(
+            TrainTFMultiGPU(
+                workers,
+                sgd_minibatch_size=config["sgd_minibatch_size"],
+                num_sgd_iter=config["num_sgd_iter"],
+                num_gpus=config["num_gpus"],
+                rollout_fragment_length=config["rollout_fragment_length"],
+                num_envs_per_worker=config["num_envs_per_worker"],
+                train_batch_size=config["train_batch_size"],
+                shuffle_sequences=config["shuffle_sequences"],
+                _fake_gpus=config["_fake_gpus"]))
 
     # Update KL after each round of training.
     train_op = train_op.for_each(update_kl)

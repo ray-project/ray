@@ -18,6 +18,7 @@ WORKER_UPDATE_TIMER = "update"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
+LOAD_BATCH_TIMER = "load"
 
 # Instant metrics (keys for metrics.info).
 LEARNER_INFO = "learner"
