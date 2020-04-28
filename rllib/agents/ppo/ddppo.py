@@ -153,6 +153,8 @@ def execution_plan(workers, config):
                 metrics.counters[STEPS_SAMPLED_COUNTER] += count
                 metrics.counters[STEPS_TRAINED_COUNTER] += count
                 metrics.info[LEARNER_INFO] = info
+            # Since SGD happens remotely, the time delay between fetch and
+            # completion is approximately the SGD step time.
             metrics.timers[LEARN_ON_BATCH_TIMER].push(time.perf_counter() -
                                                       self.fetch_start_time)
 
