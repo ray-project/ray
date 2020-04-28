@@ -410,12 +410,15 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 
   auto on_done = [this, subscribe, done](const Status &status) {
     // Get nodes from GCS Service.
-    auto callback = [subscribe, done](const Status &status,
-                                      const std::vector<GcsNodeInfo> &node_info_list) {
+    auto callback = [this, subscribe, done](
+                        const Status &status,
+                        const std::vector<GcsNodeInfo> &node_info_list) {
       for (auto &node_info : node_info_list) {
-        subscribe(ClientID::FromBinary(node_info.node_id()), node_info);
+        HandleNotification(node_info);
       }
-      done(status);
+      if (done) {
+        done(status);
+      }
     };
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
