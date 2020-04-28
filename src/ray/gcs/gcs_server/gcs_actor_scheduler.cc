@@ -28,7 +28,6 @@ GcsActorScheduler::GcsActorScheduler(
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
     LeaseClientFactoryFn lease_client_factory, rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
-      client_call_manager_(io_context_),
       actor_info_accessor_(actor_info_accessor),
       gcs_node_manager_(gcs_node_manager),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
@@ -36,19 +35,6 @@ GcsActorScheduler::GcsActorScheduler(
       lease_client_factory_(std::move(lease_client_factory)),
       client_factory_(std::move(client_factory)) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
-  if (lease_client_factory_ == nullptr) {
-    lease_client_factory_ = [this](const rpc::Address &address) {
-      auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
-          address.ip_address(), address.port(), client_call_manager_);
-      return std::make_shared<raylet::RayletClient>(
-          std::move(node_manager_worker_client));
-    };
-  }
-  if (client_factory_ == nullptr) {
-    client_factory_ = [this](const rpc::Address &address) {
-      return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-    };
-  }
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {

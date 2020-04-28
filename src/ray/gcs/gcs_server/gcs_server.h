@@ -16,6 +16,7 @@
 #define RAY_GCS_GCS_SERVER_H
 
 #include <ray/gcs/redis_gcs_client.h>
+#include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 
@@ -114,6 +115,8 @@ class GcsServer {
   rpc::GrpcServer rpc_server_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context main_service_;
+  /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
+  rpc::ClientCallManager client_call_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The gcs redis failure detector.

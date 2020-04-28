@@ -32,7 +32,8 @@ namespace gcs {
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config)
     : config_(config),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.grpc_server_thread_num) {}
+                  config.grpc_server_thread_num),
+      client_call_manager_(main_service_) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -132,9 +133,55 @@ void GcsServer::InitGcsNodeManager() {
 
 void GcsServer::InitGcsActorManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr && gcs_node_manager_ != nullptr);
+  auto scheduler = std::make_shared<GcsActorScheduler>(
+      main_service_, redis_gcs_client_->Actors(), *gcs_node_manager_,
+      /*schedule_failure_handler=*/
+      [this](std::shared_ptr<GcsActor> actor) {
+        // When there are no available nodes to schedule the actor the
+        // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+        // this case, the actor manager should schedule the actor once an
+        // eligible node is registered.
+        gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+      },
+      /*schedule_success_handler=*/
+      [this](std::shared_ptr<GcsActor> actor) {
+        gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+      },
+      /*lease_client_factory=*/
+      [this](const rpc::Address &address) {
+        auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
+            address.ip_address(), address.port(), client_call_manager_);
+        return std::make_shared<ray::raylet::RayletClient>(
+            std::move(node_manager_worker_client));
+      },
+      /*client_factory=*/
+      [this](const rpc::Address &address) {
+        return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+      });
   gcs_actor_manager_ =
-      std::make_shared<GcsActorManager>(main_service_, redis_gcs_client_->Actors(),
-                                        redis_gcs_client_->Workers(), *gcs_node_manager_);
+      std::make_shared<GcsActorManager>(scheduler, redis_gcs_client_->Actors());
+  gcs_node_manager_->AddNodeAddedListener(
+      [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
+        // Because a new node has been added, we need to try to schedule the pending
+        // actors.
+        gcs_actor_manager_->SchedulePendingActors();
+      });
+
+  gcs_node_manager_->AddNodeRemovedListener([this](
+                                                std::shared_ptr<rpc::GcsNodeInfo> node) {
+    // All of the related actors should be reconstructed when a node is removed from the
+    // GCS.
+    gcs_actor_manager_->ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
+  });
+  RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+      [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
+        auto &worker_address = worker_failure_data.worker_address();
+        WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
+        ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
+        auto needs_restart = !worker_failure_data.intentional_disconnect();
+        gcs_actor_manager_->ReconstructActorOnWorker(node_id, worker_id, needs_restart);
+      },
+      /*done_callback=*/nullptr));
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {

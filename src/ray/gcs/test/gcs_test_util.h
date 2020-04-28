@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <utility>
+#include "gmock/gmock.h"
 
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
@@ -136,9 +137,6 @@ struct Mocker {
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
       callbacks.push_back(callback);
-      if (enable_auto_reply) {
-        ReplyPushTask();
-      }
       return Status::OK();
     }
 
@@ -156,7 +154,6 @@ struct Mocker {
       return true;
     }
 
-    bool enable_auto_reply = false;
     std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   };
 
@@ -177,10 +174,6 @@ struct Mocker {
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
-      if (!auto_grant_node_id.IsNil()) {
-        GrantWorkerLease("", 0, WorkerID::FromRandom(), auto_grant_node_id,
-                         ClientID::Nil());
-      }
       return Status::OK();
     }
 
@@ -190,6 +183,10 @@ struct Mocker {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
       return Status::OK();
+    }
+
+    bool GrantWorkerLease() {
+      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, ClientID::Nil());
     }
 
     // Trigger reply to RequestWorkerLease.
@@ -237,7 +234,7 @@ struct Mocker {
     int num_workers_returned = 0;
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
-    ClientID auto_grant_node_id;
+    ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
   };

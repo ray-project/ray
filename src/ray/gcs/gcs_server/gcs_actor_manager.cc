@@ -66,54 +66,10 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
-                                 gcs::ActorInfoAccessor &actor_info_accessor,
-                                 gcs::WorkerInfoAccessor &worker_info_accessor,
-                                 gcs::GcsNodeManager &gcs_node_manager,
-                                 LeaseClientFactoryFn lease_client_factory,
-                                 rpc::ClientFactoryFn client_factory)
-    : actor_info_accessor_(actor_info_accessor),
-      worker_info_accessor_(worker_info_accessor),
-      gcs_actor_scheduler_(new gcs::GcsActorScheduler(
-          io_context, actor_info_accessor, gcs_node_manager,
-          /*schedule_failure_handler=*/
-          [this](std::shared_ptr<GcsActor> actor) {
-            // When there are no available nodes to schedule the actor the
-            // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-            // this case, the actor should be appended to the `pending_actors_` and wait
-            // for the registration of new node.
-            pending_actors_.emplace_back(std::move(actor));
-          },
-          /*schedule_success_handler=*/
-          [this](std::shared_ptr<GcsActor> actor) {
-            OnActorCreateSuccess(std::move(actor));
-          },
-          std::move(lease_client_factory), std::move(client_factory))) {
-  RAY_LOG(INFO) << "Initializing GcsActorManager.";
-  gcs_node_manager.AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
-        // Because a new node has been added, we need to try to schedule the pending
-        // actors.
-        SchedulePendingActors();
-      });
-
-  gcs_node_manager.AddNodeRemovedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
-    // All of the related actors should be reconstructed when a node is removed from the
-    // GCS.
-    ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
-  });
-  RAY_LOG(INFO) << "Finished initialing GcsActorManager.";
-
-  RAY_CHECK_OK(worker_info_accessor_.AsyncSubscribeToWorkerFailures(
-      [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
-        auto &worker_address = worker_failure_data.worker_address();
-        WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
-        ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
-        auto needs_restart = !worker_failure_data.intentional_disconnect();
-        ReconstructActorOnWorker(node_id, worker_id, needs_restart);
-      },
-      /*done_callback=*/nullptr));
-}
+GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+                                 gcs::ActorInfoAccessor &actor_info_accessor)
+    : gcs_actor_scheduler_(std::move(scheduler)),
+      actor_info_accessor_(actor_info_accessor) {}
 
 void GcsActorManager::RegisterActor(
     const ray::rpc::CreateActorRequest &request,
@@ -154,28 +110,28 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
                                                const ray::WorkerID &worker_id,
                                                bool need_reschedule) {
   std::shared_ptr<GcsActor> actor;
-  // Cancel the scheduling of the related actor.
-  auto actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-  if (!actor_id.IsNil()) {
-    auto iter = registered_actors_.find(actor_id);
-    RAY_CHECK(iter != registered_actors_.end());
-    actor = iter->second;
+  // Find from worker_to_created_actor_.
+  auto iter = worker_to_created_actor_.find(worker_id);
+  if (iter != worker_to_created_actor_.end()) {
+    actor = std::move(iter->second);
+    // Remove the created actor from worker_to_created_actor_.
+    worker_to_created_actor_.erase(iter);
+    // remove the created actor from node_to_created_actors_.
+    auto node_iter = node_to_created_actors_.find(node_id);
+    RAY_CHECK(node_iter != node_to_created_actors_.end());
+    RAY_CHECK(node_iter->second.erase(actor->GetActorID()) != 0);
+    if (node_iter->second.empty()) {
+      node_to_created_actors_.erase(node_iter);
+    }
   } else {
-    // Find from worker_to_created_actor_.
-    auto iter = worker_to_created_actor_.find(worker_id);
-    if (iter != worker_to_created_actor_.end()) {
-      actor = std::move(iter->second);
-      // Remove the created actor from worker_to_created_actor_.
-      worker_to_created_actor_.erase(iter);
-      // remove the created actor from node_to_created_actors_.
-      auto node_iter = node_to_created_actors_.find(node_id);
-      RAY_CHECK(node_iter != node_to_created_actors_.end());
-      RAY_CHECK(node_iter->second.erase(actor->GetActorID()) != 0);
-      if (node_iter->second.empty()) {
-        node_to_created_actors_.erase(node_iter);
-      }
+    auto actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
+    if (!actor_id.IsNil()) {
+      auto iter = registered_actors_.find(actor_id);
+      RAY_CHECK(iter != registered_actors_.end());
+      actor = iter->second;
     }
   }
+
   if (actor != nullptr) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " failed, reconstructing actor " << actor->GetActorID();
@@ -248,7 +204,13 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
   }
 }
 
-void GcsActorManager::OnActorCreateSuccess(std::shared_ptr<GcsActor> actor) {
+void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
+  // We will attempt to schedule this actor once an eligible node is
+  // registered.
+  pending_actors_.emplace_back(std::move(actor));
+}
+
+void GcsActorManager::OnActorCreationSuccess(std::shared_ptr<GcsActor> actor) {
   auto worker_id = actor->GetWorkerID();
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(worker_to_created_actor_.emplace(worker_id, actor).second);

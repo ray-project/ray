@@ -36,9 +36,33 @@ using LeaseClientFactoryFn =
     std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &address)>;
 
 class GcsActor;
+
+class GcsActorSchedulerInterface {
+ public:
+  /// Schedule the specified actor.
+  ///
+  /// \param actor to be scheduled.
+  virtual void Schedule(std::shared_ptr<GcsActor> actor) = 0;
+
+  /// Cancel all actors that are being scheduled to the specified node.
+  ///
+  /// \param node_id ID of the node where the worker is located.
+  /// \return ID list of actors associated with the specified node id.
+  virtual std::vector<ActorID> CancelOnNode(const ClientID &node_id) = 0;
+
+  /// Cancel the actor that is being scheduled to the specified worker.
+  ///
+  /// \param node_id ID of the node where the worker is located.
+  /// \param worker_id ID of the worker that the actor is creating on.
+  /// \return ID of actor associated with the specified node id and worker id.
+  virtual ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) = 0;
+
+  virtual ~GcsActorSchedulerInterface() {}
+};
+
 /// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
 /// This class is not thread-safe.
-class GcsActorScheduler {
+class GcsActorScheduler : public GcsActorSchedulerInterface {
  public:
   /// Create a GcsActorScheduler
   ///
@@ -67,20 +91,20 @@ class GcsActorScheduler {
   /// triggered, otherwise the actor will be scheduled until succeed or canceled.
   ///
   /// \param actor to be scheduled.
-  void Schedule(std::shared_ptr<GcsActor> actor);
+  void Schedule(std::shared_ptr<GcsActor> actor) override;
 
   /// Cancel all actors that are being scheduled to the specified node.
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \return ID list of actors associated with the specified node id.
-  std::vector<ActorID> CancelOnNode(const ClientID &node_id);
+  std::vector<ActorID> CancelOnNode(const ClientID &node_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
-  ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id);
+  ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -202,11 +226,9 @@ class GcsActorScheduler {
       const rpc::Address &worker_address);
 
  protected:
-  /// The io loop which is used to construct `client_call_manager_` and delay execution of
-  /// tasks(e.g. execute_after).
+  /// The io loop which is used to delay execution of tasks(e.g.
+  /// execute_after).
   boost::asio::io_context &io_context_;
-  /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
-  rpc::ClientCallManager client_call_manager_;
   /// The actor info accessor.
   gcs::ActorInfoAccessor &actor_info_accessor_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
