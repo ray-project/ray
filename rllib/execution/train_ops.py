@@ -56,10 +56,13 @@ class TrainOneStep:
         metrics = LocalIterator.get_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
-            info = do_minibatch_sgd(batch, self.policies,
-                                    self.workers.local_worker(),
-                                    self.num_sgd_iter, self.sgd_minibatch_size,
-                                    [])
+            if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
+                info = do_minibatch_sgd(batch, self.policies,
+                                        self.workers.local_worker(),
+                                        self.num_sgd_iter,
+                                        self.sgd_minibatch_size, [])
+            else:
+                info = self.workers.local_worker().learn_on_batch(batch)
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         metrics.info[LEARNER_INFO] = info
