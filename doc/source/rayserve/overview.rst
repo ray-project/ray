@@ -32,6 +32,17 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
   and discuss in the #serve channel.
 
+
+Installation
+~~~~~~~~~~~~
+RayServe supports Python 3.5 and higher versions. To install RayServe:
+
+.. code-block:: bash
+
+  pip install "ray[serve]"
+
+
+
 RayServe in 90 Seconds
 ~~~~~~~~~~~~~~~~~~~~~~
 
