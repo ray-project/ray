@@ -57,7 +57,9 @@ See the API documentation (:ref:`repeater-doc`) for more details.
 
     search_alg = BayesOpt(...)
     re_search_alg = Repeater(search_alg, repeat=10)
-    tune.run(trainable, search_alg=re_search_alg)
+
+    # Repeat 2 samples 10 times each.
+    tune.run(trainable, num_samples=20, search_alg=re_search_alg)
 
 .. note:: This does not apply for grid search and random search.
 .. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
@@ -87,6 +89,8 @@ An example of this can be found in `bayesopt_example.py <https://github.com/ray-
     :show-inheritance:
     :noindex:
 
+.. _tune-hyperopt:
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
@@ -109,6 +113,7 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
     :show-inheritance:
     :noindex:
+
 
 SigOpt Search
 -------------
@@ -138,6 +143,8 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
 .. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
     :show-inheritance:
     :noindex:
+
+.. _tune-nevergrad:
 
 Nevergrad Search
 ----------------
@@ -214,6 +221,8 @@ An example of this can be found in `dragonfly_example.py <https://github.com/ray
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
     :show-inheritance:
     :noindex:
+
+.. _tune-ax:
 
 Ax Search
 ---------
@@ -352,11 +361,8 @@ If you are interested in implementing or contributing a new Search Algorithm, th
 Model-Based Suggestion Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
+Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
 
-.. autoclass:: ray.tune.suggest.SuggestionAlgorithm
+.. autoclass:: ray.tune.suggest.Searcher
     :show-inheritance:
     :noindex:
-
-    .. automethod:: ray.tune.suggest.SuggestionAlgorithm.suggest
-        :noindex:

@@ -313,11 +313,12 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                                     get_batch_builder, extra_batch_callback)
         # Call each policy's Exploration.on_episode_start method.
         for p in policies.values():
-            p.exploration.on_episode_start(
-                policy=p,
-                environment=base_env,
-                episode=episode,
-                tf_sess=getattr(p, "_sess", None))
+            if getattr(p, "exploration", None) is not None:
+                p.exploration.on_episode_start(
+                    policy=p,
+                    environment=base_env,
+                    episode=episode,
+                    tf_sess=getattr(p, "_sess", None))
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
@@ -505,11 +506,12 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
-                p.exploration.on_episode_end(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                if getattr(p, "exploration", None) is not None:
+                    p.exploration.on_episode_end(
+                        policy=p,
+                        environment=base_env,
+                        episode=episode,
+                        tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
             callbacks.on_episode_end(
                 worker=worker,

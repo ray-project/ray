@@ -41,8 +41,8 @@ public abstract class StreamTask implements Runnable {
     this.worker = worker;
     prepareTask();
 
-    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
-        + "-" + System.currentTimeMillis());
+    this.thread = new Thread(Ray.wrapRunnable(this),
+        this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
