@@ -160,7 +160,7 @@ class ConcatBatches:
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
                 logger.info("Collected more training samples than expected "
-                            "(actual={}, train_batch_size={}). ".format(
+                            "(actual={}, expected={}). ".format(
                                 self.count, self.min_batch_size) +
                             "This may be because you have many workers or "
                             "long episodes in 'complete_episodes' batch mode.")
