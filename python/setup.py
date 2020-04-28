@@ -162,7 +162,10 @@ class build_ext(_build_ext.build_ext):
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination, follow_symlinks=True)
+            # Use shutil.copyfile() instead of shutil.copy() to _not_ preserve
+            # permissions. This is especially important on Windows because
+            # "permissions" include the read-only flag, which causes errors.
+            shutil.copyfile(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):

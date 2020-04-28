@@ -53,7 +53,8 @@ jobs:
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh lint
         . ./ci/travis/ci.sh build
-        . ./ci/travis/ci.sh run
+        . ./ci/travis/ci.sh test_python
+        . ./ci/travis/ci.sh test_wheels
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'

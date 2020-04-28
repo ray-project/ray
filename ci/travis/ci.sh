@@ -68,6 +68,16 @@ reload_env() {
   PATH="${PATH%:}"  # Remove trailing colon
 }
 
+need_wheels() {
+  local error_code=1
+  case "${OSTYPE}" in
+    linux*) if [ "${LINUX_WHEELS-}" = 1 ]; then error_code=0; fi;;
+    darwin*) if [ "${MAC_WHEELS-}" = 1 ]; then error_code=0; fi;;
+    msys*) if [ "${WINDOWS_WHEELS-}" = 1 ]; then error_code=0; fi;;
+  esac
+  return "${error_code}"
+}
+
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
     # Windows -- most tests won't work yet; just do the ones we know work
@@ -82,15 +92,12 @@ test_cpp() {
 test_wheels() {
   local result=0 flush_logs=0
 
-  "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+  if need_wheels; then
+    "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+  fi
 
   if [ 0 -ne "${flush_logs}" ]; then
-    local f
-    for f in /tmp/ray/session_latest/logs/*; do
-      if [ -f "$f" ]; then  # make sure the wildcard actually expanded to something valid
-        cat -- "$f"
-      fi
-    done
+    cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
@@ -106,6 +113,49 @@ build_sphinx_docs() {
       sphinx-build -q -W -E -T -b html source _build/html
     fi
   )
+}
+
+install_cython_examples() {
+  "${ROOT_DIR}"/install-cython-examples.sh
+}
+
+install_go() {
+  eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=stable bash)"
+}
+
+install_ray() {
+  bazel build -k "//:*"   # Do a full build first to ensure everything passes
+  "${ROOT_DIR}"/install-ray.sh
+}
+
+build_wheels() {
+  case "${OSTYPE}" in
+    linux*)
+      # Mount bazel cache dir to the docker container.
+      # For the linux wheel build, we use a shared cache between all
+      # wheels, but not between different travis runs, because that
+      # caused timeouts in the past. See the "cache: false" line below.
+      local MOUNT_BAZEL_CACHE=(-v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}" -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}" -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}")
+
+      # This command should be kept in sync with ray/python/README-building-wheels.md,
+      # except the "${MOUNT_BAZEL_CACHE[@]}" part.
+      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+      ;;
+    darwin*)
+      # This command should be kept in sync with ray/python/README-building-wheels.md.
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      ;;
+    msys*)
+      if ! python -c "import ray" 2> /dev/null; then
+        # This installs e.g. the pickle5 dependencies, which are needed for correct wheel testing
+        install_ray
+      fi
+      (
+        cd "${WORKSPACE_DIR}"/python
+        python setup.py --quiet bdist_wheel
+      )
+      ;;
+  esac
 }
 
 lint_readme() {
@@ -248,7 +298,6 @@ init() {
 
   "${ROOT_DIR}"/install-bazel.sh
   . "${ROOT_DIR}"/install-dependencies.sh
-  reload_env  # We just modified our environment; reload it so we can continue
 
   cat <<EOF >> ~/.bashrc
 . "${BASH_SOURCE:-$0}"  # reload environment
@@ -256,15 +305,8 @@ EOF
 }
 
 build() {
-  local should_run_bazel_and_install=1
-  case "${OSTYPE}" in
-    linux*) if [ "${LINUX_WHEELS-}" = 1 ]; then should_run_bazel_and_install=0; fi;;
-    darwin*) if [ "${MAC_WHEELS-}" = 1 ]; then should_run_bazel_and_install=0; fi;;
-  esac
-
-  if [ "${should_run_bazel_and_install}" = 1 ]; then  # NOT building wheels
-    bazel build -k "//:*"   # Do a full build first to ensure it passes
-    "${ROOT_DIR}"/install-ray.sh
+  if ! need_wheels; then
+    install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
@@ -272,62 +314,15 @@ build() {
   fi
 
   if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    "${ROOT_DIR}"/install-cython-examples.sh
+    install_cython_examples
   fi
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
-    eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=stable bash)"
+    install_go
   fi
 
-  case "${OSTYPE}" in
-    linux*)
-      if [ "${LINUX_WHEELS-}" = 1 ]; then
-        # Mount bazel cache dir to the docker container.
-        # For the linux wheel build, we use a shared cache between all
-        # wheels, but not between different travis runs, because that
-        # caused timeouts in the past. See the "cache: false" line below.
-        local MOUNT_BAZEL_CACHE=(-v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}" -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}" -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}")
-
-        # This command should be kept in sync with ray/python/README-building-wheels.md,
-        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-        suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
-      fi
-      ;;
-    darwin*)      
-      if [ "${MAC_WHEELS-}" = 1 ]; then
-        # This command should be kept in sync with ray/python/README-building-wheels.md.
-        suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      fi
-      ;;
-    msys*)
-      if [ "${WINDOWS_WHEELS-}" = 1 ]; then
-        (
-          cd "${WORKSPACE_DIR}"/python
-          python setup.py --quiet bdist_wheel
-        )
-      fi
-      ;;
-  esac
-}
-
-run() {
-  local should_test_wheels
-  case "${OSTYPE}" in
-    darwin*) should_test_wheels="${MAC_WHEELS-}";;
-    linux*) should_test_wheels="${LINUX_WHEELS-}";;
-    msys*) should_test_wheels="${WINDOWS_WHEELS-}";;
-  esac
-
-  if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
-    test_python
-  fi
-
-  if [ "${TESTSUITE-}" = cpp_worker ]; then
-    test_cpp
-  fi
-
-  if [ "${should_test_wheels}" = 1 ]; then
-    test_wheels
+  if need_wheels; then
+    build_wheels
   fi
 }
 

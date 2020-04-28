@@ -60,7 +60,7 @@ install_miniconda() {
       ;;
   esac
   reload_env
-  python -m pip install --upgrade --quiet pip "wheel>=0.34.0"  # wheel: https://github.com/pypa/wheel/issues/327
+  python -m pip install --upgrade --quiet pip
 }
 
 install_nvm() {
