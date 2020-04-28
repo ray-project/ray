@@ -811,7 +811,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
       object_table_data.set_manager(object_location_change.removed_node_id());
       change_mode = rpc::GcsChangeMode::REMOVE;
     }
-    object_data_vector.emplace_back(object_table_data);
+    object_data_vector.emplace_back(std::move(object_table_data));
     gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };
