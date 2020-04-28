@@ -101,57 +101,6 @@ class RNNSpyModel(RecurrentTFModelV2):
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-        self.lstm = tf.keras.layers.LSTM(
-            self.cell_size, return_state=True, return_sequences=True)
-
-    def forward_rnn(self, inputs, state, seq_lens):
-        lstm_out, h, c = self.lstm(
-            inputs=inputs,
-            mask=tf.sequence_mask(seq_lens),
-            initial_state=state)
-
-        def spy(inputs, seq_lens):
-            # TF runs this function in an isolated context, so we have to use
-            # redis to communicate back to our suite
-            ray.experimental.internal_kv._internal_kv_put(
-                "t_spy_in_{}".format(RNNSpyModel.capture_index),
-                pickle.dumps((inputs, seq_lens)),
-                overwrite=True)
-            RNNSpyModel.capture_index += 1
-            return 0
-
-        spy_fn = tf.py_func(
-            spy, [
-                inputs,
-                seq_lens,
-            ], tf.int64, stateful=True)
-
-        with tf.control_dependencies([spy_fn]):
-            output = tf.layers.dense(lstm_out, self.num_outputs)
-            value_out = tf.layers.dense(lstm_out, 1)
-            self._value_out = value_out
-            return output, [h, c]
-
-    @override(ModelV2)
-    def value_function(self):
-        return tf.reshape(self._value_out, [-1])
-
-    @override(ModelV2)
-    def get_initial_state(self):
-        return [
-            np.zeros(self.cell_size, np.float32),
-            np.zeros(self.cell_size, np.float32)
-        ]
-
-
-class RNNSpyModel_old(RecurrentTFModelV2):
-    capture_index = 0
-    cell_size = 3
-
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
         self.cell_size = RNNSpyModel.cell_size
 
         def spy(

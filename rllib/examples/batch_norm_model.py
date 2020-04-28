@@ -19,7 +19,7 @@ parser.add_argument("--run", type=str, default="PPO")
 
 
 class BatchNormModel(TFModelV2):
-    @override(TFModelV2)
+    @override(ModelV2)
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,

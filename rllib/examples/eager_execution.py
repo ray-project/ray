@@ -5,6 +5,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -51,13 +52,13 @@ class EagerModel(TFModelV2):
         self.base_model = tf.keras.models.Model(inputs, [out, value_out])
         self.register_variables(self.base_model.variables)
 
-    @override(TFModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         out, self._value_out = self.base_model(input_dict["obs"], state,
                                                seq_lens)
         return out, []
 
-    @override(TFModelV2)
+    @override(ModelV2)
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
 

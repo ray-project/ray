@@ -1406,7 +1406,7 @@ py_test(
     name = "examples/nested_action_spaces_ppo",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--stop=-500", "--run=PPO"]
 )
