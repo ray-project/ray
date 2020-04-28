@@ -133,12 +133,15 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
   }
 
   if (actor != nullptr) {
+    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                  << " failed, reconstructing actor " << actor->GetActorID();
     // Reconstruct the actor.
     ReconstructActor(actor, need_reschedule);
   }
 }
 
 void GcsActorManager::ReconstructActorsOnNode(const ClientID &node_id) {
+  RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors";
   // Cancel the scheduling of all related actors.
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   for (auto &actor_id : scheduling_actor_ids) {

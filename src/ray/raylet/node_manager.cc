@@ -2519,6 +2519,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
         failed_nodes_cache_.count(owner_node_id) > 0) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
+      RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
+                    << " died, killing leased worker " << worker->WorkerId();
       KillWorker(worker);
     }
 
