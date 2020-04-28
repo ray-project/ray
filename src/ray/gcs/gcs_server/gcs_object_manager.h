@@ -1,5 +1,19 @@
-#ifndef GCS_GCS_SERVER_OBJECT_LOCATOR_H
-#define GCS_GCS_SERVER_OBJECT_LOCATOR_H
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef RAY_GCS_OBJECT_MANAGER_H
+#define RAY_GCS_OBJECT_MANAGER_H
 
 #include <memory>
 #include <unordered_map>
@@ -9,16 +23,33 @@
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+
 namespace ray {
 
 namespace gcs {
 
-class ObjectLocator {
+class GcsObjectManager : public rpc::ObjectInfoHandler {
  public:
-  ObjectLocator();
+  explicit GcsObjectManager(gcs::RedisGcsClient &gcs_client,
+                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
 
-  ~ObjectLocator();
+  void HandleGetObjectLocations(const rpc::GetObjectLocationsRequest &request,
+                                rpc::GetObjectLocationsReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleAddObjectLocation(const rpc::AddObjectLocationRequest &request,
+                               rpc::AddObjectLocationReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request,
+                                  rpc::RemoveObjectLocationReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
+ private:
   /// Add a location of objects.
   ///
   /// \param node_id The object location that will be added.
@@ -53,7 +84,6 @@ class ObjectLocator {
   void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
- private:
   typedef std::unordered_set<ClientID> LocationSet;
   typedef std::unordered_set<ObjectID> ObjectSet;
 
@@ -63,8 +93,8 @@ class ObjectLocator {
   /// \param object_id The id of object to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
   /// \return LocationSet *
-  ObjectLocator::LocationSet *GetObjectLocationSet(const ObjectID &object_id,
-                                                   bool create_if_not_exist = false)
+  GcsObjectManager::LocationSet *GetObjectLocationSet(const ObjectID &object_id,
+                                                      bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get objects by node id from map.
@@ -73,8 +103,8 @@ class ObjectLocator {
   /// \param node_id The id of node to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
   /// \return ObjectSet *
-  ObjectLocator::ObjectSet *GetNodeHoldObjectSet(const ClientID &node_id,
-                                                 bool create_if_not_exist = false)
+  GcsObjectManager::ObjectSet *GetNodeHoldObjectSet(const ClientID &node_id,
+                                                    bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
@@ -84,10 +114,13 @@ class ObjectLocator {
 
   /// Mapping from node id to objects that held by the node.
   std::unordered_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
+
+  gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
 
-#endif  // GCS_GCS_SERVER_OBJECT_LOCATOR_H
+#endif  // RAY_GCS_OBJECT_MANAGER_H
