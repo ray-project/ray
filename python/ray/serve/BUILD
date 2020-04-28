@@ -24,7 +24,9 @@ py_test(
 py_test(
     name = "test_master_crashes",
     size = "medium",
-    srcs = glob(["tests/test_api.py", "tests/test_failure.py"],
+    srcs = glob(["tests/test_master_crashes.py",
+                 "tests/test_api.py",
+                 "tests/test_failure.py"],
                 exclude=["tests/test_nonblocking.py",
                          "tests/test_serve.py"]),
 )
