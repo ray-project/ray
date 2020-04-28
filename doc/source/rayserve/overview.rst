@@ -35,7 +35,7 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 
 Installation
 ~~~~~~~~~~~~
-RayServe supports Python 3.5 and higher versions. To install RayServe:
+RayServe supports Python versions 3.5 and higher. To install RayServe:
 
 .. code-block:: bash
 
