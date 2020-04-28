@@ -5,6 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.ActorCreationOptions.Builder;
+import io.ray.runtime.config.RayConfig;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
@@ -67,7 +68,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
-    // ray init
+    RayConfig.reset();
     Ray.init();
   }
 

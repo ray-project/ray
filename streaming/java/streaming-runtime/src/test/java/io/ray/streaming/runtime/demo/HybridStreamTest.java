@@ -1,16 +1,19 @@
 package io.ray.streaming.runtime.demo;
 
+import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
 import io.ray.streaming.api.function.impl.MapFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
+import io.ray.streaming.runtime.BaseUnitTest;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
-public class HybridStreamTest {
+public class HybridStreamTest extends BaseUnitTest implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(HybridStreamTest.class);
 
   public static class Mapper1 implements MapFunction<Object, Object> {
@@ -32,7 +35,8 @@ public class HybridStreamTest {
   }
 
   @Test
-  public void testDataStream() throws InterruptedException {
+  public void testHybridDataStream() throws InterruptedException {
+    Ray.shutdown();
     StreamingContext context = StreamingContext.buildContext();
     DataStreamSource<String> streamSource =
         DataStreamSource.fromCollection(context, Arrays.asList("a", "b", "c"));
@@ -46,6 +50,7 @@ public class HybridStreamTest {
     context.execute("HybridStreamTestJob");
     TimeUnit.SECONDS.sleep(3);
     context.stop();
+    LOG.info("HybridStreamTest succeed");
   }
 
 }

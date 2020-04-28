@@ -63,12 +63,11 @@ public class StreamingContext implements Serializable {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
         Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
         ClusterStarter.startCluster(false, true);
-        LOG.info("Create local cluster for job {}.", jobName);
+        LOG.info("Created local cluster for job {}.", jobName);
       } else {
         ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), false);
-        LOG.info("Create multi process cluster for job {}.", jobName);
+        LOG.info("Created multi process cluster for job {}.", jobName);
       }
-
       Runtime.getRuntime().addShutdownHook(new Thread(StreamingContext.this::stop));
     } else {
       LOG.info("Reuse existing cluster.");

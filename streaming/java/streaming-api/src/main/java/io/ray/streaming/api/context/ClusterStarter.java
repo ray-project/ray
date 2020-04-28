@@ -21,8 +21,9 @@ class ClusterStarter {
   private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/plasma_store_socket";
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/raylet_socket";
 
-  static void startCluster(boolean isCrossLanguage, boolean isLocal) {
+  static synchronized void startCluster(boolean isCrossLanguage, boolean isLocal) {
     Preconditions.checkArgument(Ray.internal() == null);
+    RayConfig.reset();
     if (!isLocal) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
       System.setProperty("ray.run-mode", "CLUSTER");
@@ -82,13 +83,15 @@ class ClusterStarter {
     Ray.init();
   }
 
-  public static void stopCluster(boolean isCrossLanguage) {
+  public static synchronized void stopCluster(boolean isCrossLanguage) {
     // Disconnect to the cluster.
     Ray.shutdown();
     System.clearProperty("ray.redis.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");
+    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.clearProperty("ray.run-mode");
 
     if (isCrossLanguage) {
       // Stop ray cluster.
