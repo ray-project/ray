@@ -12,18 +12,22 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
-from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
+from ray.rllib.models.tf.tf_action_dist import Categorical, \
+    Deterministic, DiagGaussian, Dirichlet, \
+    MultiActionDistribution, MultiCategorical
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchMultiCategorical, TorchDiagGaussian
-from ray.rllib.utils import try_import_tf
+    TorchDeterministic, TorchDiagGaussian, \
+    TorchMultiActionDistribution, TorchMultiCategorical
+from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
+tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +138,8 @@ class ModelCatalog:
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
                 issubclass(dist_type, ActionDistribution) and \
-                dist_type is not MultiActionDistribution:
+                dist_type not in (
+                MultiActionDistribution, TorchMultiActionDistribution):
             dist = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
@@ -149,28 +154,26 @@ class ModelCatalog:
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic
+                dist = Deterministic if framework == "tf" else \
+                    TorchDeterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical
-        # Tuple Space -> MultiAction.
-        elif dist_type is MultiActionDistribution or \
-                isinstance(action_space, gym.spaces.Tuple):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Tuple action spaces not supported for Pytorch.")
-            child_dist = []
-            input_lens = []
-            for action in action_space.spaces:
-                dist, action_size = ModelCatalog.get_action_dist(
-                    action, config)
-                child_dist.append(dist)
-                input_lens.append(action_size)
+        # Tuple/Dict Spaces -> MultiAction.
+        elif dist_type in (MultiActionDistribution,
+                           TorchMultiActionDistribution) or \
+                isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+            flat_action_space = flatten_space(action_space)
+            child_dists_and_in_lens = tree.map_structure(
+                lambda s: ModelCatalog.get_action_dist(
+                    s, config, framework=framework), flat_action_space)
+            child_dists = [e[0] for e in child_dists_and_in_lens]
+            input_lens = [e[1] for e in child_dists_and_in_lens]
             return partial(
-                MultiActionDistribution,
+                (TorchMultiActionDistribution
+                 if framework == "torch" else MultiActionDistribution),
                 action_space=action_space,
-                child_distributions=child_dist,
+                child_distributions=child_dists,
                 input_lens=input_lens), sum(input_lens)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
@@ -185,12 +188,6 @@ class ModelCatalog:
                 TorchMultiCategorical
             return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
-        # Dict -> TODO(sven)
-        elif isinstance(action_space, gym.spaces.Dict):
-            # TODO(sven): implement
-            raise NotImplementedError(
-                "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead")
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
@@ -216,39 +213,38 @@ class ModelCatalog:
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             return (tf.as_dtype(action_space.dtype),
                     (None, ) + action_space.shape)
-        elif isinstance(action_space, gym.spaces.Tuple):
+        elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+            flat_action_space = flatten_space(action_space)
             size = 0
             all_discrete = True
-            for i in range(len(action_space.spaces)):
-                if isinstance(action_space.spaces[i], gym.spaces.Discrete):
+            for i in range(len(flat_action_space)):
+                if isinstance(flat_action_space[i], gym.spaces.Discrete):
                     size += 1
                 else:
                     all_discrete = False
-                    size += np.product(action_space.spaces[i].shape)
+                    size += np.product(flat_action_space[i].shape)
             size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
-        elif isinstance(action_space, gym.spaces.Dict):
-            raise NotImplementedError(
-                "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead")
         else:
-            raise NotImplementedError("action space {}"
-                                      " not supported".format(action_space))
+            raise NotImplementedError(
+                "Action space {} not supported".format(action_space))
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space, name=None):
+    def get_action_placeholder(action_space, name="action"):
         """Returns an action placeholder consistent with the action space
 
         Args:
             action_space (Space): Action space of the target gym env.
+            name (str): An optional string to name the placeholder by.
+                Default: "action".
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name=(name or "action"))
+        return tf.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
     @DeveloperAPI

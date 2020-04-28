@@ -159,7 +159,7 @@ def test_global_state_api(shutdown_only):
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+    assert job_table[0]["DriverIPAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
@@ -687,6 +687,32 @@ def test_lease_request_leak(shutdown_only):
     time.sleep(
         1)  # Sleep for an amount longer than the reconstruction timeout.
     assert len(ray.objects()) == 0, ray.objects()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
+def test_ray_address_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+    # In this test we use zero CPUs to distinguish between starting a local
+    # ray cluster and connecting to an existing one.
+
+    # Make sure we connect to an existing cluster if
+    # RAY_ADDRESS is set.
+    os.environ["RAY_ADDRESS"] = address
+    ray.init()
+    assert "CPU" not in ray.state.cluster_resources()
+    del os.environ["RAY_ADDRESS"]
+    ray.shutdown()
+
+    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    ray.init()
+    assert "CPU" in ray.state.cluster_resources()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
 #include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
@@ -41,7 +42,7 @@ class GcsActorManagerTest : public ::testing::Test {
       : mock_actor_scheduler_(new MockActorScheduler()),
         gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_) {}
 
-  Mocker::MockedActorInfoAccessor actor_info_accessor_;
+  GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   gcs::GcsActorManager gcs_actor_manager_;
 };

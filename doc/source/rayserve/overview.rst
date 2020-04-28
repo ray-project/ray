@@ -32,6 +32,17 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
   and discuss in the #serve channel.
 
+
+Installation
+~~~~~~~~~~~~
+RayServe supports Python versions 3.5 and higher. To install RayServe:
+
+.. code-block:: bash
+
+  pip install "ray[serve]"
+
+
+
 RayServe in 90 Seconds
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -171,7 +182,7 @@ It's trivial to also split traffic, simply specify the endpoint and the backends
   serve.create_endpoint("endpoint_identifier_split", "/split", methods=["GET", "POST"])
 
   # splitting traffic 70/30
-  serve.split("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})
+  serve.set_traffic("endpoint_identifier_split", {"my_endpoint_backend": 0.7, "my_endpoint_backend_class": 0.3})
 
 
 Batching

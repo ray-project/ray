@@ -12,8 +12,8 @@ Feature Compatibility Matrix
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 =================== ========== ======================= ================== =========== =====================
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
-`ARS`_              tf         **Yes**                 **Yes**            No
-`ES`_               tf         **Yes**                 **Yes**            No
+`ARS`_              tf + torch **Yes**                 **Yes**            No
+`ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf         No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
@@ -143,7 +143,7 @@ SpaceInvaders  843                              ~300
 
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py>`__
 We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
@@ -405,7 +405,7 @@ Derivative-free
 
 Augmented Random Search (ARS)
 -----------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.07055>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ars/ars.py>`__
 ARS is a random search method for training linear policies for continuous control problems. Code here is adapted from https://github.com/modestyachts/ARS to integrate with RLlib APIs.
 
@@ -422,7 +422,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Evolution Strategies
 --------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1703.03864>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/es/es.py>`__
 Code here is adapted from https://github.com/openai/evolution-strategies-starter to execute in the distributed setting with Ray.
 

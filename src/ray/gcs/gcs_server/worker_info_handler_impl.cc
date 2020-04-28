@@ -20,13 +20,21 @@ namespace rpc {
 void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     const ReportWorkerFailureRequest &request, ReportWorkerFailureReply *reply,
     SendReplyCallback send_reply_callback) {
-  Address worker_address = request.worker_failure().worker_address();
+  const Address worker_address = request.worker_failure().worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerFailureData>();
   worker_failure_data->CopyFrom(request.worker_failure());
-  auto on_done = [worker_address, reply, send_reply_callback](Status status) {
+  const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
+  auto on_done = [this, worker_address, worker_id, worker_failure_data, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report worker failure, "
+                     << worker_address.DebugString();
+    } else {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_FAILURE_CHANNEL, worker_id.Binary(),
+                                         worker_failure_data->SerializeAsString(),
+                                         nullptr));
+      RAY_LOG(DEBUG) << "Finished reporting worker failure, "
                      << worker_address.DebugString();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -37,7 +45,6 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished reporting worker failure, " << worker_address.DebugString();
 }
 
 void DefaultWorkerInfoHandler::HandleGetWorkerFailureData(
@@ -68,9 +75,11 @@ void DefaultWorkerInfoHandler::HandleRegisterWorker(
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   auto worker_info = MapFromProtobuf(request.worker_info());
 
-  auto on_done = [worker_id, reply, send_reply_callback](Status status) {
+  auto on_done = [worker_id, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register worker " << worker_id;
+    } else {
+      RAY_LOG(DEBUG) << "Finished registering worker " << worker_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
@@ -80,7 +89,6 @@ void DefaultWorkerInfoHandler::HandleRegisterWorker(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished registering worker " << worker_id;
 }
 
 }  // namespace rpc

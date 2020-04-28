@@ -258,7 +258,7 @@ COMMON_CONFIG = {
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
+    "timesteps_per_iteration": 0,
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.

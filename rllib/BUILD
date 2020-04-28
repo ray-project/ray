@@ -103,7 +103,7 @@ py_test(
 py_test(
     name = "test_apex",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex.py"]
 )
 
@@ -140,11 +140,27 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
+# DDPPO
+py_test(
+    name = "test_ddppo",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/ppo/tests/test_ddppo.py"]
+)
+
+# APPO
+py_test(
+    name = "test_appo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/ppo/tests/test_appo.py"]
+)
+
 # SAC
 py_test(
     name = "test_sac",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
 )
 
@@ -1120,10 +1136,11 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_spaces",
+    name = "tests/test_nested_observation_spaces",
+    main = "tests/test_nested_observation_spaces.py",
     tags = ["tests_dir", "tests_dir_N"],
     size = "small",
-    srcs = ["tests/test_nested_spaces.py"]
+    srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
 py_test(
@@ -1372,7 +1389,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy",
-    tags = ["examples", "examples_M_xxx"],
+    tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
 )
@@ -1383,6 +1400,15 @@ py_test(
     size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/nested_action_spaces_ppo",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "small",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--stop=-500", "--run=PPO"]
 )
 
 py_test(

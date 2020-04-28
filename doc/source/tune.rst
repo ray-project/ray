@@ -1,3 +1,5 @@
+.. _tune-index:
+
 Tune: Scalable Hyperparameter Tuning
 ====================================
 
@@ -8,7 +10,7 @@ Tune: Scalable Hyperparameter Tuning
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
-  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
+  * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras<tune-guides-overview>`.
   * Natively `integrates with optimization libraries <tune-searchalg.html>`_ such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
   * Choose among `scalable algorithms <tune-schedulers.html>`_ such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
@@ -17,27 +19,12 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
 .. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
-.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
-
-For more information, check out:
-
-  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
-  * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
-  * `Tutorial Notebooks <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
-
-**Try out a tutorial notebook on Colab**:
-
-.. raw:: html
-
-    <a href="https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb" target="_parent">
-    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
-    </a>
+**Want to get started?** Head over to the :ref:`60 second Tune tutorial <tune-60-seconds>`.
 
 Quick Start
 -----------
 
 To run this example, install the following: ``pip install 'ray[tune]' torch torchvision``.
-
 
 This example runs a small grid search to train a convolutional neural network using PyTorch and Tune.
 
@@ -63,14 +50,16 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
     :scale: 20%
     :align: center
 
-Take a look at the :ref:`Distributed Experiments <tune-distributed>` documentation for:
 
- 1. Setting up distributed experiments on your local cluster
- 2. Using AWS and GCP
- 3. Spot instance usage/pre-emptible instances, and more.
+.. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
 
-Talks and Blogs
----------------
+Guides/Materials
+----------------
+
+Here are some reference materials for Tune:
+
+  * :ref:`Tune Tutorials, Guides, and Examples <tune-guides-overview>`
+  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune
 
 Below are some blog posts and talks about Tune:
 

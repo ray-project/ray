@@ -630,8 +630,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   };
   ASSERT_TRUE(SubscribeToResources(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Update resources of node in GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   gcs::NodeInfoAccessor::ResourceMap resource_map;
   std::string key = "CPU";
   auto resource = std::make_shared<rpc::ResourceTableData>();
@@ -656,8 +660,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
