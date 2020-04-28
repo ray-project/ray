@@ -417,7 +417,7 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 
 
 DDPGTFPolicy = build_tf_policy(
-    name="DQNTFPolicy",
+    name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_models,
     action_distribution_fn=get_distribution_inputs_and_class,

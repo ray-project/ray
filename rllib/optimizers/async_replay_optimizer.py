@@ -292,9 +292,14 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     Ray actors are single-threaded, so for scalability multiple replay actors
     may be created to increase parallelism."""
 
-    def __init__(self, num_shards, learning_starts, buffer_size,
-                 replay_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps):
+    def __init__(self,
+                 num_shards,
+                 learning_starts,
+                 buffer_size,
+                 replay_batch_size,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
@@ -390,9 +395,14 @@ class LocalBatchReplayBuffer(LocalReplayBuffer):
     This allows for RNN models, but ignores prioritization params.
     """
 
-    def __init__(self, num_shards, learning_starts, buffer_size,
-                 train_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps):
+    def __init__(self,
+                 num_shards,
+                 learning_starts,
+                 buffer_size,
+                 train_batch_size,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size

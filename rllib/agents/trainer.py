@@ -206,7 +206,7 @@ COMMON_CONFIG = {
     "custom_eval_function": None,
     # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
     # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": False,
+    "use_exec_api": True,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
