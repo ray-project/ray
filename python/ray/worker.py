@@ -1682,16 +1682,27 @@ def kill(actor):
 
 
 def cancel(object_id, force=False):
-    """Kill a task forcefully.
+    """Cancels a locally-submitted task according to the following conditions.
 
-    This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    If the specified task is pending execution, it will not be executed. If
+    the task is currently executing, the behavior depends on the ``force``
+    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
+    and when ``force=True``, the executing the task will immediately exit. If
+    the task is already finished, nothing will happen.
 
-    If this actor is reconstructable, it will be attempted to be reconstructed.
+    Only non-actor tasks can be canceled. Canceled tasks will not be
+    retried (max_retries will not be respected).
+
+    Calling ray.get on a canceled task will raise a RayCancellationError.
 
     Args:
-        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
-            of the task to kill.
+        object_id (ObjectID): ObjectID returned by the task
+            that should be canceled.
+        force (boolean): Whether to force-kill a running task by killing
+            the worker that is running the task.
+    Raises:
+        ValueError: This is also raised for actor tasks, already completed
+            tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
