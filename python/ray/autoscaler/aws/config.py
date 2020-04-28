@@ -19,18 +19,18 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V26.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 1/20/2020.
+# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 4/25/2020.
 DEFAULT_AMI = {
-    "us-east-2": "ami-0bb99846db2df6e38",  # US East (Ohio)
-    "us-east-1": "ami-0698bcaf8bd9ef56d",  # US East (N. Virginia)
-    "us-west-1": "ami-074c29e29c500f623",  # US West (N. California)
-    "us-west-2": "ami-010a96c958f9ee5cf",  # US West (Oregon)
-    "ca-central-1": "ami-086b864eabf2da9b1",  # Canada (Central)
-    "eu-central-1": "ami-0dcdcc4bc9e75005f",  # EU (Frankfurt)
-    "eu-west-1": "ami-071e6d171b20431fb",  # EU (Ireland)
-    "eu-west-2": "ami-0470e741c969b62fc",  # EU (London)
-    "eu-west-3": "ami-064f884d98b90a453",  # EU (Paris)
-    "sa-east-1": "ami-054e94fd9b444491d",  # SA (Sao Paulo)
+    "us-east-1": "ami-0dbb717f493016a1a",  # US East (N. Virginia)
+    "us-east-2": "ami-0d6808451e868a339",  # US East (Ohio)
+    "us-west-1": "ami-09f2f73141c83d4fe",  # US West (N. California)
+    "us-west-2": "ami-008d8ed4bd7dc2485",  # US West (Oregon)
+    "ca-central-1": "ami-0142046278ba71f25",  # Canada (Central)
+    "eu-central-1": "ami-09633db638556dc39",  # EU (Frankfurt)
+    "eu-west-1": "ami-0c265211f000802b0",  # EU (Ireland)
+    "eu-west-2": "ami-0f532395ff8544941",  # EU (London)
+    "eu-west-3": "ami-03dbbdf69bbb06b29",  # EU (Paris)
+    "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
 }
 
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \

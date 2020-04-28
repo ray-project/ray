@@ -1136,10 +1136,11 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_spaces",
+    name = "tests/test_nested_observation_spaces",
+    main = "tests/test_nested_observation_spaces.py",
     tags = ["tests_dir", "tests_dir_N"],
     size = "small",
-    srcs = ["tests/test_nested_spaces.py"]
+    srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
 py_test(
@@ -1388,7 +1389,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy",
-    tags = ["examples", "examples_M_xxx"],
+    tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
 )
@@ -1399,6 +1400,15 @@ py_test(
     size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/nested_action_spaces_ppo",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "small",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--stop=-500", "--run=PPO"]
 )
 
 py_test(

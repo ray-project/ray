@@ -1,7 +1,11 @@
-Tune Walkthrough
-================
+.. _tune-tutorial:
 
-This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
+A Basic Tune Tutorial
+=====================
+
+.. image:: /images/tune-api.svg
+
+This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
   1. Integrating Tune into your workflow
   2. Specifying a TrialScheduler
@@ -14,7 +18,7 @@ This tutorial will walk you through the following process to setup a Tune experi
 
     .. code-block:: bash
 
-        $ pip install ray torch torchvision filelock
+        $ pip install ray torch torchvision
 
 We first run some imports:
 
@@ -34,6 +38,8 @@ Below, we have some boiler plate code for a PyTorch training function.
 Notice that there's a couple helper functions in the above training script. You can take a look at these functions in the imported module `examples/mnist_pytorch <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch.py>`__; there's no black magic happening. For example, ``train`` is simply a for loop over the data loader.
 
 .. code:: python
+
+    EPOCH_SIZE = 20
 
     def train(model, optimizer, train_loader):
         model.train()
@@ -66,7 +72,7 @@ We can then plot the performance of this trial.
 Early Stopping with ASHA
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's integrate an early stopping algorithm to our search - ASHA, a scalable algorithm for principled early stopping.
+Let's integrate a Trial Scheduler to our search - ASHA, a scalable algorithm for principled early stopping.
 
 How does it work? On a high level, it terminates trials that are less promising and
 allocates more time and resources to more promising trials. See `this blog post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
@@ -120,4 +126,4 @@ You can evaluate best trained model using the Analysis object to retrieve the be
 
 Next Steps
 ----------
-Take a look at the :ref`tune-user-guide` for a more comprehensive overview of Tune's features.
+Take a look at the :ref:`tune-user-guide` for a more comprehensive overview of Tune's features.
