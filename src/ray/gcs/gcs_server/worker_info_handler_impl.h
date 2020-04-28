@@ -29,6 +29,10 @@ class DefaultWorkerInfoHandler : public rpc::WorkerInfoHandler {
                                     gcs::GcsActorManager &gcs_actor_manager)
       : gcs_client_(gcs_client), gcs_actor_manager_(gcs_actor_manager) {}
 
+  void HandleGetWorkerFailureData(const GetWorkerFailureDataRequest &request,
+                                  GetWorkerFailureDataReply *reply,
+                                  SendReplyCallback send_reply_callback) override;
+
   void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                  ReportWorkerFailureReply *reply,
                                  SendReplyCallback send_reply_callback) override;

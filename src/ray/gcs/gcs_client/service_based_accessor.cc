@@ -872,6 +872,24 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   return status;
 }
 
+Status ServiceBasedWorkerInfoAccessor::AsyncGetWorkerFailureData(
+    const WorkerID &worker_id,
+    const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
+  rpc::GetWorkerFailureDataRequest request;
+  request.set_worker_id(worker_id.Binary());
+  client_impl_->GetGcsRpcClient().GetWorkerFailureData(
+      request, [worker_id, callback](const Status &status,
+                                     const rpc::GetWorkerFailureDataReply &reply) {
+        if (reply.has_worker_failure_data()) {
+          rpc::WorkerFailureData worker_failure_data(reply.worker_failure_data());
+          callback(status, worker_failure_data);
+        } else {
+          callback(status, boost::none);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
     const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
     const StatusCallback &callback) {

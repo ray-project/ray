@@ -24,11 +24,6 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerFailureData>();
   worker_failure_data->CopyFrom(request.worker_failure());
-  auto need_reschedule = !worker_failure_data->intentional_disconnect();
-  auto node_id = ClientID::FromBinary(worker_address.raylet_id());
-  auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  gcs_actor_manager_.ReconstructActorOnWorker(node_id, worker_id, need_reschedule);
-
   auto on_done = [worker_address, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report worker failure, "
@@ -43,6 +38,27 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     on_done(status);
   }
   RAY_LOG(DEBUG) << "Finished reporting worker failure, " << worker_address.DebugString();
+}
+
+void DefaultWorkerInfoHandler::HandleGetWorkerFailureData(
+    const rpc::GetWorkerFailureDataRequest &request,
+    rpc::GetWorkerFailureDataReply *reply, SendReplyCallback send_reply_callback) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  auto on_done = [worker_id, reply, send_reply_callback](
+                     Status status, const boost::optional<WorkerFailureData> &result) {
+    if (result) {
+      reply->mutable_worker_failure_data()->CopyFrom(*result);
+    } else if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to get worker failure data: " << status.ToString()
+                     << ", worker id = " << worker_id;
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  Status status = gcs_client_.Workers().AsyncGetWorkerFailureData(worker_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
 }
 
 void DefaultWorkerInfoHandler::HandleRegisterWorker(

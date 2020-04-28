@@ -116,6 +116,7 @@ class GcsActorManager {
   /// default factory inside itself if it is not set.
   explicit GcsActorManager(boost::asio::io_context &io_context,
                            gcs::ActorInfoAccessor &actor_info_accessor,
+                           gcs::WorkerInfoAccessor &worker_info_accessor,
                            gcs::GcsNodeManager &gcs_node_manager,
                            LeaseClientFactoryFn lease_client_factory = nullptr,
                            rpc::ClientFactoryFn client_factory = nullptr);
@@ -182,8 +183,10 @@ class GcsActorManager {
   /// Map contains the relationship of node and created actors.
   absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
       node_to_created_actors_;
-  /// The access info accessor.
+  /// Actor table. Used to update actor information upon creation, deletion, etc.
   gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// Worker table. Used to determine when a worker process has died.
+  gcs::WorkerInfoAccessor &worker_info_accessor_;
   /// The scheduler to schedule all registered actors.
   std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
 };

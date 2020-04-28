@@ -15,6 +15,7 @@
 #include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -23,11 +24,12 @@ class MockedGcsActorManager : public gcs::GcsActorManager {
  public:
   explicit MockedGcsActorManager(boost::asio::io_context &io_context,
                                  gcs::ActorInfoAccessor &actor_info_accessor,
+                                 gcs::WorkerInfoAccessor &worker_info_accessor,
                                  gcs::GcsNodeManager &gcs_node_manager,
                                  gcs::LeaseClientFactoryFn lease_client_factory = nullptr,
                                  rpc::ClientFactoryFn client_factory = nullptr)
-      : gcs::GcsActorManager(io_context, actor_info_accessor, gcs_node_manager,
-                             lease_client_factory, client_factory) {
+      : gcs::GcsActorManager(io_context, actor_info_accessor, worker_info_accessor,
+                             gcs_node_manager, lease_client_factory, client_factory) {
     gcs_actor_scheduler_.reset(new Mocker::MockedGcsActorScheduler(
         io_context, actor_info_accessor, gcs_node_manager,
         /*schedule_failure_handler=*/
@@ -68,6 +70,28 @@ class MockedGcsActorManager : public gcs::GcsActorManager {
   }
 };
 
+class MockWorkerInfoAccessor : public gcs::WorkerInfoAccessor {
+ public:
+  MockWorkerInfoAccessor() {}
+  MOCK_METHOD2(
+      AsyncSubscribeToWorkerFailures,
+      Status(const gcs::SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+             const gcs::StatusCallback &done));
+
+  MOCK_METHOD2(AsyncGetWorkerFailureData,
+               Status(const WorkerID &worker_id,
+                      const gcs::OptionalItemCallback<rpc::WorkerFailureData> &callback));
+
+  MOCK_METHOD2(AsyncReportWorkerFailure,
+               Status(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+                      const gcs::StatusCallback &callback));
+
+  MOCK_METHOD4(AsyncRegisterWorker,
+               Status(rpc::WorkerType worker_type, const WorkerID &worker_id,
+                      const std::unordered_map<std::string, std::string> &worker_info,
+                      const gcs::StatusCallback &callback));
+};
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -76,7 +100,7 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         io_service_, node_info_accessor_, error_info_accessor_);
     gcs_actor_manager_ = std::make_shared<MockedGcsActorManager>(
-        io_service_, actor_info_accessor_, *gcs_node_manager_,
+        io_service_, actor_info_accessor_, worker_info_accessor_, *gcs_node_manager_,
         /*lease_client_factory=*/
         [this](const rpc::Address &address) { return raylet_client_; },
         /*client_factory=*/
@@ -86,6 +110,7 @@ class GcsActorManagerTest : public ::testing::Test {
  protected:
   boost::asio::io_service io_service_;
   Mocker::MockedActorInfoAccessor actor_info_accessor_;
+  MockWorkerInfoAccessor worker_info_accessor_;
   Mocker::MockedNodeInfoAccessor node_info_accessor_;
   Mocker::MockedErrorInfoAccessor error_info_accessor_;
 

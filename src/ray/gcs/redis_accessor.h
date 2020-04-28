@@ -394,6 +394,10 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   virtual ~RedisWorkerInfoAccessor() = default;
 
+  Status AsyncGetWorkerFailureData(
+      const WorkerID &worker_id,
+      const OptionalItemCallback<rpc::WorkerFailureData> &callback) override;
+
   Status AsyncSubscribeToWorkerFailures(
       const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
       const StatusCallback &done) override;

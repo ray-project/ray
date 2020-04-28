@@ -68,10 +68,12 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
                                  gcs::ActorInfoAccessor &actor_info_accessor,
+                                 gcs::WorkerInfoAccessor &worker_info_accessor,
                                  gcs::GcsNodeManager &gcs_node_manager,
                                  LeaseClientFactoryFn lease_client_factory,
                                  rpc::ClientFactoryFn client_factory)
     : actor_info_accessor_(actor_info_accessor),
+      worker_info_accessor_(worker_info_accessor),
       gcs_actor_scheduler_(new gcs::GcsActorScheduler(
           io_context, actor_info_accessor, gcs_node_manager,
           /*schedule_failure_handler=*/
@@ -101,6 +103,16 @@ GcsActorManager::GcsActorManager(boost::asio::io_context &io_context,
     ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
   });
   RAY_LOG(INFO) << "Finished initialing GcsActorManager.";
+
+  RAY_CHECK_OK(worker_info_accessor_.AsyncSubscribeToWorkerFailures(
+      [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
+        auto &worker_address = worker_failure_data.worker_address();
+        WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
+        ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
+        auto needs_restart = !worker_failure_data.intentional_disconnect();
+        ReconstructActorOnWorker(node_id, worker_id, needs_restart);
+      },
+      /*done_callback=*/nullptr));
 }
 
 void GcsActorManager::RegisterActor(
