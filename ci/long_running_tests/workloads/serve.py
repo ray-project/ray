@@ -35,11 +35,13 @@ subprocess.call([
 ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
 serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
 
+
 @serve.accept_batch
 def echo(_):
     time.sleep(0.01)  # Sleep for 10ms
     ray.show_in_webui(str(serve.context.batch_size), key="Current batch size")
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
+
 
 serve.create_endpoint("echo", "/echo")
 config = serve.BackendConfig(num_replicas=30, max_batch_size=16)
