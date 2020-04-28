@@ -549,3 +549,10 @@ class ModelCatalog:
         # Default Conv2D net.
         else:
             return VisionNet
+
+    @staticmethod
+    def get_torch_model(obs_space,
+                        num_outputs,
+                        options=None,
+                        default_model_cls=None):
+        raise DeprecationWarning("Please use get_model_v2() instead.")

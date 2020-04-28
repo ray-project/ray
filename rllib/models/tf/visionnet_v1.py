@@ -16,7 +16,7 @@ class VisionNetwork(Model):
         # Hard deprecate this class. All Models should use the ModelV2
         # API from here on.
         deprecation_warning(
-            "Model->VisionNetwork", "ModelV2->VisionNetwork", error=True)
+            "Model->VisionNetwork", "ModelV2->VisionNetwork", error=False)
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
