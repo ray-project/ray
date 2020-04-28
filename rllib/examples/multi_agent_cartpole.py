@@ -39,7 +39,7 @@ class CustomModel1(TFModelV2):
                  model_config, name):
         super().__init__(observation_space, action_space, num_outputs,
                          model_config, name)
-    
+
         inputs = tf.keras.layers.Input(observation_space.shape)
         # Example of (optional) weight sharing between two different policies.
         # Here, we share the variables defined in the 'shared' variable scope
@@ -74,7 +74,7 @@ class CustomModel2(TFModelV2):
                  model_config, name):
         super().__init__(observation_space, action_space, num_outputs,
                          model_config, name)
-        
+
         inputs = tf.keras.layers.Input(observation_space.shape)
 
         # Weights shared with CustomModel1.
@@ -90,12 +90,12 @@ class CustomModel2(TFModelV2):
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
         self.register_variables(self.base_model.variables)
-    
+
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         out, self._value_out = self.base_model(input_dict["obs"])
         return out, []
-    
+
     @override(ModelV2)
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
