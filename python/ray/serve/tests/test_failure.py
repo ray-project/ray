@@ -21,7 +21,7 @@ def request_with_retries(endpoint, timeout=30):
 
 def test_master_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("master_failure", "/master_failure", methods=["GET"])
+    serve.create_endpoint("master_failure", "/master_failure")
 
     def function():
         return "hello1"
@@ -37,8 +37,14 @@ def test_master_failure(serve_instance):
 
     ray.kill(serve.api._get_master_actor())
 
+    for _ in range(10):
+        response = request_with_retries("/master_failure", timeout=30)
+        assert response.text == "hello1"
+
     def function():
         return "hello2"
+
+    ray.kill(serve.api._get_master_actor())
 
     serve.create_backend(function, "master_failure:v2")
     serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
@@ -46,6 +52,22 @@ def test_master_failure(serve_instance):
     for _ in range(10):
         response = request_with_retries("/master_failure", timeout=30)
         assert response.text == "hello2"
+
+    def function():
+        return "hello3"
+
+    ray.kill(serve.api._get_master_actor())
+    serve.create_endpoint("master_failure_2", "/master_failure_2")
+    ray.kill(serve.api._get_master_actor())
+    serve.create_backend(function, "master_failure_2")
+    ray.kill(serve.api._get_master_actor())
+    serve.set_traffic("master_failure_2", {"master_failure_2": 1.0})
+
+    for _ in range(10):
+        response = request_with_retries("/master_failure", timeout=30)
+        assert response.text == "hello2"
+        response = request_with_retries("/master_failure_2", timeout=30)
+        assert response.text == "hello3"
 
 
 def _kill_http_proxy():
@@ -56,7 +78,7 @@ def _kill_http_proxy():
 
 def test_http_proxy_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("proxy_failure", "/proxy_failure", methods=["GET"])
+    serve.create_endpoint("proxy_failure", "/proxy_failure")
 
     def function():
         return "hello1"
@@ -90,7 +112,7 @@ def _kill_router():
 
 def test_router_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("router_failure", "/router_failure", methods=["GET"])
+    serve.create_endpoint("router_failure", "/router_failure")
 
     def function():
         return "hello1"
@@ -132,7 +154,7 @@ def _get_worker_handles(backend):
 # serving requests.
 def test_worker_restart(serve_instance):
     serve.init()
-    serve.create_endpoint("worker_failure", "/worker_failure", methods=["GET"])
+    serve.create_endpoint("worker_failure", "/worker_failure")
 
     class Worker1:
         def __call__(self):
@@ -164,8 +186,7 @@ def test_worker_restart(serve_instance):
 def test_worker_replica_failure(serve_instance):
     serve.http_proxy.MAX_ACTOR_DEAD_RETRIES = 0
     serve.init()
-    serve.create_endpoint(
-        "replica_failure", "/replica_failure", methods=["GET"])
+    serve.create_endpoint("replica_failure", "/replica_failure")
 
     class Worker:
         # Assumes that two replicas are started. Will hang forever in the
