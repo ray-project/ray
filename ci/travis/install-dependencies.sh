@@ -132,6 +132,11 @@ install_dependencies() {
 
   if [ -n "${PYTHON-}" ]; then
     install_miniconda
+
+    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+    # We want to install the CPU version only.
+    pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+
     pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym opencv-python-headless pyyaml \
       pandas==0.24.2 requests feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
       uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
