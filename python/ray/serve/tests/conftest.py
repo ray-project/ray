@@ -9,6 +9,9 @@ from ray import serve
 # TODO(edoakes): the failure tests currently fail with the GCS service enabled.
 os.environ["RAY_GCS_SERVICE_ENABLED"] = "false"
 
+if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
+    serve.master._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
 
 @pytest.fixture(scope="session")
 def serve_instance():

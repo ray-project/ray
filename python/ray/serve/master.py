@@ -1,5 +1,7 @@
 import asyncio
 from collections import defaultdict
+import os
+import random
 import time
 
 import ray
@@ -14,6 +16,10 @@ from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import async_retryable, get_random_letters, logger
 
 import numpy as np
+
+# Used for testing purposes only. If this is set, the master actor will crash
+# after writing each checkpoint with the specified probability.
+_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 
 
 @ray.remote
@@ -177,6 +183,10 @@ class ServeMaster:
 
         self.kv_store_client.put("checkpoint", checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
+
+        if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:
+            logger.warning("Intentionally crashing after checkpoint")
+            os._exit(0)
 
     async def _recover_from_checkpoint(self, checkpoint_bytes):
         """Recover the cluster state from the provided checkpoint.
