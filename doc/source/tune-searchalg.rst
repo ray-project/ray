@@ -26,14 +26,15 @@ Currently, Tune offers the following search algorithms (and library integrations
 Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
-By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
+By default, Tune uses a BasicVariantGenerator to sample trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
 
 .. autoclass:: ray.tune.suggest.BasicVariantGenerator
     :show-inheritance:
     :noindex:
 
+Read about this in the :ref:`Grid/Random Search API <tune-grid-random>`.
 
-Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
+Note that other search algorithms will require a different search space declaration than the default Tune format.
 
 
 Repeated Evaluations
@@ -56,7 +57,9 @@ See the API documentation (:ref:`repeater-doc`) for more details.
 
     search_alg = BayesOpt(...)
     re_search_alg = Repeater(search_alg, repeat=10)
-    tune.run(trainable, search_alg=re_search_alg)
+
+    # Repeat 2 samples 10 times each.
+    tune.run(trainable, num_samples=20, search_alg=re_search_alg)
 
 .. note:: This does not apply for grid search and random search.
 .. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
@@ -351,11 +354,8 @@ If you are interested in implementing or contributing a new Search Algorithm, th
 Model-Based Suggestion Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
+Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
 
-.. autoclass:: ray.tune.suggest.SuggestionAlgorithm
+.. autoclass:: ray.tune.suggest.Searcher
     :show-inheritance:
     :noindex:
-
-    .. automethod:: ray.tune.suggest.SuggestionAlgorithm.suggest
-        :noindex:

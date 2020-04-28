@@ -23,24 +23,46 @@ namespace gcs {
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key, const Data &value,
                                 const StatusCallback &callback) {
-  return store_client_->AsyncPut(table_name_, key, value, callback);
+  return store_client_->AsyncPut(table_name_, key.Binary(), value.SerializeAsString(),
+                                 callback);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const Key &key,
                                 const OptionalItemCallback<Data> &callback) {
-  return store_client_->AsyncGet(table_name_, key, callback);
+  auto on_done = [callback](const Status &status,
+                            const boost::optional<std::string> &result) {
+    boost::optional<Data> value;
+    if (result) {
+      Data data;
+      data.ParseFromString(*result);
+      value = std::move(data);
+    }
+    callback(status, value);
+  };
+  return store_client_->AsyncGet(table_name_, key.Binary(), on_done);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(
     const SegmentedCallback<std::pair<Key, Data>> &callback) {
-  return store_client_->AsyncGetAll(table_name_, callback);
+  auto on_done = [callback](
+                     const Status &status, bool has_more,
+                     const std::vector<std::pair<std::string, std::string>> &result) {
+    std::vector<std::pair<Key, Data>> values;
+    for (auto &item : result) {
+      Data data;
+      data.ParseFromString(item.second);
+      values.emplace_back(std::move(std::make_pair(Key::FromBinary(item.first), data)));
+    }
+    callback(status, has_more, values);
+  };
+  return store_client_->AsyncGetAll(table_name_, on_done);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback) {
-  return store_client_->AsyncDelete(table_name_, key, callback);
+  return store_client_->AsyncDelete(table_name_, key.Binary(), callback);
 }
 
 template <typename Key, typename Data>
@@ -50,13 +72,13 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
   auto finished_count = std::make_shared<int>(0);
   int size = keys.size();
   for (Key key : keys) {
-    auto done = [finished_count, size, callback](Status status) {
+    auto done = [finished_count, size, callback](const Status &status) {
       ++(*finished_count);
       if (*finished_count == size) {
         callback(Status::OK());
       }
     };
-    RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key, done));
+    RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Binary(), done));
   }
   return Status::OK();
 }
@@ -64,8 +86,9 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
                                          const StatusCallback &callback) {
-  return this->store_client_->AsyncPutWithIndex(this->table_name_, key,
-                                                GetJobIdFromKey(key), value, callback);
+  return this->store_client_->AsyncPutWithIndex(this->table_name_, key.Binary(),
+                                                GetJobIdFromKey(key).Binary(),
+                                                value.SerializeAsString(), callback);
 }
 
 template <typename Key, typename Data>
@@ -79,7 +102,8 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                    const StatusCallback &callback) {
-  return this->store_client_->AsyncDeleteByIndex(this->table_name_, job_id, callback);
+  return this->store_client_->AsyncDeleteByIndex(this->table_name_, job_id.Binary(),
+                                                 callback);
 }
 
 template class GcsTable<JobID, JobTableData>;

@@ -115,7 +115,7 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <ref-automatic-cluster>`. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -148,6 +148,33 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 
 Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+
+Syncing
+-------
+
+Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`autoscaler <ref-automatic-cluster>`.
+By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
+
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
+
+.. code-block:: python
+
+    def custom_sync_func(source, target):
+        sync_cmd = "rsync {source} {target}".format(
+            source=source,
+            target=target)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        sync_to_driver=custom_sync_func,
+    )
+
+When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
+This custom sync command is used to restart trials under failure. The ``sync_to_driver`` is invoked to push a checkpoint to new node for a paused/pre-empted trial to resume.
+
 
 .. _tune-distributed-spot:
 
@@ -245,12 +272,54 @@ You should see Tune eventually continue the trials on a different worker node. S
 
 You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
+.. _tune-fault-tol:
+
+Fault Tolerance
+---------------
+
+Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
+
+Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+
+If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+
+Recovering From Failures
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically persists the progress of your entire experiment (a ``tune.run`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
+
+**Settings:**
+
+ - The default setting of ``resume=False`` creates a new experiment.
+ - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
+ - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
+ - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+
+Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
+
+E.g.:
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        local_dir="~/path/to/results",
+        resume=True
+    )
+
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion will not run. The new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
+
+.. warning::
+
+    This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be checkpointed and able to resume. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+
 .. _tune-distributed-common:
 
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the `Autoscaler page <autoscaling.html>`__ to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <ref-automatic-cluster>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 
