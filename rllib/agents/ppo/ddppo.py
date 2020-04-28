@@ -15,6 +15,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
+import time
 
 import ray
 from ray.util.iter import LocalIterator
@@ -24,7 +25,7 @@ from ray.rllib.optimizers import TorchDistributedDataParallelOptimizer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO
+    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -140,18 +141,25 @@ def execution_plan(workers, config):
                                 config["sgd_minibatch_size"], ["advantages"])
         return info, batch.count
 
-    def record_stats(items):
-        for item in items:
-            info, count = item
-            metrics = LocalIterator.get_metrics()
-            metrics.counters[STEPS_SAMPLED_COUNTER] += count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
-            metrics.info[LEARNER_INFO] = info
+    # Have to manually record stats since we are using "raw" rollouts mode.
+    class RecordStats:
+        def _on_fetch_start(self):
+            self.fetch_start_time = time.perf_counter()
+
+        def __call__(self, items):
+            for item in items:
+                info, count = item
+                metrics = LocalIterator.get_metrics()
+                metrics.counters[STEPS_SAMPLED_COUNTER] += count
+                metrics.counters[STEPS_TRAINED_COUNTER] += count
+                metrics.info[LEARNER_INFO] = info
+            metrics.timers[LEARN_ON_BATCH_TIMER].push(time.perf_counter() -
+                                                      self.fetch_start_time)
 
     train_op = (
         rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
         .batch_across_shards()  # List[(grad_info, count)]
-        .for_each(record_stats))
+        .for_each(RecordStats()))
 
     # Sync down the weights. As with the sync up, this is not really
     # needed unless the user is reading the local weights.
