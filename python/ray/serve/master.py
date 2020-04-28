@@ -30,7 +30,7 @@ class ServeMaster:
     those actors from this actor on startup and updates are pushed out from
     this actor.
 
-    The dataplane actors started by the master actor are named, detached actors
+    All other actors started by the master actor are named, detached actors
     so they will not fate share with the master if it crashes.
 
     The following guarantees are provided for state-changing calls to the
@@ -191,6 +191,8 @@ class ServeMaster:
         NOTE: this requires that self.write_lock is already acquired and will
         release it before returning.
         """
+        assert self.write_lock.locked()
+
         start = time.time()
         logger.info("Recovering from checkpoint")
 

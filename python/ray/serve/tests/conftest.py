@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import serve
 
+# TODO(edoakes): the failure tests currently fail with the GCS service enabled.
 os.environ["RAY_GCS_SERVICE_ENABLED"] = "false"
 
 

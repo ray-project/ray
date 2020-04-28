@@ -36,8 +36,7 @@ def create_backend_worker(func_or_class):
             return self.backend.get_metrics()
 
         async def handle_request(self, request):
-            result = await self.backend.handle_request(request)
-            return result
+            return await self.backend.handle_request(request)
 
         def ready(self):
             pass

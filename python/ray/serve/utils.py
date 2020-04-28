@@ -21,6 +21,8 @@ try:
 except ImportError:
     pydantic = None
 
+ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+
 
 def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
@@ -124,15 +126,18 @@ def async_retryable(cls):
         def decorate_with_retry(f):
             @wraps(f)
             async def retry_method(*args, **kwargs):
-                while True:
-                    result = await f(*args, **kwargs)
-                    if isinstance(result, ray.exceptions.RayActorError):
+                start = time.time()
+                while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+                    try:
+                        return await f(*args, **kwargs)
+                    except ray.exceptions.RayActorError:
                         logger.warning(
                             "Actor method '{}' failed, retrying after 100ms.".
                             format(name))
                         await asyncio.sleep(0.1)
-                    else:
-                        return result
+                raise RuntimeError("Timed out after {}s waiting for actor "
+                                   "method '{}' to succeed.".format(
+                                       ACTOR_FAILURE_RETRY_TIMEOUT_S, name))
 
             return retry_method
 
@@ -141,7 +146,8 @@ def async_retryable(cls):
 
 
 def retry_actor_failures(f, *args, **kwargs):
-    while True:
+    start = time.time()
+    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
         try:
             return ray.get(f.remote(*args, **kwargs))
         except ray.exceptions.RayActorError:
@@ -149,15 +155,21 @@ def retry_actor_failures(f, *args, **kwargs):
                 "Actor method '{}' failed, retrying after 100ms".format(
                     f._method_name))
             time.sleep(0.1)
+    raise RuntimeError("Timed out after {}s waiting for actor "
+                       "method '{}' to succeed.".format(
+                           ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))
 
 
 async def retry_actor_failures_async(f, *args, **kwargs):
-    while True:
-        result = await f.remote(*args, **kwargs)
-        if isinstance(result, ray.exceptions.RayActorError):
+    start = time.time()
+    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+        try:
+            return await f.remote(*args, **kwargs)
+        except ray.exceptions.RayActorError:
             logger.warning(
                 "Actor method '{}' failed, retrying after 100ms".format(
                     f._method_name))
             await asyncio.sleep(0.1)
-        else:
-            return result
+    raise RuntimeError("Timed out after {}s waiting for actor "
+                       "method '{}' to succeed.".format(
+                           ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))

@@ -153,10 +153,10 @@ class Router:
         # batching polcies.
         self.flush_lock = asyncio.Lock()
 
-        # Fetch the worker handles from the master actor. We use a "pull-based"
-        # approach instead of pushing them from the master so that the router
-        # can transparently recover from failure.
-        # XXX: fetch traffic policies, backend configs
+        # Fetch the worker handles, traffic policies, and backend configs from
+        # the master actor. We use a "pull-based" approach instead of pushing
+        # them from the master so that the router can transparently recover
+        # from failure.
         ray.serve.init()
         master_actor = ray.serve.api._get_master_actor()
 
