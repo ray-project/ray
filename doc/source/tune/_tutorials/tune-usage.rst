@@ -9,6 +9,8 @@ This document provides an overview of the core concepts as well as some of the c
 
 .. contents:: :local:
 
+.. _tune-parallelism:
+
 Parallelism / GPUs
 ------------------
 
@@ -59,6 +61,8 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``:
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+
+.. _tune-default-search-space:
 
 Search Space (Grid/Random)
 --------------------------
@@ -219,6 +223,8 @@ You often will want to compute a large object (e.g., training data, model weight
 
     tune.run(f)
 
+.. _tune-stopping:
+
 Stopping Trials
 ---------------
 
@@ -270,6 +276,8 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
 
 
 Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete. See the :ref:`tune-stop-ref` documentation.
+
+.. _tune-logging:
 
 Logging/Tensorboard
 -------------------

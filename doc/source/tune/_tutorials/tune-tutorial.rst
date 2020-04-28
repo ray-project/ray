@@ -5,7 +5,7 @@ A Basic Tune Tutorial
 
 .. image:: /images/tune-api.svg
 
-This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
+This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
   1. Integrating Tune into your workflow
   2. Specifying a TrialScheduler
