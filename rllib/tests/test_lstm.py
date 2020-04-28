@@ -96,15 +96,17 @@ class TestLSTMUtils(unittest.TestCase):
 class RNNSpyModel(RecurrentTFModelV2):
     capture_index = 0
     cell_size = 3
+
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-        self.lstm = tf.keras.layers.LSTM(self.cell_size, return_state=True,
-                                         return_sequences=True)
+        self.lstm = tf.keras.layers.LSTM(
+            self.cell_size, return_state=True, return_sequences=True)
 
     def forward_rnn(self, inputs, state, seq_lens):
-        lstm_out, h, c = self.lstm(inputs=inputs,
+        lstm_out, h, c = self.lstm(
+            inputs=inputs,
             mask=tf.sequence_mask(seq_lens),
             initial_state=state)
 
@@ -122,9 +124,7 @@ class RNNSpyModel(RecurrentTFModelV2):
             spy, [
                 inputs,
                 seq_lens,
-            ],
-            tf.int64,
-            stateful=True)
+            ], tf.int64, stateful=True)
 
         with tf.control_dependencies([spy_fn]):
             output = tf.layers.dense(lstm_out, self.num_outputs)
@@ -200,19 +200,21 @@ class RNNSpyModel_old(RecurrentTFModelV2):
                     #state_out_h,
                     inputs[1],
                 ],
-                tf.int64, stateful=True)
+                tf.int64,
+                stateful=True)
 
             # Compute outputs
             with tf.control_dependencies([spy_fn]):
-            #last_layer = tf.reshape(x, [-1, self.cell_size])
+                #last_layer = tf.reshape(x, [-1, self.cell_size])
                 logits = tf.keras.layers.Dense(
                     units=self.num_outputs,
                     kernel_initializer=normc_initializer(0.01))(lstm_out)
-    
+
                 return logits
 
-        logits = tf.keras.layers.Lambda(lambda_)([lstm_out, seq_in])  #, arguments=dict(state_in_c=state_in_c))(
-            #lstm_out)  #, arguments=dict(
+        logits = tf.keras.layers.Lambda(lambda_)(
+            [lstm_out, seq_in])  #, arguments=dict(state_in_c=state_in_c))(
+        #lstm_out)  #, arguments=dict(
         #lstm_out=lstm_out, state_in_h=state_in_h, state_in_c=state_in_c, state_out_h=state_h, state_out_c=state_c, seq_lens=seq_in
         #))
         #(inputs)

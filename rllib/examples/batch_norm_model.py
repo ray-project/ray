@@ -24,9 +24,10 @@ class BatchNormModel(TFModelV2):
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-        self.inputs = tf.keras.layers.Input(shape=obs_space.shape, name="inputs")
-        self.is_training = tf.keras.layers.Input(shape=(), dtype=tf.bool,
-                                            name="is_training")
+        self.inputs = tf.keras.layers.Input(
+            shape=obs_space.shape, name="inputs")
+        self.is_training = tf.keras.layers.Input(
+            shape=(), dtype=tf.bool, name="is_training")
         last_layer = self.inputs
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
@@ -53,7 +54,7 @@ class BatchNormModel(TFModelV2):
             inputs=[self.inputs, self.is_training],
             outputs=[output, value_out])
         self.register_variables(self.base_model.variables)
-    
+
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         if input_dict["is_training"].shape.as_list() == []:
