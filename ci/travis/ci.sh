@@ -65,6 +65,7 @@ reload_env() {
 
   # Deduplicate PATH
   PATH="$(set +x && printf "%s\n" "${PATH}" | tr ":" "\n" | awk '!a[$0]++' | tr "\n" ":")"
+  PATH="${PATH%:}"  # Remove trailing colon
 }
 
 test_python() {
@@ -72,6 +73,28 @@ test_python() {
     # Windows -- most tests won't work yet; just do the ones we know work
     PYTHONPATH=python python -m pytest --durations=5 --timeout=300 python/ray/tests/test_mini.py
   fi
+}
+
+test_cpp() {
+  bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+}
+
+test_wheels() {
+  local result=0 flush_logs=0
+
+  "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+
+  if [ 0 -ne "${flush_logs}" ]; then
+    local f
+    for f in /tmp/ray/session_latest/logs/*; do
+      if [ -f "$f" ]; then  # make sure the wildcard actually expanded to something valid
+        cat -- "$f"
+      fi
+    done
+    sleep 60  # Explicitly sleep 60 seconds for logs to go through
+  fi
+
+  return "${result}"
 }
 
 build_sphinx_docs() {
@@ -288,46 +311,24 @@ build() {
 }
 
 run() {
-  local result=0 flush_logs=0
-  local should_test_wheels=""
+  local should_test_wheels
   case "${OSTYPE}" in
     darwin*) should_test_wheels="${MAC_WHEELS-}";;
     linux*) should_test_wheels="${LINUX_WHEELS-}";;
     msys*) should_test_wheels="${WINDOWS_WHEELS-}";;
   esac
-  ##### BEGIN TASKS #####
-
-  if [ "${LINT-}" = 1 ]; then
-    lint
-  fi
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
     test_python
   fi
 
-  if [ "${RAY_INSTALL_JAVA-}" = 1 ] && [ "${should_test_wheels}" != 1 ]; then
-    "${WORKSPACE_DIR}"/java/test.sh
-  fi
-
   if [ "${TESTSUITE-}" = cpp_worker ]; then
-    bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+    test_cpp
   fi
 
   if [ "${should_test_wheels}" = 1 ]; then
-    "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+    test_wheels
   fi
-
-  ##### END TASKS #####
-  if [ 0 -ne "${flush_logs}" ]; then
-    local f
-    for f in /tmp/ray/session_latest/logs/*; do
-      if [ -f "$f" ]; then  # make sure the wildcard actually expanded to something valid
-        cat -- "$f"
-      fi
-    done
-    sleep 60  # Explicitly sleep 60 seconds for logs to go through
-  fi
-  return "${result}"
 }
 
 _main() {

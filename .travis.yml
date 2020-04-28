@@ -44,7 +44,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh preload
-        - . ./ci/travis/ci.sh run
+        - ./java/test.sh
 
     - os: linux
       env:
