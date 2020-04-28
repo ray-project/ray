@@ -104,20 +104,12 @@ class GcsActorManager {
  public:
   /// Create a GcsActorManager
   ///
-  /// \param io_context The main event loop.
+  /// \param scheduler Used to schedule actor creation tasks.
   /// \param actor_info_accessor Used to flush actor data to storage.
-  /// \param gcs_node_manager The actor manager needs to listen to the node change events
-  /// inside gcs_node_manager.
-  /// \param lease_client_factory Factory to create remote lease client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
-  /// \param client_factory Factory to create remote core worker client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                   gcs::ActorInfoAccessor &actor_info_accessor);
 
-  virtual ~GcsActorManager() = default;
+  ~GcsActorManager() = default;
 
   /// Register actor asynchronously.
   ///
@@ -151,22 +143,17 @@ class GcsActorManager {
   void ReconstructActorOnWorker(const ClientID &node_id, const WorkerID &worker_id,
                                 bool need_reschedule = true);
 
+  /// Handle actor creation task failure. This should be called when scheduling
+  /// an actor creation task is infeasible.
+  ///
+  /// \param actor The actor whose creation task is infeasible.
   void OnActorCreationFailed(std::shared_ptr<GcsActor> actor);
 
-  /// This method is a callback of gcs_actor_scheduler when actor is created successfully.
-  /// It will update the state of actor as well as the worker_to_created_actor_ and
-  /// node_to_created_actors_ and flush the actor data to the storage.
+  /// Handle actor creation task success. This should be called when the actor
+  /// creation task has been scheduled successfully.
+  ///
+  /// \param actor The actor that has been created.
   void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
-
-  /// For testing purposes.
-  const absl::flat_hash_map<ActorID, std::shared_ptr<gcs::GcsActor>>
-      &GetAllRegisteredActors() const {
-    return registered_actors_;
-  }
-
-  const std::vector<std::shared_ptr<gcs::GcsActor>> &GetAllPendingActors() const {
-    return pending_actors_;
-  }
 
  private:
   /// Reconstruct the specified actor.
