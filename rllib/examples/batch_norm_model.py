@@ -19,6 +19,83 @@ parser.add_argument("--run", type=str, default="PPO")
 
 
 class BatchNormModel(TFModelV2):
+    """Example of a TFModelV2 that is built w/o using tf.keras.
+
+    NOTE: This example does not work when using a keras-based TFModelV2 due
+    to a bug in keras related to missing values for input placeholders, even
+    though these input values have been provided in a forward pass through the
+    actual keras Model.
+
+    All Model logic (layers) is defined in the `forward` method (incl.
+    the batch_normalization layers). Also, all variables are registered
+    (only once) at the end of `forward`, so an optimizer knows which tensors
+    to train on. A standard `value_function` override is used.
+    """
+    capture_index = 0
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
+        # Have we registered our vars yet (see `forward`)?
+        self._registered = False
+
+    @override(ModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        last_layer = input_dict["obs"]
+        hiddens = [256, 256]
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+            for i, size in enumerate(hiddens):
+                last_layer = tf.layers.dense(
+                    last_layer,
+                    size,
+                    kernel_initializer=normc_initializer(1.0),
+                    activation=tf.nn.tanh,
+                    name="fc{}".format(i))
+                # Add a batch norm layer
+                last_layer = tf.layers.batch_normalization(
+                    last_layer,
+                    training=input_dict["is_training"],
+                    name="bn_{}".format(i))
+
+            output = tf.layers.dense(
+                last_layer,
+                self.num_outputs,
+                kernel_initializer=normc_initializer(0.01),
+                activation=None,
+                name="out")
+            self._value_out = tf.layers.dense(
+                last_layer,
+                1,
+                kernel_initializer=normc_initializer(1.0),
+                activation=None,
+                name="vf")
+        if not self._registered:
+            self.register_variables(
+                tf.get_collection(
+                    tf.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
+            self._registered = True
+
+        return output, []
+
+    @override(ModelV2)
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
+
+
+class KerasBatchNormModel(TFModelV2):
+    """Keras version of above BatchNormModel with exactly the same structure.
+
+    IMORTANT NOTE: This model will not work with PPO due to a bug in keras
+    that surfaces when having more than one input placeholder (here: `inputs`
+    and `is_training`) AND using the `make_tf_callable` helper (e.g. used by
+    PPO), in which auto-placeholders are generated, then passed through the
+    tf.keras. models.Model. In this last step, the connection between 1) the
+    provided value in the auto-placeholder and 2) the keras `is_training`
+    Input is broken and keras complains.
+    Use the above `BatchNormModel` (a non-keras based TFModelV2), instead.
+    """
+
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,

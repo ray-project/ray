@@ -228,7 +228,7 @@ class NestedSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
         self.assertRaisesRegexp(
             ValueError,
-            "Subclasses of TorchModel must also inherit from",
+            "Subclasses of TorchModelV2 must also inherit from",
             lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {
