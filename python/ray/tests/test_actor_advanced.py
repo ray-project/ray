@@ -110,47 +110,6 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     ray.get([actor.ping.remote() for actor in actors])
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "resources": {
-            "actor": 1
-        },
-        "num_cpus": 2,
-    }],
-    indirect=True)
-def test_deleted_actor_no_restart(ray_start_regular):
-    @ray.remote(resources={"actor": 1}, max_reconstructions=3)
-    class Actor:
-        def method(self):
-            return 1
-
-        def getpid(self):
-            return os.getpid()
-
-    @ray.remote
-    def f(actor, signal):
-        ray.get(signal.wait.remote())
-        return ray.get(actor.method.remote())
-
-    signal = ray.test_utils.SignalActor.remote()
-    a = Actor.remote()
-    pid = ray.get(a.getpid.remote())
-    # Pass the handle to another task that cannot run yet.
-    x_id = f.remote(a, signal)
-    # Delete the original handle. The actor should not get killed yet.
-    del a
-
-    # Once the task finishes, the actor process should get killed.
-    ray.get(signal.send.remote())
-    assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
-
-    # Create another actor with the same resource requirement to make sure the
-    # old one was not restarted.
-    a = Actor.remote()
-    pid = ray.get(a.getpid.remote())
-
-
 def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
