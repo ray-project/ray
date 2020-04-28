@@ -23,6 +23,7 @@
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
+#include "gcs_node_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -34,8 +35,16 @@ namespace gcs {
 class GcsObjectManager : public rpc::ObjectInfoHandler {
  public:
   explicit GcsObjectManager(gcs::RedisGcsClient &gcs_client,
-                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
-      : gcs_client_(gcs_client), gcs_pub_sub_(gcs_pub_sub) {}
+                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
+                            gcs::GcsNodeManager &gcs_node_manager)
+      : gcs_pub_sub_(gcs_pub_sub) {
+    gcs_node_manager.AddNodeRemovedListener(
+        [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+          // All of the related actors should be reconstructed when a node is removed from
+          // the GCS.
+          RemoveNode(ClientID::FromBinary(node->node_id()));
+        });
+  }
 
   void HandleGetObjectLocations(const rpc::GetObjectLocationsRequest &request,
                                 rpc::GetObjectLocationsReply *reply,
@@ -115,7 +124,6 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// Mapping from node id to objects that held by the node.
   std::unordered_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
-  gcs::RedisGcsClient &gcs_client_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
