@@ -802,16 +802,9 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     rpc::ObjectLocationChange object_location_change;
     object_location_change.ParseFromString(data);
     std::vector<rpc::ObjectTableData> object_data_vector;
-    rpc::ObjectTableData object_table_data;
-    auto change_mode = rpc::GcsChangeMode::APPEND_OR_ADD;
-    if (rpc::ObjectLocationChange::NodeIdCase::kAddedNodeId ==
-        object_location_change.node_id_case()) {
-      object_table_data.set_manager(object_location_change.added_node_id());
-    } else {
-      object_table_data.set_manager(object_location_change.removed_node_id());
-      change_mode = rpc::GcsChangeMode::REMOVE;
-    }
-    object_data_vector.emplace_back(std::move(object_table_data));
+    object_data_vector.emplace_back(object_location_change.data());
+    auto change_mode = object_location_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
+                                                       : rpc::GcsChangeMode::REMOVE;
     gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
     subscribe(ObjectID::FromBinary(id), notification);
   };
