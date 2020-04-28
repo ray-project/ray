@@ -84,8 +84,7 @@ struct GcsServerMocker {
     }
 
     bool GrantWorkerLease() {
-      GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id,
-                         ClientID::Nil());
+      GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, ClientID::Nil());
     }
 
     // Trigger reply to RequestWorkerLease.
