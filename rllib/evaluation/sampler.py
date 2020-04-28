@@ -642,6 +642,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
 
+        # In case actions is a list (representing the 0th dim of a batch of
+        # primitive actions), try to convert it first.
+        if isinstance(actions, list):
+            actions = np.array(actions)
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
