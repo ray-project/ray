@@ -15,7 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 def ParallelRollouts(workers: WorkerSet,
                      *,
                      mode="bulk_sync",
-                     async_queue_depth=1) -> LocalIterator[SampleBatch]:
+                     num_async=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -28,7 +28,7 @@ def ParallelRollouts(workers: WorkerSet,
               computed by rollout workers with no order guarantees.
             - In 'bulk_sync' mode, we collect one batch from each worker
               and concatenate them together into a large batch to return.
-        async_queue_depth (int): In async mode, the max number of async
+        num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -75,7 +75,7 @@ def ParallelRollouts(workers: WorkerSet,
             .for_each(report_timesteps)
     elif mode == "async":
         return rollouts.gather_async(
-            async_queue_depth=async_queue_depth).for_each(report_timesteps)
+            num_async=num_async).for_each(report_timesteps)
     else:
         raise ValueError(
             "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))

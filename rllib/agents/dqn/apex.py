@@ -143,7 +143,7 @@ def execution_plan(workers, config):
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our replay buffer actors. Update
     # the weights of the worker that generated the batch.
-    rollouts = ParallelRollouts(workers, mode="async", async_queue_depth=2)
+    rollouts = ParallelRollouts(workers, mode="async", num_async=2)
     store_op = rollouts \
         .for_each(StoreToReplayBuffer(actors=replay_actors)) \
         .zip_with_source_actor() \
@@ -154,7 +154,7 @@ def execution_plan(workers, config):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
-    replay_op = Replay(actors=replay_actors, async_queue_depth=4) \
+    replay_op = Replay(actors=replay_actors, num_async=4) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 

@@ -52,7 +52,7 @@ class StoreToReplayBuffer:
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
            actors: List["ActorHandle"] = None,
-           async_queue_depth=4):
+           num_async=4):
     """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
@@ -63,7 +63,7 @@ def Replay(*,
             and replay_actors can be specified.
         actors (list): List of replay actors. Only one of this and
             local_buffer can be specified.
-        async_queue_depth (int): In async mode, the max number of async
+        num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
     Examples:
@@ -79,7 +79,7 @@ def Replay(*,
 
     if actors:
         replay = from_actors(actors)
-        return replay.gather_async(async_queue_depth=async_queue_depth).filter(
+        return replay.gather_async(num_async=num_async).filter(
             lambda x: x is not None)
 
     def gen_replay(_):
