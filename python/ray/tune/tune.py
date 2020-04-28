@@ -219,18 +219,19 @@ def run(run_or_experiment,
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
 
     Examples:
-        >>> tune.run(mytrainable, scheduler=PopulationBasedTraining())
 
-        >>> tune.run(mytrainable, num_samples=5, reuse_actors=True)
+    .. code-block:: python
 
-        >>> tune.run(
-        >>>     "PG",
-        >>>     num_samples=5,
-        >>>     config={
-        >>>         "env": "CartPole-v0",
-        >>>         "lr": tune.sample_from(lambda _: np.random.rand())
-        >>>     }
-        >>> )
+        # Run 10 trials (each trial is one instance of a Trainable). Tune runs
+        # in parallel and automatically determines concurrency.
+        tune.run(trainable, num_samples=10)
+
+        # Run 1 trial, stop when trial has reached 10 iterations
+        tune.run(my_trainable, stop={"training_iteration": 10})
+
+        # Run 1 trial, search over hyperparameters, stop after 10 iterations.
+        space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
+        tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,

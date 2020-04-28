@@ -7,30 +7,47 @@ Training can be done with either a **Class API** (``tune.Trainable``) or **funct
 
 You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control for advanced algorithms.
 
+For the sake of example, let's maximize this objective function:
+
+.. code-block:: python
+
+    def objective(x, a, b):
+        return a * (x ** 0.5) + b
+
+.. _tune-function-api:
+
 Function-based API
 ------------------
 
 .. code-block:: python
 
     def trainable(config):
-        """
-        Args:
-            config (dict): Parameters provided from the search algorithm
-                or variant generation.
-        """
+        # config (dict): A dict of hyperparameters.
 
-        while True:
-            # ...
-            tune.track.log(**kwargs)
+        for x in range(20):
+            score = objective(x, config["a"], config["b"])
+
+            tune.track.log(score=score)  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={
+            "a": 2,
+            "b": 4
+        })
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
 
 .. tip:: Do not use ``tune.track.log`` within a ``Trainable`` class.
 
 Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller.
 
-.. note:: If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
+.. note:: If you want to pass in a Python lambda, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
 
-Trainable API
--------------
+.. _tune-class-api:
+
+Trainable Class API
+-------------------
 
 .. caution:: Do not use ``tune.track.log`` within a ``Trainable`` class.
 
@@ -40,43 +57,39 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
 
     from ray import tune
 
-    class Guesser(tune.Trainable):
-        """Randomly picks a number from [1, 10000) to find the password."""
-
+    class Trainable(tune.Trainable):
         def _setup(self, config):
-            self.guess = config["guess"]
-            self.iter = 0
-            self.password = 1024
+            # config (dict): A dict of hyperparameters
+            self.x = 0
+            self.a = config["a"]
+            self.b = config["b"]
 
-        def _train(self):
-            """Execute one step of 'training'. This function will be called iteratively"""
-            self.iter += 1
-            self.guess += 1
-            return {
-                "accuracy": abs(self.guess - self.password),
-                "training_iteration": self.iter  # Tune will automatically provide this.
-            }
-
+        def _train(self):  # This is called iteratively.
+            score = objective(self.x, self.a, self.b)
+            self.x += 1
+            return {"score": score}
 
     analysis = tune.run(
-        Guesser,
-        stop={"training_iteration": 10},
-        num_samples=10,
+        Trainable,
+        stop={"training_iteration": 20},
         config={
-            "guess": tune.randint(1, 10000)
+            "a": 2,
+            "b": 4
         })
 
-    print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
+    print('best config: ', analysis.get_best_config(metric="score", mode="max"))
 
-As a subclass of ``tune.Trainable``, Tune will create a ``Guesser`` object on a separate process (using the Ray Actor API).
+As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a separate process (using the :ref:`Ray Actor API <actor-guide>`).
 
   1. ``_setup`` function is invoked once training starts.
-  2. ``_train`` is invoked **multiple times**. Each time, the Guesser object executes one logical iteration of training in the tuning process, which may include one or more iterations of actual training.
+  2. ``_train`` is invoked **multiple times**. Each time, the Trainable object executes one logical iteration of training in the tuning process, which may include one or more iterations of actual training.
   3. ``_stop`` is invoked when training is finished.
 
 .. tip:: As a rule of thumb, the execution time of ``_train`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
 In this example, we only implemented the ``_setup`` and ``_train`` methods for simplification. Next, we'll implement ``_save`` and ``_restore`` for checkpoint and fault tolerance.
+
+.. _tune-trainable-save-restore:
 
 Save and Restore
 ~~~~~~~~~~~~~~~~
