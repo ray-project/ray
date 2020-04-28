@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 import random
 import unittest
 
@@ -462,8 +461,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 explore=True,
                                 timestep=None,
                                 **kwargs):
-                return np.array([0] * len(obs_batch)),\
-                    [[h] * len(obs_batch)], {}
+                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
             def get_initial_state(self):
                 return [{}]  # empty dict
@@ -508,7 +506,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
-                return np.array([0] * len(obs_batch)), [], {}
+                return [0] * len(obs_batch), [], {}
 
         single_env = gym.make("CartPole-v0")
         obs_space = single_env.observation_space
