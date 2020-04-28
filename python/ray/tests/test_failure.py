@@ -1083,7 +1083,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     def probe():
         return
 
-    @ray.remote(max_reconstructions=3)
+    @ray.remote
     class Actor(object):
         def __init__(self):
             return
@@ -1134,16 +1134,6 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_node_failure(node_to_kill, use_actors)
     else:
         test_process_failure(use_actors)
-
-    ray.state.state._check_connected()
-    keys = [
-        key for r in ray.state.state.redis_clients
-        for key in r.keys("WORKER_FAILURE*")
-    ]
-    if node_failure:
-        assert len(keys) <= 1, len(keys)
-    else:
-        assert len(keys) <= 2, len(keys)
 
 
 if __name__ == "__main__":
