@@ -744,26 +744,6 @@ Status RedisWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   return worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
-Status RedisWorkerInfoAccessor::AsyncGetWorkerFailureData(
-    const WorkerID &worker_id,
-    const OptionalItemCallback<rpc::WorkerFailureData> &callback) {
-  auto on_success = [callback](RedisGcsClient *client, const WorkerID &id,
-                               const WorkerFailureData &data) {
-    if (callback != nullptr) {
-      callback(Status::OK(), std::move(data));
-    }
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const WorkerID &id) {
-    if (callback != nullptr) {
-      callback(Status::Invalid("Get worker failure data failed."), boost::none);
-    }
-  };
-
-  WorkerFailureTable &worker_failure_table = client_impl_->worker_failure_table();
-  return worker_failure_table.Lookup(JobID::Nil(), worker_id, on_success, on_failure);
-}
-
 Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
     const std::shared_ptr<WorkerFailureData> &data_ptr, const StatusCallback &callback) {
   WorkerFailureTable::WriteCallback on_done = nullptr;

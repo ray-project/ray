@@ -568,17 +568,6 @@ class WorkerInfoAccessor {
       const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
       const StatusCallback &done) = 0;
 
-  /// Get a worker's failure information.
-  ///
-  /// \param worker_id The worker to look up.
-  /// \param callback Callback that will be called when the
-  /// Get is complete. The return item has a value if the
-  /// worker died unexpectedly.
-  /// \return Status
-  virtual Status AsyncGetWorkerFailureData(
-      const WorkerID &worker_id,
-      const OptionalItemCallback<rpc::WorkerFailureData> &callback) = 0;
-
   /// Report a worker failure to GCS asynchronously.
   ///
   /// \param data_ptr The worker failure information that will be reported to GCS.

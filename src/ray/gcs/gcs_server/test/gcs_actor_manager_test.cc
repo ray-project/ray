@@ -16,7 +16,6 @@
 #include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {

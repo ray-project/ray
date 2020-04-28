@@ -392,10 +392,6 @@ class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetWorkerFailureData(const GetWorkerFailureDataRequest &request,
-                                          GetWorkerFailureDataReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                          ReportWorkerFailureReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;

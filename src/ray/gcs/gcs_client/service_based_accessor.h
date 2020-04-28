@@ -323,10 +323,6 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
-  Status AsyncGetWorkerFailureData(
-      const WorkerID &worker_id,
-      const OptionalItemCallback<rpc::WorkerFailureData> &callback) override;
-
   Status AsyncSubscribeToWorkerFailures(
       const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
       const StatusCallback &done) override;

@@ -361,23 +361,10 @@ message RegisterWorkerReply {
   GcsStatus status = 1;
 }
 
-message GetWorkerFailureDataRequest {
-  // ID of the worker.
-  bytes worker_id = 1;
-}
-
-message GetWorkerFailureDataReply {
-  GcsStatus status = 1;
-  // Data of worker.
-  WorkerFailureData worker_failure_data = 2;
-}
-
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
-  // Get the failure data for a worker.
-  rpc GetWorkerFailureData(GetWorkerFailureDataRequest) returns (GetWorkerFailureDataReply);
   // Register a worker to GCS Service.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
 }

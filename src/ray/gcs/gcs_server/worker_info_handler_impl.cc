@@ -47,27 +47,6 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   }
 }
 
-void DefaultWorkerInfoHandler::HandleGetWorkerFailureData(
-    const rpc::GetWorkerFailureDataRequest &request,
-    rpc::GetWorkerFailureDataReply *reply, SendReplyCallback send_reply_callback) {
-  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  auto on_done = [worker_id, reply, send_reply_callback](
-                     Status status, const boost::optional<WorkerFailureData> &result) {
-    if (result) {
-      reply->mutable_worker_failure_data()->CopyFrom(*result);
-    } else if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to get worker failure data: " << status.ToString()
-                     << ", worker id = " << worker_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_client_.Workers().AsyncGetWorkerFailureData(worker_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
-  }
-}
-
 void DefaultWorkerInfoHandler::HandleRegisterWorker(
     const RegisterWorkerRequest &request, RegisterWorkerReply *reply,
     SendReplyCallback send_reply_callback) {
