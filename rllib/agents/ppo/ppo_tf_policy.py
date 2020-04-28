@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -179,6 +180,7 @@ def postprocess_ppo_gae(policy,
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
+                               np.array(False),  # is_training
                                *next_state)
     batch = compute_advantages(
         sample_batch,
@@ -228,7 +230,7 @@ class ValueNetworkMixin:
         if config["use_gae"]:
 
             @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
+            def value(ob, prev_action, prev_reward, is_training, *state):
                 print()
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
@@ -236,7 +238,7 @@ class ValueNetworkMixin:
                         [prev_action]),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         [prev_reward]),
-                    "is_training": tf.convert_to_tensor(False),
+                    "is_training": tf.convert_to_tensor([is_training]),
                 }, [tf.convert_to_tensor([s]) for s in state],
                                           tf.convert_to_tensor([1]))
                 return self.model.value_function()[0]
