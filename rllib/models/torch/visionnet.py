@@ -1,4 +1,3 @@
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
@@ -61,14 +60,14 @@ class VisionNetwork(TorchModelV2, nn.Module):
             out_channels, 1, initializer=normc_initializer())
         self._cur_value = None
 
-    @override(ModelV2)
+    @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         features = self._hidden_layers(input_dict["obs"].float())
         logits = self._logits(features)
         self._cur_value = self._value_branch(features).squeeze(1)
         return logits, state
 
-    @override(ModelV2)
+    @override(TorchModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value
