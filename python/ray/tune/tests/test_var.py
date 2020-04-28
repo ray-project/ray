@@ -8,9 +8,7 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.experiment import Experiment
 from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
 from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
                                                 resolve_nested_dict)
 
@@ -301,36 +299,7 @@ class VariantGeneratorTest(unittest.TestCase):
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:
-            assert False
-
-    def testMaxConcurrentSuggestions(self):
-        """Checks that next_trials() supports throttling."""
-        experiment_spec = {
-            "run": "PPO",
-            "num_samples": 6,
-        }
-        experiments = [Experiment.from_json("test", experiment_spec)]
-
-        searcher = _MockSuggestionAlgorithm(max_concurrent=4)
-        searcher.add_configurations(experiments)
-        trials = searcher.next_trials()
-        self.assertEqual(len(trials), 4)
-        self.assertEqual(searcher.next_trials(), [])
-
-        finished_trial = trials.pop()
-        searcher.on_trial_complete(finished_trial.trial_id)
-        self.assertEqual(len(searcher.next_trials()), 1)
-
-        finished_trial = trials.pop()
-        searcher.on_trial_complete(finished_trial.trial_id)
-
-        finished_trial = trials.pop()
-        searcher.on_trial_complete(finished_trial.trial_id)
-
-        finished_trial = trials.pop()
-        searcher.on_trial_complete(finished_trial.trial_id)
-        self.assertEqual(len(searcher.next_trials()), 1)
-        self.assertEqual(len(searcher.next_trials()), 0)
+            raise
 
 
 if __name__ == "__main__":

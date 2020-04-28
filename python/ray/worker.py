@@ -565,6 +565,10 @@ def init(address=None,
 
         ray.init(address="123.45.67.89:6379")
 
+    You can also define an environment variable called `RAY_ADDRESS` in
+    the same format as the `address` parameter to connect to an existing
+    cluster with ray.init().
+
     Args:
         address (str): The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis,
@@ -577,9 +581,9 @@ def init(address=None,
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen.
         num_cpus (int): Number of CPUs the user wishes to assign to each
-        raylet.
+            raylet.
         num_gpus (int): Number of GPUs the user wishes to assign to each
-        raylet.
+            raylet.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         memory: The amount of memory (in bytes) that is available for use by
@@ -602,7 +606,7 @@ def init(address=None,
             manner. However, the same ID should not be used for different
             drivers.
         local_mode (bool): If true, the code will be executed serially. This
-        is useful for debugging.
+            is useful for debugging.
         driver_object_store_memory (int): Limit the amount of memory the driver
             can use in the object store for creating objects. By default, this
             is autoset based on available system memory, subject to a 20GB cap.
@@ -671,6 +675,17 @@ def init(address=None,
     if redis_address is not None:
         raise DeprecationWarning("The redis_address argument is deprecated. "
                                  "Please use address instead.")
+
+    if "RAY_ADDRESS" in os.environ:
+        if redis_address is None and (address is None or address == "auto"):
+            address = os.environ["RAY_ADDRESS"]
+        else:
+            raise RuntimeError(
+                "Cannot use both the RAY_ADDRESS environment variable and "
+                "the address argument of ray.init simultaneously. If you "
+                "use RAY_ADDRESS to connect to a specific Ray cluster, "
+                "please call ray.init() or ray.init(address=\"auto\") on the "
+                "driver.")
 
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
@@ -1667,16 +1682,27 @@ def kill(actor):
 
 
 def cancel(object_id, force=False):
-    """Kill a task forcefully.
+    """Cancels a locally-submitted task according to the following conditions.
 
-    This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    If the specified task is pending execution, it will not be executed. If
+    the task is currently executing, the behavior depends on the ``force``
+    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
+    and when ``force=True``, the executing the task will immediately exit. If
+    the task is already finished, nothing will happen.
 
-    If this actor is reconstructable, it will be attempted to be reconstructed.
+    Only non-actor tasks can be canceled. Canceled tasks will not be
+    retried (max_retries will not be respected).
+
+    Calling ray.get on a canceled task will raise a RayCancellationError.
 
     Args:
-        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
-        of the task to kill.
+        object_id (ObjectID): ObjectID returned by the task
+            that should be canceled.
+        force (boolean): Whether to force-kill a running task by killing
+            the worker that is running the task.
+    Raises:
+        ValueError: This is also raised for actor tasks, already completed
+            tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
