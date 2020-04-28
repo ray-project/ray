@@ -79,8 +79,8 @@ def Replay(*,
 
     if actors:
         replay = from_actors(actors)
-        return replay.gather_async(num_async=num_async).filter(
-            lambda x: x is not None)
+        return replay.gather_async(
+            num_async=num_async).filter(lambda x: x is not None)
 
     def gen_replay(_):
         while True:
