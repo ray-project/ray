@@ -266,6 +266,12 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
+def extrace_job_id_from_object(object_id):
+    assert isinstance(object_id, ray.ObjectID)
+    job_id_str = object_id.binary()[12:12 + ray.JobID.size()]
+    return ray.JobID(job_id_str)
+
+
 def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 

@@ -128,6 +128,9 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
+    ray.put(1)
+    assert len(ray.objects()) == 1
+
     job_id = ray.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
 

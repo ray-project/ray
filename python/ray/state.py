@@ -10,9 +10,12 @@ from ray import (
     gcs_utils,
     services,
 )
-from ray.utils import (decode, binary_to_hex, hex_to_binary)
+
+from ray.utils import (decode, binary_to_hex, hex_to_binary,
+                       compute_job_id_from_driver, extrace_job_id_from_object)
 
 from ray._raylet import GlobalStateAccessor
+
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +263,8 @@ class GlobalState:
 
         Args:
             object_id: An object ID to fetch information about. If this is
-                None, then the entire object table is fetched.
+            None, then the entire object table is fetched. Notice that this
+            only returns local objects created by the local driver.
 
         Returns:
             Information from the object table.
@@ -277,13 +281,19 @@ class GlobalState:
                     object_info)
                 return self._gen_object_info(object_location_info)
         else:
+            # Find the local driver / job
+            global_worker_id = ray.WorkerID(ray.worker.global_worker.worker_id)
+            job_id = compute_job_id_from_driver(global_worker_id).hex()
+
+            # Return the entire object table.
             object_table = self.global_state_accessor.get_object_table()
             results = {}
             for i in range(len(object_table)):
                 object_location_info = gcs_utils.ObjectLocationInfo.FromString(
                     object_table[i])
-                results[binary_to_hex(object_location_info.object_id)] = \
-                    self._gen_object_info(object_location_info)
+                object_id = binary_to_hex(object_location_info.object_id)
+                if job_id == extrace_job_id_from_object(object_id).hex():
+                    results[object_id] = self._gen_object_info(object_location_info)
             return results
 
     def _gen_object_info(self, object_location_info):
@@ -982,7 +992,8 @@ def objects(object_id=None):
 
     Args:
         object_id: An object ID to fetch information about. If this is None,
-            then the entire object table is fetched.
+            then the entire object table is fetched. Notice that this only
+            returns local objects created by the local driver.
 
     Returns:
         Information from the object table.
