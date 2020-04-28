@@ -206,18 +206,6 @@ def execution_plan(workers, config):
         ConcatBatches(min_batch_size=config["train_batch_size"]))
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
-    # Callback to update the KL based on optimization info.
-    def update_kl(item):
-        _, fetches = item
-
-        def update(pi, pi_id):
-            if pi_id in fetches:
-                pi.update_kl(fetches[pi_id]["kl"])
-            else:
-                logger.warning("No data for {}, not updating kl".format(pi_id))
-
-        workers.local_worker().foreach_trainable_policy(update)
-
     if config["simple_optimizer"]:
         train_op = rollouts.for_each(
             TrainOneStep(
@@ -236,6 +224,18 @@ def execution_plan(workers, config):
                 train_batch_size=config["train_batch_size"],
                 shuffle_sequences=config["shuffle_sequences"],
                 _fake_gpus=config["_fake_gpus"]))
+
+    # Callback to update the KL based on optimization info.
+    def update_kl(item):
+        _, fetches = item
+
+        def update(pi, pi_id):
+            if pi_id in fetches:
+                pi.update_kl(fetches[pi_id]["kl"])
+            else:
+                logger.warning("No data for {}, not updating kl".format(pi_id))
+
+        workers.local_worker().foreach_trainable_policy(update)
 
     # Update KL after each round of training.
     train_op = train_op.for_each(update_kl)
