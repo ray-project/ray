@@ -14,13 +14,13 @@ class TorchModelV2(ModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        """Initialize a TorchModel.
+        """Initialize a TorchModelV2.
 
         Here is an example implementation for a subclass
-        ``MyModelClass(TorchModel, nn.Module)``::
+        ``MyModelClass(TorchModelV2, nn.Module)``::
 
             def __init__(self, *args, **kwargs):
-                TorchModel.__init__(self, *args, **kwargs)
+                TorchModelV2.__init__(self, *args, **kwargs)
                 nn.Module.__init__(self)
                 self._hidden_layers = nn.Sequential(...)
                 self._logits = ...
@@ -28,8 +28,9 @@ class TorchModelV2(ModelV2):
         """
 
         if not isinstance(self, nn.Module):
-            raise ValueError("Subclasses of TorchModel must also inherit from "
-                             "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
+            raise ValueError(
+                "Subclasses of TorchModelV2 must also inherit from "
+                "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
 
         ModelV2.__init__(
             self,

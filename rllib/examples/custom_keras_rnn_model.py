@@ -169,9 +169,6 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
     }
-    from ray.rllib.agents.ppo import PPOTrainer
-    trainer = PPOTrainer(config=config, env="RepeatAfterMeEnv")
-    trainer.train()
     tune.run(
         args.run,
         config=config,

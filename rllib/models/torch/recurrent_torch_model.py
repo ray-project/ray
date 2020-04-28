@@ -11,7 +11,7 @@ torch, nn = try_import_torch()
 
 @DeveloperAPI
 class RecurrentTorchModel(TorchModelV2, nn.Module):
-    """Helper class to simplify implementing RNN models with TorchModel.
+    """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.

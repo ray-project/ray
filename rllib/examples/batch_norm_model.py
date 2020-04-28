@@ -19,16 +19,14 @@ parser.add_argument("--run", type=str, default="PPO")
 
 
 class BatchNormModel(TFModelV2):
-    @override(ModelV2)
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-        self.inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="inputs")
-        self.is_training = tf.keras.layers.Input(
-            shape=(), dtype=tf.bool, name="is_training")
-        last_layer = self.inputs
+        inputs = tf.keras.layers.Input(shape=obs_space.shape, name="inputs")
+        is_training = tf.keras.layers.Input(
+            shape=(), dtype=tf.bool, batch_size=1, name="is_training")
+        last_layer = inputs
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
             label = "fc{}".format(i)
@@ -39,7 +37,7 @@ class BatchNormModel(TFModelV2):
                 name=label)(last_layer)
             # Add a batch norm layer
             last_layer = tf.keras.layers.BatchNormalization()(
-                last_layer, training=self.is_training[0])
+                last_layer, training=is_training[0])
         output = tf.keras.layers.Dense(
             units=self.num_outputs,
             kernel_initializer=normc_initializer(0.01),
@@ -50,16 +48,13 @@ class BatchNormModel(TFModelV2):
             kernel_initializer=normc_initializer(0.01),
             activation=None,
             name="value_out")(last_layer)
+
         self.base_model = tf.keras.models.Model(
-            inputs=[self.inputs, self.is_training],
-            outputs=[output, value_out])
+            inputs=[inputs, is_training], outputs=[output, value_out])
         self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        if input_dict["is_training"].shape.as_list() == []:
-            input_dict["is_training"] = tf.expand_dims(
-                input_dict["is_training"], 0)
         out, self._value_out = self.base_model(
             [input_dict["obs"], input_dict["is_training"]])
         return out, []

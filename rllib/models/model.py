@@ -27,7 +27,7 @@ class Model:
                  seq_lens=None):
         # Soft-deprecate this class. All Models should use the ModelV2
         # API from here on.
-        deprecation_warning("Model", "ModelV2", error=True)
+        deprecation_warning("Model", "ModelV2", error=False)
         assert isinstance(input_dict, dict), input_dict
 
         # Default attribute values for the non-RNN case
