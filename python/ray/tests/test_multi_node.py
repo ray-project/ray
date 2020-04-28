@@ -334,6 +334,7 @@ print("success")
             print(output_line)
             if output_line == "success":
                 return
+            time.sleep(1)
         raise RayTestTimeoutException(
             "Timed out waiting for process to print success.")
 
