@@ -542,6 +542,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         java_worker_options=None,
          use_pickle=True,
          _internal_config=None,
          lru_evict=False):
@@ -651,6 +652,7 @@ def init(address=None,
             conventional location, e.g., "/tmp/ray".
         load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
+        java_worker_options: Overwrite the options to start Java workers.
         use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
@@ -758,6 +760,7 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
+            java_worker_options=java_worker_options,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -808,6 +811,9 @@ def init(address=None,
         if raylet_socket_name is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "raylet_socket_name must not be provided.")
+        if java_worker_options is not None:
+            raise ValueError("When connecting to an existing cluster, "
+                             "java_worker_options must not be provided.")
         if _internal_config is not None and len(_internal_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_internal_config must not be provided.")

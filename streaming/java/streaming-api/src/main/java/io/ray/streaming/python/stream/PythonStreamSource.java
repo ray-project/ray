@@ -13,17 +13,12 @@ import io.ray.streaming.python.PythonPartition;
 public class PythonStreamSource extends PythonDataStream implements StreamSource {
 
   private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
-    super(streamingContext, new PythonOperator(sourceFunction));
-    super.partition = PythonPartition.RoundRobinPartition;
-  }
-
-  public PythonStreamSource setParallelism(int parallelism) {
-    this.parallelism = parallelism;
-    return this;
+    super(streamingContext, new PythonOperator(sourceFunction),
+          PythonPartition.RoundRobinPartition);
   }
 
   public static PythonStreamSource from(StreamingContext streamingContext,
-                                   PythonFunction sourceFunction) {
+                                        PythonFunction sourceFunction) {
     sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);
     return new PythonStreamSource(streamingContext, sourceFunction);
   }
