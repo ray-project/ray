@@ -55,9 +55,8 @@ class BackendConfig:
                 key = "num_replicas"
             yield key, val
 
-    def get_actor_creation_args(self, init_args):
+    def get_actor_creation_args(self):
         ret_d = deepcopy(self.__dict__)
         for k in self._serve_configs:
             ret_d.pop(k)
-        ret_d["args"] = init_args
         return ret_d

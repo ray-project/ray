@@ -1086,6 +1086,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
+
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
@@ -1123,8 +1124,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
 
   flatbuffers::FlatBufferBuilder fbb;
+  std::vector<std::string> internal_config_keys;
+  std::vector<std::string> internal_config_values;
+  for (auto kv : initial_config_.raylet_config) {
+    internal_config_keys.push_back(kv.first);
+    internal_config_values.push_back(kv.second);
+  }
   auto reply = ray::protocol::CreateRegisterClientReply(
-      fbb, to_flatbuf(fbb, self_node_id_), assigned_port);
+      fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
+      string_vec_to_flatbuf(fbb, internal_config_keys),
+      string_vec_to_flatbuf(fbb, internal_config_values));
   fbb.Finish(reply);
   client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),

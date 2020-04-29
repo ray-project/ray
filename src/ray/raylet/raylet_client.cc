@@ -163,10 +163,11 @@ raylet::RayletClient::RayletClient(
 
 raylet::RayletClient::RayletClient(
     boost::asio::io_service &io_service,
-    std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
+    std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
-    const JobID &job_id, const Language &language, ClientID *raylet_id,
-    const std::string &ip_address, int *port)
+    const JobID &job_id, const Language &language, const std::string &ip_address,
+    ClientID *raylet_id, int *port,
+    std::unordered_map<std::string, std::string> *internal_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
@@ -186,6 +187,14 @@ raylet::RayletClient::RayletClient(
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.get());
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
+
+  RAY_CHECK(internal_config);
+  auto keys = reply_message->internal_config_keys();
+  auto values = reply_message->internal_config_values();
+  RAY_CHECK(keys->size() == values->size());
+  for (size_t i = 0; i < keys->size(); i++) {
+    internal_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
+  }
 }
 
 Status raylet::RayletClient::AnnounceWorkerPort(int port) {

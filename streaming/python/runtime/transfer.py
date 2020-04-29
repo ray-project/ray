@@ -147,13 +147,17 @@ class ChannelCreationParametersBuilder:
     wrap initial parameters needed by a streaming queue
     """
     _java_reader_async_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker", "onReaderMessage", "([B)V")
+        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessage",
+        "([B)V")
     _java_reader_sync_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker", "onReaderMessageSync", "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessageSync",
+        "([B)[B")
     _java_writer_async_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker", "onWriterMessage", "([B)V")
+        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessage",
+        "([B)V")
     _java_writer_sync_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker", "onWriterMessageSync", "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessageSync",
+        "([B)[B")
     _python_reader_async_function_descriptor = PythonFunctionDescriptor(
         "ray.streaming.runtime.worker", "on_reader_message", "JobWorker")
     _python_reader_sync_function_descriptor = PythonFunctionDescriptor(
