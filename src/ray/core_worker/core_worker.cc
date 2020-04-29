@@ -1766,7 +1766,8 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  // Handle remote cancelation requests.
+  // If remote_object_id is specified, this is a remote cancellation request for an object that we own. In this case, we just
+  // go through the normal CancelTask procedure.
   if (!request.remote_object_id().empty()) {
     RAY_UNUSED(CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                           request.force_kill()));
