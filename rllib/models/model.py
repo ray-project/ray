@@ -5,7 +5,8 @@ import gym
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class Model:
-    """This class is deprecated, please use TFModelV2 instead."""
+    """This class is deprecated! Use ModelV2 instead."""
 
     def __init__(self,
                  input_dict,
@@ -24,6 +25,9 @@ class Model:
                  options,
                  state_in=None,
                  seq_lens=None):
+        # Soft-deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning("Model", "ModelV2", error=False)
         assert isinstance(input_dict, dict), input_dict
 
         # Default attribute values for the non-RNN case

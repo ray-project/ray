@@ -6,15 +6,15 @@ from ray import serve
 
 def test_nonblocking():
     serve.init()
-    serve.create_endpoint("endpoint", "/api")
+    serve.create_endpoint("nonblocking", "/nonblocking")
 
     def function(flask_request):
         return {"method": flask_request.method}
 
-    serve.create_backend(function, "echo:v1")
-    serve.set_traffic("endpoint", {"echo:v1": 1.0})
+    serve.create_backend(function, "nonblocking:v1")
+    serve.set_traffic("nonblocking", {"nonblocking:v1": 1.0})
 
-    resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
+    resp = requests.get("http://127.0.0.1:8000/nonblocking").json()["method"]
     assert resp == "GET"
 
 

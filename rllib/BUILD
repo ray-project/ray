@@ -1389,7 +1389,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy",
-    tags = ["examples", "examples_M_xxx"],
+    tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
 )
@@ -1406,9 +1406,9 @@ py_test(
     name = "examples/nested_action_spaces_ppo",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--stop=90", "--run=PPO"]
+    args = ["--stop=-500", "--run=PPO"]
 )
 
 py_test(

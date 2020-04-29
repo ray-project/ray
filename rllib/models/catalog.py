@@ -23,6 +23,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.space_utils import flatten_space
 
@@ -197,32 +198,22 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space, discrete_to_one_hot=False):
+    def get_action_shape(action_space):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
-            discrete_to_one_hot (bool): Whether to return the one-hot shape
-                for discrete actions or not.
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            if discrete_to_one_hot:
-                return (tf.float32, (None, action_space.n))
-            else:
-                return (tf.int64, (None, ))
+            return (tf.int64, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return (tf.float32, (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            if discrete_to_one_hot:
-                return tf.as_dtype(action_space.dtype), \
-                       (None,) + action_space.shape[:-1] + \
-                       (action_space.shape[-1] * action_space.nvec,)
-            else:
-                return (tf.as_dtype(action_space.dtype),
-                        (None, ) + action_space.shape)
+            return (tf.as_dtype(action_space.dtype),
+                    (None, ) + action_space.shape)
         elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
@@ -237,27 +228,23 @@ class ModelCatalog:
             return (tf.int64 if all_discrete else tf.float32, (None, size))
         else:
             raise NotImplementedError(
-                "action space {} not supported".format(action_space))
+                "Action space {} not supported".format(action_space))
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space,
-                               name="action",
-                               discrete_to_one_hot=True):
+    def get_action_placeholder(action_space, name="action"):
         """Returns an action placeholder consistent with the action space
 
         Args:
             action_space (Space): Action space of the target gym env.
             name (str): An optional string to name the placeholder by.
                 Default: "action".
-            discrete_to_one_hot (bool): Whether to make placeholder one-hot
-                for discrete actions.
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(
-            action_space, discrete_to_one_hot=discrete_to_one_hot)
+        dtype, shape = ModelCatalog.get_action_shape(action_space)
+
         return tf.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
@@ -485,6 +472,7 @@ class ModelCatalog:
                   seq_lens=None):
         """Deprecated: use get_model_v2() instead."""
 
+        deprecation_warning("get_model", "get_model_v2", error=False)
         assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
         model = ModelCatalog._get_model(input_dict, obs_space, action_space,
@@ -510,6 +498,7 @@ class ModelCatalog:
     @staticmethod
     def _get_model(input_dict, obs_space, action_space, num_outputs, options,
                    state_in, seq_lens):
+        deprecation_warning("_get_model", "get_model_v2", error=False)
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.debug("Using custom model {}".format(model))

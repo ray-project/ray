@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(configure_logging=False)
 
     space = {
         "width": hp.uniform("width", 0, 20),
@@ -60,7 +60,6 @@ if __name__ == "__main__":
     }
     algo = HyperOptSearch(
         space,
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         points_to_evaluate=current_best_params)

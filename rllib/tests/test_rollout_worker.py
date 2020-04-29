@@ -17,6 +17,40 @@ from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
+class MockPolicy(TestPolicy):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        episodes=None,
+                        explore=None,
+                        timestep=None,
+                        **kwargs):
+        return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
+
+    def postprocess_trajectory(self,
+                               batch,
+                               other_agent_batches=None,
+                               episode=None):
+        assert episode is not None
+        return compute_advantages(
+            batch, 100.0, 0.9, use_gae=False, use_critic=False)
+
+
+class BadPolicy(MockPolicy):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        episodes=None,
+                        explore=None,
+                        timestep=None,
+                        **kwargs):
+        raise Exception("intentional error")
+
+
 class FailOnStepEnv(gym.Env):
     def __init__(self):
         self.observation_space = gym.spaces.Discrete(1)

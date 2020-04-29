@@ -51,7 +51,6 @@ if __name__ == "__main__":
         algo="Asracos",  # only support ASRacos currently
         budget=config["num_samples"],
         dim_dict=dim_dict,
-        max_concurrent=4,
         metric="mean_loss",
         mode="min")
 

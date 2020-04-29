@@ -19,6 +19,9 @@ from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+
+tree = try_import_tree()
 
 tree = try_import_tree()
 
@@ -314,11 +317,12 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                                     get_batch_builder, extra_batch_callback)
         # Call each policy's Exploration.on_episode_start method.
         for p in policies.values():
-            p.exploration.on_episode_start(
-                policy=p,
-                environment=base_env,
-                episode=episode,
-                tf_sess=getattr(p, "_sess", None))
+            if getattr(p, "exploration", None) is not None:
+                p.exploration.on_episode_start(
+                    policy=p,
+                    environment=base_env,
+                    episode=episode,
+                    tf_sess=getattr(p, "_sess", None))
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
@@ -506,11 +510,12 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
-                p.exploration.on_episode_end(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                if getattr(p, "exploration", None) is not None:
+                    p.exploration.on_episode_end(
+                        policy=p,
+                        environment=base_env,
+                        episode=episode,
+                        tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
             callbacks.on_episode_end(
                 worker=worker,
@@ -580,9 +585,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
 
             obs_batch = [t.obs for t in eval_data]
             state_batches = _to_column_format(rnn_in)
-
             # TODO(ekl): how can we make info batch available to TF code?
-            obs_batch = [t.obs for t in eval_data]
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
 
@@ -641,6 +644,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
+
+        # In case actions is a list (representing the 0th dim of a batch of
+        # primitive actions), try to convert it first.
+        if isinstance(actions, list):
+            actions = np.array(actions)
 
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "

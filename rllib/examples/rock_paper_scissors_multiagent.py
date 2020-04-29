@@ -97,7 +97,7 @@ class AlwaysSameHeuristic(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        return tuple([state_batches[0]]), state_batches, {}
+        return state_batches[0], state_batches, {}
 
     def learn_on_batch(self, samples):
         pass
@@ -132,7 +132,7 @@ class BeatLastHeuristic(Policy):
             elif x[SCISSORS] == 1:
                 return ROCK
 
-        return tuple([successor(x) for x in obs_batch]), [], {}
+        return [successor(x) for x in obs_batch], [], {}
 
     def learn_on_batch(self, samples):
         pass
@@ -190,36 +190,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
             "policy_mapping_fn": select_policy,
         },
     }
-    import ray.rllib.agents.pg as pg
-    trainer = pg.PGTrainer(config=config)
-    trainer.train()
-    return
-    tune.run(
-        trainer,
-        stop={"timesteps_total": args.stop},
-        config={
-            "env": RockPaperScissorsEnv,
-            "gamma": 0.9,
-            "num_workers": 0,
-            "num_envs_per_worker": 4,
-            "rollout_fragment_length": 10,
-            "train_batch_size": 200,
-            "multiagent": {
-                "policies_to_train": ["learned"],
-                "policies": {
-                    "always_same": (AlwaysSameHeuristic, Discrete(3),
-                                    Discrete(3), {}),
-                    "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3),
-                                  {}),
-                    "learned": (None, Discrete(3), Discrete(3), {
-                        "model": {
-                            "use_lstm": use_lstm
-                        }
-                    }),
-                },
-                "policy_mapping_fn": select_policy,
-            },
-        })
+    tune.run(trainer, stop={"timesteps_total": args.stop}, config=config)
 
 
 def run_with_custom_entropy_loss(args):

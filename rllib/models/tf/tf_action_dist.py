@@ -229,7 +229,6 @@ class DiagGaussian(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x):
-        print()
         return -0.5 * tf.reduce_sum(
             tf.square((x - self.mean) / self.std), axis=1) - \
             0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
@@ -399,25 +398,17 @@ class Deterministic(TFActionDistribution):
 
 
 class MultiActionDistribution(TFActionDistribution):
-    """Action distribution that operates for list of (flattened) actions.
+    """Action distribution that operates on a set of actions.
 
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self,
-                 inputs,
-                 model,
-                 *,
-                 child_distributions,
-                 input_lens,
-                 action_space,
-                 action_space_struct=None):
+    def __init__(self, inputs, model, *, child_distributions, input_lens,
+                 action_space):
         ActionDistribution.__init__(self, inputs, model)
 
-        self.action_space_struct = action_space_struct
-        if self.action_space_struct is None:
-            self.action_space_struct = get_base_struct_from_space(action_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
 
         input_lens = np.array(input_lens, dtype=np.int32)
         split_inputs = tf.split(inputs, input_lens, axis=1)

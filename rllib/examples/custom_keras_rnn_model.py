@@ -169,7 +169,6 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
     }
-
     tune.run(
         args.run,
         config=config,
