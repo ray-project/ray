@@ -42,10 +42,6 @@ class TorchModelV2(ModelV2):
             framework="torch")
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens):
-        raise NotImplementedError
-
-    @override(ModelV2)
     def variables(self, as_dict=False):
         if as_dict:
             return self.state_dict()
