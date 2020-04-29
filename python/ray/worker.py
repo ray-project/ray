@@ -435,10 +435,6 @@ def get_gpu_ids():
     """
 
     # TODO(ilr) Handle inserting resources in local mode
-    if _mode() == LOCAL_MODE:
-        logger.info("ray.get_gpu_ids() currently does not work in LOCAL "
-                    "MODE.")
-
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
