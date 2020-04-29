@@ -179,7 +179,7 @@ def validate_config(config):
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["use_pytorch"]:
         from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
         return PPOTorchPolicy
     else:
