@@ -1143,6 +1143,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_detached,
                                    actor_creation_options.is_asyncio);
 
+  // Add the actor handle before we submit the actor creation task, since the
+  // actor handle must be in scope by the time the GCS sends the
+  // WaitForActorOutOfScopeRequest.
+  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
+      actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
+      function.GetLanguage(), function.GetFunctionDescriptor(), extension_data));
+  RAY_CHECK(AddActorHandle(std::move(actor_handle),
+                           /*is_owner_handle=*/!actor_creation_options.is_detached))
+      << "Actor " << actor_id << " already exists";
+
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   Status status;
@@ -1155,12 +1165,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                  actor_creation_options.max_reconstructions));
     status = direct_task_submitter_->SubmitTask(task_spec);
   }
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
-      actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
-      function.GetLanguage(), function.GetFunctionDescriptor(), extension_data));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle),
-                           /*is_owner_handle=*/!actor_creation_options.is_detached))
-      << "Actor " << actor_id << " already exists";
   return status;
 }
 
@@ -1273,6 +1277,13 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                 bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+  if (is_owner_handle) {
+    reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                       /*inner_ids=*/{}, GetCallerId(), rpc_address_,
+                                       CurrentCallSite(), -1,
+                                       /*is_reconstructable=*/true);
+  }
+
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
 
   bool inserted;
@@ -1324,16 +1335,26 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     RAY_CHECK(reference_counter_->SetDeleteCallback(
         actor_creation_return_id,
         [this, actor_id, is_owner_handle](const ObjectID &object_id) {
-          // TODO(swang): Unsubscribe from the actor table.
-          // TODO(swang): Remove the actor handle entry.
-          // If we own the actor and the actor handle is no longer in scope,
-          // terminate the actor.
           if (is_owner_handle) {
-            RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
-                          << " has gone out of scope, sending message to actor "
-                          << actor_id << " to do a clean exit.";
-            RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
+            // If we own the actor and the actor handle is no longer in scope,
+            // terminate the actor. We do not do this if the GCS service is
+            // enabled since then the GCS will terminate the actor for us.
+            if (!RayConfig::instance().gcs_service_enabled()) {
+              RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
+                            << " has gone out of scope, sending message to actor "
+                            << actor_id << " to do a clean exit.";
+              RAY_CHECK_OK(
+                  KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
+            }
+          }
+
+          RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
+
+          absl::MutexLock lock(&actor_handles_mutex_);
+          RAY_CHECK(actor_handles_.erase(actor_id));
+          auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
+          if (callback) {
+            callback.mapped()(actor_id);
           }
         }));
   }
@@ -1712,6 +1733,31 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   } else {
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+}
+
+void CoreWorker::HandleWaitForActorOutOfScope(
+    const rpc::WaitForActorOutOfScopeRequest &request,
+    rpc::WaitForActorOutOfScopeReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
+  // Send a response to trigger unpinning the object when it is no longer in scope.
+  auto respond = [send_reply_callback](const ActorID &actor_id) {
+    RAY_LOG(DEBUG) << "Replying to HandleWaitForActorOutOfScope for " << actor_id;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
+  const auto actor_id = ActorID::FromBinary(request.actor_id());
+  RAY_LOG(DEBUG) << "Received HandleWaitForActorOutOfScope for " << actor_id;
+  absl::MutexLock lock(&actor_handles_mutex_);
+  auto it = actor_handles_.find(actor_id);
+  if (it == actor_handles_.end()) {
+    respond(actor_id);
+  } else {
+    RAY_CHECK(actor_out_of_scope_callbacks_.emplace(actor_id, std::move(respond)).second);
   }
 }
 

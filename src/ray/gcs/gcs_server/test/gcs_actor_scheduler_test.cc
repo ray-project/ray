@@ -73,6 +73,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(1, failure_actors_.size());
   ASSERT_EQ(actor, failure_actors_.front());
+  ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
@@ -93,9 +94,10 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
-      node_id, ClientID::Nil()));
+  WorkerID worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, ClientID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -105,6 +107,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
+  ASSERT_EQ(actor->GetNodeID(), node_id);
+  ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
@@ -135,9 +139,10 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
-      node_id, ClientID::Nil()));
+  WorkerID worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, ClientID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -147,6 +152,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
+  ASSERT_EQ(actor->GetNodeID(), node_id);
+  ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
@@ -167,9 +174,10 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
-      node_id, ClientID::Nil()));
+  WorkerID worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, ClientID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
@@ -185,6 +193,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
   ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
+  ASSERT_EQ(actor->GetNodeID(), node_id);
+  ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
@@ -212,6 +222,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(actor->GetActorID(), actor_ids.front());
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
+  ASSERT_TRUE(actor->GetNodeID().IsNil());
 
   // Grant a worker, which will influence nothing.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
@@ -257,6 +268,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   ASSERT_EQ(1, actor_ids.size());
   ASSERT_EQ(actor->GetActorID(), actor_ids.front());
   ASSERT_EQ(1, worker_client_->callbacks.size());
+  ASSERT_TRUE(actor->GetNodeID().IsNil());
 
   // Reply the actor creation request, which will influence nothing.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
@@ -296,6 +308,8 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(actor->GetActorID(),
             gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
   ASSERT_EQ(1, worker_client_->callbacks.size());
+  ASSERT_TRUE(actor->GetNodeID().IsNil());
+  ASSERT_TRUE(actor->GetWorkerID().IsNil());
 
   // Reply the actor creation request, which will influence nothing.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
@@ -339,9 +353,10 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node2->node_manager_address(), node2->node_manager_port(), WorkerID::FromRandom(),
-      node_id_2, ClientID::Nil()));
+  WorkerID worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
+                                               node2->node_manager_port(), worker_id,
+                                               node_id_2, ClientID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -349,11 +364,11 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  ASSERT_EQ(node_id_2, actor->GetNodeID());
-
   ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
+  ASSERT_EQ(actor->GetNodeID(), node_id_2);
+  ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
 }  // namespace ray

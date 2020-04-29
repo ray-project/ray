@@ -689,6 +689,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleWaitForActorOutOfScope(const rpc::WaitForActorOutOfScopeRequest &request,
+                                    rpc::WaitForActorOutOfScopeReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
@@ -981,6 +986,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
+  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
+  // protects into the ActorManager.
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;
@@ -988,6 +995,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
+
+  /// Map from actor ID to a callback to call when all local handles to that
+  /// actor have gone out of scpoe.
+  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
+      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
 
   ///
   /// Fields related to task execution.

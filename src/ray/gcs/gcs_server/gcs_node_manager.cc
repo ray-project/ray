@@ -166,7 +166,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
                                            rpc::ReportHeartbeatReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
-  RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
   node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
@@ -175,7 +174,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   // The heartbeat data is reported here because some python unit tests rely on the
   // heartbeat data in redis.
   RAY_CHECK_OK(node_info_accessor_.AsyncReportHeartbeat(heartbeat_data, nullptr));
-  RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,

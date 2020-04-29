@@ -144,6 +144,13 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Ask the actor's owner to reply when the actor has gone out of scope.
+  virtual ray::Status WaitForActorOutOfScope(
+      const WaitForActorOutOfScopeRequest &request,
+      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   /// Notify the owner of an object that the object has been pinned.
   virtual ray::Status WaitForObjectEviction(
       const WaitForObjectEvictionRequest &request,
@@ -216,6 +223,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 

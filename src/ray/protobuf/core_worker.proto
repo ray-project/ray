@@ -163,6 +163,16 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message WaitForActorOutOfScopeRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ActorID of the actor in scope.
+  bytes actor_id = 2;
+}
+
+message WaitForActorOutOfScopeReply {
+}
+
 message WaitForObjectEvictionRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -288,6 +298,11 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Wait for the actor's owner to decide that the actor has gone out of scope.
+  // Replying to this message indicates that the client should force-kill the
+  // actor process, if still alive.
+  rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
+      returns (WaitForActorOutOfScopeReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)

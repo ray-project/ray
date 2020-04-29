@@ -19,6 +19,7 @@
 #include <ray/common/task/task_execution_spec.h>
 #include <ray/common/task/task_spec.h>
 #include <ray/protobuf/gcs_service.pb.h>
+#include <ray/rpc/worker/core_worker_client.h>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -70,6 +71,10 @@ class GcsActor {
   ClientID GetNodeID() const;
   /// Get the id of the worker on which this actor is created.
   WorkerID GetWorkerID() const;
+  /// Whether this actor is detached.
+  bool IsDetached() const;
+  WorkerID GetOwnerID() const;
+  const rpc::Address &GetOwnerAddress() const;
 
   /// Update the `Address` of this actor (see gcs.proto).
   void UpdateAddress(const rpc::Address &address);
@@ -107,7 +112,8 @@ class GcsActorManager {
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param actor_info_accessor Used to flush actor data to storage.
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-                  gcs::ActorInfoAccessor &actor_info_accessor);
+                  gcs::ActorInfoAccessor &actor_info_accessor,
+                  const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
 
@@ -156,6 +162,8 @@ class GcsActorManager {
   void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
 
  private:
+  void DestroyActor(const ActorID &actor_id);
+
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.
@@ -178,10 +186,20 @@ class GcsActorManager {
   /// Map contains the relationship of node and created actors.
   absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
       node_to_created_actors_;
+  /// Map from worker ID to a worker client and the IDs of the actors owned by
+  /// that worker. An owned actor should be destroyed once it has gone out of
+  /// scope, according to its owner, or the owner dies.
+  absl::flat_hash_map<WorkerID, std::pair<std::shared_ptr<rpc::CoreWorkerClientInterface>,
+                                          absl::flat_hash_set<ActorID>>>
+      owner_clients_;
+
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Actor table. Used to update actor information upon creation, deletion, etc.
   gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// Factory to produce clients to workers. This is used to communicate with
+  /// actors and their owners.
+  rpc::ClientFactoryFn worker_client_factory_;
 };
 
 }  // namespace gcs

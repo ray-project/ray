@@ -1104,6 +1104,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     # Test fate sharing if the parent process dies.
     def test_process_failure(use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
+        print("parent", a)
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
@@ -1115,6 +1116,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
+        print("parent", a)
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
         assert wait_for_condition(lambda: not child_resource_available())
