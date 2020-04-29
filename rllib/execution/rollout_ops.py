@@ -180,6 +180,34 @@ class ConcatBatches:
         return []
 
 
+class SelectExperiences:
+    """Callable used to select experiences from a MultiAgentBatch.
+
+    This should be used with the .for_each() operator.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> rollouts = rollouts.for_each(SelectExperiences(["pol1", "pol2"]))
+        >>> print(next(rollouts).policy_batches.keys())
+        {"pol1", "pol2"}
+    """
+
+    def __init__(self, policy_ids: List[str]):
+        self.policy_ids = policy_ids
+
+    def __call__(self, samples: SampleBatchType) -> SampleBatchType:
+        _check_sample_batch_type(samples)
+
+        if isinstance(samples, MultiAgentBatch):
+            samples = MultiAgentBatch({
+                k: v
+                for k, v in samples.policy_batches.items()
+                if k in self.policy_ids
+            }, samples.count)
+
+        return samples
+
+
 class StandardizeFields:
     """Callable used to standardize fields of batches.
 

@@ -4,7 +4,7 @@ from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
-    StandardizeFields
+    StandardizeFields, SelectExperiences
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
@@ -201,7 +201,9 @@ def get_policy_class(config):
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-    # Collect large batches of experiences & standardize.
+    # Collect large batches of relevant experiences & standardize.
+    rollouts = rollouts.for_each(
+        SelectExperiences(workers.trainable_policies()))
     rollouts = rollouts.combine(
         ConcatBatches(min_batch_size=config["train_batch_size"]))
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
