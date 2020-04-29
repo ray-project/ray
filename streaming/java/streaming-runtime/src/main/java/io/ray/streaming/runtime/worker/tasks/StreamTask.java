@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class StreamTask implements Runnable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
@@ -41,19 +42,18 @@ public abstract class StreamTask implements Runnable {
     this.worker = worker;
     prepareTask();
 
-    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
-      + "-" + System.currentTimeMillis());
+    this.thread = new Thread(Ray.wrapRunnable(this),
+        this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
   private void prepareTask() {
     Map<String, String> queueConf = new HashMap<>();
     worker.getConfig().forEach((k, v) -> queueConf.put(k, String.valueOf(v)));
-    String queueSize = (String) worker.getConfig()
+    String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
-    String channelType = (String) worker.getConfig()
+    String channelType = worker.getConfig()
         .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
@@ -106,8 +106,8 @@ public abstract class StreamTask implements Runnable {
       reader = new DataReader(channelIDs, inputActors, queueConf);
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(
-        worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
+    RuntimeContext runtimeContext = new RayRuntimeContext(worker.getExecutionTask(),
+        worker.getConfig(), executionNode.getParallelism());
 
     processor.open(collectors, runtimeContext);
 
