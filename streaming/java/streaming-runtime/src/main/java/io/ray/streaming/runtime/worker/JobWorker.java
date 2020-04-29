@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
  */
 public class JobWorker implements Serializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
+  // special flag to indicate this actor not ready
+  private static final byte[] NOT_READY_FLAG = new byte[4];
 
   static {
     EnvUtil.loadNativeLibraries();
@@ -122,8 +124,7 @@ public class JobWorker implements Serializable {
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
     if (transferHandler == null) {
-      // new byte[4] means not ready.
-      return new byte[4];
+      return NOT_READY_FLAG;
     }
     return transferHandler.onReaderMessageSync(buffer);
   }
@@ -141,8 +142,7 @@ public class JobWorker implements Serializable {
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
     if (transferHandler == null) {
-      // new byte[4] means not ready.
-      return new byte[4];
+      return NOT_READY_FLAG;
     }
     return transferHandler.onWriterMessageSync(buffer);
   }

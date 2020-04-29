@@ -10,6 +10,9 @@ from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 
 logger = logging.getLogger(__name__)
 
+# special flag to indicate this actor not ready
+_NOT_READY_FLAG_ = b" " * 4
+
 
 @ray.remote
 class JobWorker(object):
@@ -66,35 +69,31 @@ class JobWorker(object):
                             type(self.stream_processor))
 
     def on_reader_message(self, buffer: bytes):
-        """used in direct call mode.
-        Called by upstream queue writer to send data message to downstream
+        """Called by upstream queue writer to send data message to downstream
         queue reader.
         """
         self.reader_client.on_reader_message(buffer)
 
     def on_reader_message_sync(self, buffer: bytes):
-        """used in direct call mode.
-        Called by upstream queue writer to send control message to downstream
+        """Called by upstream queue writer to send control message to downstream
         downstream queue reader.
         """
         if self.reader_client is None:
-            return b" " * 4  # special flag to indicate this actor not ready
+            return _NOT_READY_FLAG_
         result = self.reader_client.on_reader_message_sync(buffer)
         return result.to_pybytes()
 
     def on_writer_message(self, buffer: bytes):
-        """used in direct call mode.
-        Called by downstream queue reader to send notify message to
+        """Called by downstream queue reader to send notify message to
         upstream queue writer.
         """
         self.writer_client.on_writer_message(buffer)
 
     def on_writer_message_sync(self, buffer: bytes):
-        """used in direct call mode.
-        Called by downstream queue reader to send control message to
+        """Called by downstream queue reader to send control message to
         upstream queue writer.
         """
         if self.writer_client is None:
-            return b" " * 4  # special flag to indicate this actor not ready
+            return _NOT_READY_FLAG_
         result = self.writer_client.on_writer_message_sync(buffer)
         return result.to_pybytes()
