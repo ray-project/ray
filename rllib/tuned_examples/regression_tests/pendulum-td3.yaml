@@ -1,6 +1,7 @@
-pendulum-td3:
+pendulum-td3-tf:
     env: Pendulum-v0
     run: TD3
     stop:
+        use_pytorch: false
         episode_reward_mean: -900
         timesteps_total: 100000
