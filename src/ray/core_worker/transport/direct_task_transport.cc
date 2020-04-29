@@ -376,10 +376,10 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   if (client == client_cache_.end()) {
     return Status::Invalid("No remote worker found");
   }
-  auto request = rpc::CancelTaskRequest();
+  auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_remote_object_id(object_id.Binary());
-  return client->second->CancelTask(request, nullptr);
+  return client->second->RemoteCancelTask(request, nullptr);
 }
 
 };  // namespace ray

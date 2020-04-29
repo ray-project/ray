@@ -708,6 +708,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                              rpc::RemoteCancelTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;

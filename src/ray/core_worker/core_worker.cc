@@ -1763,17 +1763,17 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                                             owner_address, ref_removed_callback);
 }
 
+void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                                        rpc::RemoteCancelTaskReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto status =
+      CancelTask(ObjectID::FromBinary(request.remote_object_id()), request.force_kill());
+  send_reply_callback(status, nullptr, nullptr);
+}
+
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  // If remote_object_id is specified, this is a remote cancellation request for an object
-  // that we own. In this case, we just go through the normal CancelTask procedure.
-  if (!request.remote_object_id().empty()) {
-    auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
-                             request.force_kill());
-    send_reply_callback(status, nullptr, nullptr);
-    return;
-  }
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   bool success = main_thread_task_id_ == task_id;
