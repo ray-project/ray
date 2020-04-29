@@ -2,6 +2,7 @@ from collections import Counter
 import gym
 import numpy as np
 import os
+import random
 import time
 import unittest
 
@@ -11,7 +12,8 @@ from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.policy.tests.mock_policy import MockPolicy
+from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env

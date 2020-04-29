@@ -23,8 +23,6 @@ from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 tree = try_import_tree()
 
-tree = try_import_tree()
-
 logger = logging.getLogger(__name__)
 
 PolicyEvalData = namedtuple("PolicyEvalData", [
@@ -641,7 +639,6 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
 
         actions = eval_results[policy_id][0]
-
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
 

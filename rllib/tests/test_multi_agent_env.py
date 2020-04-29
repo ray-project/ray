@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 import random
 import unittest
 
@@ -9,9 +8,9 @@ from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
-from ray.rllib.tests.test_rollout_worker import (MockEnv, MockEnv2)
+from ray.rllib.tests.test_rollout_worker import (MockEnv, MockEnv2, MockPolicy)
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.tests.mock_policy import MockPolicy
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
@@ -452,7 +451,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_custom_rnn_state_values(self):
         h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
 
-        class StatefulPolicy(MockPolicy):
+        class StatefulPolicy(TestPolicy):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches=None,
@@ -462,8 +461,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 explore=True,
                                 timestep=None,
                                 **kwargs):
-                return np.array([0] * len(obs_batch)),\
-                    [[h] * len(obs_batch)], {}
+                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
             def get_initial_state(self):
                 return [{}]  # empty dict
@@ -508,7 +506,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
-                return np.array([0] * len(obs_batch)), [], {}
+                return [0] * len(obs_batch), [], {}
 
         single_env = gym.make("CartPole-v0")
         obs_space = single_env.observation_space

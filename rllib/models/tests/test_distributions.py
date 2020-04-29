@@ -242,13 +242,17 @@ class TestDistributions(unittest.TestCase):
         low, high = -1.0, 2.0
         plain_beta_value_space = Box(0.0, 1.0, shape=(200, 5))
 
-        for fw, sess in framework_iterator(frameworks="torch", session=True):
-            cls = TorchBeta
+        for fw, sess in framework_iterator(session=True):
+            cls = TorchBeta if fw == "torch" else Beta
             inputs = input_space.sample()
             beta_distribution = cls(inputs, {}, low=low, high=high)
 
             inputs = beta_distribution.inputs
-            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+            if sess:
+                inputs = sess.run(inputs)
+            else:
+                inputs = inputs.numpy()
+            alpha, beta_ = np.split(inputs, 2, axis=-1)
 
             # Mean for a Beta distribution: 1 / [1 + (beta/alpha)]
             expected = (1.0 / (1.0 + beta_ / alpha)) * (high - low) + low
@@ -271,11 +275,17 @@ class TestDistributions(unittest.TestCase):
             inputs = input_space.sample()
             beta_distribution = cls(inputs, {}, low=low, high=high)
             inputs = beta_distribution.inputs
-            alpha, beta_ = np.split(inputs.numpy(), 2, axis=-1)
+            if sess:
+                inputs = sess.run(inputs)
+            else:
+                inputs = inputs.numpy()
+            alpha, beta_ = np.split(inputs, 2, axis=-1)
 
             values = plain_beta_value_space.sample()
             values_scaled = values * (high - low) + low
-            out = beta_distribution.logp(torch.Tensor(values_scaled))
+            if fw == "torch":
+                values_scaled = torch.Tensor(values_scaled)
+            out = beta_distribution.logp(values_scaled)
             check(
                 out,
                 np.sum(np.log(beta.pdf(values, alpha, beta_)), -1),
