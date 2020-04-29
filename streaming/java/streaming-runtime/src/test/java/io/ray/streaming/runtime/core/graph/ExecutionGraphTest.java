@@ -80,7 +80,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
   public static JobGraph buildJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
 

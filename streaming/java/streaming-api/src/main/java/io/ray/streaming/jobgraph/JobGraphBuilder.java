@@ -1,5 +1,6 @@
 package io.ray.streaming.jobgraph;
 
+import com.google.common.base.Preconditions;
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.Stream;
 import io.ray.streaming.api.stream.StreamSink;
@@ -10,8 +11,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JobGraphBuilder {
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilder.class);
 
   private JobGraph jobGraph;
 
@@ -41,12 +45,19 @@ public class JobGraphBuilder {
   }
 
   private void processStream(Stream stream) {
+    while (stream.isProxyStream()) {
+      // Proxy stream and original stream are the same logical stream, both refer to the
+      // same data flow transformation. We should skip proxy stream to avoid applying same
+      // transformation multiple times.
+      LOG.debug("Skip proxy stream {} of id {}", stream, stream.getId());
+      stream = stream.getOriginalStream();
+    }
+    StreamOperator streamOperator = stream.getOperator();
+    Preconditions.checkArgument(stream.getLanguage() == streamOperator.getLanguage(),
+        "Reference stream should be skipped.");
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
-
-    StreamOperator streamOperator = stream.getOperator();
-    JobVertex jobVertex = null;
-
+    JobVertex jobVertex;
     if (stream instanceof StreamSink) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator);
       Stream parentStream = stream.getInputStream();

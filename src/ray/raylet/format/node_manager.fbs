@@ -160,6 +160,10 @@ table RegisterClientRequest {
 table RegisterClientReply {
   // GCS ClientID of the local node manager.
   raylet_id: string;
+  // Keys for internal config options.
+  internal_config_keys: [string];
+  // Values for internal config options corresponding to keys above.
+  internal_config_values: [string];
 }
 
 table RegisterNodeManagerRequest {

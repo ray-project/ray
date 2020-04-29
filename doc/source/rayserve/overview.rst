@@ -8,6 +8,8 @@ RayServe: Scalable and Programmable Serving
     :height: 250px
     :width: 400px
 
+.. _rayserve-overview:
+
 Overview
 --------
 
@@ -31,6 +33,17 @@ and allows you to leverage all of the other Ray frameworks so you can deploy and
 .. note:: 
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
   and discuss in the #serve channel.
+
+
+Installation
+~~~~~~~~~~~~
+RayServe supports Python versions 3.5 and higher. To install RayServe:
+
+.. code-block:: bash
+
+  pip install "ray[serve]"
+
+
 
 RayServe in 90 Seconds
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -81,6 +94,7 @@ To follow along, you'll need to make the necessary imports.
   from ray import serve
   serve.init() # initializes serve and Ray
 
+.. _serve-endpoint:
 
 Endpoints
 ~~~~~~~~~
@@ -93,6 +107,8 @@ model that you'll be serving. To create one, we'll simply specify the name, rout
 .. code-block:: python
 
   serve.create_endpoint("simple_endpoint", "/simple")
+
+.. _serve-backend:
 
 Backends
 ~~~~~~~~
@@ -198,6 +214,15 @@ You can also have RayServe batch requests for performance. You'll configure this
   serve.link("counter1", "counter1")
 
 Other Resources
-----------------
+---------------
 
-More coming soon!
+.. _serve_frameworks:
+
+Frameworks
+~~~~~~~~~~
+RayServe makes it easy to deploy models from all popular frameworks.
+Learn more about how to deploy your model in the following tutorials:
+
+- :ref:`Tensorflow & Keras <serve-tensorflow-tutorial>`
+- :ref:`PyTorch <serve-pytorch-tutorial>`
+- :ref:`Scikit-Learn <serve-sklearn-tutorial>`
