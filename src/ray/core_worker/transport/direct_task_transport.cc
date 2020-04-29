@@ -367,4 +367,19 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }));
   return Status::OK();
 }
+
+Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
+                                                       const rpc::Address &worker_addr,
+                                                       bool force_kill) {
+  absl::MutexLock lock(&mu_);
+  auto client = client_cache_.find(rpc::WorkerAddress(worker_addr));
+  if (client == client_cache_.end()) {
+    return Status::Invalid("No remote worker found");
+  }
+  auto request = rpc::CancelTaskRequest();
+  request.set_force_kill(force_kill);
+  request.set_remote_object_id(object_id.Binary());
+  return client->second->CancelTask(request, nullptr);
+}
+
 };  // namespace ray

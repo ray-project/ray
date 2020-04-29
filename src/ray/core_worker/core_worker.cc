@@ -1217,9 +1217,11 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
   rpc::Address obj_addr;
-  if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr) ||
-      obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    return Status::Invalid("Task is not locally submitted.");
+  if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr)) {
+    RAY_LOG(ERROR) << "No owner for object";
+  }
+  if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
+    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
@@ -1764,6 +1766,13 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
+  // Handle remote cancelation requests.
+  if (!request.remote_object_id().empty()) {
+    RAY_UNUSED(CancelTask(ObjectID::FromBinary(request.remote_object_id()),
+                          request.force_kill()));
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   bool success = main_thread_task_id_ == task_id;
