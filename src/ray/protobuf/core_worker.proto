@@ -190,7 +190,7 @@ message CancelTaskRequest {
   bytes intended_task_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
-  // Return Object ID of the remote task that should be killed.
+  // Object ID of the remote task that should be killed.
   bytes remote_object_id = 3;
 }
 
