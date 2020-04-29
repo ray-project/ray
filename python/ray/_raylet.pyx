@@ -112,19 +112,6 @@ include "includes/libcoreworker.pxi"
 logger = logging.getLogger(__name__)
 
 
-def set_internal_config(dict options):
-    cdef:
-        unordered_map[c_string, c_string] c_options
-
-    if options is None:
-        return
-
-    for key, value in options.items():
-        c_options[str(key).encode("ascii")] = str(value).encode("ascii")
-
-    RayConfig.instance().initialize(c_options)
-
-
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0

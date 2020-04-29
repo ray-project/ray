@@ -57,7 +57,7 @@ public class TaskAssignerImplTest extends BaseUnitTest {
 
   public JobGraph buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     DataStreamSink streamSink = dataStream.sink(LOGGER::info);
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));

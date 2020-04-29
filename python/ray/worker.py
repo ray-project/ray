@@ -435,10 +435,6 @@ def get_gpu_ids():
     """
 
     # TODO(ilr) Handle inserting resources in local mode
-    if _mode() == LOCAL_MODE:
-        logger.info("ray.get_gpu_ids() currently does not work in LOCAL "
-                    "MODE.")
-
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
@@ -542,6 +538,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         java_worker_options=None,
          use_pickle=True,
          _internal_config=None,
          lru_evict=False):
@@ -651,6 +648,7 @@ def init(address=None,
             conventional location, e.g., "/tmp/ray".
         load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
+        java_worker_options: Overwrite the options to start Java workers.
         use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
@@ -758,6 +756,7 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
+            java_worker_options=java_worker_options,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -808,10 +807,12 @@ def init(address=None,
         if raylet_socket_name is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "raylet_socket_name must not be provided.")
-        if _internal_config is not None:
-            logger.warning(
-                "When connecting to an existing cluster, "
-                "_internal_config must match the cluster's _internal_config.")
+        if java_worker_options is not None:
+            raise ValueError("When connecting to an existing cluster, "
+                             "java_worker_options must not be provided.")
+        if _internal_config is not None and len(_internal_config) != 0:
+            raise ValueError("When connecting to an existing cluster, "
+                             "_internal_config must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -836,8 +837,7 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id,
-        internal_config=_internal_config)
+        job_id=job_id)
 
     for hook in _post_init_hooks:
         hook()
@@ -1113,8 +1113,7 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None,
-            internal_config=None):
+            job_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1141,8 +1140,6 @@ def connect(node,
             faulthandler.enable(all_threads=False)
     except io.UnsupportedOperation:
         pass  # ignore
-
-    ray._raylet.set_internal_config(internal_config)
 
     # Create a Redis client to primary.
     # The Redis client can safely be shared between threads. However,
@@ -1682,16 +1679,27 @@ def kill(actor):
 
 
 def cancel(object_id, force=False):
-    """Kill a task forcefully.
+    """Cancels a locally-submitted task according to the following conditions.
 
-    This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    If the specified task is pending execution, it will not be executed. If
+    the task is currently executing, the behavior depends on the ``force``
+    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
+    and when ``force=True``, the executing the task will immediately exit. If
+    the task is already finished, nothing will happen.
 
-    If this actor is reconstructable, it will be attempted to be reconstructed.
+    Only non-actor tasks can be canceled. Canceled tasks will not be
+    retried (max_retries will not be respected).
+
+    Calling ray.get on a canceled task will raise a RayCancellationError.
 
     Args:
-        id (ActorHandle or ObjectID): Handle for the actor to kill or ObjectID
-            of the task to kill.
+        object_id (ObjectID): ObjectID returned by the task
+            that should be canceled.
+        force (boolean): Whether to force-kill a running task by killing
+            the worker that is running the task.
+    Raises:
+        ValueError: This is also raised for actor tasks, already completed
+            tasks, and non-locally submitted tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()

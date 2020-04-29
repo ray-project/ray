@@ -2,9 +2,13 @@ from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
 
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.space_utils import get_base_struct_from_space
+
+tree = try_import_tree()
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -47,6 +51,7 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space = observation_space
         self.action_space = action_space
+        self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
         # The global timestep, broadcast down from time to time from the
         # driver.
@@ -157,7 +162,7 @@ class Policy(metaclass=ABCMeta):
             timestep=timestep)
 
         if clip_actions:
-            action = clip_action(action, self.action_space)
+            action = clip_action(action, self.action_space_struct)
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
@@ -385,27 +390,22 @@ class Policy(metaclass=ABCMeta):
         return exploration
 
 
-def clip_action(action, space):
-    """
-    Called to clip actions to the specified range of this policy.
+def clip_action(action, action_space):
+    """Clips all actions in `flat_actions` according to the given Spaces.
 
-    Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
+    Args:
+        flat_actions (List[np.ndarray]): The (flattened) list of single action
+            components. List will have len=1 for "primitive" action Spaces.
+        flat_space (List[Space]): The (flattened) list of single action Space
+            objects. Has to be of same length as `flat_actions`.
 
     Returns:
-        Clipped batch of actions.
+        List[np.ndarray]: Flattened list of single clipped "primitive" actions.
     """
 
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
+    def map_(a, s):
+        if isinstance(s, gym.spaces.Box):
+            a = np.clip(a, s.low, s.high)
+        return a
+
+    return tree.map_structure(map_, action, action_space)

@@ -285,6 +285,9 @@ Getting Involved
    :caption: RayServe
 
    rayserve/overview.rst
+   rayserve/tutorials/tensorflow-tutorial.rst
+   rayserve/tutorials/pytorch-tutorial.rst
+   rayserve/tutorials/sklearn-tutorial.rst
 
 .. toctree::
    :maxdepth: -1

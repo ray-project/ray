@@ -41,8 +41,8 @@ public abstract class StreamTask implements Runnable {
     this.worker = worker;
     prepareTask();
 
-    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
-      + "-" + System.currentTimeMillis());
+    this.thread = new Thread(Ray.wrapRunnable(this),
+        this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
@@ -52,8 +52,8 @@ public abstract class StreamTask implements Runnable {
     String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    String channelType = worker.getConfig()
-        .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+    String channelType = Ray.getRuntimeContext().isSingleProcess() ?
+        Config.MEMORY_CHANNEL : Config.NATIVE_CHANNEL;
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
@@ -81,7 +81,7 @@ public abstract class StreamTask implements Runnable {
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
         Partition partition = edge.getPartition();
-        collectors.add(new OutputCollector(channelIDs, writer, partition));
+        collectors.add(new OutputCollector(writer, channelIDs, outputActors.values(), partition));
       }
     }
 
