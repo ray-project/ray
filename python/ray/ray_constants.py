@@ -162,7 +162,7 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 # A constant indicating that an actor doesn't need reconstructions.
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
-INFINITE_RECONSTRUCTION = 2**30
+INFINITE_RECONSTRUCTION = -1
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
@@ -203,3 +203,7 @@ MACH_PAGE_SIZE_BYTES = 4096
 # TODO(ffbin): Once we entirely migrate to service-based GCS, we should
 # remove it.
 GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)
+
+# Max 64 bit integer value, which is needed to ensure against overflow
+# in C++ when passing integer values cross-language.
+MAX_INT64_VALUE = 9223372036854775807

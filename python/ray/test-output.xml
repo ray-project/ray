@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite errors="4" failures="0" hostname="Maxs-MacBook-Pro.local" name="pytest" skipped="0" tests="4" time="18.297" timestamp="2020-04-29T15:58:50.085331"><testcase classname="" file="ray/tests/test_asyncio.py" name="ray.tests.test_asyncio" time="0.000"><error message="collection failure">../../../../opt/anaconda3/lib/python3.7/site-packages/pluggy/hooks.py:286: in __call__
+    return self._hookexec(self, self.get_hookimpls(), kwargs)
+../../../../opt/anaconda3/lib/python3.7/site-packages/pluggy/manager.py:93: in _hookexec
+    return self._inner_hookexec(hook, methods, kwargs)
+../../../../opt/anaconda3/lib/python3.7/site-packages/pluggy/manager.py:87: in &lt;lambda&gt;
+    firstresult=hook.spec.opts.get(&quot;firstresult&quot;) if hook.spec else False,
+../../../../opt/anaconda3/lib/python3.7/site-packages/_pytest/python.py:199: in pytest_pycollect_makeitem
+    res = outcome.get_result()
+../../../../opt/anaconda3/lib/python3.7/site-packages/pytest_asyncio/plugin.py:39: in pytest_pycollect_makeitem
+    item = pytest.Function.from_parent(collector, name=name)
+E   AttributeError: type object &apos;Function&apos; has no attribute &apos;from_parent&apos;</error></testcase><testcase classname="" file="ray/tests/test_cython.py" name="ray.tests.test_cython" time="0.000"><error message="collection failure">ImportError while importing test module &apos;/Users/maxfitton/Development/ray/python/ray/tests/test_cython.py&apos;.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/test_cython.py:9: in &lt;module&gt;
+    import cython_examples as cyth
+E   ModuleNotFoundError: No module named &apos;cython_examples&apos;</error></testcase><testcase classname="" file="ray/tests/test_memory_scheduling.py" name="ray.tests.test_memory_scheduling" time="0.000"><error message="collection failure">ImportError while importing test module &apos;/Users/maxfitton/Development/ray/python/ray/tests/test_memory_scheduling.py&apos;.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/test_memory_scheduling.py:6: in &lt;module&gt;
+    from ray.rllib import _register_all
+../../../../opt/anaconda3/lib/python3.7/site-packages/ray-0.8.4-py3.7-macosx-10.9-x86_64.egg/ray/rllib/__init__.py:5: in &lt;module&gt;
+    from ray.rllib.env.base_env import BaseEnv
+../../../../opt/anaconda3/lib/python3.7/site-packages/ray-0.8.4-py3.7-macosx-10.9-x86_64.egg/ray/rllib/env/__init__.py:2: in &lt;module&gt;
+    from ray.rllib.env.dm_env_wrapper import DMEnv
+../../../../opt/anaconda3/lib/python3.7/site-packages/ray-0.8.4-py3.7-macosx-10.9-x86_64.egg/ray/rllib/env/dm_env_wrapper.py:1: in &lt;module&gt;
+    import gym
+E   ModuleNotFoundError: No module named &apos;gym&apos;</error></testcase><testcase classname="" file="ray/tests/test_metrics_export.py" name="ray.tests.test_metrics_export" time="0.000"><error message="collection failure">ImportError while importing test module &apos;/Users/maxfitton/Development/ray/python/ray/tests/test_metrics_export.py&apos;.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/test_metrics_export.py:6: in &lt;module&gt;
+    from ray.dashboard.metrics_exporter.actions import ActionHandler
+E   ModuleNotFoundError: No module named &apos;ray.dashboard.metrics_exporter.actions&apos;</error></testcase></testsuite></testsuites>

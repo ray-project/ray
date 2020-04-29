@@ -189,7 +189,7 @@ ActorID TaskSpecification::ActorCreationId() const {
   return ActorID::FromBinary(message_->actor_creation_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::MaxActorReconstructions() const {
+int64_t TaskSpecification::MaxActorReconstructions() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_actor_reconstructions();
 }

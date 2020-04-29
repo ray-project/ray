@@ -878,7 +878,7 @@ cdef class CoreWorker:
                      Language language,
                      FunctionDescriptor function_descriptor,
                      args,
-                     uint64_t max_reconstructions,
+                     int64_t max_reconstructions,
                      resources,
                      placement_resources,
                      int32_t max_concurrency,

@@ -46,9 +46,10 @@ Actors
 ------
 
 If an actor process crashes unexpectedly, Ray will attempt to reconstruct the
-actor process up to a maximum number of times. This value can be specified with
-the ``max_reconstructions`` keyword, which by default is ``0``. If the maximum
-number of reconstructions has been used up, then subsequent actor methods will
+actor process. The desired functionality can be specified with
+the ``max_reconstructions`` keyword, which by default is ``0``. A
+``max_reconstructions`` set to -1 indicates to retry indefinitely on failure.
+After the specified number of reconstructions, subsequent actor methods will
 raise exceptions.
 
 When an actor is reconstructed, its state will be recreated by rerunning its

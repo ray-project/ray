@@ -92,7 +92,7 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (!it->second.pending) {
       resubmit = true;
       it->second.pending = true;
-      RAY_CHECK(it->second.num_retries_left > 0);
+      RAY_CHECK(it->second.num_retries_left != 0);
       it->second.num_retries_left--;
       spec = it->second.spec;
     }
@@ -240,7 +240,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable =
-        it->second.num_retries_left > 0 && !it->second.reconstructable_return_ids.empty();
+        it->second.num_retries_left != 0 && !it->second.reconstructable_return_ids.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
@@ -272,11 +272,13 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
-    if (num_retries_left == 0) {
+    if (num_retries_left == -1) {
+      release_lineage = false;
+    } else if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
     } else {
-      RAY_CHECK(it->second.num_retries_left > 0);
+      RAY_CHECK(num_retries_left > 0);
       it->second.num_retries_left--;
       release_lineage = false;
     }
@@ -284,8 +286,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  if (num_retries_left > 0) {
-    RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
+  if (num_retries_left != 0) {
+    auto retries_str = num_retries_left == -1
+      ? "infinite"
+      : std::to_string(num_retries_left);
+    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
   } else {

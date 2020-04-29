@@ -139,7 +139,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ActorID ActorCreationId() const;
 
-  uint64_t MaxActorReconstructions() const;
+  int64_t MaxActorReconstructions() const;
 
   std::vector<std::string> DynamicWorkerOptions() const;
 

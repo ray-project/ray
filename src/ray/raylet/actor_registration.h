@@ -96,6 +96,9 @@ class ActorRegistration {
   /// Get the remaining number of times this actor should be reconstructed.
   const int64_t GetRemainingReconstructions() const;
 
+  /// Get the number of times this actor has already been reconstructed
+  const uint64_t GetNumReconstructions() const;
+
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
   /// actor. The next task to execute on the actor should be marked as

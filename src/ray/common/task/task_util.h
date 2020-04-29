@@ -101,7 +101,7 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id, uint64_t max_reconstructions = 0,
+      const ActorID &actor_id, int64_t max_reconstructions = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
       int max_concurrency = 1, bool is_detached = false, bool is_asyncio = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);

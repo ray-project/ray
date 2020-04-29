@@ -70,7 +70,14 @@ const int64_t ActorRegistration::GetMaxReconstructions() const {
 }
 
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  return actor_table_data_.remaining_reconstructions();
+  if (actor_table_data_.max_reconstructions() == -1) {
+    return -1;
+  }
+  return actor_table_data_.max_reconstructions() - actor_table_data_.num_reconstructions();
+}
+
+const uint64_t ActorRegistration::GetNumReconstructions() const {
+  return actor_table_data_.num_reconstructions();
 }
 
 const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>

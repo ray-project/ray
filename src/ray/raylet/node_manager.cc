@@ -810,13 +810,15 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     } else {
       // Only process the state transition if it is to a later state than ours.
       if (actor_registration.GetState() > it->second.GetState() &&
-          actor_registration.GetRemainingReconstructions() ==
-              it->second.GetRemainingReconstructions()) {
+          actor_registration.GetNumReconstructions() ==
+              it->second.GetNumReconstructions()) {
         // The new state is later than ours if it is about the same lifetime, but
         // a greater state.
         it->second = actor_registration;
-      } else if (actor_registration.GetRemainingReconstructions() <
-                 it->second.GetRemainingReconstructions()) {
+        // imagine remaining reconst 4 max 10 num reconst 6
+        // other remaining reconst 4 max 10 num reconst 6
+      } else if (actor_registration.GetNumReconstructions() >
+                 it->second.GetNumReconstructions()) {
         // The new state is also later than ours it is about a later lifetime of
         // the actor.
         it->second = actor_registration;
@@ -2615,9 +2617,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
         task_spec.ActorDummyObject().Binary());
     actor_info_ptr->set_job_id(task_spec.JobId().Binary());
     actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
-    // This is the first time that the actor has been created, so the number
-    // of remaining reconstructions is the max.
-    actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
+    actor_info_ptr->set_num_reconstructions(0);
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
@@ -2634,10 +2634,9 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     }
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
-    // We are reconstructing the actor, so subtract its
-    // remaining_reconstructions by 1.
-    actor_info_ptr->set_remaining_reconstructions(
-        actor_info_ptr->remaining_reconstructions() - 1);
+    // We are reconstructing the actor, so increment its num_reconstructions
+    actor_info_ptr->set_num_reconstructions(
+      actor_info_ptr->num_reconstructions() + 1);
   }
 
   // Set the new fields for the actor's state to indicate that the actor is

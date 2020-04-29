@@ -121,10 +121,11 @@ message ActorTableData {
   bytes job_id = 4;
   // Current state of this actor.
   ActorState state = 6;
-  // Max number of times this actor should be reconstructed.
-  uint64 max_reconstructions = 7;
-  // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 8;
+  // Max number of times this actor should be reconstructed,
+  // a value of -1 indicates an infinite number of reconstruction attempts.
+  int64 max_reconstructions = 7;
+  // Number of reconstructions that have already been performed on this actor.
+  uint64 num_reconstructions = 8;
   // The address of the the actor.
   Address address = 9;
   // The address of the the actor's owner (parent).

@@ -205,15 +205,25 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_reconstructions` to 0
   // so that the actor will never be rescheduled.
-  auto remaining_reconstructions =
-      need_reschedule ? mutable_actor_table_data->remaining_reconstructions() : 0;
+  int64_t max_reconstructions = mutable_actor_table_data->max_reconstructions();
+  uint64_t num_reconstructions = mutable_actor_table_data->num_reconstructions();
+  int64_t remaining_reconstructions;
+  if (!need_reschedule) {
+    remaining_reconstructions = 0;
+  } else if (max_reconstructions == -1) {
+    remaining_reconstructions = -1;
+  } else {
+    int64_t remaining = max_reconstructions - num_reconstructions;
+    remaining_reconstructions = std::max(remaining, (int64_t) 0);
+  }
   RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
                    << worker_id << " at node " << node_id
                    << ", need_reschedule = " << need_reschedule
-                   << ", remaining_reconstructions = " << remaining_reconstructions;
+                   << ", remaining_reconstructions = "
+                   << remaining_reconstructions;
 
-  if (remaining_reconstructions > 0) {
-    mutable_actor_table_data->set_remaining_reconstructions(--remaining_reconstructions);
+  if (remaining_reconstructions != 0) {
+    mutable_actor_table_data->set_num_reconstructions(++num_reconstructions);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RECONSTRUCTING);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);

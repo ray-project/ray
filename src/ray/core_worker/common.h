@@ -125,8 +125,9 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
-  /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
-  const uint64_t max_reconstructions = 0;
+  /// unexpectedly. A value of -1 indicates infinite reconstruction.
+  /// If it's 0, the actor won't be reconstructed.
+  const int64_t max_reconstructions = 0;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
