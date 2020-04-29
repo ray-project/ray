@@ -46,9 +46,9 @@ define_java_module(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":io_ray_ray_streaming-state",
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
-        ":io_ray_ray_streaming-state",
         "@ray_streaming_maven//:com_google_code_findbugs_jsr305",
         "@ray_streaming_maven//:com_google_code_gson_gson",
         "@ray_streaming_maven//:com_google_guava_guava",
