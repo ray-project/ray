@@ -528,7 +528,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   if (node_id == self_node_id_) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[node_id] = initial_config_.resource_config;
+    if (0 == cluster_resource_map_.count(node_id)) {
+      cluster_resource_map_[node_id] = initial_config_.resource_config;
+    }
     return;
   }
 
