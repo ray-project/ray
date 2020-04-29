@@ -1218,7 +1218,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
   }
   rpc::Address obj_addr;
   if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr)) {
-    return Status::Invalid("No owner for object");
+    return Status::Invalid("No owner found for object.");
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
     return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
@@ -1770,7 +1770,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   // that we own. In this case, we just go through the normal CancelTask procedure.
   if (!request.remote_object_id().empty()) {
     auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
-                          request.force_kill()));
+                             request.force_kill());
     send_reply_callback(status, nullptr, nullptr);
     return;
   }
