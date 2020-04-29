@@ -10,7 +10,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
-from ray.serve.utils import block_until_http_ready
+from ray.serve.utils import block_until_http_ready, retry_actor_failures
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
@@ -139,14 +139,11 @@ def init(
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
     master_actor = ServeMaster.options(
-        detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
-
-    ray.get(
-        master_actor.start_router.remote(queueing_policy.value, policy_kwargs))
-
-    ray.get(master_actor.start_metric_monitor.remote(gc_window_seconds))
-    if start_server:
-        ray.get(master_actor.start_http_proxy.remote(http_host, http_port))
+        detached=True,
+        name=SERVE_MASTER_NAME,
+        max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+    ).remote(kv_store_connector, queueing_policy.value, policy_kwargs,
+             start_server, http_host, http_port, gc_window_seconds)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -165,9 +162,8 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    ray.get(
-        master_actor.create_endpoint.remote(route, endpoint_name,
-                                            [m.upper() for m in methods]))
+    retry_actor_failures(master_actor.create_endpoint, route, endpoint_name,
+                         [m.upper() for m in methods])
 
 
 @_ensure_connected
@@ -178,8 +174,8 @@ def set_backend_config(backend_tag, backend_config):
         backend_tag(str): A registered backend.
         backend_config(BackendConfig) : Desired backend configuration.
     """
-    ray.get(
-        master_actor.set_backend_config.remote(backend_tag, backend_config))
+    retry_actor_failures(master_actor.set_backend_config, backend_tag,
+                         backend_config)
 
 
 @_ensure_connected
@@ -189,7 +185,7 @@ def get_backend_config(backend_tag):
     Args:
         backend_tag(str): A registered backend.
     """
-    return ray.get(master_actor.get_backend_config.remote(backend_tag))
+    return retry_actor_failures(master_actor.get_backend_config, backend_tag)
 
 
 def _backend_accept_batch(func_or_class):
@@ -240,9 +236,8 @@ def create_backend(func_or_class,
     if _backend_accept_batch(func_or_class):
         backend_config.has_accept_batch_annotation = True
 
-    ray.get(
-        master_actor.create_backend.remote(backend_tag, backend_config,
-                                           func_or_class, actor_init_args))
+    retry_actor_failures(master_actor.create_backend, backend_tag,
+                         backend_config, func_or_class, actor_init_args)
 
 
 @_ensure_connected
@@ -261,9 +256,8 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    ray.get(
-        master_actor.set_traffic.remote(endpoint_name,
-                                        traffic_policy_dictionary))
+    retry_actor_failures(master_actor.set_traffic, endpoint_name,
+                         traffic_policy_dictionary)
 
 
 @_ensure_connected
@@ -286,11 +280,11 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in ray.get(
-            master_actor.get_all_endpoints.remote())
+        assert endpoint_name in retry_actor_failures(
+            master_actor.get_all_endpoints)
 
     return RayServeHandle(
-        ray.get(master_actor.get_router.remote())[0],
+        retry_actor_failures(master_actor.get_router)[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
@@ -309,5 +303,5 @@ def stat(percentiles=[50, 90, 95],
             The longest aggregation window must be shorter or equal to the
             gc_window_seconds.
     """
-    [monitor] = ray.get(master_actor.get_metric_monitor.remote())
+    [monitor] = retry_actor_failures(master_actor.get_metric_monitor)
     return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))

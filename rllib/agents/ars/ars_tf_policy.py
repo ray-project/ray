@@ -7,7 +7,7 @@ import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.es.es_tf_policy import make_session
-from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
+from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
@@ -56,7 +56,7 @@ class ARSTFPolicy:
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        action = _unbatch_tuple_actions(action)
+        action = unbatch_actions(action)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
