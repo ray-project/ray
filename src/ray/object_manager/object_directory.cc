@@ -140,6 +140,13 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           // Once this flag is set to true, it should never go back to false.
           it->second.subscribed = true;
 
+          // Filter duplicate data.
+          if (!isObjectLocationsUpdated(object_notification.IsAdded(),
+                                        object_notification.GetData(),
+                                        &it->second.current_object_locations)) {
+            return;
+          }
+
           // Update entries for this object.
           UpdateObjectLocations(object_notification.IsAdded(),
                                 object_notification.GetData(), gcs_client_,
@@ -231,6 +238,19 @@ std::string ObjectDirectory::DebugString() const {
   result << "ObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
   return result.str();
+}
+
+bool ObjectDirectory::isObjectLocationsUpdated(
+    bool is_added, const std::vector<rpc::ObjectTableData> &location_updates,
+    std::unordered_set<ClientID> *node_ids) {
+  for (const auto &object_table_data : location_updates) {
+    ClientID node_id = ClientID::FromBinary(object_table_data.manager());
+    if ((is_added && 0 == node_ids->count(node_id)) ||
+        (!is_added && 1 == node_ids->count(node_id))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace ray
