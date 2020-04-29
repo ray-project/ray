@@ -159,7 +159,7 @@ class OncePerTimestepsElapsed:
             return True
         metrics = LocalIterator.get_metrics()
         now = metrics.counters[STEPS_SAMPLED_COUNTER]
-        if now - self.last_called > self.delay_steps:
+        if now - self.last_called >= self.delay_steps:
             self.last_called = now
             return True
         return False
