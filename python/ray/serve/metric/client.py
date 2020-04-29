@@ -1,76 +1,146 @@
 import asyncio
+from functools import partialmethod, update_wrapper
+from typing import Dict, Optional, List, Tuple, Callable
 
+import ray
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
-from ray.serve.metric.types import EventType
-
-MetricMetadata = Dict[str, Dict]
-MetricEventBatch = List[Tuple[EventType, str, float]]
+from ray.serve.metric.types import (
+    MetricType,
+    convert_event_type_to_class,
+    MetricMetadata,
+    MetricRecord,
+    BaseMetric,
+)
 
 
 class MetricClient:
-    def __init__(self,
-                 push_batch_callback: Callable[
-                     [MetricMetadata, MetricEventBatch], None],
-                 default_labels: Optional[Dict[str, str]] = None):
+    def __init__(
+            self,
+            metric_sink_actor,
+            default_labels: Optional[Dict[str, str]] = None,
+    ):
+        """Initialize a client to push metric to sink.
+
+        Args:
+            metric_sink_actor: The actor to push metric batch to.
+            default_labels(dict): The set of labels to apply for all metrics
+                created by this actor. For example, {"source": "worker"}
+        """
+        self.sink = metric_sink_actor
         self.default_labels = default_labels or dict()
 
-        self.metric_metadata: MetricMetadata = dict()
-        self.metric_events: MetricEventBatch = []
+        self.registered_metrics: Dict[str, MetricMetadata] = dict()
+        self.metric_records = []
 
-        self.push_batch_callback = push_batch_callback
         self.push_task = asyncio.get_event_loop().create_task(
             self.push_forever(METRIC_PUSH_INTERVAL_S))
-        self.new_metric_added = asyncio.Event()
+
+    def __del__(self):
+        self.push_task.cancel()
 
     @staticmethod
-    def connect_from_serve(default_labels=None):
+    def connect_from_serve(default_labels: Optional[Dict[str, str]] = None):
+        """Create the metric client automatically when running inside serve"""
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
         [metric_sink] = ray.get(master_actor.get_metric_sink.remote())
         return MetricClient(
-            lambda *args: metric_sink.push_batch.remote(*args),
-            default_labels=default_labels)
+            metric_sink_actor=metric_sink, default_labels=default_labels)
 
     def new_counter(self,
-                    name,
+                    name: str,
                     *,
                     description: Optional[str] = "",
-                    labels: Optional[Dict[str, str]] = None) -> Counter:
-        return self._new_metric(EventType.COUNTER, name, description, labels)
+                    label_names: Optional[Tuple[str]] = ()):
+        """Create a new counter.
+
+        Counters are used to capture changes in running sums. An essential
+        property of Counter instruments is that two events add(m) and add(n) 
+        are semantically equivalent to one event add(m+n). This property means
+        that Counter events can be combined.
+
+        Args:
+            name(str): The unique name for the counter.
+            description(Optional[str]): The description for the counter.
+            label_names(Optional[Tuple[str]]): The set of label names to be
+                added when recording the metrics.
+        
+        Usage:
+        >>> client = MetricClient(...)
+        >>> counter = client.new_counter(
+                "http_counter", 
+                description="This is a simple counter for HTTP status",
+                label_names=("route", "status_code"))
+        >>> counter.labels(route="/hi", status_code=200).add()
+        """
+        return self._new_metric(name, MetricType.COUNTER, description,
+                                label_names)
 
     def new_measure(self,
                     name,
                     *,
                     description: Optional[str] = "",
-                    labels: Optional[Dict[str, str]] = None) -> Measure:
-        return self._new_metric(EventType.MEASURE, name, description, labels)
+                    label_names: Optional[Tuple[str]] = ()):
+        """Create a new measure.
 
-    def _new_metric(self,
-                    metric_type: EventType,
-                    name,
-                    description: Optional[str] = "",
-                    labels: Optional[Dict[str, str]] = None):
-        # Normalize Labels
-        labels = labels or dict()
-        merged_labels = self.default_labels.copy()
-        merged_labels.update(labels)
+        Measure instruments are independent. They cannot be combined as with
+        counters. Measures can be aggregated after recording to compute
+        statistics about the distribution along selected dimension.
 
-        self.metric_metadata[name] = {
-            "type": metric_type,
-            "description": description,
-            "labels": merged_labels
-        }
+        Args:
+            name(str): The unique name for the measure.
+            description(Optional[str]): The description for the measure.
+            label_names(Optional[Tuple[str]]): The set of label names to be
+                added when recording the metrics.
 
-        metric_class = metric_type.to_user_facing_class()
-        return metric_class(collector=self, name=name)
+        Usage:
+        >>> client = MetricClient(...)
+        >>> measure = client.new_measure(
+                "latency_measure", 
+                description="This is a simple measure for latency in ms",
+                label_names=("route"))
+        >>> measure.labels(route="/hi").record(42)
+        """
+        return self._new_metric(name, MetricType.MEASURE, description,
+                                label_names)
 
-    def push_event(self, metric_type: EventType, name, value):
-        self.metric_events.append((metric_type, name, value))
+    def record_event(self, record: MetricRecord):
+        """Called by Counter or Measure to record one observation"""
+        self.metric_records.append(record)
 
-    async def push_once(self):
-        old_batch, self.metric_events = self.metric_events, []
-        await self.push_batch_callback(self.metric_metadata, old_batch)
+    def _new_metric(
+            self,
+            name,
+            metric_type: MetricType,
+            description: str,
+            label_names: Tuple[str] = (),
+    ):
+        if name in self.registered_metrics:
+            raise ValueError(
+                "Metric with name {} is already registered.".format(name))
+
+        if not isinstance(label_names, tuple):
+            raise ValueError("label_names need to be a tuple, it is {}".format(
+                type(label_names)))
+
+        metric_metadata = MetricMetadata(
+            name=name,
+            type=metric_type,
+            description=description,
+            label_names=label_names,
+            default_labels=self.default_labels.copy(),
+        )
+        metric_class = convert_event_type_to_class(metric_type)
+        metric_object = metric_class(
+            client=self, name=name, label_names=label_names)
+
+        self.registered_metrics[name] = metric_metadata
+        return metric_object
+
+    async def _push_once(self):
+        old_batch, self.metric_records = self.metric_records, []
+        await self.sink.push_batch.remote(self.registered_metrics, old_batch)
 
     async def push_forever(self, interval_s):
         while True:

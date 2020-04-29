@@ -2,50 +2,130 @@ import pytest
 import requests
 
 from ray import serve
-from ray.serve.metric import MetricClient, PrometheusSink
+from ray.serve.metric import MetricClient, InMemorySink, PrometheusSink
+from ray.serve.metric.types import MetricType, MetricMetadata
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_push_event():
-    sink = PrometheusSink()
-    collector = MetricClient(
-        push_batch_callback=lambda *args: sink.push_batch(*args),
-        default_labels={"a": "b"})
+class MockSinkActor:
+    def __init__(self):
+        self.metadata = dict()
+        self.batches = []
 
-    counter = collector.new_counter(
-        "my_cnt", description="my_cnt help", labels={"b": "c"})
+    @property
+    def push_batch(self):
+        return self
+
+    async def remote(self, metadata, batch):
+        self.metadata.update(metadata)
+        self.batches.extend(batch)
+
+
+async def test_client():
+    sink = MockSinkActor()
+    collector = MetricClient(sink, {"default": "label"})
+    counter = collector.new_counter(name="counter", label_names=("a", "b"))
+
+    with pytest.raises(
+            ValueError, match="labels doesn't have associated values"):
+        counter.add()
+
+    counter = counter.labels(a=1)
+
+    counter.labels(b=2).add()
+    counter.labels(b=3).add(42)
+
+    measure = collector.new_measure("measure")
+    measure.record(2)
+
+    await collector._push_once()
+
+    assert sink.metadata == {
+        "counter": MetricMetadata(
+            name="counter",
+            type=MetricType.COUNTER,
+            description="",
+            label_names=("a", "b"),
+            default_labels={"default": "label"},
+        ),
+        "measure": MetricMetadata(
+            name="measure",
+            type=MetricType.MEASURE,
+            description="",
+            label_names=(),
+            default_labels={"default": "label"},
+        )
+    }
+    assert sink.batches == [("counter", {
+        "a": "1",
+        "b": "3"
+    }, 1), ("counter", {
+        "a": "1",
+        "b": "3"
+    }, 42), ("measure", {}, 2)]
+
+
+async def test_in_memory_sink(ray_instance):
+    sink = InMemorySink.remote()
+    collector = MetricClient(sink, {"default": "label"})
+
+    counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
-        "latency", description="latency help", labels={"c": "d"})
-    counter.add()
-    counter.add(33)
-    measure.record(42)
+        name="my_measure", description="help", label_names=("ray", "lang"))
+    measure = measure.labels(lang="C++")
 
-    await collector.push_once()
-    assert len(sink.metrics_cache) == 2
+    counter.labels(a="1").add()
+    measure.labels(ray="").record(0)
+    measure.labels(ray="").record(42)
 
-    text = sink.get_metric_text().decode()
-    assert "# HELP my_cnt_total my_cnt help" in text
-    assert "# TYPE my_cnt_total counter" in text
-    assert 'my_cnt_total{a="b",b="c"} 34.0' in text
-    assert 'latency{a="b",c="d"} 42.0' in text
+    await collector._push_once()
 
-    dict_data = sink.get_metric_dict()
-    assert dict_data["my_cnt_total"] == {
-        "labels": {
-            "a": "b",
-            "b": "c"
-        },
-        "value": 34.0
-    }
+    metric_stored = await sink.get_metric.remote()
+    counter_key = [m for m in metric_stored if m.name == "my_counter"][0]
+    assert counter_key.name == "my_counter"
+    assert counter_key.type == MetricType.COUNTER
+    assert counter_key.default == "label"
+    assert counter_key.a == "1"
+    assert metric_stored[counter_key] == 1
+    measure_key = [m for m in metric_stored if m.name == "my_measure"][0]
+    assert measure_key.name == "my_measure"
+    assert measure_key.type == MetricType.MEASURE
+    assert measure_key.default == "label"
+    assert measure_key.lang == "C++"
+    assert measure_key.ray == ""
+    assert metric_stored[measure_key] == 42
 
-    assert dict_data["latency"] == {
-        "labels": {
-            "a": "b",
-            "c": "d"
-        },
-        "value": 42.0
-    }
+
+async def test_prometheus_sink(ray_instance):
+    sink = PrometheusSink.remote()
+    collector = MetricClient(sink, {"default": "label"})
+
+    counter = collector.new_counter(name="my_counter", label_names=("a", ))
+    measure = collector.new_measure(
+        name="my_measure", description="help", label_names=("ray", "lang"))
+    measure = measure.labels(lang="C++")
+
+    counter.labels(a="1").add()
+    measure.labels(ray="").record(0)
+    measure.labels(ray="").record(42)
+
+    await collector._push_once()
+
+    metric_stored = await sink.get_metric.remote()
+    metric_stored = metric_stored.decode()
+
+    fragments = [
+        "# HELP my_counter_total", "# TYPE my_counter_total counter",
+        'my_counter_total{a="1",default="label"} 1.0',
+        "# TYPE my_counter_created gauge",
+        'my_counter_created{a="1",default="label"}', "# HELP my_measure help",
+        "# TYPE my_measure gauge",
+        'my_measure{default="label",lang="C++",ray=""} 42.0'
+    ]
+
+    for fragment in fragments:
+        assert fragment in metric_stored
 
 
 async def test_system_metric_endpoints(serve_instance):
@@ -62,6 +142,3 @@ async def test_system_metric_endpoints(serve_instance):
     # Check metrics are exposed under http endpoint
     metric_text = requests.get("http://127.0.0.1:8000/-/metrics").text
     print(metric_text)
-    assert "num_http_requests_total" in metric_text
-    assert "num_router_requests_created" in metric_text
-    assert 'backend_error_counter_total{backend="m:v1"}' in metric_text

@@ -79,12 +79,18 @@ class RayServeWorker:
         self.router_handle = router_handle
         self.is_function = is_function
 
-        self.metric_collector = MetricClient.connect_from_serve()
+        self.metric_collector = MetricClient.connect_from_serve(
+            default_labels={"backend": self.name})
+        self.request_counter = self.metric_collector.new_counter(
+            "backend_request_counter",
+            description=
+            "Number of queries that have been processed in this replica",
+        )
         self.error_counter = self.metric_collector.new_counter(
             "backend_error_counter",
             description=
             "Number of exceptions that have occurred in the backend",
-            labels={"backend": self.name})
+        )
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -118,6 +124,7 @@ class RayServeWorker:
         method_to_call = ensure_async(method_to_call)
         try:
             result = await method_to_call(*args, **kwargs)
+            self.request_counter.add()
         except Exception as e:
             result = wrap_to_ray_error(e)
             self.error_counter.add()
@@ -194,6 +201,7 @@ class RayServeWorker:
                                         "Please return a list of result "
                                         "with length equals to the batch "
                                         "size.")
+            self.request_counter.add(batch_size)
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)

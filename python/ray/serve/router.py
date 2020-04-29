@@ -13,6 +13,7 @@ import blist
 
 import ray
 import ray.cloudpickle as pickle
+from ray.exceptions import RayTaskError
 from ray.serve.utils import logger
 from ray.serve.metric import MetricClient
 
@@ -163,7 +164,8 @@ class Router:
         self.metric_collector = MetricClient.connect_from_serve()
         self.num_router_requests = self.metric_collector.new_counter(
             "num_router_requests",
-            description="Number of requests from the router's view.")
+            description="Number of requests from the router's view.",
+            label_names=("endpoint", ))
 
     def is_ready(self):
         return True
@@ -172,7 +174,7 @@ class Router:
                               **request_kwargs):
         service = request_meta.service
         logger.debug("Received a request for service {}".format(service))
-        self.num_router_requests.add()
+        self.num_router_requests.labels(endpoint=service).add()
 
         # check if the slo specified is directly the
         # wall clock time
@@ -193,7 +195,10 @@ class Router:
 
         # Note: a future change can be to directly return the ObjectID from
         # replica task submission
-        result = await query.async_future
+        try:
+            result = await query.async_future
+        except RayTaskError as e:
+            result = e
         return result
 
     async def add_new_worker(self, backend, worker_handle):

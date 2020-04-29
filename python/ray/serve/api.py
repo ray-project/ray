@@ -16,6 +16,7 @@ from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
+from ray.serve.metric import InMemorySink
 
 master_actor = None
 
@@ -60,20 +61,19 @@ def accept_batch(f):
     return f
 
 
-def init(
-        kv_store_connector=None,
-        kv_store_path=None,
-        blocking=False,
-        start_server=True,
-        http_host=DEFAULT_HTTP_HOST,
-        http_port=DEFAULT_HTTP_PORT,
-        ray_init_kwargs={
-            "object_store_memory": int(1e8),
-            "num_cpus": max(cpu_count(), 8)
-        },
-        queueing_policy=RoutePolicy.Random,
-        policy_kwargs={},
-):
+def init(kv_store_connector=None,
+         kv_store_path=None,
+         blocking=False,
+         start_server=True,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
+         queueing_policy=RoutePolicy.Random,
+         policy_kwargs={},
+         metric_sink=InMemorySink):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -95,12 +95,12 @@ def init(
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
             connection. Default to {"object_store_memory": int(1e8)} for
             performance stability reason
-        gc_window_seconds(int): How long will we keep the metric data in
-            memory. Data older than the gc_window will be deleted. The default
-            is 3600 seconds, which is 1 hour.
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
+        metric_sink(BaseSink): The metric storage actor for all Ray serve actors
+            to push to. RayServe have two options built in: InMemorySink and
+            PrometheusSink
     """
     global master_actor
     if master_actor is not None:
@@ -139,6 +139,8 @@ def init(
 
     master_actor = ServeMaster.options(
         detached=True, name=SERVE_MASTER_NAME).remote(kv_store_connector)
+
+    ray.get(master_actor.start_metric_sink.remote(metric_sink))
 
     ray.get(
         master_actor.start_router.remote(queueing_policy.value, policy_kwargs))

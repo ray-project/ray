@@ -37,7 +37,7 @@ class HTTPProxy:
         self.request_counter = self.metric_collector.new_counter(
             "num_http_requests",
             description="The number of requests processed",
-        )
+            label_names=("route", ))
 
     async def fetch_config_from_master(self):
         self.route_table, [
@@ -107,8 +107,8 @@ class HTTPProxy:
         if current_path == "/-/routes":
             await Response(self.route_table).send(scope, receive, send)
         elif current_path == "/-/metrics":
-            prometheus_text = await self.metric_sink.get_metric_text.remote()
-            await Response(prometheus_text).send(scope, receive, send)
+            metric_info = await self.metric_sink.get_metric.remote()
+            await Response(metric_info).send(scope, receive, send)
         else:
             await Response(
                 "System path {} not found".format(current_path),
@@ -128,6 +128,9 @@ class HTTPProxy:
             "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
+
+        self.request_counter.labels(route=current_path).add()
+
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)
             return
@@ -144,7 +147,7 @@ class HTTPProxy:
 
         if scope["method"] not in methods_allowed:
             error_message = ("Methods {} not allowed. "
-                             "Avaiable HTTP methods are {}.").format(
+                             "Available HTTP methods are {}.").format(
                                  scope["method"], methods_allowed)
             await error_sender(error_message, 405)
             return

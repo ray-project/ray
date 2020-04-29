@@ -10,7 +10,6 @@ from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
-from ray.serve.metric import PrometheusSinkActor
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import expand, get_random_letters, logger
 
@@ -72,8 +71,6 @@ class ServeMaster:
         self.http_proxy = None
         self.metric_sink = None
 
-        self.start_metric_sink()
-
     def get_traffic_policy(self, endpoint_name):
         return self.policy_table.list_traffic_policy()[endpoint_name]
 
@@ -111,9 +108,9 @@ class ServeMaster:
         assert self.http_proxy is not None, "HTTP proxy not started yet."
         return [self.http_proxy]
 
-    def start_metric_sink(self):
+    def start_metric_sink(self, metric_sink_actor_class):
         assert self.metric_sink is None, "Metric sink already started."
-        self.metric_sink = async_retryable(PrometheusSinkActor).options(
+        self.metric_sink = async_retryable(metric_sink_actor_class).options(
             max_concurrency=ASYNC_CONCURRENCY,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
         ).remote()
