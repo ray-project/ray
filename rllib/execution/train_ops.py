@@ -63,6 +63,7 @@ class TrainOneStep:
                                         self.sgd_minibatch_size, [])
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
+                info = get_learner_stats(info)
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         metrics.info[LEARNER_INFO] = info
