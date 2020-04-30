@@ -747,7 +747,8 @@ def test_multi_input_model(ray_start_2_cpus):
                 self.z = torch.tensor(a * (x + y) + 2 * b, dtype=torch.float32)
 
             def __getitem__(self, index):
-                return self.x[index, None], self.y[index, None], self.z[index, None]
+                return self.x[index, None], self.y[index, None], self.z[index,
+                                                                        None]
 
             def __len__(self):
                 return len(self.x)

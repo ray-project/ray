@@ -241,7 +241,9 @@ class TrainingOperator:
         *features, target = batch
         # Create non_blocking tensors for distributed training
         if self.use_gpu:
-            features = [feature.cuda(non_blocking=True) for feature in features]
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # Compute output.
@@ -321,7 +323,9 @@ class TrainingOperator:
         # unpack features into list to support multiple inputs model
         *features, target = batch
         if self.use_gpu:
-            features = [feature.cuda(non_blocking=True) for feature in features]
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # compute output
