@@ -31,12 +31,12 @@ class RandomEnv(gym.Env):
 
     def step(self, action):
         if self.check_action_bounds and not self.action_space.contains(action):
-            raise ValueError(
-                "Illegal action for {}: {}".format(self.action_space, action))
+            raise ValueError("Illegal action for {}: {}".format(
+                self.action_space, action))
         if (isinstance(self.action_space, Tuple)
                 and len(action) != len(self.action_space.spaces)):
-            raise ValueError(
-                "Illegal action for {}: {}".format(self.action_space, action))
+            raise ValueError("Illegal action for {}: {}".format(
+                self.action_space, action))
 
         return self.observation_space.sample(), \
             float(self.reward_space.sample()), \

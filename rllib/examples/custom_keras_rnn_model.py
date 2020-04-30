@@ -1,10 +1,7 @@
 """Example of using a custom RNN keras model."""
 
 import argparse
-import gym
-from gym.spaces import Discrete
 import numpy as np
-import random
 
 import ray
 from ray import tune

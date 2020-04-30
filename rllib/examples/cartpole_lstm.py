@@ -9,7 +9,6 @@ parser.add_argument("--use-prev-action-reward", action="store_true")
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--num-cpus", type=int, default=0)
 
-
 if __name__ == "__main__":
     import ray
     from ray import tune

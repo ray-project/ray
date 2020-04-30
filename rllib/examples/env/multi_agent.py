@@ -28,7 +28,6 @@ def make_multiagent(env_name):
     return MultiEnv
 
 
-
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
 
@@ -156,6 +155,6 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
-MultiCartpole = make_multiagent("CartPole-v0")
+MultiCartPole = make_multiagent("CartPole-v0")
 MultiMountainCar = make_multiagent("MountainCarContinuous-v0")
 MultiPendulum = make_multiagent("Pendulum-v0")

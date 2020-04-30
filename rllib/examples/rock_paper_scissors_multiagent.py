@@ -32,10 +32,12 @@ class AlwaysSameHeuristic(Policy):
         self.exploration = self._create_exploration()
 
     def get_initial_state(self):
-        return [random.choice([
-            RockPaperScissors.ROCK,
-            RockPaperScissors.PAPER,
-            RockPaperScissors.SCISSORS])]
+        return [
+            random.choice([
+                RockPaperScissors.ROCK, RockPaperScissors.PAPER,
+                RockPaperScissors.SCISSORS
+            ])
+        ]
 
     def compute_actions(self,
                         obs_batch,

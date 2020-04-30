@@ -73,7 +73,6 @@ from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--custom-eval", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)

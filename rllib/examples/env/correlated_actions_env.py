@@ -7,6 +7,7 @@ class CorrelatedActionsEnv(gym.Env):
     """Simple env in which the policy has to emit a tuple of equal actions.
 
     The best score would be ~200 reward."""
+
     def __init__(self, _):
         self.observation_space = Discrete(2)
         self.action_space = Tuple([Discrete(2), Discrete(2)])

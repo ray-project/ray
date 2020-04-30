@@ -15,10 +15,7 @@ Working configurations are given below.
 """
 
 import argparse
-import random
-import numpy as np
-import gym
-from gym.spaces import Box, Discrete, Dict
+from gym.spaces import Box
 
 import ray
 from ray import tune

@@ -65,12 +65,14 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing {} (torch={}) A={} S={} ===".format(
                 alg, torch, action_space, obs_space))
-            config.update(dict(env_config=dict(
-                action_space=action_space,
-                observation_space=obs_space,
-                reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                p_done=1.0,
-                check_action_bounds=check_bounds)))
+            config.update(
+                dict(
+                    env_config=dict(
+                        action_space=action_space,
+                        observation_space=obs_space,
+                        reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
+                        p_done=1.0,
+                        check_action_bounds=check_bounds)))
             #register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None

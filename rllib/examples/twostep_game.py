@@ -23,7 +23,6 @@ parser.add_argument("--stop", type=int, default=50000)
 parser.add_argument("--run", type=str, default="PG")
 parser.add_argument("--num-cpus", type=int, default=0)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
 

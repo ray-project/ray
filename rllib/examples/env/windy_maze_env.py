@@ -5,7 +5,6 @@ import random
 
 from ray.rllib.env import MultiAgentEnv
 
-
 logger = logging.getLogger(__name__)
 
 # Agent has to traverse the maze from the starting position S -> F

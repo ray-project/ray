@@ -13,7 +13,8 @@ def leaked_processes():
     """Returns whether any subprocesses were leaked."""
     result = subprocess.check_output(
         "ps aux | grep '{}' | grep -v grep || true".format(
-            EnvWithSubprocess.UNIQUE_CMD), shell=True)
+            EnvWithSubprocess.UNIQUE_CMD),
+        shell=True)
     return result
 
 
