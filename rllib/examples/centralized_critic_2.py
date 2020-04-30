@@ -15,7 +15,6 @@ import argparse
 
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.observation_function import ObservationFunction
 from ray.rllib.examples.twostep_game import TwoStepGame
 from ray.rllib.models import ModelCatalog

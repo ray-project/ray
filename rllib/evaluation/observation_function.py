@@ -2,7 +2,7 @@ from typing import Dict
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy, AgentID, PolicyID
-from ray.rllib.evaluation import MultiAgentEpisode
+from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.utils.framework import TensorType
 
 
@@ -19,7 +19,7 @@ class ObservationFunction:
     """
 
     def observe(self, agent_obs: Dict[AgentID, TensorType],
-                worker: "RolloutWorker", base_env: BaseEnv,
+                worker: RolloutWorker, base_env: BaseEnv,
                 policies: Dict[PolicyID, Policy], episode: MultiAgentEpisode,
                 **kw) -> Dict[AgentID, TensorType]:
         """Callback run on each environment step to observe the environment.
