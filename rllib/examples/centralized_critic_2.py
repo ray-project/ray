@@ -15,7 +15,6 @@ import argparse
 
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.evaluation.observation_function import ObservationFunction
 from ray.rllib.examples.twostep_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -90,23 +89,22 @@ class FillInActions(DefaultCallbacks):
         to_update[:, -2:] = opponent_actions
 
 
-class CentralCriticObserver(ObservationFunction):
+def central_critic_observer(agent_obs, **kw):
     """Rewrites the agent obs to include opponent data for training."""
 
-    def observe(self, agent_obs, worker, base_env, episode, **kw):
-        new_obs = {
-            0: {
-                "own_obs": agent_obs[0],
-                "opponent_obs": agent_obs[1],
-                "opponent_action": 0,  # filled in by FillInActions
-            },
-            1: {
-                "own_obs": agent_obs[1],
-                "opponent_obs": agent_obs[0],
-                "opponent_action": 0,  # filled in by FillInActions
-            },
-        }
-        return new_obs
+    new_obs = {
+        0: {
+            "own_obs": agent_obs[0],
+            "opponent_obs": agent_obs[1],
+            "opponent_action": 0,  # filled in by FillInActions
+        },
+        1: {
+            "own_obs": agent_obs[1],
+            "opponent_obs": agent_obs[0],
+            "opponent_action": 0,  # filled in by FillInActions
+        },
+    }
+    return new_obs
 
 
 if __name__ == "__main__":
@@ -137,7 +135,7 @@ if __name__ == "__main__":
                     "pol2": (None, observer_space, action_space, {}),
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
-                "observation_fn": CentralCriticObserver,
+                "observation_fn": central_critic_observer,
             },
             "model": {
                 "custom_model": "cc_model",

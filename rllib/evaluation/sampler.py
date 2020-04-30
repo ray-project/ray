@@ -78,7 +78,7 @@ class SyncSampler(SamplerInput):
                  clip_actions=True,
                  soft_horizon=False,
                  no_done_at_end=False,
-                 observer=None):
+                 observation_func=None):
         self.base_env = BaseEnv.to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
@@ -93,7 +93,7 @@ class SyncSampler(SamplerInput):
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
-            no_done_at_end, observer)
+            no_done_at_end, observation_func)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -142,7 +142,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  blackhole_outputs=False,
                  soft_horizon=False,
                  no_done_at_end=False,
-                 observer=None):
+                 observation_func=None):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -169,7 +169,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.no_done_at_end = no_done_at_end
         self.perf_stats = PerfStats()
         self.shutdown = False
-        self.observer = observer
+        self.observation_func = observation_func
 
     def run(self):
         try:
@@ -192,7 +192,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
             self.perf_stats, self.soft_horizon, self.no_done_at_end,
-            self.observer)
+            self.observation_func)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -238,7 +238,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                 policy_mapping_fn, rollout_fragment_length, horizon,
                 preprocessors, obs_filters, clip_rewards, clip_actions, pack,
                 callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end,
-                observer):
+                observation_func):
     """This implements the common experience collection logic.
 
     Args:
@@ -270,7 +270,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             environment when the horizon is hit.
         no_done_at_end (bool): Ignore the done=True at the end of the episode
             and instead record done=False.
-        observer (ObservationFunction): Optional multi-agent observation func.
+        observation_func (ObservationFunction): Optional multi-agent
+            observation func to use for preprocessing observations.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -355,7 +356,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             worker, base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, rollout_fragment_length, pack,
-            callbacks, soft_horizon, no_done_at_end, observer)
+            callbacks, soft_horizon, no_done_at_end, observation_func)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
@@ -380,11 +381,11 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         perf_stats.env_wait_time += time.time() - t4
 
 
-def _process_observations(worker, base_env, policies, batch_builder_pool,
-                          active_episodes, unfiltered_obs, rewards, dones,
-                          infos, off_policy_actions, horizon, preprocessors,
-                          obs_filters, rollout_fragment_length, pack,
-                          callbacks, soft_horizon, no_done_at_end, observer):
+def _process_observations(
+        worker, base_env, policies, batch_builder_pool, active_episodes,
+        unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
+        preprocessors, obs_filters, rollout_fragment_length, pack, callbacks,
+        soft_horizon, no_done_at_end, observation_func):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -447,8 +448,8 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
             active_envs.add(env_id)
 
         # Custom observation function is applied before preprocessing.
-        if observer:
-            agent_obs = observer.observe(
+        if observation_func:
+            agent_obs = observation_func(
                 agent_obs=agent_obs,
                 worker=worker,
                 base_env=base_env,
@@ -555,8 +556,8 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
                 # Creates a new episode if this is not async return
                 # If reset is async, we will get its result in some future poll
                 episode = active_episodes[env_id]
-                if observer:
-                    resetted_obs = observer.observe(
+                if observation_func:
+                    resetted_obs = observation_func(
                         agent_obs=resetted_obs,
                         worker=worker,
                         base_env=base_env,

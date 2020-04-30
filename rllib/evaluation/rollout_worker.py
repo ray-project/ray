@@ -449,11 +449,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
-        if observation_fn:
-            observer = observation_fn()
-        else:
-            observer = None
-
         if sample_async:
             self.sampler = AsyncSampler(
                 self,
@@ -472,7 +467,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observer=observer)
+                observation_func=observation_func)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -491,7 +486,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observer=observer)
+                observation_func=observation_func)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader

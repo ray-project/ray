@@ -13,15 +13,15 @@ class ObservationFunction:
     in multi-agent scenarios.
 
     Observations functions can be specified in the multi-agent config by
-    specifying {"observation_function": YourObsFuncSubclass}.
+    specifying {"observation_function": YourObsFunc}.
 
     This API is **experimental**.
     """
 
-    def observe(self, agent_obs: Dict[AgentID, TensorType],
-                worker: RolloutWorker, base_env: BaseEnv,
-                policies: Dict[PolicyID, Policy], episode: MultiAgentEpisode,
-                **kw) -> Dict[AgentID, TensorType]:
+    def __call__(self, agent_obs: Dict[AgentID, TensorType],
+                 worker: RolloutWorker, base_env: BaseEnv,
+                 policies: Dict[PolicyID, Policy], episode: MultiAgentEpisode,
+                 **kw) -> Dict[AgentID, TensorType]:
         """Callback run on each environment step to observe the environment.
 
         This method takes in the original agent observation dict returned by
@@ -54,12 +54,12 @@ class ObservationFunction:
         Examples:
             >>> # Observer that merges global state into individual obs. It is
             ... # rewriting the discrete obs into a tuple with global state.
-            >>> ex1.observe({"a": 1, "b": 2, "global_state": 101}, ...)
+            >>> observe_fn({"a": 1, "b": 2, "global_state": 101}, ...)
             {"a": [1, 101], "b": [2, 101]}
 
             >>> # Observer for e.g., custom centralized critic model. It is
             ... # rewriting the discrete obs into a dict with more data.
-            >>> ex2.observe({"a": 1, "b": 2}, ...)
+            >>> observe_fn({"a": 1, "b": 2}, ...)
             {"a": {"self": 1, "other": 2}, "b": {"self": 2, "other": 1}}
         """
 
