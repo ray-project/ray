@@ -167,6 +167,15 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
 
 
 @_ensure_connected
+def delete_endpoint(endpoint):
+    """Delete the given endpoint.
+
+    Does not delete any associated backends.
+    """
+    retry_actor_failures(master_actor.delete_endpoint, endpoint)
+
+
+@_ensure_connected
 def set_backend_config(backend_tag, backend_config):
     """Set a backend configuration for a backend tag
 

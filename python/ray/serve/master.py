@@ -479,6 +479,44 @@ class ServeMaster:
             self._checkpoint()
             await self.http_proxy.set_route_table.remote(self.routes)
 
+    async def delete_endpoint(self, endpoint):
+        """Delete the specified endpoint.
+
+        Does not modify any corresponding backends.
+        """
+        logger.info("Deleting endpoint '{}'".format(endpoint))
+        async with self.write_lock:
+            # This method must be idempotent. We should validate that the
+            # specified endpoint exists on the client.
+            if endpoint not in self.traffic_policies:
+                logger.info("Endpoint '{}' doesn't exist".format(endpoint)))
+                return
+
+            # Remove the traffic policy entry.
+            del self.traffic_policies[endpoint]
+
+            for route, route_endpoint in self.routes:
+                if route_endpoint == endpoint:
+                    route_to_delete = route
+                    break
+            else:
+                # This should never happen, we either add to or delete from
+                # both self.traffic_policies and self.routes.
+                assert False, "No route found for endpoint '{}'".format(
+                    endpoint)
+
+            # Remove the routing entry.
+            del self.routes[route_to_delete]
+
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # updates to the HTTP proxy and router to avoid inconsistent state
+            # if we crash after pushing the update.
+            self._checkpoint()
+
+            await self.http_proxy.set_route_table.remote(self.routes)
+            await self.router.set_traffic.remote(
+                endpoint, self.traffic_policies[endpoint])
+
     async def create_backend(self, backend_tag, backend_config, func_or_class,
                              actor_init_args):
         """Register a new backend under the specified tag."""
