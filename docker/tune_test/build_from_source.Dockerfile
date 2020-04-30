@@ -20,6 +20,5 @@ RUN bash /ray/ci/travis/install-bazel.sh
 RUN echo 'build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"' >> $HOME/.bashrc
 RUN echo 'build --remote_upload_local_results=false' >> $HOME/.bashrc
 RUN cd /ray/python; pip install -e . --verbose
-RUN bazel clean --expunge
 
 WORKDIR /ray
