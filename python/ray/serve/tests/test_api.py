@@ -270,9 +270,6 @@ def test_not_killing_replicas(serve_instance):
 
 
 def test_delete_backend(serve_instance):
-    def f():
-        return "hello"
-
     serve.create_endpoint("delete_backend", "/delete-backend")
 
     def function():
