@@ -634,10 +634,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const {
-    absl::MutexLock lock(&mutex_);
-    return *resource_ids_;
-  }
+  const ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);

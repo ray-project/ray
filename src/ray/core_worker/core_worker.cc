@@ -1352,6 +1352,11 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
   return Status::OK();
 }
 
+const ResourceMappingType CoreWorker::GetResourceIDs() const {
+  absl::MutexLock lock(&mutex_);
+  return *resource_ids_;
+}
+
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
   return std::unique_ptr<worker::ProfileEvent>(
