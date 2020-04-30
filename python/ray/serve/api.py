@@ -300,5 +300,5 @@ def get_handle(endpoint_name,
 @_ensure_connected
 def stat():
     """Retrieve metric statistics about ray serve system."""
-    [metric_sink] = ray.get(master_actor.get_metric_sink.remote())
+    [metric_sink, _] = ray.get(master_actor.get_metric_sink.remote())
     return ray.get(metric_sink.get_metric.remote())
