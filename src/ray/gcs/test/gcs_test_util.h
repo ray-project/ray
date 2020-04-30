@@ -30,7 +30,7 @@ namespace ray {
 
 struct Mocker {
   static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_reconstructions = 100) {
+                                                int max_restarts = 100) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
     ray::FunctionDescriptor empty_descriptor =
@@ -39,14 +39,14 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions);
+    builder.SetActorCreationTaskSpec(actor_id, max_restarts);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
-                                                       int max_reconstructions = 100) {
+                                                       int max_restarts = 100) {
     rpc::CreateActorRequest request;
-    auto actor_creation_task_spec = GenActorCreationTask(job_id, max_reconstructions);
+    auto actor_creation_task_spec = GenActorCreationTask(job_id, max_restarts);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
@@ -76,7 +76,7 @@ struct Mocker {
     actor_table_data->set_job_id(job_id.Binary());
     actor_table_data->set_state(
         rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-    actor_table_data->set_max_reconstructions(1);
+    actor_table_data->set_max_restarts(1);
     actor_table_data->set_remaining_reconstructions(1);
     return actor_table_data;
   }

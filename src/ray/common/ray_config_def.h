@@ -117,7 +117,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
 // The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this

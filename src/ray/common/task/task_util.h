@@ -101,13 +101,13 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id, int64_t max_reconstructions = 0,
+      const ActorID &actor_id, int64_t max_restarts = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
       int max_concurrency = 1, bool is_detached = false, bool is_asyncio = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
-    actor_creation_spec->set_max_actor_reconstructions(max_reconstructions);
+    actor_creation_spec->set_max_actor_reconstructions(max_restarts);
     for (const auto &option : dynamic_worker_options) {
       actor_creation_spec->add_dynamic_worker_options(option);
     }

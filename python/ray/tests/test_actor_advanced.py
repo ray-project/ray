@@ -114,7 +114,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -154,7 +154,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -180,7 +180,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -715,7 +715,7 @@ def test_kill(ray_start_regular, deprecated_codepath):
 # hang the caller.
 def test_actor_creation_task_crash(ray_start_regular):
     # Test actor death in constructor.
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Actor:
         def __init__(self):
             print("crash")
@@ -731,7 +731,7 @@ def test_actor_creation_task_crash(ray_start_regular):
 
     # Test an actor can be reconstructed successfully
     # afte it dies in its constructor.
-    @ray.remote(max_reconstructions=3)
+    @ray.remote(max_restarts=3)
     class ReconstructableActor:
         def __init__(self):
             count = self.get_count()

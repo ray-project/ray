@@ -71,7 +71,7 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_actor_creation_dummy_object_id(
       task_spec.ActorDummyObject().Binary());
   actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
+  actor_info_ptr->set_max_restarts(task_spec.MaxActorReconstructions());
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
   actor_info_ptr->set_num_reconstructions(num_reconstructions);

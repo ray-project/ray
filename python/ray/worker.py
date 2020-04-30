@@ -1686,14 +1686,14 @@ def make_decorator(num_return_vals=None,
                    resources=None,
                    max_calls=None,
                    max_retries=None,
-                   max_reconstructions=None,
+                   max_restarts=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
-            if max_reconstructions is not None:
-                raise ValueError("The keyword 'max_reconstructions' is not "
+            if max_restarts is not None:
+                raise ValueError("The keyword 'max_restarts' is not "
                                  "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -1711,7 +1711,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_reconstructions)
+                                        max_restarts)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1753,7 +1753,7 @@ def remote(*args, **kwargs):
       third-party libraries or to reclaim resources that cannot easily be
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
-    * **max_reconstructions**: Only for *actors*. This specifies the maximum
+    * **max_restarts**: Only for *actors*. This specifies the maximum
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. A value of -1
@@ -1810,7 +1810,7 @@ def remote(*args, **kwargs):
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
-                    "'max_calls', or 'max_reconstructions', like "
+                    "'max_calls', or 'max_restarts', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string

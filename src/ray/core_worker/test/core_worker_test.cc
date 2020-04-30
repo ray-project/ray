@@ -58,7 +58,7 @@ static void flushall_redis(void) {
 }
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
-                          uint64_t max_reconstructions) {
+                          uint64_t max_restarts) {
   std::unique_ptr<ActorHandle> actor_handle;
 
   uint8_t array[] = {1, 2, 3};
@@ -70,7 +70,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   args.emplace_back(TaskArg::PassByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-  ActorCreationOptions actor_options{max_reconstructions,
+  ActorCreationOptions actor_options{max_restarts,
                                      /*max_concurrency*/ 1, resources, resources, {},
                                      /*is_detached*/ false,
                                      /*is_asyncio*/ false};
@@ -695,7 +695,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   // Create an actor.
   std::unordered_map<std::string, double> resources;
   auto actor_id = CreateActorHelper(resources,
-                                    /*max_reconstructions=*/0);
+                                    /*max_restarts=*/0);
   // wait for actor creation finish.
   ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.

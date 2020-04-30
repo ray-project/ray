@@ -206,15 +206,15 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_reconstructions` to 0
   // so that the actor will never be rescheduled.
-  int64_t max_reconstructions = mutable_actor_table_data->max_reconstructions();
+  int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_reconstructions = mutable_actor_table_data->num_reconstructions();
   int64_t remaining_reconstructions;
   if (!need_reschedule) {
     remaining_reconstructions = 0;
-  } else if (max_reconstructions == -1) {
+  } else if (max_restarts == -1) {
     remaining_reconstructions = -1;
   } else {
-    int64_t remaining = max_reconstructions - num_reconstructions;
+    int64_t remaining = max_restarts - num_reconstructions;
     remaining_reconstructions = std::max(remaining, (int64_t)0);
   }
   RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "

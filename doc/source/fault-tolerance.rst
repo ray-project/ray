@@ -47,8 +47,8 @@ Actors
 
 If an actor process crashes unexpectedly, Ray will attempt to reconstruct the
 actor process. The desired functionality can be specified with
-the ``max_reconstructions`` keyword, which by default is ``0``. A
-``max_reconstructions`` set to -1 indicates to retry indefinitely on failure.
+the ``max_restarts`` keyword, which by default is ``0``. A
+``max_restarts`` set to -1 indicates to retry indefinitely on failure.
 After the specified number of reconstructions, subsequent actor methods will
 raise exceptions.
 
@@ -65,7 +65,7 @@ You can experiment with this behavior by running the following code.
 
     ray.init(ignore_reinit_error=True)
 
-    @ray.remote(max_reconstructions=5)
+    @ray.remote(max_restarts=5)
     class Actor:
         def __init__(self):
             self.counter = 0

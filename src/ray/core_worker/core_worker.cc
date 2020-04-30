@@ -1130,7 +1130,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources, &return_ids);
-  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
+  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
                                    actor_creation_options.is_detached,
@@ -1143,11 +1143,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     ExecuteTaskLocalMode(task_spec);
   } else {
     int max_retries;
-    if (actor_creation_options.max_reconstructions == -1) {
+    if (actor_creation_options.max_restarts == -1) {
       max_retries = -1;
     } else {
       max_retries = std::max((int64_t)RayConfig::instance().actor_creation_min_retries(),
-                             actor_creation_options.max_reconstructions);
+                             actor_creation_options.max_restarts);
     }
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
                                   CurrentCallSite(), max_retries);

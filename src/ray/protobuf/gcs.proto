@@ -123,7 +123,7 @@ message ActorTableData {
   ActorState state = 6;
   // Max number of times this actor should be reconstructed,
   // a value of -1 indicates an infinite number of reconstruction attempts.
-  int64 max_reconstructions = 7;
+  int64 max_restarts = 7;
   // Number of reconstructions that have already been performed on this actor.
   uint64 num_reconstructions = 8;
   // The address of the the actor.

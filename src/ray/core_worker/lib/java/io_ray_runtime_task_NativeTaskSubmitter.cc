@@ -87,13 +87,13 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
-  uint64_t max_reconstructions = 0;
+  uint64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
-    max_reconstructions = static_cast<uint64_t>(env->GetIntField(
-        actorCreationOptions, java_actor_creation_options_max_reconstructions));
+    max_restarts = static_cast<uint64_t>(env->GetIntField(
+        actorCreationOptions, java_actor_creation_options_max_restarts));
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -108,7 +108,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   ray::ActorCreationOptions actor_creation_options{
-      static_cast<uint64_t>(max_reconstructions),
+      static_cast<uint64_t>(max_restarts),
       static_cast<int>(max_concurrency),
       resources,
       resources,

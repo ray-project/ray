@@ -130,7 +130,7 @@ def test_actor_eviction(ray_start_object_store_memory):
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class ReconstructableActor:
         """An actor that will be reconstructed at most once."""
 
@@ -179,7 +179,7 @@ def test_actor_reconstruction(ray_start_regular):
 def test_actor_reconstruction_without_task(ray_start_regular):
     """Test a dead actor can be reconstructed without sending task to it."""
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class ReconstructableActor:
         def __init__(self, obj_ids):
             for obj_id in obj_ids:
@@ -211,7 +211,7 @@ def test_caller_actor_reconstruction(ray_start_regular):
     """Test tasks from a reconstructed actor can be correctly processed
        by the receiving actor."""
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class ReconstructableActor:
         """An actor that will be reconstructed at most once."""
 
@@ -224,7 +224,7 @@ def test_caller_actor_reconstruction(ray_start_regular):
         def get_pid(self):
             return os.getpid()
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Actor:
         """An actor that will be reconstructed at most once."""
 
@@ -261,7 +261,7 @@ def test_caller_task_reconstruction(ray_start_regular):
         else:
             os._exit(0)
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Actor:
         """An actor that will be reconstructed at most once."""
 
@@ -280,11 +280,11 @@ def test_caller_task_reconstruction(ray_start_regular):
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
     cluster = ray_start_cluster_head
-    max_reconstructions = 3
+    max_restarts = 3
     # Add a few nodes to the cluster.
     # Use custom resource to make sure the actor is only created on worker
     # nodes, not on the head node.
-    for _ in range(max_reconstructions + 2):
+    for _ in range(max_restarts + 2):
         cluster.add_node(
             resources={"a": 1},
             _internal_config=json.dumps({
@@ -300,7 +300,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
 
-    @ray.remote(max_reconstructions=max_reconstructions, resources={"a": 1})
+    @ray.remote(max_restarts=max_restarts, resources={"a": 1})
     class MyActor:
         def __init__(self):
             self.value = 0
@@ -317,7 +317,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     for _ in range(3):
         ray.get(actor.increase.remote())
 
-    for i in range(max_reconstructions):
+    for i in range(max_restarts):
         object_store_socket = ray.get(actor.get_object_store_socket.remote())
         # Kill actor's node and the actor should be reconstructed
         # on a different node.
@@ -365,7 +365,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
             })) for _ in range(num_nodes)
     ]
 
-    @ray.remote(max_reconstructions=-1)
+    @ray.remote(max_restarts=-1)
     class SlowCounter:
         def __init__(self):
             self.x = 0
@@ -421,7 +421,7 @@ def kill_actor(actor):
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(
-        max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
+        max_restarts=2)(ray_checkpointable_actor_cls).remote()
     # Call increase 3 times, triggering a checkpoint.
     expected = 0
     for _ in range(3):
@@ -465,7 +465,7 @@ def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
             self._should_checkpoint = False
             return should_checkpoint
 
-    cls = ray.remote(max_reconstructions=2)(RemoteCheckpointableActor)
+    cls = ray.remote(max_restarts=2)(RemoteCheckpointableActor)
     actor = cls.remote()
     # Call increase 3 times.
     expected = 0
@@ -501,7 +501,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     # Place the actor on the remote node.
     cluster = ray_start_cluster_2_nodes
     remote_node = list(cluster.worker_nodes)
-    actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
+    actor_cls = ray.remote(max_restarts=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
     while (ray.get(actor.node_id.remote()) != remote_node[0].unique_id):
         actor = actor_cls.remote()

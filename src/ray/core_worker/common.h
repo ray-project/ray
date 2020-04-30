@@ -111,12 +111,12 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, int max_concurrency,
+  ActorCreationOptions(uint64_t max_restarts, int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
                        bool is_detached, bool is_asyncio)
-      : max_reconstructions(max_reconstructions),
+      : max_restarts(max_restarts),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
@@ -127,7 +127,7 @@ struct ActorCreationOptions {
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. A value of -1 indicates infinite reconstruction.
   /// If it's 0, the actor won't be reconstructed.
-  const int64_t max_reconstructions = 0;
+  const int64_t max_restarts = 0;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.

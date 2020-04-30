@@ -66,14 +66,14 @@ const JobID ActorRegistration::GetJobId() const {
 }
 
 const int64_t ActorRegistration::GetMaxReconstructions() const {
-  return actor_table_data_.max_reconstructions();
+  return actor_table_data_.max_restarts();
 }
 
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  if (actor_table_data_.max_reconstructions() == -1) {
+  if (actor_table_data_.max_restarts() == -1) {
     return -1;
   }
-  return actor_table_data_.max_reconstructions() -
+  return actor_table_data_.max_restarts() -
          actor_table_data_.num_reconstructions();
 }
 
