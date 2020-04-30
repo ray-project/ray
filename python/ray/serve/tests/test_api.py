@@ -236,7 +236,7 @@ def test_delete_backend(serve_instance):
     def function():
         return "hello"
 
-    serve.create_backend(function, "delete:v1")
+    serve.create_backend("delete:v1", function)
     serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
@@ -245,7 +245,7 @@ def test_delete_backend(serve_instance):
     with pytest.raises(ValueError):
         serve.delete_backend("delete:v1")
 
-    serve.create_backend(function, "delete:v2")
+    serve.create_backend("delete:v2", function)
     serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
 
     with pytest.raises(ValueError):
@@ -263,7 +263,7 @@ def test_delete_backend(serve_instance):
         return "olleh"
 
     # Check that we can now reuse the previously delete backend's tag.
-    serve.create_backend(function2, "delete:v1")
+    serve.create_backend("delete:v1", function2)
     serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
