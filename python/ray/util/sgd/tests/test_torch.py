@@ -725,6 +725,53 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         trainer1.shutdown()
 
 
+def test_multi_input_model(ray_start_2_cpus):
+    def model_creator(config):
+        class MultiInputModel(nn.Model):
+            def __init__(self):
+                self._fc1 = torch.nn.Linear(1, 1)
+                self._fc2 = torch.nn.Linear(1, 1)
+
+            def forward(self, x, y):
+                return self.fc1(x) + self.fc2(y)
+
+        return MultiInputModel()
+
+    def data_creator(config):
+        class LinearDataset(torch.utils.data.Dataset):
+            def __init__(self, a, b, size=1000):
+                x = np.random.randn(size)
+                y = np.random.randn(size)
+                self.x = torch.tensor(x, dtype=torch.float32)
+                self.y = torch.tensor(y, dtype=torch.float32)
+                self.z = torch.tensor(a * (x + y) + 2 * b, dtype=torch.float32)
+
+            def __getitem__(self, index):
+                return self.x[index, None], self.y[index, None], self.z[index, None]
+
+            def __len__(self):
+                return len(self.x)
+
+        train_dataset = LinearDataset(3, 4)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=config.get("batch_size", 32),
+        )
+        return train_loader, None
+
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=1)
+
+    metrics = trainer.train(num_steps=1)
+    assert metrics[BATCH_COUNT] == 1
+
+    trainer.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     import sys
