@@ -109,32 +109,24 @@ void GcsActorManager::RegisterActor(
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
                                                const ray::WorkerID &worker_id,
                                                bool need_reschedule) {
-  std::shared_ptr<GcsActor> actor;
+  ActorID actor_id;
   // Find from worker_to_created_actor_.
-  auto iter = worker_to_created_actor_.find(worker_id);
-  if (iter != worker_to_created_actor_.end()) {
-    actor = std::move(iter->second);
-    // Remove the created actor from worker_to_created_actor_.
-    worker_to_created_actor_.erase(iter);
-    // remove the created actor from node_to_created_actors_.
-    auto node_iter = node_to_created_actors_.find(node_id);
-    RAY_CHECK(node_iter != node_to_created_actors_.end());
-    RAY_CHECK(node_iter->second.erase(actor->GetActorID()) != 0);
-    if (node_iter->second.empty()) {
-      node_to_created_actors_.erase(node_iter);
+  auto iter = created_actors_.find(node_id);
+  if (iter != created_actors_.end() && iter->second.count(worker_id)) {
+    actor_id = iter->second[worker_id];
+    iter->second.erase(worker_id);
+    if (iter->second.empty()) {
+      created_actors_.erase(iter);
     }
   } else {
-    auto actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-    if (!actor_id.IsNil()) {
-      auto iter = registered_actors_.find(actor_id);
-      RAY_CHECK(iter != registered_actors_.end());
-      actor = iter->second;
-    }
+    actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
   }
 
-  if (actor != nullptr) {
+  if (!actor_id.IsNil()) {
+    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                  << " failed, reconstructing actor " << actor_id;
     // Reconstruct the actor.
-    ReconstructActor(actor, need_reschedule);
+    ReconstructActor(actor_id, need_reschedule);
   }
 }
 
@@ -142,30 +134,25 @@ void GcsActorManager::ReconstructActorsOnNode(const ClientID &node_id) {
   // Cancel the scheduling of all related actors.
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   for (auto &actor_id : scheduling_actor_ids) {
-    auto iter = registered_actors_.find(actor_id);
-    if (iter != registered_actors_.end()) {
-      // Reconstruct the canceled actor.
-      ReconstructActor(iter->second);
-    }
+    // Reconstruct the canceled actor.
+    ReconstructActor(actor_id);
   }
 
   // Find all actors that were created on this node.
-  auto iter = node_to_created_actors_.find(node_id);
-  if (iter != node_to_created_actors_.end()) {
+  auto iter = created_actors_.find(node_id);
+  if (iter != created_actors_.end()) {
     auto created_actors = std::move(iter->second);
     // Remove all created actors from node_to_created_actors_.
-    node_to_created_actors_.erase(iter);
+    created_actors_.erase(iter);
     for (auto &entry : created_actors) {
-      // Remove the actor from worker_to_created_actor_.
-      RAY_CHECK(worker_to_created_actor_.erase(entry.second->GetWorkerID()) != 0);
       // Reconstruct the removed actor.
-      ReconstructActor(std::move(entry.second));
+      ReconstructActor(entry.second);
     }
   }
 }
 
-void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
-                                       bool need_reschedule) {
+void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
+  auto &actor = registered_actors_[actor_id];
   RAY_CHECK(actor != nullptr);
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
@@ -186,11 +173,11 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data,
-                                                  [this, actor](Status status) {
-                                                    RAY_CHECK_OK(status);
-                                                    gcs_actor_scheduler_->Schedule(actor);
-                                                  }));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+        actor->GetActorID(), actor_table_data, [this, actor_id](Status status) {
+          RAY_CHECK_OK(status);
+        }));
+    gcs_actor_scheduler_->Schedule(actor);
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     auto actor_table_data =
@@ -208,15 +195,8 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorManager::OnActorCreationSuccess(std::shared_ptr<GcsActor> actor) {
-  auto worker_id = actor->GetWorkerID();
-  RAY_CHECK(!worker_id.IsNil());
-  RAY_CHECK(worker_to_created_actor_.emplace(worker_id, actor).second);
-
   auto actor_id = actor->GetActorID();
-  auto node_id = actor->GetNodeID();
-  RAY_CHECK(!node_id.IsNil());
-  RAY_CHECK(node_to_created_actors_[node_id].emplace(actor_id, actor).second);
-
+  RAY_CHECK(registered_actors_.count(actor_id) > 0);
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
@@ -232,6 +212,12 @@ void GcsActorManager::OnActorCreationSuccess(std::shared_ptr<GcsActor> actor) {
     }
     actor_to_register_callbacks_.erase(iter);
   }
+
+  auto worker_id = actor->GetWorkerID();
+  auto node_id = actor->GetNodeID();
+  RAY_CHECK(!worker_id.IsNil());
+  RAY_CHECK(!node_id.IsNil());
+  RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
 }
 
 void GcsActorManager::SchedulePendingActors() {
