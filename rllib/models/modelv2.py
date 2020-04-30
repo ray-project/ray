@@ -187,7 +187,7 @@ class ModelV2:
         except AttributeError:
             raise ValueError("Output is not a tensor: {}".format(outputs))
         else:
-            if len(shape) != 2 or shape[1] != self.num_outputs:
+            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.num_outputs, shape))

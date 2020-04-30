@@ -21,15 +21,16 @@ py_test(
 )
 
 # Runs test_api and test_failure with injected failures in the master actor.
-py_test(
-    name = "test_master_crashes",
-    size = "medium",
-    srcs = glob(["tests/test_master_crashes.py",
-                 "tests/test_api.py",
-                 "tests/test_failure.py"],
-                exclude=["tests/test_nonblocking.py",
-                         "tests/test_serve.py"]),
-)
+# TODO(edoakes): reenable this once we're using GCS actor fault tolerance.
+# py_test(
+    # name = "test_master_crashes",
+    # size = "medium",
+    # srcs = glob(["tests/test_master_crashes.py",
+                 # "tests/test_api.py",
+                 # "tests/test_failure.py"],
+                # exclude=["tests/test_nonblocking.py",
+                         # "tests/test_serve.py"]),
+# )
 
 py_test(
     name = "echo_full",
