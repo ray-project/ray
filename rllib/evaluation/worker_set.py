@@ -156,6 +156,11 @@ class WorkerSet:
         return local_results + remote_results
 
     @DeveloperAPI
+    def trainable_policies(self):
+        """Return the list of trainable policy ids."""
+        return self.local_worker().foreach_trainable_policy(lambda _, pid: pid)
+
+    @DeveloperAPI
     def foreach_trainable_policy(self, func):
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
