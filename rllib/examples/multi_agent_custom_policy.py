@@ -18,8 +18,8 @@ import gym
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.multi_agent import MultiCartpole
 from ray.rllib.policy import Policy
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()

@@ -2,7 +2,7 @@
 import unittest
 
 import ray
-from ray.rllib.tests.test_multi_agent_env import make_multiagent
+from ray.rllib.examples.env.multi_agent import MultiPendulum
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
@@ -15,7 +15,6 @@ class TestMultiAgentPendulum(unittest.TestCase):
         ray.shutdown()
 
     def test_multi_agent_pendulum(self):
-        MultiPendulum = make_multiagent("Pendulum-v0")
         register_env("multi_pend", lambda _: MultiPendulum(1))
         trials = run_experiments({
             "test": {

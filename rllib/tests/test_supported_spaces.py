@@ -8,12 +8,12 @@ import traceback
 import ray
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.examples.env.multi_agent import MultiCartpole, MultiMountainCar
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNetV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
-    MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
@@ -55,30 +55,6 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 
-def make_stub_env(action_space, obs_space, check_action_bounds):
-    class StubEnv(gym.Env):
-        def __init__(self):
-            self.action_space = action_space
-            self.observation_space = obs_space
-            self.spec = EnvSpec("StubEnv-v0")
-
-        def reset(self):
-            sample = self.observation_space.sample()
-            return sample
-
-        def step(self, action):
-            if check_action_bounds and not self.action_space.contains(action):
-                raise ValueError("Illegal action for {}: {}".format(
-                    self.action_space, action))
-            if (isinstance(self.action_space, Tuple)
-                    and len(action) != len(self.action_space.spaces)):
-                raise ValueError("Illegal action for {}: {}".format(
-                    self.action_space, action))
-            return self.observation_space.sample(), 1, True, {}
-
-    return StubEnv
-
-
 def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_a = set()
     covered_o = set()
@@ -89,15 +65,20 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing {} (torch={}) A={} S={} ===".format(
                 alg, torch, action_space, obs_space))
-            stub_env = make_stub_env(action_space, obs_space, check_bounds)
-            register_env("stub_env", lambda c: stub_env())
+            config.update(dict(env_config=dict(
+                action_space=action_space,
+                observation_space=obs_space,
+                reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
+                p_done=1.0,
+                check_action_bounds=check_bounds)))
+            #register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None
             try:
                 if a_name in covered_a and o_name in covered_o:
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
-                    a = get_agent_class(alg)(config=config, env="stub_env")
+                    a = get_agent_class(alg)(config=config, env=RandomEnv)
                     if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                         if o_name in ["atari", "image"]:
                             if torch:

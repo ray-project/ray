@@ -5,13 +5,13 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.optimizers import SyncSamplesOptimizer
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiCartpole
+from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving
-from ray.rllib.tests.test_multi_agent_env import BasicMultiAgent, MultiCartpole
 from ray.rllib.evaluation.metrics import collect_metrics
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)

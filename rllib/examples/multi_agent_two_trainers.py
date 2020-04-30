@@ -16,7 +16,7 @@ from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
+from ray.rllib.examples.env.multi_agent import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 

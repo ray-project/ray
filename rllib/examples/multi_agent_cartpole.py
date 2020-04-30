@@ -15,10 +15,10 @@ import random
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.multi_agent_cartpole import MultiAgentCartpole
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override

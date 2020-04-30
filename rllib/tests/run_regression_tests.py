@@ -11,9 +11,9 @@
 #     tags = ["learning_tests"],
 #     size = "enormous",  # = 60min timeout
 #     srcs = ["tests/run_regression_tests.py"],
-#     data = glob(["tuned_examples/regression_tests/*.yaml"]),
+#     data = glob(["tuned_configs/OBSOLETE_regression_tests/*.yaml"]),
 #     Pass `BAZEL` option and the path to look for yaml regression files.
-#     args = ["BAZEL", "tuned_examples/regression_tests"]
+#     args = ["BAZEL", "tuned_configs/OBSOLETE_regression_tests"]
 # )
 
 from pathlib import Path
