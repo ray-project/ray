@@ -162,6 +162,13 @@ class GcsActorManager {
   void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
 
  private:
+  struct Owner {
+    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+        : client(std::move(client)) {}
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+    absl::flat_hash_set<ActorID> children_actor_ids;
+  };
+
   void DestroyActor(const ActorID &actor_id);
 
   /// Reconstruct the specified actor.
@@ -170,7 +177,7 @@ class GcsActorManager {
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  void ReconstructActor(std::shared_ptr<GcsActor> actor, bool need_reschedule = true);
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
   /// Callbacks of actor registration requests that are not yet flushed.
   /// This map is used to filter duplicated messages from a Driver/Worker caused by some
@@ -181,17 +188,9 @@ class GcsActorManager {
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
-  /// Map contains the relationship of worker and created actor.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
-  /// Map contains the relationship of node and created actors.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
-      node_to_created_actors_;
-  /// Map from worker ID to a worker client and the IDs of the actors owned by
-  /// that worker. An owned actor should be destroyed once it has gone out of
-  /// scope, according to its owner, or the owner dies.
-  absl::flat_hash_map<WorkerID, std::pair<std::shared_ptr<rpc::CoreWorkerClientInterface>,
-                                          absl::flat_hash_set<ActorID>>>
-      owner_clients_;
+  /// Map contains the relationship of node and created actors. Each node ID
+  /// maps to a map from worker ID to the actor created on that worker.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
 
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
