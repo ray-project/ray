@@ -249,6 +249,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
                                                const ray::WorkerID &worker_id,
                                                bool need_reschedule) {
+  // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
     auto owner = it->second.find(worker_id);
@@ -260,7 +261,6 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
     }
   }
 
-  std::shared_ptr<GcsActor> actor;
   ActorID actor_id;
   // Find from worker_to_created_actor_.
   auto iter = created_actors_.find(node_id);
@@ -272,16 +272,11 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
     }
   } else {
     actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-    if (!actor_id.IsNil()) {
-      auto iter = registered_actors_.find(actor_id);
-      RAY_CHECK(iter != registered_actors_.end());
-      actor = iter->second;
-    }
   }
 
   if (!actor_id.IsNil()) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " failed, reconstructing actor " << actor->GetActorID();
+                  << " failed, reconstructing actor " << actor_id;
     // Reconstruct the actor.
     ReconstructActor(actor_id, need_reschedule);
   }
@@ -344,13 +339,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
-        actor->GetActorID(), actor_table_data, [this, actor_id](Status status) {
-          RAY_CHECK_OK(status);
-          auto it = registered_actors_.find(actor_id);
-          if (it != registered_actors_.end()) {
-            gcs_actor_scheduler_->Schedule(it->second);
-          }
-        }));
+        actor->GetActorID(), actor_table_data,
+        [this, actor_id](Status status) { RAY_CHECK_OK(status); }));
+    gcs_actor_scheduler_->Schedule(actor);
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     auto actor_table_data =
