@@ -23,8 +23,11 @@ bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_on
 
 echo "Running streaming tests."
 java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
- org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml
+ org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml ||
 exit_code=$?
+if [ -z ${exit_code+x} ]; then
+  exit_code=0
+fi
 echo "Streaming TestNG results"
 if [ -f "/tmp/ray_streaming_java_test_output/testng-results.xml" ] ; then
   cat /tmp/ray_streaming_java_test_output/testng-results.xml

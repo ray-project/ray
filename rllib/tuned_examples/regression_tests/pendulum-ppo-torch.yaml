@@ -1,10 +1,11 @@
-pendulum-ppo:
+pendulum-ppo-torch:
     env: Pendulum-v0
     run: PPO
     stop:
-        episode_reward_mean: -200
-        timesteps_total: 500000
+        episode_reward_mean: -500
+        timesteps_total: 400000
     config:
+        use_pytorch: true
         train_batch_size: 2048
         vf_clip_param: 10.0
         num_workers: 0

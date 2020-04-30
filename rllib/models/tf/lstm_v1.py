@@ -4,7 +4,8 @@ from ray.rllib.models.model import Model
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -21,6 +22,10 @@ class LSTM(Model):
 
     @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
+        # Hard deprecate this class. All Models should use the ModelV2
+        # API from here on.
+        deprecation_warning("Model->LSTM", "RecurrentTFModelV2", error=False)
+
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):
             action_dim = int(

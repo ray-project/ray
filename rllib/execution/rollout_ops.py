@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 import time
 
@@ -9,7 +10,11 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
     STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
     GRAD_WAIT_TIMER, _check_sample_batch_type
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
+from ray.rllib.utils.sgd import standardized
+
+logger = logging.getLogger(__name__)
 
 
 def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
@@ -21,11 +26,14 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
     Arguments:
         workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of {'async', 'bulk_sync'}.
+        mode (str): One of {'async', 'bulk_sync', 'raw'}.
             - In 'async' mode, batches are returned as soon as they are
               computed by rollout workers with no order guarantees.
             - In 'bulk_sync' mode, we collect one batch from each worker
               and concatenate them together into a large batch to return.
+            - In 'raw' mode, the ParallelIterator object is returned directly
+              and the caller is responsible for implementing gather and
+              updating the timesteps counter.
         num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
@@ -74,9 +82,11 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     elif mode == "async":
         return rollouts.gather_async(
             num_async=num_async).for_each(report_timesteps)
+    elif mode == "raw":
+        return rollouts
     else:
-        raise ValueError(
-            "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
+        raise ValueError("mode must be one of 'bulk_sync', 'async', 'raw', "
+                         "got '{}'".format(mode))
 
 
 def AsyncGradients(
@@ -151,6 +161,12 @@ class ConcatBatches:
         self.buffer.append(batch)
         self.count += batch.count
         if self.count >= self.min_batch_size:
+            if self.count > self.min_batch_size * 2:
+                logger.info("Collected more training samples than expected "
+                            "(actual={}, expected={}). ".format(
+                                self.count, self.min_batch_size) +
+                            "This may be because you have many workers or "
+                            "long episodes in 'complete_episodes' batch mode.")
             out = SampleBatch.concat_samples(self.buffer)
             timer = LocalIterator.get_metrics().timers[SAMPLE_TIMER]
             timer.push(time.perf_counter() - self.batch_start_time)
@@ -160,3 +176,68 @@ class ConcatBatches:
             self.count = 0
             return [out]
         return []
+
+
+class SelectExperiences:
+    """Callable used to select experiences from a MultiAgentBatch.
+
+    This should be used with the .for_each() operator.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> rollouts = rollouts.for_each(SelectExperiences(["pol1", "pol2"]))
+        >>> print(next(rollouts).policy_batches.keys())
+        {"pol1", "pol2"}
+    """
+
+    def __init__(self, policy_ids: List[str]):
+        self.policy_ids = policy_ids
+
+    def __call__(self, samples: SampleBatchType) -> SampleBatchType:
+        _check_sample_batch_type(samples)
+
+        if isinstance(samples, MultiAgentBatch):
+            samples = MultiAgentBatch({
+                k: v
+                for k, v in samples.policy_batches.items()
+                if k in self.policy_ids
+            }, samples.count)
+
+        return samples
+
+
+class StandardizeFields:
+    """Callable used to standardize fields of batches.
+
+    This should be used with the .for_each() operator. Note that the input
+    may be mutated by this operator for efficiency.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+        >>> print(np.std(next(rollouts)["advantages"]))
+        1.0
+    """
+
+    def __init__(self, fields: List[str]):
+        self.fields = fields
+
+    def __call__(self, samples: SampleBatchType) -> SampleBatchType:
+        _check_sample_batch_type(samples)
+        wrapped = False
+
+        if isinstance(samples, SampleBatch):
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: samples
+            }, samples.count)
+            wrapped = True
+
+        for policy_id in samples.policy_batches:
+            batch = samples.policy_batches[policy_id]
+            for field in self.fields:
+                batch[field] = standardized(batch[field])
+
+        if wrapped:
+            samples = samples.policy_batches[DEFAULT_POLICY_ID]
+
+        return samples

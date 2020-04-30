@@ -36,7 +36,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                     "sgd_minibatch_size": 64,
                     "num_sgd_iter": 10,
                     "model": {
-                        "fcnet_hiddens": [64, 64],
+                        "fcnet_hiddens": [128, 128],
                     },
                     "batch_mode": "complete_episodes",
                 },

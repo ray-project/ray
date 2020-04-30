@@ -1,4 +1,6 @@
 import gym
+
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
@@ -111,7 +113,7 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         self._cur_value = None
         self._cur_ctx = None
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]
         scores = self.predict(x)
@@ -137,7 +139,7 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
             f"It should be 0 <= arm < {len(self.arms)}"
         self.arms[arm].partial_fit(x, y)
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value
@@ -190,7 +192,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
             assert x.size()[
                 0] == 1, "Only batch size of 1 is supported for now."
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         self._check_inputs(x)
@@ -214,7 +216,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         action_id = arm.item()
         self.arm.partial_fit(x[:, action_id], y)
 
-    @override(TorchModelV2)
+    @override(ModelV2)
     def value_function(self):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value

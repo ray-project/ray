@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.demo;
 
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
@@ -29,6 +30,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
   @Test
   public void testWordCount() {
+    Ray.shutdown();
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
@@ -36,7 +38,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.fromCollection(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
@@ -62,6 +64,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
       }
     }
     Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
+    streamingContext.stop();
   }
 
   private static class WordAndCount implements Serializable {
