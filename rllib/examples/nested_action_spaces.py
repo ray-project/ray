@@ -8,7 +8,6 @@ from ray.rllib.examples.env.nested_space_repeat_after_me_env import \
     NestedSpaceRepeatAfterMeEnv
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.space_utils import flatten_space
 
 tf = try_import_tf()
 tree = try_import_tree()

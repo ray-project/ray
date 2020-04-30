@@ -6,9 +6,11 @@ import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.examples.env.multi_agent import MultiCartPole, \
+    BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
-from ray.rllib.tests.test_rollout_worker import (MockEnv, MockEnv2, MockPolicy)
+from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -356,7 +358,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = single_env.observation_space
         act_space = single_env.action_space
         ev = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(2),
+            env_creator=lambda _: MultiCartPole(2),
             policy={
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
@@ -370,7 +372,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_train_multi_cartpole_single_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        register_env("multi_cartpole", lambda _: MultiCartPole(n))
         pg = PGTrainer(env="multi_cartpole", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
@@ -382,7 +384,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_train_multi_cartpole_multi_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        register_env("multi_cartpole", lambda _: MultiCartPole(n))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():
@@ -440,7 +442,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
             }
         worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
+            env_creator=lambda _: MultiCartPole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             rollout_fragment_length=50)
@@ -451,7 +453,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
             remote_workers = [
                 RolloutWorker.as_remote().remote(
-                    env_creator=lambda _: MultiCartpole(n),
+                    env_creator=lambda _: MultiCartPole(n),
                     policy=policies,
                     policy_mapping_fn=policy_mapper,
                     rollout_fragment_length=50)
@@ -500,7 +502,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                                            {})
         policy_ids = list(policies.keys())
         worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
+            env_creator=lambda _: MultiCartPole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             rollout_fragment_length=100)

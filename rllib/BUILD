@@ -1434,26 +1434,26 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PG", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PPO", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
 )
 

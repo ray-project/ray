@@ -1,6 +1,4 @@
-import gym
 from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
-from gym.envs.registration import EnvSpec
 import numpy as np
 import unittest
 import traceback
@@ -73,7 +71,6 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                         reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
                         p_done=1.0,
                         check_action_bounds=check_bounds)))
-            #register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None
             try:
