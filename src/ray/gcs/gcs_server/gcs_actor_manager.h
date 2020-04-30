@@ -74,6 +74,7 @@ class GcsActor {
   /// Whether this actor is detached.
   bool IsDetached() const;
   WorkerID GetOwnerID() const;
+  ClientID GetOwnerNodeID() const;
   const rpc::Address &GetOwnerAddress() const;
 
   /// Update the `Address` of this actor (see gcs.proto).
@@ -169,6 +170,8 @@ class GcsActorManager {
     absl::flat_hash_set<ActorID> children_actor_ids;
   };
 
+  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+
   void DestroyActor(const ActorID &actor_id);
 
   /// Reconstruct the specified actor.
@@ -191,6 +194,10 @@ class GcsActorManager {
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
   absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
+  /// Map from worker ID to a client and the IDs of the actors owned by that
+  /// worker. An owned actor should be destroyed once it has gone out of scope,
+  /// according to its owner, or the owner dies.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
