@@ -15,7 +15,7 @@ class ObservationFunction:
     Observations functions can be specified in the multi-agent config by
     specifying {"observation_function": YourObsFuncSubclass}.
 
-    This API is *experimental*.
+    This API is **experimental**.
     """
 
     def observe(self, agent_obs: Dict[AgentID, TensorType],
