@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import gym
 import numpy as np
+from typing import Any
 
 from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -13,6 +14,12 @@ tree = try_import_tree()
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# Represents a generic identifier for an agent (e.g., "agent1").
+AgentID = Any
+
+# Represents a generic identifier for a policy (e.g., "pol1").
+PolicyID = str
 
 
 @DeveloperAPI

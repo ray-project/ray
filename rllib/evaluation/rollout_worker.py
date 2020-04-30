@@ -127,6 +127,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  sample_async=False,
                  compress_observations=False,
                  num_envs=1,
+                 observation_fn=None,
                  observation_filter="NoFilter",
                  clip_rewards=None,
                  clip_actions=True,
@@ -147,8 +148,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  soft_horizon=False,
                  no_done_at_end=False,
                  seed=None,
-                 _fake_sampler=False,
-                 extra_python_environs=None):
+                 extra_python_environs=None,
+                 _fake_sampler=False):
         """Initialize a rollout worker.
 
         Arguments:
@@ -194,6 +195,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             num_envs (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
+            observation_fn (ObservationFunction): Optional multi-agent
+                observation function.
             observation_filter (str): Name of observation filter to use.
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
@@ -240,9 +243,9 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 episode and instead record done=False.
             seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique exploration behavior.
-            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
             extra_python_environs (dict): Extra python environments need to
                 be set.
+            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
         self._original_kwargs = locals().copy()
         del self._original_kwargs["self"]
@@ -446,6 +449,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
+        if observation_fn:
+            observer = observation_fn()
+        else:
+            observer = None
+
         if sample_async:
             self.sampler = AsyncSampler(
                 self,
@@ -463,7 +471,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
-                no_done_at_end=no_done_at_end)
+                no_done_at_end=no_done_at_end,
+                observer=observer)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -481,7 +490,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
-                no_done_at_end=no_done_at_end)
+                no_done_at_end=no_done_at_end,
+                observer=observer)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
