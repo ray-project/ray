@@ -62,6 +62,9 @@ class ServeMaster:
         self.replicas_to_start = defaultdict(list)
         # replicas that should be stopped if recovering from a checkpoint.
         self.replicas_to_stop = defaultdict(list)
+        # backends that should be removed from the router if recovering from a
+        # checkpoint.
+        self.backends_to_remove = list()
         # endpoint -> traffic_dict
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
@@ -177,7 +180,8 @@ class ServeMaster:
         start = time.time()
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
-             self.replicas_to_start, self.replicas_to_stop))
+             self.replicas_to_start, self.replicas_to_stop,
+             self.backends_to_remove))
 
         self.kv_store_client.put("checkpoint", checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -206,8 +210,8 @@ class ServeMaster:
 
         # Load internal state from the checkpoint data.
         (self.routes, self.backends, self.traffic_policies, self.replicas,
-         self.replicas_to_start,
-         self.replicas_to_stop) = pickle.loads(checkpoint_bytes)
+         self.replicas_to_start, self.replicas_to_stop,
+         self.backends_to_remove) = pickle.loads(checkpoint_bytes)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
@@ -238,6 +242,9 @@ class ServeMaster:
         # Start/stop any pending backend replicas.
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
+
+        # Remove any pending backends.
+        await self._remove_pending_backends()
 
         logger.info(
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
@@ -339,6 +346,15 @@ class ServeMaster:
 
         self.replicas_to_stop.clear()
 
+    async def _remove_pending_backends(self):
+        """Removes the pending backends in self.backends_to_remove.
+
+        Clears self.backends_to_remove.
+        """
+        for backend_tag in self.backends_to_remove:
+            await self.router.remove_backend.remote(backend_tag)
+        self.backends_to_remove.clear()
+
     def _scale_replicas(self, backend_tag, num_replicas):
         """Scale the given backend to the number of replicas.
 
@@ -391,18 +407,20 @@ class ServeMaster:
     async def set_traffic(self, endpoint_name, traffic_policy_dictionary):
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
-            assert endpoint_name in self.get_all_endpoints(), \
-                "Attempted to assign traffic for an endpoint '{}'" \
-                " that is not registered.".format(endpoint_name)
+            if endpoint_name not in self.get_all_endpoints():
+                raise ValueError(
+                    "Attempted to assign traffic for an endpoint '{}'"
+                    " that is not registered.".format(endpoint_name))
 
             assert isinstance(traffic_policy_dictionary,
                               dict), "Traffic policy must be dictionary"
             prob = 0
             for backend, weight in traffic_policy_dictionary.items():
                 prob += weight
-                assert backend in self.backends, \
-                    "Attempted to assign traffic to a backend '{}' that " \
-                    "is not registered.".format(backend)
+                if backend not in self.backends:
+                    raise ValueError(
+                        "Attempted to assign traffic to a backend '{}' that "
+                        "is not registered.".format(backend))
 
             assert np.isclose(
                 prob, 1, atol=0.02
@@ -477,12 +495,43 @@ class ServeMaster:
             # crash while making the change.
             self._checkpoint()
             await self._start_pending_replicas()
-            await self._stop_pending_replicas()
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
             await self.router.set_backend_config.remote(
                 backend_tag, backend_config)
+
+    async def delete_backend(self, backend_tag):
+        async with self.write_lock:
+            # This method must be idempotent. We should validate that the
+            # specified backend exists on the client.
+            if backend_tag not in self.backends:
+                return
+
+            # Check that the specified backend isn't used by any endpoints.
+            for endpoint, traffic_dict in self.traffic_policies.items():
+                if backend_tag in traffic_dict:
+                    raise ValueError("Backend '{}' is used by endpoint '{}' "
+                                     "and cannot be deleted. Please remove "
+                                     "the backend from all endpoints and try "
+                                     "again.".format(backend_tag, endpoint))
+
+            # Scale its replicas down to 0. This will also remove the backend
+            # from self.backends and self.replicas.
+            self._scale_replicas(backend_tag, 0)
+
+            # Remove the backend's metadata.
+            del self.backends[backend_tag]
+
+            # Add the intention to remove the backend from the router.
+            self.backends_to_remove.append(backend_tag)
+
+            # NOTE(edoakes): we must write a checkpoint before removing the
+            # backend from the router to avoid inconsistent state if we crash
+            # after pushing the update.
+            self._checkpoint()
+            await self._stop_pending_replicas()
+            await self._remove_pending_backends()
 
     async def update_backend_config(self, backend_tag, config_options):
         """Set the config for the specified backend."""

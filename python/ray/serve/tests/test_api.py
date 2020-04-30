@@ -93,9 +93,9 @@ def test_set_traffic_missing_data(serve_instance):
     backend_name = "foo_backend"
     serve.create_endpoint(endpoint_name)
     serve.create_backend(backend_name, lambda: 5)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
 
@@ -228,3 +228,42 @@ def test_updating_config(serve_instance):
     # and should be subset of all_tag_list
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
+
+
+def test_delete_backend(serve_instance):
+    serve.create_endpoint("delete_backend", "/delete-backend")
+
+    def function():
+        return "hello"
+
+    serve.create_backend(function, "delete:v1")
+    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
+
+    # Check that we can't delete the backend while it's in use.
+    with pytest.raises(ValueError):
+        serve.delete_backend("delete:v1")
+
+    serve.create_backend(function, "delete:v2")
+    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
+
+    with pytest.raises(ValueError):
+        serve.delete_backend("delete:v1")
+
+    # Check that the backend can be deleted once it's no longer in use.
+    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
+    serve.delete_backend("delete:v1")
+
+    # Check that we can no longer use the previously deleted backend.
+    with pytest.raises(ValueError):
+        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    def function2():
+        return "olleh"
+
+    # Check that we can now reuse the previously delete backend's tag.
+    serve.create_backend(function2, "delete:v1")
+    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"

@@ -269,6 +269,18 @@ class Router:
                      "backend {} to {}.".format(backend, config))
         self.backend_info[backend] = config
 
+    async def remove_backend(self, backend):
+        logger.debug("Removing backend {}".format(backend))
+        async with self.flush_lock:
+            await self._flush_service_queues()
+            await self._flush_buffer_queues()
+            if backend in self.backend_info:
+                del self.backend_info[backend]
+            if backend in self.worker_queues:
+                del self.worker_queues[backend]
+            if backend in self.buffer_queues:
+                del self.buffer_queues[backend]
+
     async def flush(self):
         """In the default case, flush calls ._flush.
 

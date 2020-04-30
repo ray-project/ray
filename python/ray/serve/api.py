@@ -225,6 +225,15 @@ def create_backend(backend_tag,
 
 
 @_ensure_connected
+def delete_backend(backend_tag):
+    """Delete the given backend.
+
+    The backend must not currently be used by any endpoints.
+    """
+    retry_actor_failures(master_actor.delete_backend, backend_tag)
+
+
+@_ensure_connected
 def set_traffic(endpoint_name, traffic_policy_dictionary):
     """Associate a service endpoint with traffic policy.
 
