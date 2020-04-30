@@ -351,7 +351,7 @@ class Router:
         worker = self.replicas[backend_replica_tag]
         result = await worker.handle_request.remote(req)
         await self.mark_worker_idle(backend, backend_replica_tag)
-        logger.debug("Got result in {:.2f}s", time.time() - start)
+        logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
 
     async def _assign_query_to_worker(self,
