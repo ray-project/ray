@@ -174,9 +174,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
-        actor->GetActorID(), actor_table_data, [this, actor_id](Status status) {
-          RAY_CHECK_OK(status);
-        }));
+        actor->GetActorID(), actor_table_data,
+        [this, actor_id](Status status) { RAY_CHECK_OK(status); }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
