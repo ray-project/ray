@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_actor_manager.h"
+
 #include <ray/common/ray_config.h>
 
 #include <utility>
@@ -214,13 +215,12 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
     remaining_reconstructions = -1;
   } else {
     int64_t remaining = max_reconstructions - num_reconstructions;
-    remaining_reconstructions = std::max(remaining, (int64_t) 0);
+    remaining_reconstructions = std::max(remaining, (int64_t)0);
   }
   RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
                    << worker_id << " at node " << node_id
                    << ", need_reschedule = " << need_reschedule
-                   << ", remaining_reconstructions = "
-                   << remaining_reconstructions;
+                   << ", remaining_reconstructions = " << remaining_reconstructions;
 
   if (remaining_reconstructions != 0) {
     mutable_actor_table_data->set_num_reconstructions(++num_reconstructions);

@@ -1146,11 +1146,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     if (actor_creation_options.max_reconstructions == -1) {
       max_retries = -1;
     } else {
-      max_retries = std::max((int64_t) RayConfig::instance().actor_creation_min_retries(),
-                 actor_creation_options.max_reconstructions);
+      max_retries = std::max((int64_t)RayConfig::instance().actor_creation_min_retries(),
+                             actor_creation_options.max_reconstructions);
     }
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_,
-                                  task_spec, CurrentCallSite(), max_retries);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite(), max_retries);
     status = direct_task_submitter_->SubmitTask(task_spec);
   }
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(

@@ -159,11 +159,6 @@ LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
-# A constant indicating that an actor doesn't need reconstructions.
-NO_RECONSTRUCTION = 0
-# A constant indicating that an actor should be reconstructed infinite times.
-INFINITE_RECONSTRUCTION = -1
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"

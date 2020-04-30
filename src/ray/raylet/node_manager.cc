@@ -2635,8 +2635,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
     // We are reconstructing the actor, so increment its num_reconstructions
-    actor_info_ptr->set_num_reconstructions(
-      actor_info_ptr->num_reconstructions() + 1);
+    actor_info_ptr->set_num_reconstructions(actor_info_ptr->num_reconstructions() + 1);
   }
 
   // Set the new fields for the actor's state to indicate that the actor is

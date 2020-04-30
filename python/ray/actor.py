@@ -886,12 +886,11 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     if max_reconstructions is None:
         max_reconstructions = 0
 
-    infinite_restart = max_reconstructions == ray_constants.INFINITE_RECONSTRUCTION
+    infinite_restart = max_reconstructions == -1
     if not infinite_restart:
-        if max_reconstructions < ray_constants.NO_RECONSTRUCTION:
-            raise ValueError("max_reconstructions must be either INFINITE_RECONSTRUCTION,"
-                             " or in the range [0, inf]." %
-                             ray_constants.NO_RECONSTRUCTION)
+        if max_reconstructions < 0:
+            raise ValueError("max_reconstructions must be either -1"
+                             " or in the range [0, inf].")
         else:
             # Make sure we don't pass too big of an int to C++, causing
             # an overflow.
