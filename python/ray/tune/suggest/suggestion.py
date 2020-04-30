@@ -1,5 +1,6 @@
 import copy
 import logging
+import warnings
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -68,9 +69,11 @@ class Searcher:
                 "Early stopped trials are now always used. If this is a "
                 "problem, file an issue: https://github.com/ray-project/ray.")
         if max_concurrent is not None:
-            raise DeprecationWarning(
+            warnings.warn(
                 "max_concurrent is now deprecated for this search algorithm. "
-                "Please use tune.suggest.ConcurrencyLimiter instead.")
+                "Please wrap tune.suggest.ConcurrencyLimiter instead. "
+                "This warning will raise an error in a future version of Ray.",
+                DeprecationWarning)
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._metric = metric
         self._mode = mode

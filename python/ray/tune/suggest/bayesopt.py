@@ -60,7 +60,7 @@ class BayesOptSearch(Searcher):
         assert utility_kwargs is not None, (
             "Must define arguments for the utility function!")
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
+        self.max_concurrent = max_concurrent
         super(BayesOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -79,6 +79,9 @@ class BayesOptSearch(Searcher):
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         new_trial = self.optimizer.suggest(self.utility)
 
         self._live_trial_mapping[trial_id] = new_trial
