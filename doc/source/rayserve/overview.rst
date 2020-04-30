@@ -108,6 +108,9 @@ model that you'll be serving. To create one, we'll simply specify the name, rout
 
   serve.create_endpoint("simple_endpoint", "/simple")
 
+You can also delete an endpoint using `serve.delete_endpoint`.
+Note that this will not delete any associated backends, which can be reused for other endpoints.
+
 .. _serve-backend:
 
 Backends
