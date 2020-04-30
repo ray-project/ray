@@ -8,7 +8,7 @@ from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiCartpole
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiCartPole
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving
@@ -74,7 +74,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                                            {})
         policy_ids = list(policies.keys())
         ev = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
+            env_creator=lambda _: MultiCartPole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             rollout_fragment_length=100)

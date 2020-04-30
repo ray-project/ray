@@ -18,7 +18,7 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.multi_agent import MultiCartpole
+from ray.rllib.examples.env.multi_agent import MultiCartPole
 from ray.rllib.policy import Policy
 from ray.tune.registry import register_env
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env("multi_cartpole", lambda _: MultiCartpole(4))
+    register_env("multi_cartpole", lambda _: MultiCartPole(4))
     single_env = gym.make("CartPole-v0")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
