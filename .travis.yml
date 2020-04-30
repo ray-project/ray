@@ -141,7 +141,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 120 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
+        - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
@@ -159,7 +159,24 @@ matrix:
       install:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 120 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests rllib/...
+        - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+
+    # RLlib: Learning tests with torch (from rllib/tuned_examples/regression_tests/*.yaml).
+    - os: linux
+      env:
+        - RLLIB_TESTING=1
+        - RLLIB_REGRESSION_TESTS_TORCH=1
+        - TF_VERSION=2.0.0b1
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.4
+        - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
+      before_install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      install:
+        - . ./ci/travis/ci.sh build
+      script:
+        - travis_wait 90 bazel test --config=ci --test_output=streamed --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
