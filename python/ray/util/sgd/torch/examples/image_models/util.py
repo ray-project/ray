@@ -5,6 +5,7 @@ from os.path import join
 import numpy as np
 import PIL
 
+
 def mock_data(train_dir, val_dir):
     os.makedirs(train_dir, exist_ok=True)
     os.makedirs(val_dir, exist_ok=True)

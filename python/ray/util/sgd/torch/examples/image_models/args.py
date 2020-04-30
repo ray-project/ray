@@ -427,9 +427,7 @@ parser.add_argument("--local_rank", default=0, type=int)
 
 # ray
 parser.add_argument(
-    "--ray-address",
-    metavar="ADDR",
-    help="Ray cluster address.")
+    "--ray-address", metavar="ADDR", help="Ray cluster address.")
 parser.add_argument(
     "-n",
     "--ray-num-workers",

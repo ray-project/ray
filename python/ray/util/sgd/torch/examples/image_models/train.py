@@ -28,6 +28,7 @@ from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch.examples.image_models.args import parse_args
 import ray.util.sgd.torch.examples.image_models.util as util
 
+
 def model_creator(config):
     args = config["args"]
 
@@ -153,9 +154,7 @@ def main():
         val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
-    print('Done')
     trainer.shutdown()
-    print('Shutdown')
 
 
 if __name__ == "__main__":
