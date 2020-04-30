@@ -40,6 +40,9 @@ class MultiAgentEnv:
         }
     """
 
+    # If the obs space is Dict type, look for the global state under this key.
+    ENV_STATE = "state"
+
     @PublicAPI
     def reset(self):
         """Resets the env and returns observations from ready agents.

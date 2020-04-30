@@ -14,8 +14,8 @@ from gym.spaces import Discrete
 from ray import tune
 from ray.rllib.agents.pg.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.policy.policy import Policy
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
 
 parser = argparse.ArgumentParser()
@@ -32,7 +32,10 @@ class AlwaysSameHeuristic(Policy):
         self.exploration = self._create_exploration()
 
     def get_initial_state(self):
-        return [random.choice([ROCK, PAPER, SCISSORS])]
+        return [random.choice([
+            RockPaperScissors.ROCK,
+            RockPaperScissors.PAPER,
+            RockPaperScissors.SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,
@@ -70,12 +73,12 @@ class BeatLastHeuristic(Policy):
                         episodes=None,
                         **kwargs):
         def successor(x):
-            if x[ROCK] == 1:
-                return PAPER
-            elif x[PAPER] == 1:
-                return SCISSORS
-            elif x[SCISSORS] == 1:
-                return ROCK
+            if x[RockPaperScissors.ROCK] == 1:
+                return RockPaperScissors.PAPER
+            elif x[RockPaperScissors.PAPER] == 1:
+                return RockPaperScissors.SCISSORS
+            elif x[RockPaperScissors.SCISSORS] == 1:
+                return RockPaperScissors.ROCK
 
         return [successor(x) for x in obs_batch], [], {}
 
@@ -95,7 +98,7 @@ def run_same_policy(args):
     tune.run(
         "PG",
         stop={"timesteps_total": args.stop},
-        config={"env": RockPaperScissorsEnv})
+        config={"env": RockPaperScissors})
 
 
 def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
@@ -114,7 +117,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
             return random.choice(["always_same", "beat_last"])
 
     config = {
-        "env": RockPaperScissorsEnv,
+        "env": RockPaperScissors,
         "gamma": 0.9,
         "num_workers": 0,
         "num_envs_per_worker": 4,

@@ -3,8 +3,8 @@ from gym.spaces import Discrete
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
-class RockPaperScissorsEnv(MultiAgentEnv):
-    """Two-player environment for rock paper scissors.
+class RockPaperScissors(MultiAgentEnv):
+    """Two-player environment for the famous rock paper scissors game.
 
     The observation is simply the last opponent action."""
 
