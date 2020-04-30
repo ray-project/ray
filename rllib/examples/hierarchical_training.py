@@ -35,6 +35,9 @@ from ray.rllib.env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-reward", type=float, default=0.0)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 # Agent has to traverse the maze from the starting position S -> F
 # Observation space [x_pos, y_pos, wind_direction]
@@ -180,12 +183,20 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
+
+    stop = {
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
     if args.flat:
-        tune.run(
+        results = tune.run(
             "PPO",
+            stop=stop,
             config={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
+                "use_pytorch": args.torch,
             },
         )
     else:
@@ -197,28 +208,39 @@ if __name__ == "__main__":
             else:
                 return "high_level_policy"
 
-        tune.run(
-            "PPO",
-            config={
-                "env": HierarchicalWindyMazeEnv,
-                "num_workers": 0,
-                "log_level": "INFO",
-                "entropy_coeff": 0.01,
-                "multiagent": {
-                    "policies": {
-                        "high_level_policy": (None, maze.observation_space,
-                                              Discrete(4), {
-                                                  "gamma": 0.9
-                                              }),
-                        "low_level_policy": (None,
-                                             Tuple([
-                                                 maze.observation_space,
-                                                 Discrete(4)
-                                             ]), maze.action_space, {
-                                                 "gamma": 0.0
-                                             }),
-                    },
-                    "policy_mapping_fn": function(policy_mapping_fn),
+        config = {
+            "env": HierarchicalWindyMazeEnv,
+            "num_workers": 0,
+            "log_level": "INFO",
+            "entropy_coeff": 0.01,
+            "multiagent": {
+                "policies": {
+                    "high_level_policy": (None, maze.observation_space,
+                                          Discrete(4), {
+                                              "gamma": 0.9
+                                          }),
+                    "low_level_policy": (None,
+                                         Tuple([
+                                             maze.observation_space,
+                                             Discrete(4)
+                                         ]), maze.action_space, {
+                                             "gamma": 0.0
+                                         }),
                 },
+                "policy_mapping_fn": function(policy_mapping_fn),
             },
+            "use_pytorch": args.torch,
+        }
+
+        results = tune.run(
+            "PPO",
+            stop=stop,
+            config=config,
         )
+
+    # Error if stop-reward not reached.
+    if results.trials[0].last_result["episode_reward_mean"] < \
+            args.stop_reward:
+        raise ValueError(
+            "`stop-reward` of {} not reached!".format(args.stop_reward))
+    print("ok")
