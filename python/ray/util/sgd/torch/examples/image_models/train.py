@@ -112,8 +112,6 @@ class ImagenetOperator(TrainingOperator):
         if self.world_rank == 0:
             logging.info("Scheduled epochs: {}".format(real_start_epoch))
 
-        print('ABCDEF')
-
     def train_batch(self, batch, batch_info):
         input, target = batch
 
