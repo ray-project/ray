@@ -13,8 +13,8 @@ class ObservationFunction:
     in multi-agent scenarios.
 
     Observations functions can be specified in the multi-agent config by
-    specifying ``{"observation_function": YourObsFunc}``. Note that
-    ``YourObsFunc`` can be a plain Python function.
+    specifying ``{"observation_function": your_obs_func}``. Note that
+    ``your_obs_func`` can be a plain Python function.
 
     This API is **experimental**.
     """
@@ -55,12 +55,12 @@ class ObservationFunction:
         Examples:
             >>> # Observer that merges global state into individual obs. It is
             ... # rewriting the discrete obs into a tuple with global state.
-            >>> observe_fn({"a": 1, "b": 2, "global_state": 101}, ...)
+            >>> example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)
             {"a": [1, 101], "b": [2, 101]}
 
             >>> # Observer for e.g., custom centralized critic model. It is
             ... # rewriting the discrete obs into a dict with more data.
-            >>> observe_fn({"a": 1, "b": 2}, ...)
+            >>> example_obs_fn2({"a": 1, "b": 2}, ...)
             {"a": {"self": 1, "other": 2}, "b": {"self": 2, "other": 1}}
         """
 
