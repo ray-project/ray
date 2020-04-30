@@ -159,12 +159,15 @@ class build_ext(_build_ext.build_ext):
         source = filename
         destination = os.path.join(self.build_lib, filename)
         # Create the target directory if it doesn't already exist.
-        parent_directory = os.path.dirname(destination)
-        if not os.path.exists(parent_directory):
-            os.makedirs(parent_directory)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination, follow_symlinks=True)
+            if sys.platform == "win32":
+                # Does not preserve file mode (needed to avoid read-only bit)
+                shutil.copyfile(source, destination, follow_symlinks=True)
+            else:
+                # Preserves file mode (needed to copy executable bit)
+                shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):

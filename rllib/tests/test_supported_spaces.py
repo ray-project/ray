@@ -200,7 +200,10 @@ class ModelSupportedSpaces(unittest.TestCase):
             check_bounds=True)
 
     def test_dqn(self):
-        check_support("DQN", {"timesteps_per_iteration": 1}, self.stats)
+        config = {"timesteps_per_iteration": 1}
+        check_support("DQN", config, self.stats)
+        config["use_pytorch"] = True
+        check_support("DQN", config, self.stats)
 
     def test_es(self):
         check_support(

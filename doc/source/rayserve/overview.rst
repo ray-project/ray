@@ -157,6 +157,14 @@ Once we've done that, we can now query our endpoint via HTTP (we use `requests` 
   import requests
   print(requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).text)
 
+To delete a backend, we can use `serve.delete_backend`.
+Note that the backend must not be use by any endpoints in order to be delete.
+Once a backend is deleted, its tag can be reused.
+
+.. code-block:: python
+
+  serve.delete_backend("simple_backend")
+
 Configuring Backends
 ~~~~~~~~~~~~~~~~~~~~
 
