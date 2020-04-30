@@ -241,6 +241,6 @@ if __name__ == "__main__":
     # Error if stop-reward not reached.
     if results.trials[0].last_result["episode_reward_mean"] < \
             args.stop_reward:
-        raise ValueError(
-            "`stop-reward` of {} not reached!".format(args.stop_reward))
+        raise ValueError("`stop-reward` of {} not reached!".format(
+            args.stop_reward))
     print("ok")
