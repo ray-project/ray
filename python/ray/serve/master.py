@@ -79,7 +79,7 @@ class ServeMaster:
         assert self.router is None, "Router already started."
         self.router = async_retryable(router_class).options(
             max_concurrency=ASYNC_CONCURRENCY,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            max_reconstructions=-1,
         ).remote(**init_kwargs)
 
     def get_router(self):
@@ -97,7 +97,7 @@ class ServeMaster:
             "Router must be started before HTTP proxy.")
         self.http_proxy = async_retryable(HTTPProxyActor).options(
             max_concurrency=ASYNC_CONCURRENCY,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            max_reconstructions=-1,
         ).remote(host, port)
 
     async def get_http_proxy_config(self):
@@ -174,7 +174,7 @@ class ServeMaster:
         ]
         kwargs = backend_config.get_actor_creation_args(init_args)
         kwargs[
-            "max_reconstructions"] = ray.ray_constants.INFINITE_RECONSTRUCTION
+            "max_reconstructions"] = -1
 
         # Start the worker.
         worker_handle = backend_actor._remote(**kwargs)

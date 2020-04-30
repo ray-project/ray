@@ -365,7 +365,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
             })) for _ in range(num_nodes)
     ]
 
-    @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
+    @ray.remote(max_reconstructions=-1)
     class SlowCounter:
         def __init__(self):
             self.x = 0

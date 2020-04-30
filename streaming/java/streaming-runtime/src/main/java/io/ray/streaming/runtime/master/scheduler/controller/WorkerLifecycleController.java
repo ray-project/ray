@@ -47,7 +47,7 @@ public class WorkerLifecycleController {
 
     ActorCreationOptions options = new ActorCreationOptions.Builder()
         .setResources(executionVertex.getResources())
-        .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTION)
+        .setMaxReconstructions(-1)
         .createActorCreationOptions();
 
     RayActor<JobWorker> actor = null;

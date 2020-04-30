@@ -1756,13 +1756,12 @@ def remote(*args, **kwargs):
     * **max_reconstructions**: Only for *actors*. This specifies the maximum
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
-      that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+      that the actor doesn't need to be reconstructed. A value of -1
+      indicates that an actor should be reconstructed indefinitely.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
-      the default is 4 (default), and the maximum valid value is
-      ray.ray_constants.INFINITE_RECONSTRUCTION.
+      the default is 4 (default), and a value of -1 indicates infinite retries.
 
     This can be done as follows:
 

@@ -7,10 +7,6 @@ import java.util.Map;
  * The options for creating actor.
  */
 public class ActorCreationOptions extends BaseTaskOptions {
-
-  public static final int NO_RECONSTRUCTION = 0;
-  public static final int INFINITE_RECONSTRUCTION = -1;
-
   public final int maxReconstructions;
 
   public final String jvmOptions;
@@ -31,7 +27,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public static class Builder {
 
     private Map<String, Double> resources = new HashMap<>();
-    private int maxReconstructions = NO_RECONSTRUCTION;
+    private int maxReconstructions = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
