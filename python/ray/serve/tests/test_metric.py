@@ -150,31 +150,35 @@ async def test_system_metric_endpoints(serve_instance):
     def test_metric_endpoint():
         in_memory_metric = requests.get(
             "http://127.0.0.1:8000/-/metrics").json()
+
+        # We don't want to check the values since this check might be retried.
+        in_memory_metric_without_values = []
+        for m in in_memory_metric:
+            m.pop("value")
+            in_memory_metric_without_values.append(m)
+
         target_metrics = [{
             "info": {
                 "name": "num_http_requests",
                 "type": "MetricType.COUNTER",
                 "route": "/measure"
             },
-            "value": 1
         }, {
             "info": {
                 "name": "num_router_requests",
                 "type": "MetricType.COUNTER",
                 "endpoint": "test_metrics"
             },
-            "value": 1
         }, {
             "info": {
                 "name": "backend_error_counter",
                 "type": "MetricType.COUNTER",
                 "backend": "m:v1"
             },
-            "value": 1
         }]
 
         for target in target_metrics:
-            assert target in in_memory_metric
+            assert target in in_memory_metric_without_values
 
     success = False
     for _ in range(3):
@@ -183,7 +187,7 @@ async def test_system_metric_endpoints(serve_instance):
             success = True
             break
         except AssertionError:
-            # Metrics may not have been propogated yet
+            # Metrics may not have been propagated yet
             time.sleep(2)
     if not success:
         test_metric_endpoint()
