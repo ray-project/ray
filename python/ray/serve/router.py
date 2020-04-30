@@ -173,8 +173,8 @@ class Router:
 
         backend_configs = retry_actor_failures(
             master_actor.get_backend_configs)
-        for backend, backend_config_dict in backend_configs.items():
-            await self.set_backend_config(backend, backend_config_dict)
+        for backend, backend_config in backend_configs.items():
+            await self.set_backend_config(backend, backend_config)
 
     def is_ready(self):
         return True
@@ -264,10 +264,10 @@ class Router:
         self.traffic[service] = traffic_dict
         await self.flush()
 
-    async def set_backend_config(self, backend, config_dict):
+    async def set_backend_config(self, backend, config):
         logger.debug("Setting backend config for "
-                     "backend {} to {}".format(backend, config_dict))
-        self.backend_info[backend] = config_dict
+                     "backend {} to {}.".format(backend, config))
+        self.backend_info[backend] = config
 
     async def flush(self):
         """In the default case, flush calls ._flush.
@@ -322,8 +322,7 @@ class Router:
 
                 max_batch_size = None
                 if backend in self.backend_info:
-                    max_batch_size = self.backend_info[backend][
-                        "max_batch_size"]
+                    max_batch_size = self.backend_info[backend].max_batch_size
 
                 await self._assign_query_to_worker(
                     backend, buffer_queue, worker_queue, max_batch_size)

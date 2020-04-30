@@ -11,7 +11,7 @@ def test_nonblocking():
     def function(flask_request):
         return {"method": flask_request.method}
 
-    serve.create_backend(function, "nonblocking:v1")
+    serve.create_backend("nonblocking:v1", function)
     serve.set_traffic("nonblocking", {"nonblocking:v1": 1.0})
 
     resp = requests.get("http://127.0.0.1:8000/nonblocking").json()["method"]
