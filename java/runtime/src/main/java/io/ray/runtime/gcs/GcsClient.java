@@ -142,10 +142,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-
-    long maxReconstructions = actorTableData.getMaxReconstructions();
-    long remainingReconstructions = actorTableData.getRemainingReconstructions();
-    return maxReconstructions - remainingReconstructions != 0;
+    return actorTableData.getNumReconstructions() == 0;
   }
 
   /**
