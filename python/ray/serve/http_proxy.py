@@ -8,7 +8,7 @@ from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.utils import logger
+from ray.serve.utils import logger, retry_actor_failures_async
 
 from urllib.parse import parse_qs
 
@@ -26,24 +26,21 @@ class HTTPProxy:
     # blocks forever
     """
 
-    def __init__(self):
+    async def fetch_config_from_master(self):
         assert ray.is_initialized()
-        from ray.serve.api import init as serve_init, _get_master_actor
-        serve_init()
+        master = ray.util.get_actor(SERVE_MASTER_NAME)
 
-        self.master = _get_master_actor()
+        self.route_table, [
+            self.router_handle
+        ] = await retry_actor_failures_async(master.get_http_proxy_config)
+        [self.metric_sink] = await retry_actor_failure_async(
+            master.get_metric_sink)
 
         self.metric_collector = MetricClient.connect_from_serve()
         self.request_counter = self.metric_collector.new_counter(
             "num_http_requests",
             description="The number of requests processed",
             label_names=("route", ))
-
-    async def fetch_config_from_master(self):
-        self.route_table, [
-            self.router_handle
-        ] = await self.master.get_http_proxy_config.remote()
-        [self.metric_sink] = await self.master.get_metric_sink.remote()
 
     def set_route_table(self, route_table):
         self.route_table = route_table

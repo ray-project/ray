@@ -16,7 +16,7 @@ class FullyConnectedNetwork(TFModelV2):
             obs_space, action_space, num_outputs, model_config, name)
 
         activation = get_activation_fn(model_config.get("fcnet_activation"))
-        hiddens = model_config.get("fcnet_hiddens")
+        hiddens = model_config.get("fcnet_hiddens", [])
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
 

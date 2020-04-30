@@ -23,6 +23,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.space_utils import flatten_space
 
@@ -471,6 +472,7 @@ class ModelCatalog:
                   seq_lens=None):
         """Deprecated: use get_model_v2() instead."""
 
+        deprecation_warning("get_model", "get_model_v2", error=False)
         assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
         model = ModelCatalog._get_model(input_dict, obs_space, action_space,
@@ -496,6 +498,7 @@ class ModelCatalog:
     @staticmethod
     def _get_model(input_dict, obs_space, action_space, num_outputs, options,
                    state_in, seq_lens):
+        deprecation_warning("_get_model", "get_model_v2", error=False)
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.debug("Using custom model {}".format(model))
