@@ -1,4 +1,3 @@
-blist
 click
 colorama
 filelock

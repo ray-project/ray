@@ -323,6 +323,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return os.uname()[1]
 
     def add_batch(self, batch):
+        # Make a copy so the replay buffer doesn't pin plasma memory.
+        batch = batch.copy()
         # Handle everything as if multiagent
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
