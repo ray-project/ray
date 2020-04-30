@@ -24,6 +24,3 @@ ASYNC_CONCURRENCY = int(1e6)
 
 #: Default latency SLO
 DEFAULT_LATENCY_SLO_MS = 1e9
-
-#: Default interval to push metric to sink
-METRIC_PUSH_INTERVAL_S = 2

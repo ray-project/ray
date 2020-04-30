@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME, METRIC_PUSH_INTERVAL_S)
+                                 SERVE_MASTER_NAME)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
@@ -77,7 +77,7 @@ def init(kv_store_connector=None,
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={},
          metric_sink=InMemorySink,
-         metric_push_interval=METRIC_PUSH_INTERVAL_S):
+         metric_push_interval=2):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -103,10 +103,10 @@ def init(kv_store_connector=None,
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
         metric_sink(BaseSink): The metric storage actor for all RayServe actors
-            to push to. RayServe have two options built in: InMemorySink and
+            to push to. RayServe has two options built in: InMemorySink and
             PrometheusSink
         metric_push_interval(float): The interval for each actors to push to
-            the metric sink. Default is 5s.
+            the metric sink. Default is 2s.
     """
     global master_actor
     if master_actor is not None:

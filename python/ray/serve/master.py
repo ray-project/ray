@@ -75,7 +75,7 @@ class ServeMaster:
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
-        # Dictionary to keep track of mutable system wide config
+        # Dictionary to keep track of system wide config.
         self.config = {"metric_push_interval": metric_push_interval}
 
         # Used to ensure that only a single state-changing operation happens

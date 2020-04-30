@@ -204,8 +204,7 @@ class HTTPProxyActor:
         sock.bind((self.host, self.port))
         sock.set_inheritable(True)
 
-        config = uvicorn.Config(
-            self.app, lifespan="on", access_log=False, debug=True)
+        config = uvicorn.Config(self.app, lifespan="on", access_log=False)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in

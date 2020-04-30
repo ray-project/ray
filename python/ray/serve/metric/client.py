@@ -1,7 +1,6 @@
 import asyncio
 from typing import Dict, Optional, Tuple
 
-from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 from ray.serve.metric.types import (
     MetricType,
     convert_event_type_to_class,
@@ -12,10 +11,12 @@ from ray.serve.utils import retry_actor_failures, retry_actor_failures_async
 
 
 class MetricClient:
-    def __init__(self,
-                 metric_sink_actor,
-                 default_labels: Optional[Dict[str, str]] = None,
-                 push_interval: float = METRIC_PUSH_INTERVAL_S):
+    def __init__(
+            self,
+            metric_sink_actor,
+            push_interval: float,
+            default_labels: Optional[Dict[str, str]] = None,
+    ):
         """Initialize a client to push metric to sink.
 
         Args:

@@ -26,7 +26,7 @@ class MockSinkActor:
 
 async def test_client():
     sink = MockSinkActor()
-    collector = MetricClient(sink, {"default": "label"})
+    collector = MetricClient(sink, default_labels={"default": "label"})
     counter = collector.new_counter(name="counter", label_names=("a", "b"))
 
     with pytest.raises(
@@ -70,7 +70,7 @@ async def test_client():
 
 async def test_in_memory_sink(ray_instance):
     sink = InMemorySink.remote()
-    collector = MetricClient(sink, {"default": "label"})
+    collector = MetricClient(sink, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
@@ -106,7 +106,7 @@ async def test_in_memory_sink(ray_instance):
 
 async def test_prometheus_sink(ray_instance):
     sink = PrometheusSink.remote()
-    collector = MetricClient(sink, {"default": "label"})
+    collector = MetricClient(sink, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
