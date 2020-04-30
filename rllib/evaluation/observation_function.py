@@ -13,7 +13,8 @@ class ObservationFunction:
     in multi-agent scenarios.
 
     Observations functions can be specified in the multi-agent config by
-    specifying {"observation_function": YourObsFunc}.
+    specifying ``{"observation_function": YourObsFunc}``. Note that
+    ``YourObsFunc`` can be a plain Python function.
 
     This API is **experimental**.
     """
