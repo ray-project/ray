@@ -308,26 +308,36 @@ def test_delete_backend(serve_instance):
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
 
 
-def test_delete_endpoint(serve_instance):
-    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
-    serve.delete_endpoint("delete_endpoint")
+@pytest.mark.parametrize("route", [None, "/delete-endpoint"])
+def test_delete_endpoint(serve_instance, route):
+    endpoint_name = "delete_endpoint" + str(route)
+    serve.create_endpoint(endpoint_name, route=route)
+    serve.delete_endpoint(endpoint_name)
 
     # Check that we can reuse a deleted endpoint name and route.
-    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
+    serve.create_endpoint(endpoint_name, route=route)
 
     def function():
         return "hello"
 
     serve.create_backend(function, "delete-endpoint:v1")
-    serve.set_traffic("delete_endpoint", {"delete-endpoint:v1": 1.0})
+    serve.set_traffic(endpoint_name, {"delete-endpoint:v1": 1.0})
 
-    assert requests.get(
-        "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    if route is not None:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    else:
+        handle = serve.get_handle(endpoint_name)
+        assert ray.get(handle.remote()) == "hello"
 
     # Check that deleting the endpoint doesn't delete the backend.
-    serve.delete_endpoint("delete_endpoint")
-    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
-    serve.set_traffic("delete_endpoint", {"delete-endpoint:v1": 1.0})
+    serve.delete_endpoint(endpoint_name)
+    serve.create_endpoint(endpoint_name, route=route)
+    serve.set_traffic(endpoint_name, {"delete-endpoint:v1": 1.0})
 
-    assert requests.get(
-        "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    if route is not None:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    else:
+        handle = serve.get_handle(endpoint_name)
+        assert ray.get(handle.remote()) == "hello"
