@@ -467,7 +467,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_func=observation_func)
+                observation_fn=observation_fn)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -486,7 +486,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_func=observation_func)
+                observation_fn=observation_fn)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
