@@ -130,6 +130,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
     auto object_notification_callback =
         [this](const ObjectID &object_id,
                const gcs::ObjectChangeNotification &object_notification) {
+          RAY_LOG(INFO) << "Subscribing object 111111111111............., object id = " << object_id;
+
           // Objects are added to this map in SubscribeObjectLocations.
           auto it = listeners_.find(object_id);
           // Do nothing for objects we are not listening for.
@@ -141,11 +143,16 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           it->second.subscribed = true;
 
           // Filter duplicate data.
-          if (!isObjectLocationsUpdated(object_notification.IsAdded(),
+          RAY_LOG(INFO) << "Subscribing object 22222222222............., object id = " << object_id;
+          if (object_notification.GetData().empty() || !isObjectLocationsUpdated(object_notification.IsAdded(),
                                         object_notification.GetData(),
                                         &it->second.current_object_locations)) {
+            RAY_LOG(INFO) << "isObjectLocationsUpdated......, object id = " << object_id
+              << ", size = " << object_notification.GetData().size();
             return;
           }
+
+          RAY_LOG(INFO) << "Subscribing object 333333333333............., object id = " << object_id;
 
           // Update entries for this object.
           UpdateObjectLocations(object_notification.IsAdded(),

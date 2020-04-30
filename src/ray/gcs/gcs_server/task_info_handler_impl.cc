@@ -37,7 +37,7 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
+  RAY_LOG(INFO) << "Finished adding task, job id = " << job_id
                  << ", task id = " << task_id;
 }
 
