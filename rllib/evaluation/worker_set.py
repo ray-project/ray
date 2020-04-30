@@ -279,25 +279,4 @@ class WorkerSet:
             _fake_sampler=config.get("_fake_sampler", False),
             extra_python_environs=extra_python_environs)
 
-        # Check for correct policy class (only locally, remote Workers should
-        # create the exact same Policy types).
-        if type(worker) is RolloutWorker:
-            actual_class = type(worker.get_policy())
-
-            # Pytorch case: Policy must be a TorchPolicy.
-            if config["use_pytorch"]:
-                assert issubclass(actual_class, TorchPolicy), \
-                    "Worker policy must be subclass of `TorchPolicy`, " \
-                    "but is {}!".format(actual_class.__name__)
-            # non-Pytorch case:
-            # Policy may be None AND must not be a TorchPolicy.
-            else:
-                assert issubclass(actual_class, type(None)) or \
-                       (issubclass(actual_class, Policy) and
-                        not issubclass(actual_class, TorchPolicy)), "Worker " \
-                       "policy must be subclass of `Policy`, but NOT " \
-                       "`TorchPolicy` (your class={})! If you have a torch " \
-                       "Trainer, make sure to set `use_pytorch=True` in " \
-                       "your Trainer's config)!".format(actual_class.__name__)
-
         return worker
