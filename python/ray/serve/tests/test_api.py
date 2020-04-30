@@ -306,3 +306,28 @@ def test_delete_backend(serve_instance):
     serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
+
+
+def test_delete_endpoint(serve_instance):
+    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
+    serve.delete_endpoint("delete_endpoint")
+
+    # Check that we can reuse a deleted endpoint name and route.
+    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
+
+    def function():
+        return "hello"
+
+    serve.create_backend(function, "delete-endpoint:v1")
+    serve.set_traffic("delete_endpoint", {"delete-endpoint:v1": 1.0})
+
+    assert requests.get(
+        "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+
+    # Check that deleting the endpoint doesn't delete the backend.
+    serve.delete_endpoint("delete_endpoint")
+    serve.create_endpoint("delete_endpoint", "/delete-endpoint")
+    serve.set_traffic("delete_endpoint", {"delete-endpoint:v1": 1.0})
+
+    assert requests.get(
+        "http://127.0.0.1:8000/delete-endpoint").text == "hello"
