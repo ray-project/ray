@@ -9,6 +9,7 @@ from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger, retry_actor_failures_async
+from ray.serve.constants import SERVE_MASTER_NAME
 
 from urllib.parse import parse_qs
 
@@ -33,11 +34,11 @@ class HTTPProxy:
         self.route_table, [
             self.router_handle
         ] = await retry_actor_failures_async(master.get_http_proxy_config)
-        [self.metric_sink] = await retry_actor_failure_async(
-            master.get_metric_sink)
 
-        self.metric_collector = MetricClient.connect_from_serve()
-        self.request_counter = self.metric_collector.new_counter(
+        self.metric_sink, _ = await retry_actor_failures_async(
+            master.get_metric_sink)
+        self.metric_client = MetricClient.connect_from_serve()
+        self.request_counter = self.metric_client.new_counter(
             "num_http_requests",
             description="The number of requests processed",
             label_names=("route", ))
@@ -203,7 +204,8 @@ class HTTPProxyActor:
         sock.bind((self.host, self.port))
         sock.set_inheritable(True)
 
-        config = uvicorn.Config(self.app, lifespan="on", access_log=False)
+        config = uvicorn.Config(
+            self.app, lifespan="on", access_log=False, debug=True)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in

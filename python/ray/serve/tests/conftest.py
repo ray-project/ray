@@ -19,7 +19,8 @@ def serve_instance():
     serve.init(
         kv_store_path=new_db_path,
         blocking=True,
-        ray_init_kwargs={"num_cpus": 36})
+        ray_init_kwargs={"num_cpus": 36},
+        metric_push_interval=0)
     yield
     os.remove(new_db_path)
 

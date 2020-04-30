@@ -1,5 +1,5 @@
 import enum
-from typing import Dict, Optional, Tuple, List
+from typing import Tuple, List
 from collections import namedtuple
 
 # We split the information about a metric into two parts: the MetricMetadata
@@ -13,8 +13,7 @@ MetricBatch = List[MetricRecord]
 
 
 class BaseMetric:
-    def __init__(self, client: "MetricClient", name: str,
-                 label_names: Tuple[str]):
+    def __init__(self, client, name: str, label_names: Tuple[str]):
         self.client = client
         self.name = name
         self.dynamic_labels = dict()
@@ -28,7 +27,7 @@ class BaseMetric:
 
     def labels(self, **kwargs):
         """Apply dynamic label to the metric
-        
+
         Usage:
         >>> metric = BaseMetric(..., label_names=("a", "b"))
         >>> metric.labels(a=1, b=2)

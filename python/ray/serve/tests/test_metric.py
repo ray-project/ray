@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import requests
 
@@ -82,19 +84,24 @@ async def test_in_memory_sink(ray_instance):
     await collector._push_once()
 
     metric_stored = await sink.get_metric.remote()
-    counter_key = [m for m in metric_stored if m.name == "my_counter"][0]
-    assert counter_key.name == "my_counter"
-    assert counter_key.type == MetricType.COUNTER
-    assert counter_key.default == "label"
-    assert counter_key.a == "1"
-    assert metric_stored[counter_key] == 1
-    measure_key = [m for m in metric_stored if m.name == "my_measure"][0]
-    assert measure_key.name == "my_measure"
-    assert measure_key.type == MetricType.MEASURE
-    assert measure_key.default == "label"
-    assert measure_key.lang == "C++"
-    assert measure_key.ray == ""
-    assert metric_stored[measure_key] == 42
+    assert metric_stored == [{
+        "info": {
+            "name": "my_counter",
+            "type": "MetricType.COUNTER",
+            "default": "label",
+            "a": "1"
+        },
+        "value": 1
+    }, {
+        "info": {
+            "name": "my_measure",
+            "type": "MetricType.MEASURE",
+            "default": "label",
+            "lang": "C++",
+            "ray": ""
+        },
+        "value": 42
+    }]
 
 
 async def test_prometheus_sink(ray_instance):
@@ -140,5 +147,43 @@ async def test_system_metric_endpoints(serve_instance):
     requests.get("http://127.0.0.1:8000/measure")
 
     # Check metrics are exposed under http endpoint
-    metric_text = requests.get("http://127.0.0.1:8000/-/metrics").text
-    print(metric_text)
+    def test_metric_endpoint():
+        in_memory_metric = requests.get(
+            "http://127.0.0.1:8000/-/metrics").json()
+        target_metrics = [{
+            "info": {
+                "name": "num_http_requests",
+                "type": "MetricType.COUNTER",
+                "route": "/measure"
+            },
+            "value": 1
+        }, {
+            "info": {
+                "name": "num_router_requests",
+                "type": "MetricType.COUNTER",
+                "endpoint": "test_metrics"
+            },
+            "value": 1
+        }, {
+            "info": {
+                "name": "backend_error_counter",
+                "type": "MetricType.COUNTER",
+                "backend": "m:v1"
+            },
+            "value": 1
+        }]
+
+        for target in target_metrics:
+            assert target in in_memory_metric
+
+    success = False
+    for _ in range(3):
+        try:
+            test_metric_endpoint()
+            success = True
+            break
+        except AssertionError:
+            # Metrics may not have been propogated yet
+            time.sleep(2)
+    if not success:
+        test_metric_endpoint()

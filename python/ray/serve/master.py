@@ -7,12 +7,14 @@ import time
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.backend_config import BackendConfig
-from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
-                                 SERVE_PROXY_NAME, SERVE_METRIC_MONITOR_NAME)
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY,
+    SERVE_ROUTER_NAME,
+    SERVE_PROXY_NAME,
+    SERVE_METRIC_SINK_NAME,
+)
 from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.kv_store_service import (BackendTable, RoutingTable,
-                                        TrafficPolicyTable)
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import async_retryable, get_random_letters, logger
 
@@ -51,7 +53,7 @@ class ServeMaster:
 
     async def __init__(self, kv_store_connector, router_class, router_kwargs,
                        start_http_proxy, http_proxy_host, http_proxy_port,
-                       metric_sink_actor_class):
+                       metric_sink_actor_class, metric_push_interval):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store_client = kv_store_connector("serve_checkpoints")
@@ -70,6 +72,8 @@ class ServeMaster:
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
+        # Dictionary to keep track of mutable system wide config
+        self.config = {"metric_push_interval": metric_push_interval}
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
@@ -82,10 +86,10 @@ class ServeMaster:
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
+        self._get_or_start_metric_sink(metric_sink_actor_class)
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
-        self._get_or_start_metric_monitor(metric_sink_actor_class)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -153,22 +157,22 @@ class ServeMaster:
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes, self.get_router()
 
-    def _get_or_start_metric_monitor(self, metric_sink_actor_class):
+    def _get_or_start_metric_sink(self, metric_sink_actor_class):
         """Get the metric monitor belonging to this serve cluster.
 
         If the metric monitor does not already exist, it will be started.
         """
         try:
-            self.metric_monitor = ray.util.get_actor(SERVE_METRIC_MONITOR_NAME)
+            self.metric_sink = ray.util.get_actor(SERVE_METRIC_SINK_NAME)
         except ValueError:
             logger.info("Starting metric monitor with name '{}'".format(
-                SERVE_METRIC_MONITOR_NAME))
-            self.metric_monitor = metric_sink_actor_class.options(
-                detached=True, name=SERVE_METRIC_MONITOR_NAME).remote()
+                SERVE_METRIC_SINK_NAME))
+            self.metric_sink = metric_sink_actor_class.options(
+                detached=True, name=SERVE_METRIC_SINK_NAME).remote()
 
-    def get_metric_monitor(self):
+    def get_metric_sink(self):
         """Returns a handle to the metric monitor managed by this actor."""
-        return [self.metric_monitor]
+        return [self.metric_sink, self.config["metric_push_interval"]]
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
@@ -176,7 +180,7 @@ class ServeMaster:
         start = time.time()
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
-             self.replicas_to_start, self.replicas_to_stop))
+             self.replicas_to_start, self.replicas_to_stop, self.config))
 
         self.kv_store_client.put("checkpoint", checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -205,8 +209,8 @@ class ServeMaster:
 
         # Load internal state from the checkpoint data.
         (self.routes, self.backends, self.traffic_policies, self.replicas,
-         self.replicas_to_start,
-         self.replicas_to_stop) = pickle.loads(checkpoint_bytes)
+         self.replicas_to_start, self.replicas_to_stop,
+         self.config) = pickle.loads(checkpoint_bytes)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
@@ -309,9 +313,6 @@ class ServeMaster:
                 # Register the worker with the router.
                 await self.router.add_new_worker.remote(
                     backend_tag, replica_tag, worker_handle)
-
-                # Register the worker with the metric monitor.
-                self.metric_monitor.add_target.remote(worker_handle)
 
         self.replicas_to_start.clear()
 

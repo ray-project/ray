@@ -68,17 +68,17 @@ class RayServeWorker:
         self.callable = _callable
         self.is_function = is_function
 
-        self.metric_collector = MetricClient.connect_from_serve(
+        self.metric_client = MetricClient.connect_from_serve(
             default_labels={"backend": self.name})
-        self.request_counter = self.metric_collector.new_counter(
+        self.request_counter = self.metric_client.new_counter(
             "backend_request_counter",
-            description=
-            "Number of queries that have been processed in this replica",
+            description=("Number of queries that have been "
+                         "processed in this replica"),
         )
-        self.error_counter = self.metric_collector.new_counter(
+        self.error_counter = self.metric_client.new_counter(
             "backend_error_counter",
-            description=
-            "Number of exceptions that have occurred in the backend",
+            description=("Number of exceptions that have "
+                         "occurred in the backend"),
         )
 
     def get_runner_method(self, request_item):

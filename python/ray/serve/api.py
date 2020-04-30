@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME)
+                                 SERVE_MASTER_NAME, METRIC_PUSH_INTERVAL_S)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
@@ -25,6 +25,9 @@ def _get_master_actor():
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
+    global master_actor
+    if master_actor is None:
+        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
     return master_actor
 
 
@@ -73,7 +76,8 @@ def init(kv_store_connector=None,
          },
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={},
-         metric_sink=InMemorySink):
+         metric_sink=InMemorySink,
+         metric_push_interval=METRIC_PUSH_INTERVAL_S):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -98,9 +102,11 @@ def init(kv_store_connector=None,
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
-        metric_sink(BaseSink): The metric storage actor for all Ray serve actors
+        metric_sink(BaseSink): The metric storage actor for all RayServe actors
             to push to. RayServe have two options built in: InMemorySink and
             PrometheusSink
+        metric_push_interval(float): The interval for each actors to push to
+            the metric sink. Default is 5s.
     """
     global master_actor
     if master_actor is not None:
@@ -142,7 +148,8 @@ def init(kv_store_connector=None,
         name=SERVE_MASTER_NAME,
         max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
     ).remote(kv_store_connector, queueing_policy.value, policy_kwargs,
-             start_server, http_host, http_port, metric_sink)
+             start_server, http_host, http_port, metric_sink,
+             metric_push_interval)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(

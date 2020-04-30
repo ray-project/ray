@@ -61,7 +61,13 @@ class InMemorySink(BaseSink):
         self.recording = []
 
     def get_metric(self):
-        return {**self.counters, **self.latest_measures}
+        items = []
+        metrics_to_collect = {**self.counters, **self.latest_measures}
+        for info_tuple, value in metrics_to_collect.items():
+            # Represent the metric type in human readable name
+            info_tuple = info_tuple._replace(type=str(info_tuple.type))
+            items.append({"info": info_tuple._asdict(), "value": value})
+        return items
 
 
 @ray.remote
@@ -113,8 +119,8 @@ class PrometheusSink(BaseSink):
 
     def _process_batch(self, batch):
         for name, labels, value in batch:
-            assert name in self.metrics_cache, "Metrics {} was not registered.".format(
-                name)
+            assert name in self.metrics_cache, (
+                "Metrics {} was not registered.".format(name))
             metric, metric_type = self.metrics_cache[name]
             default_labels = self.default_labels[name]
             merged_labels = {**default_labels, **labels}

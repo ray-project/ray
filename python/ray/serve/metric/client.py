@@ -1,24 +1,21 @@
 import asyncio
-from functools import partialmethod, update_wrapper
-from typing import Dict, Optional, List, Tuple, Callable
+from typing import Dict, Optional, Tuple
 
-import ray
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 from ray.serve.metric.types import (
     MetricType,
     convert_event_type_to_class,
     MetricMetadata,
     MetricRecord,
-    BaseMetric,
 )
+from ray.serve.utils import retry_actor_failures, retry_actor_failures_async
 
 
 class MetricClient:
-    def __init__(
-            self,
-            metric_sink_actor,
-            default_labels: Optional[Dict[str, str]] = None,
-    ):
+    def __init__(self,
+                 metric_sink_actor,
+                 default_labels: Optional[Dict[str, str]] = None,
+                 push_interval: float = METRIC_PUSH_INTERVAL_S):
         """Initialize a client to push metric to sink.
 
         Args:
@@ -33,10 +30,7 @@ class MetricClient:
         self.metric_records = []
 
         self.push_task = asyncio.get_event_loop().create_task(
-            self.push_forever(METRIC_PUSH_INTERVAL_S))
-
-    def __del__(self):
-        self.push_task.cancel()
+            self.push_forever(push_interval))
 
     @staticmethod
     def connect_from_serve(default_labels: Optional[Dict[str, str]] = None):
@@ -44,9 +38,12 @@ class MetricClient:
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
-        [metric_sink] = ray.get(master_actor.get_metric_sink.remote())
+        [metric_sink,
+         push_interval] = retry_actor_failures(master_actor.get_metric_sink)
         return MetricClient(
-            metric_sink_actor=metric_sink, default_labels=default_labels)
+            metric_sink_actor=metric_sink,
+            default_labels=default_labels,
+            push_interval=push_interval)
 
     def new_counter(self,
                     name: str,
@@ -56,7 +53,7 @@ class MetricClient:
         """Create a new counter.
 
         Counters are used to capture changes in running sums. An essential
-        property of Counter instruments is that two events add(m) and add(n) 
+        property of Counter instruments is that two events add(m) and add(n)
         are semantically equivalent to one event add(m+n). This property means
         that Counter events can be combined.
 
@@ -65,11 +62,11 @@ class MetricClient:
             description(Optional[str]): The description for the counter.
             label_names(Optional[Tuple[str]]): The set of label names to be
                 added when recording the metrics.
-        
+
         Usage:
         >>> client = MetricClient(...)
         >>> counter = client.new_counter(
-                "http_counter", 
+                "http_counter",
                 description="This is a simple counter for HTTP status",
                 label_names=("route", "status_code"))
         >>> counter.labels(route="/hi", status_code=200).add()
@@ -97,7 +94,7 @@ class MetricClient:
         Usage:
         >>> client = MetricClient(...)
         >>> measure = client.new_measure(
-                "latency_measure", 
+                "latency_measure",
                 description="This is a simple measure for latency in ms",
                 label_names=("route"))
         >>> measure.labels(route="/hi").record(42)
@@ -140,9 +137,10 @@ class MetricClient:
 
     async def _push_once(self):
         old_batch, self.metric_records = self.metric_records, []
-        await self.sink.push_batch.remote(self.registered_metrics, old_batch)
+        await retry_actor_failures_async(self.sink.push_batch,
+                                         self.registered_metrics, old_batch)
 
     async def push_forever(self, interval_s):
         while True:
-            await self.push_once()
+            await self._push_once()
             await asyncio.sleep(interval_s)

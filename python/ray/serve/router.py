@@ -178,8 +178,8 @@ class Router:
         for backend, backend_config_dict in backend_configs.items():
             await self.set_backend_config(backend, backend_config_dict)
 
-        self.metric_collector = MetricClient.connect_from_serve()
-        self.num_router_requests = self.metric_collector.new_counter(
+        self.metric_client = MetricClient.connect_from_serve()
+        self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
             description="Number of requests from the router's view.",
             label_names=("endpoint", ))
