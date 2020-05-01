@@ -78,6 +78,23 @@ need_wheels() {
   return "${error_code}"
 }
 
+upload_wheels() {
+  local branch="" commit
+  commit="$(git rev-parse --verify HEAD)"
+  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
+  if [ -z "${branch}" ]; then branch="${GITHUB_BASE_REF-}"; fi
+  if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
+  if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
+  local local_dir="python/dist"
+  local remote_dir="${branch}/${commit}"
+  if [ -d "${local_dir}" ]; then
+    if command -V aws; then
+      aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
+    fi
+  fi
+}
+
+
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
     # Windows -- most tests won't work yet; just do the ones we know work
