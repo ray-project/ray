@@ -212,7 +212,7 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (*features, labels) format. So we also support multiple inputs
+        are in (\*features, labels) format. So we also support multiple inputs
         model. If using amp/fp16 training, it will also scale the loss
         automatically.
 
@@ -309,7 +309,7 @@ class TrainingOperator:
         You can override this method to provide arbitrary metrics.
 
         Same as ``train_batch``, this method implementation assumes that
-        batches are in (*features, labels) format by default. So we also
+        batches are in (\*features, labels) format by default. So we also
         support multiple inputs model.
 
         Args:
