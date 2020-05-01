@@ -15,7 +15,6 @@
 #include "task_dependency_manager.h"
 
 #include "absl/time/clock.h"
-
 #include "ray/stats/stats.h"
 
 namespace ray {

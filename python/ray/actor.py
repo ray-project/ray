@@ -243,9 +243,8 @@ class ActorClassMetadata:
     """
 
     def __init__(self, language, modified_class,
-                 actor_creation_function_descriptor, class_id,
-                 max_restarts, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+                 actor_creation_function_descriptor, class_id, max_restarts,
+                 num_cpus, num_gpus, memory, object_store_memory, resources):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -314,9 +313,9 @@ class ActorClass:
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_restarts, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources):
+    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
+                                 num_cpus, num_gpus, memory,
+                                 object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
                 "_ray_from_function_descriptor"
@@ -350,16 +349,15 @@ class ActorClass:
         return self
 
     @classmethod
-    def _ray_from_function_descriptor(cls, language,
-                                      actor_creation_function_descriptor,
-                                      max_restarts, num_cpus, num_gpus,
-                                      memory, object_store_memory, resources):
+    def _ray_from_function_descriptor(
+            cls, language, actor_creation_function_descriptor, max_restarts,
+            num_cpus, num_gpus, memory, object_store_memory, resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
-            max_restarts, num_cpus, num_gpus, memory,
-            object_store_memory, resources)
+            max_restarts, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
 
         return self
 
@@ -894,12 +892,11 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
         else:
             # Make sure we don't pass too big of an int to C++, causing
             # an overflow.
-            max_restarts = min(max_restarts,
-                                      ray_constants.MAX_INT64_VALUE)
+            max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
 
     return ActorClass._ray_from_modified_class(
-        Class, ActorClassID.from_random(), max_restarts, num_cpus,
-        num_gpus, memory, object_store_memory, resources)
+        Class, ActorClassID.from_random(), max_restarts, num_cpus, num_gpus,
+        memory, object_store_memory, resources)
 
 
 def exit_actor():

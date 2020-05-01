@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/subscription_executor.h"
+
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"

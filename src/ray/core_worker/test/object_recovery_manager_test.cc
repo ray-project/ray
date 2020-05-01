@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/object_recovery_manager.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -113,30 +113,31 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
-        manager_(rpc::Address(),
-                 [&](const std::string &ip, int port) { return raylet_client_; },
-                 raylet_client_,
-                 [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
-                   object_directory_->AsyncGetLocations(object_id, callback);
-                   return Status::OK();
-                 },
-                 task_resubmitter_, ref_counter_, memory_store_,
-                 [&](const ObjectID &object_id, bool pin_object) {
-                   RAY_CHECK(failed_restarts_.count(object_id) == 0);
-                   failed_reconstructions_[object_id] = pin_object;
+        manager_(
+            rpc::Address(),
+            [&](const std::string &ip, int port) { return raylet_client_; },
+            raylet_client_,
+            [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+              object_directory_->AsyncGetLocations(object_id, callback);
+              return Status::OK();
+            },
+            task_resubmitter_, ref_counter_, memory_store_,
+            [&](const ObjectID &object_id, bool pin_object) {
+              RAY_CHECK(failed_restarts_.count(object_id) == 0);
+              failed_reconstructions_[object_id] = pin_object;
 
-                   std::string meta =
-                       std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-                   auto metadata = const_cast<uint8_t *>(
-                       reinterpret_cast<const uint8_t *>(meta.data()));
-                   auto meta_buffer =
-                       std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-                   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-                   RAY_CHECK(memory_store_->Put(data, object_id));
+              std::string meta =
+                  std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+              auto metadata =
+                  const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+              auto meta_buffer =
+                  std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+              auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+              RAY_CHECK(memory_store_->Put(data, object_id));
 
-                   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
-                 },
-                 /*lineage_reconstruction_enabled=*/true) {}
+              ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
+            },
+            /*lineage_reconstruction_enabled=*/true) {}
 
   ClientID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;

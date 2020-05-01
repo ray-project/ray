@@ -16,6 +16,7 @@
 #define RAY_COMMON_JAVA_JNI_UTILS_H
 
 #include <jni.h>
+
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"

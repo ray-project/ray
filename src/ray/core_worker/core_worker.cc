@@ -1208,8 +1208,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
-                             bool no_restart) {
+Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
@@ -1311,8 +1310,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
-            RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
+            RAY_CHECK_OK(KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
           }
         }));
   }

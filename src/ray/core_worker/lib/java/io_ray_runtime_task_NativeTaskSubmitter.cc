@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+
 #include <jni.h>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -92,8 +94,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
-    max_restarts = static_cast<uint64_t>(env->GetIntField(
-        actorCreationOptions, java_actor_creation_options_max_restarts));
+    max_restarts = static_cast<uint64_t>(
+        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts));
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -107,14 +109,13 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
-  ray::ActorCreationOptions actor_creation_options{
-      static_cast<uint64_t>(max_restarts),
-      static_cast<int>(max_concurrency),
-      resources,
-      resources,
-      dynamic_worker_options,
-      /*is_detached=*/false,
-      /*is_asyncio=*/false};
+  ray::ActorCreationOptions actor_creation_options{static_cast<uint64_t>(max_restarts),
+                                                   static_cast<int>(max_concurrency),
+                                                   resources,
+                                                   resources,
+                                                   dynamic_worker_options,
+                                                   /*is_detached=*/false,
+                                                   /*is_asyncio=*/false};
   return actor_creation_options;
 }
 

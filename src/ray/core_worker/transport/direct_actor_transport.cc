@@ -23,8 +23,7 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill,
-                                                   bool no_restart) {
+                                                   bool force_kill, bool no_restart) {
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());

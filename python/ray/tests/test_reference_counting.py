@@ -499,8 +499,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.RayWorkerError,
-            ray.exceptions.UnrestartableError):
+    except (ray.exceptions.RayWorkerError, ray.exceptions.UnrestartableError):
         assert failure
     del child_return_id
 

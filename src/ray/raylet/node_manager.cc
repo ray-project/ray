@@ -810,15 +810,13 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     } else {
       // Only process the state transition if it is to a later state than ours.
       if (actor_registration.GetState() > it->second.GetState() &&
-          actor_registration.GetNumRestarts() ==
-              it->second.GetNumRestarts()) {
+          actor_registration.GetNumRestarts() == it->second.GetNumRestarts()) {
         // The new state is later than ours if it is about the same lifetime, but
         // a greater state.
         it->second = actor_registration;
         // imagine remaining reconst 4 max 10 num reconst 6
         // other remaining reconst 4 max 10 num reconst 6
-      } else if (actor_registration.GetNumRestarts() >
-                 it->second.GetNumRestarts()) {
+      } else if (actor_registration.GetNumRestarts() > it->second.GetNumRestarts()) {
         // The new state is also later than ours it is about a later lifetime of
         // the actor.
         it->second = actor_registration;

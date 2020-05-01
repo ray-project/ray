@@ -47,8 +47,7 @@ class GcsActor {
     const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(request.task_spec().job_id());
-    actor_table_data_.set_max_restarts(
-        actor_creation_task_spec.max_actor_restarts());
+    actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
 
     auto dummy_object =

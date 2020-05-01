@@ -420,8 +420,7 @@ def kill_actor(actor):
 
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
-    actor = ray.remote(
-        max_restarts=2)(ray_checkpointable_actor_cls).remote()
+    actor = ray.remote(max_restarts=2)(ray_checkpointable_actor_cls).remote()
     # Call increase 3 times, triggering a checkpoint.
     expected = 0
     for _ in range(3):

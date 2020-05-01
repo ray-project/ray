@@ -73,8 +73,7 @@ const int64_t ActorRegistration::GetRemainingRestarts() const {
   if (actor_table_data_.max_restarts() == -1) {
     return -1;
   }
-  return actor_table_data_.max_restarts() -
-         actor_table_data_.num_restarts();
+  return actor_table_data_.max_restarts() - actor_table_data_.num_restarts();
 }
 
 const uint64_t ActorRegistration::GetNumRestarts() const {
