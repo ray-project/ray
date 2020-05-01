@@ -18,7 +18,7 @@ def driver(flask_request):
     return "OK!"
 
 serve.create_endpoint("driver", "/driver")
-serve.create_backend(driver, "driver")
+serve.create_backend("driver", driver)
 serve.set_traffic("driver", {{"driver": 1.0}})
 """.format(ray.worker._global_node._redis_address)
 

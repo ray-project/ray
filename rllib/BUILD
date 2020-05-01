@@ -41,23 +41,45 @@
 # --------------------------------------------------------------------
 
 py_test(
-    name = "run_regression_tests_cartpole",
+    name = "run_regression_tests_cartpole_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/cartpole-*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*-tf.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 
 py_test(
-    name = "run_regression_tests_pendulum",
+    name = "run_regression_tests_cartpole_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests", "learning_tests_pendulum"],
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/pendulum-*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*-torch.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum-*-tf.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum-*-torch.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
@@ -1136,10 +1158,11 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_spaces",
+    name = "tests/test_nested_observation_spaces",
+    main = "tests/test_nested_observation_spaces.py",
     tags = ["tests_dir", "tests_dir_N"],
     size = "small",
-    srcs = ["tests/test_nested_spaces.py"]
+    srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
 py_test(
@@ -1316,7 +1339,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -1379,6 +1402,22 @@ py_test(
 )
 
 py_test(
+    name = "examples/hierarchical_training_tf",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--stop-reward=0.0"]
+)
+
+py_test(
+    name = "examples/hierarchical_training_torch",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--torch", "--stop-reward=0.0"]
+)
+
+py_test(
     name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
@@ -1388,7 +1427,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy",
-    tags = ["examples", "examples_M_xxx"],
+    tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
 )
@@ -1402,34 +1441,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
+    name = "examples/nested_action_spaces_ppo",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "medium",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--stop=-500", "--run=PPO"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_pg",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PG", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_actions_cartpole_ppo",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PPO", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_actions_cartpole_dqn",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
-)
-
-py_test(
-    name = "examples/random_env", main = "examples/random_env.py",
-    tags = ["examples", "examples_R"],
-    size = "large",
-    srcs = ["examples/random_env.py"]
 )
 
 py_test(

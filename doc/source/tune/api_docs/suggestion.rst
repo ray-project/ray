@@ -15,25 +15,13 @@ The ``search_alg`` will suggest new configurations to try, and the ``Repeater``
 will run ``repeat`` trials of the configuration. It will then average the
 ``search_alg.metric`` from the final results of each repeated trial.
 
-
-.. note:: This does not apply for grid search and random search.
-
-.. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
-    Early termination can negatively affect the average reported metric.
-
-
-Warm Start/Reusing Results
---------------------------
-
-Limiting Concurrency
---------------------
+ConcurrencyLimiter
+------------------
 
 .. autoclass:: ray.tune.suggest.ConcurrencyLimiter
 
-Ax (tune.suggest.ax.AxSearch)
------------------------------
-
-[`Link to Library <http://hyperopt.github.io/hyperopt>`_]
+AxSearch
+--------
 
 .. autoclass:: ray.tune.suggest.ax.AxSearch
 
@@ -124,10 +112,8 @@ tune.suggest.SearchAlgorithm
 .. autoclass:: ray.tune.suggest.SearchAlgorithm
     :members:
 
-tune.suggest.Searcher
----------------------
-
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
+Searcher
+--------
 
 .. autoclass:: ray.tune.suggest.Searcher
     :members:

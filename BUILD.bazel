@@ -362,6 +362,7 @@ cc_library(
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
+        ":gcs_table_storage_lib",
         ":node_manager_rpc",
         ":raylet_lib",
         ":worker_rpc",
@@ -749,11 +750,23 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "gcs_test_util_lib",
+    hdrs = [
+        "src/ray/gcs/test/accessor_test_base.h",
+        "src/ray/gcs/test/gcs_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":gcs_service_rpc",
+    ],
+)
+
 cc_test(
     name = "gcs_server_rpc_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
     ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
@@ -764,6 +777,7 @@ cc_test(
     ],
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -772,11 +786,12 @@ cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -785,11 +800,12 @@ cc_test(
     name = "gcs_actor_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -798,11 +814,12 @@ cc_test(
     name = "gcs_actor_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -822,8 +839,20 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
+        ":gcs_in_memory_store_client",
         ":ray_common",
         ":redis_store_client",
+    ],
+)
+
+cc_library(
+    name = "gcs_table_storage_test_lib",
+    hdrs = [
+        "src/ray/gcs/gcs_server/test/gcs_table_storage_test_base.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_store_client",
     ],
 )
 
@@ -831,7 +860,6 @@ cc_test(
     name = "redis_gcs_table_storage_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
     ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
@@ -841,8 +869,24 @@ cc_test(
         "//:redis-server",
     ],
     deps = [
-        ":gcs_server_lib",
         ":gcs_table_storage_lib",
+        ":gcs_table_storage_test_lib",
+        ":gcs_test_util_lib",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "in_memory_gcs_table_storage_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_table_storage_lib",
+        ":gcs_table_storage_test_lib",
+        ":gcs_test_util_lib",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -873,7 +917,6 @@ cc_test(
     name = "gcs_server_test",
     srcs = [
         "src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc",
-        "src/ray/gcs/test/gcs_test_util.h",
     ],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
@@ -884,6 +927,7 @@ cc_test(
     ],
     deps = [
         ":gcs_server_lib",
+        ":gcs_test_util_lib",
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1087,6 +1131,23 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_in_memory_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/in_memory_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/in_memory_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_util",
+    ],
+)
+
+cc_library(
     name = "store_client_test_lib",
     hdrs = [
         "src/ray/gcs/store_client/test/store_client_test_base.h",
@@ -1113,6 +1174,17 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "in_memory_store_client_test",
+    srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs_in_memory_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gcs",
     srcs = glob(
@@ -1125,7 +1197,6 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
-        "src/ray/gcs/test/*.h",
     ]),
     copts = COPTS,
     deps = [
@@ -1169,6 +1240,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1185,6 +1257,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1201,6 +1274,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1217,6 +1291,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1233,6 +1308,7 @@ cc_test(
     ],
     deps = [
         ":gcs",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1454,7 +1530,7 @@ genrule(
             tmpdir="redis.tmp" &&
             path=$(location @com_github_antirez_redis//:file) &&
             cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
-            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" V=0 &&
             mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
             mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&

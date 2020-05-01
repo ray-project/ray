@@ -18,7 +18,11 @@ jobs:
           - name: macos
             os: macos-10.15
     env:
+      GITHUB_PULL_REQUEST: ${{ github.event.number }}
       PYTHON: 3.6
+      TRAVIS_BUILD_DIR: ${{ github.workspace }}
+      TRAVIS_COMMIT: ${{ github.sha }}
+      #TRAVIS_PULL_REQUEST is defined in the scripts to account for "false"
     steps:
     - name: Pre-checkout system configuration
       # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
@@ -35,14 +39,30 @@ jobs:
       with:
         # we need full history to diff against the original for linting etc.
         fetch-depth: 0
+    - name: Configure AWS Credentials
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.GHA_AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2
     - name: Run CI script
       shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        #LINUX_WHEELS: 1
+        LINT: 1
+        #MAC_WHEELS: 1
+        RAY_DEFAULT_BUILD: 1
+        WINDOWS_WHEELS: 1
       run: |
         . ./ci/travis/ci.sh init
+        . ./ci/travis/ci.sh lint
         . ./ci/travis/ci.sh build
+        . ./ci/travis/ci.sh upload_wheels || true
+        . ./ci/travis/ci.sh test_python
+        . ./ci/travis/ci.sh test_wheels
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'

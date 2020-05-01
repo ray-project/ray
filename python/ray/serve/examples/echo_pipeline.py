@@ -17,7 +17,7 @@ def echo_v1(_, response="hello from python!"):
 
 
 serve.create_endpoint("echo_v1", "/echo_v1")
-serve.create_backend(echo_v1, "echo_v1")
+serve.create_backend("echo_v1", echo_v1)
 serve.set_traffic("echo_v1", {"echo_v1": 1.0})
 
 
@@ -26,7 +26,7 @@ def echo_v2(_, relay=""):
 
 
 serve.create_endpoint("echo_v2", "/echo_v2")
-serve.create_backend(echo_v2, "echo_v2")
+serve.create_backend("echo_v2", echo_v2)
 serve.set_traffic("echo_v2", {"echo_v2": 1.0})
 
 
@@ -35,7 +35,7 @@ def echo_v3(_, relay=""):
 
 
 serve.create_endpoint("echo_v3", "/echo_v3")
-serve.create_backend(echo_v3, "echo_v3")
+serve.create_backend("echo_v3", echo_v3)
 serve.set_traffic("echo_v3", {"echo_v3": 1.0})
 
 
@@ -44,7 +44,7 @@ def echo_v4(_, relay1="", relay2=""):
 
 
 serve.create_endpoint("echo_v4", "/echo_v4")
-serve.create_backend(echo_v4, "echo_v4")
+serve.create_backend("echo_v4", echo_v4)
 serve.set_traffic("echo_v4", {"echo_v4": 1.0})
 """
 The pipeline created is as follows -

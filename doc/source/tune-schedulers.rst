@@ -47,6 +47,8 @@ You can run this `toy PBT example <https://github.com/ray-project/ray/blob/maste
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining
     :noindex:
 
+.. _tune-scheduler-hyperband:
+
 Asynchronous HyperBand
 ----------------------
 

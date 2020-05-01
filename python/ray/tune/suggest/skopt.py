@@ -68,20 +68,14 @@ class SkOptSearch(Searcher):
         use_early_stopped_trials: Deprecated.
 
     Example:
-
-    .. code-block:: python
-
-        from skopt import Optimizer
-        optimizer = Optimizer([(0,20),(-100,100)])
-        current_best_params = [[10, 0], [15, -20]]
-        algo = SkOptSearch(optimizer,
-            ["width", "height"],
-            metric="mean_loss",
-            mode="min",
-            points_to_evaluate=current_best_params)
-
-        tune.run(func, search_alg=algo)
-        algo.save("./logdir")
+        >>> from skopt import Optimizer
+        >>> optimizer = Optimizer([(0,20),(-100,100)])
+        >>> current_best_params = [[10, 0], [15, -20]]
+        >>> algo = SkOptSearch(optimizer,
+        >>>     ["width", "height"],
+        >>>     metric="mean_loss",
+        >>>     mode="min",
+        >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
@@ -99,6 +93,7 @@ class SkOptSearch(Searcher):
         _validate_warmstart(parameter_names, points_to_evaluate,
                             evaluated_rewards)
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        self.max_concurrent = max_concurrent
         super(SkOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -120,6 +115,9 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping = {}
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         if self._initial_points:
             suggested_config = self._initial_points[0]
             del self._initial_points[0]
