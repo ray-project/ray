@@ -19,6 +19,7 @@ import numpy as np
 # Used for testing purposes only. If this is set, the master actor will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
+CHECKPOINT_KEY = "serve-master-checkpoint"
 
 
 @ray.remote
@@ -102,7 +103,7 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint = self.kv_store.get("checkpoint")
+        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -186,7 +187,7 @@ class ServeMaster:
              self.replicas_to_start, self.replicas_to_stop,
              self.backends_to_remove, self.endpoints_to_remove))
 
-        self.kv_store.put("checkpoint", checkpoint)
+        self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
 
         if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:

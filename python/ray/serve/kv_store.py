@@ -19,6 +19,12 @@ class RayInternalKVStore:
         return "{ns}-{key}".format(ns=self.namespace, key=key)
 
     def put(self, key, val):
+        """Put the key-value pair into the store.
+
+        Args:
+            key (str)
+            val (bytes)
+        """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
         if not isinstance(val, bytes):
@@ -27,10 +33,15 @@ class RayInternalKVStore:
         ray_kv._internal_kv_put(self._format_key(key), val, overwrite=True)
 
     def get(self, key):
+        """Get the value associated with the given key from the store.
+
+        Args:
+            key (str)
+
+        Returns:
+            The bytes value. If the key wasn't found, returns None.
+        """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        result = ray_kv._internal_kv_get(self._format_key(key))
-        if result is None:
-            raise KeyError("Key {} does not exist.".format(key))
-        return result
+        return ray_kv._internal_kv_get(self._format_key(key))
