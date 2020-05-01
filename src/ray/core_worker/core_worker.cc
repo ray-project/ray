@@ -419,7 +419,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
-  if (RayConfig::instance().gcs_service_enabled()) {
+  if (RayConfig::instance().gcs_service_enabled() &&
+      RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
                                    const gcs::StatusCallback &callback) {
       return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
