@@ -225,3 +225,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 if false is True:
                     assert False, \
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
+
+
+def check_learning_achieved(results, min_reward):
+    # Error if min_reward not reached.
+    if results.trials[0].last_result["episode_reward_mean"] < min_reward:
+        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
+    print("ok")

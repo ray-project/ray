@@ -1222,35 +1222,38 @@ py_test(
 )
 
 py_test(
-    name = "examples/batch_norm_model_ppo", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_ppo_tf",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=PPO", "--num-iters=1"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=100"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_dqn_tf",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=PG", "--num-iters=1"]
+    args = ["--as-test", "--run=DQN", "--stop-reward=100"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_dqn_torch",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DQN", "--num-iters=1"]
+    args = ["--as-test", "--run=DQN", "--torch", "--stop-reward=100"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_ddpg_tf", main="examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DDPG", "--num-iters=1"]
+    args = ["--as-test", "--run=DDPG", "--stop-reward=-1000"]
 )
 
 py_test(
@@ -1299,6 +1302,15 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--custom-eval", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_fast_model",
+    main = "examples/custom_fast_model.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_fast_model.py"],
+    args = ["--stop-iters=1"]
 )
 
 py_test(
