@@ -28,7 +28,8 @@ if __name__ == "__main__":
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env("multi_agent_cartpole", lambda _: MultiAgentCartPole(4))
+    register_env("multi_agent_cartpole",
+                 lambda _: MultiAgentCartPole({"num_agents": 4}))
     single_env = gym.make("CartPole-v0")
     obs_space = single_env.observation_space
     act_space = single_env.action_space

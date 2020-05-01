@@ -6,8 +6,10 @@ from ray.rllib.tests.test_rollout_worker import MockEnv, MockEnv2
 
 def make_multiagent(env_name):
     class MultiEnv(MultiAgentEnv):
-        def __init__(self, num):
-            self.agents = [gym.make(env_name) for _ in range(num)]
+        def __init__(self, config):
+            self.agents = [
+                gym.make(env_name) for _ in range(config["num_agents"])
+            ]
             self.dones = set()
             self.observation_space = self.agents[0].observation_space
             self.action_space = self.agents[0].action_space

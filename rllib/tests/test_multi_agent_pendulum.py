@@ -15,7 +15,8 @@ class TestMultiAgentPendulum(unittest.TestCase):
         ray.shutdown()
 
     def test_multi_agent_pendulum(self):
-        register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum(1))
+        register_env("multi_agent_pendulum",
+                     lambda _: MultiAgentPendulum({"num_agents": 1}))
         trials = run_experiments({
             "test": {
                 "run": "PPO",

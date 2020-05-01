@@ -75,7 +75,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                                            {})
         policy_ids = list(policies.keys())
         ev = RolloutWorker(
-            env_creator=lambda _: MultiAgentCartPole(n),
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": n}),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             rollout_fragment_length=100)

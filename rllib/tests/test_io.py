@@ -149,7 +149,8 @@ class AgentIOTest(unittest.TestCase):
         self.assertTrue(not np.isnan(result["episode_reward_mean"]))
 
     def testMultiAgent(self):
-        register_env("multi_agent_cartpole", lambda _: MultiAgentCartPole(10))
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": 10}))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():

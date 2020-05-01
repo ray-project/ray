@@ -1450,7 +1450,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_actions_cartpole.py",
+    name = "examples/parametric_actions_cartpole_pg",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
@@ -1458,7 +1459,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_actions_cartpole.py",
+    name = "examples/parametric_actions_cartpole_ppo",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
@@ -1466,18 +1468,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_actions_cartpole.py",
+    name = "examples/parametric_actions_cartpole_dqn",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
-)
-
-py_test(
-    name = "examples/random_env", main = "examples/random_env.py",
-    tags = ["examples", "examples_R"],
-    size = "large",
-    srcs = ["examples/random_env.py"]
 )
 
 py_test(
