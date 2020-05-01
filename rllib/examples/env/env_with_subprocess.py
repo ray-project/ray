@@ -1,9 +1,8 @@
-from gym.spaces import Discrete
 import atexit
 import gym
+from gym.spaces import Discrete
 import os
 import subprocess
-import tempfile
 import time
 
 
@@ -13,12 +12,12 @@ class EnvWithSubprocess(gym.Env):
     # Dummy command to run as a subprocess with a unique name
     UNIQUE_CMD = "sleep {}".format(str(time.time()))
 
-    _, UNIQUE_FILE_0 = tempfile.mkstemp("test_env_with_subprocess")
-    _, UNIQUE_FILE_1 = tempfile.mkstemp("test_env_with_subprocess")
-    _, UNIQUE_FILE_2 = tempfile.mkstemp("test_env_with_subprocess")
-    _, UNIQUE_FILE_3 = tempfile.mkstemp("test_env_with_subprocess")
-
     def __init__(self, config):
+        self.UNIQUE_FILE_0 = config["tmp_file1"]
+        self.UNIQUE_FILE_1 = config["tmp_file2"]
+        self.UNIQUE_FILE_2 = config["tmp_file3"]
+        self.UNIQUE_FILE_3 = config["tmp_file4"]
+
         self.action_space = Discrete(2)
         self.observation_space = Discrete(2)
         # Subprocess that should be cleaned up
