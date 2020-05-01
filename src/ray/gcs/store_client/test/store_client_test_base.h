@@ -61,7 +61,7 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
     for (size_t i = 0; i < key_count_; i++) {
       rpc::ActorTableData actor;
       actor.set_max_restarts(1);
-      actor.set_remaining_reconstructions(1);
+      actor.set_num_reconstructions(0);
       JobID job_id = JobID::FromInt(i % index_count_);
       actor.set_job_id(job_id.Binary());
       actor.set_state(rpc::ActorTableData::ALIVE);
