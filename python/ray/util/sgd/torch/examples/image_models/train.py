@@ -46,6 +46,28 @@ class ImagenetOperator(TrainingOperator):
     def setup(self, config):
         args = self.config["args"]
 
+        if is_training:
+            sampler = DistributedSampler
+        else:
+            # This will add extra duplicate entries to result in equal num
+            # of samples per-process, will slightly alter validation results
+            sampler = OrderedDistributedSampler
+        batch_sampler = BatchSampler(
+            sampler(train_loader.dataset),
+            train_loader.batch_size,
+            train_loader.drop_last)
+        self.train_loader.batch_sampler = batch_sampler
+
+        batch_sampler = BatchSampler(
+            sampler(eval_loader.dataset),
+            eval_loader.batch_size,
+            eval_loader.drop_last)
+        self.eval_loader.batch_sampler = batch_sampler
+        # we can't patch sampler directly after creation,
+        # but if you look at the DataLoader constructor sources,
+        # we can just make a batch_sampler out of our new sampler and then
+        # set that
+
         has_apex = False
         try:
             from apex.parallel import DistributedDataParallel as DDP
@@ -60,8 +82,6 @@ class ImagenetOperator(TrainingOperator):
                 "NVIDIA APEX {}. AMP {}.".format(
                 "installed" if has_apex else 'not installed',
                 "on" if (has_apex and args.amp) else "off"))
-            # todo: this is not exactly what they do in the original,
-            # instead they print right after initializing AMP
 
         self.model_ema = None
         if args.model_ema:
@@ -122,7 +142,6 @@ class ImagenetOperator(TrainingOperator):
             if self.use_gpu:
                 input, target = input.cuda(), target.cuda()
 
-            # todo: support no-gpu training
             if args.mixup > 0.:
                 mixup_disabled = False
                 if args.mixup_off_epoch:
@@ -157,15 +176,13 @@ class ImagenetOperator(TrainingOperator):
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def train_epoch(self, iterator, info):
-        # todo: we need to do this, but we cant (it's also epoch-dependent)
-        # so can't be done in setup
-        # loader_train.sampler.set_epoch(epoch)
-
         loader = self.train_loader
 
         args = self.config["args"]
 
-        # todo: same here
+        # even though we already received the iterator, changing
+        # the loader/sampler state is fine since the iterator checks that state
+        # on every call to next()
         if args.prefetcher and args.mixup > 0 and loader.mixup_enabled:
             if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
                 loader.mixup_enabled = False
@@ -202,23 +219,19 @@ class ImagenetOperator(TrainingOperator):
                 "global_step": self.global_step
             }
             batch_info.update(info)
-            print('HELLO', batch_idx)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
             batch_time_m.update(time.time() - end)
 
-            print('Test')
             if last_batch or batch_idx % args.log_interval == 0:
                 lrl = [
-                    param_group['lr']
+                    param_group["lr"]
                     for param_group in self.optimizer.param_groups
                 ]
                 lr = sum(lrl) / len(lrl)
 
-                print('HELLO', loss.data)
-                # todo: this won't work at all because we have to reduce first
-                # reduced_loss = reduce_tensor(loss.data, self.world_size)
-                # losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
+                reduced_loss = reduce_tensor(loss.data, self.world_size)
+                losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
 
                 if self.world_rank == 0:
                     total_samples = (
@@ -266,10 +279,9 @@ class ImagenetOperator(TrainingOperator):
             #         model, optimizer, args, epoch,
             #         model_ema=model_ema, use_amp=use_amp, batch_idx=batch_idx)
 
-            # fixme: need metric
-            # if self.scheduler is not None:
-            #     self.scheduler.step_update(
-            #         num_updates=self.global_step, metric=losses_m.avg)
+            if self.scheduler is not None:
+                self.scheduler.step_update(
+                    num_updates=self.global_step, metric=losses_m.avg)
 
             end = time.time()
             self.global_step += 1
@@ -319,8 +331,6 @@ def model_creator(config, sys_info):
 def data_creator(config, sys_info):
     args = config["args"]
 
-    # todo: does Ray break this?
-    # we kinda do initialization out of order
     torch.manual_seed(args.seed + sys_info["world_rank"])
 
     train_dir = join(args.data, "train")
@@ -329,7 +339,6 @@ def data_creator(config, sys_info):
     if args.mock_data:
         util.mock_data(train_dir, val_dir)
 
-    # todo: verbose should depend on rank
     data_config = resolve_data_config(
         vars(args), verbose=sys_info["world_rank"] == 0)
 
@@ -362,18 +371,10 @@ def data_creator(config, sys_info):
         mean=data_config["mean"],
         std=data_config["std"],
         num_workers=1,
-        distributed=False,  # we add the samplers ourselves
+        # we add the samplers ourselves, since they need distributed to be
+        # setup
+        distributed=False,
         pin_memory=args.pin_mem)
-
-    # todo: can't do this here since the process group was not init yet
-    # can't do this in setup cause there is no access to datasets there
-    # if args.distributed:
-    #     if is_training:
-    #         sampler = DistributedSampler(dataset)
-    #     else:
-    #         # This will add extra duplicate entries to result in equal num
-    #         # of samples per-process, will slightly alter validation results
-    #         sampler = OrderedDistributedSampler(dataset)
 
     train_loader = create_loader(
         dataset_train,
@@ -451,7 +452,7 @@ def main():
         use_tqdm=True,
         use_fp16=args.amp,
         wrap_ddp=False,
-        add_dist_sampler=True, # todo: handle this manually
+        add_dist_sampler=False,  # we handle this manually
         apex_args={"opt_level": "O1"},
         config={
             "args": args,
@@ -468,7 +469,10 @@ def main():
         info["epoch_idx"] = i
         info["num_epochs"] = args.epochs
 
-        trainer.train(num_steps=1 if args.smoke_test else None, info=info)
+        trainer.train(
+            num_steps=1 if args.smoke_test else None,
+            reduce_results=False,
+            info=info)
 
         val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
