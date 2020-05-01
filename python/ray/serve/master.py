@@ -366,7 +366,7 @@ class ServeMaster:
         Clears self.endpoints_to_remove.
         """
         for endpoint_tag in self.endpoints_to_remove:
-            await self.router.remove_service.remote(endpoint_tag)
+            await self.router.remove_endpoint.remote(endpoint_tag)
         self.endpoints_to_remove.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
@@ -456,7 +456,7 @@ class ServeMaster:
         be added to the HTTP proxy (can only be accessed via a handle).
         """
         async with self.write_lock:
-            # If this is a headless service with no route, key the endpoint
+            # If this is a headless endpoint with no route, key the endpoint
             # based on its name.
             # TODO(edoakes): we should probably just store routes and endpoints
             # separately.
