@@ -1,4 +1,3 @@
-import inspect
 from functools import wraps
 from tempfile import mkstemp
 
@@ -11,8 +10,8 @@ from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.utils import block_until_http_ready, retry_actor_failures
-from ray.serve.exceptions import RayServeException, batch_annotation_not_found
-from ray.serve.backend_config import BackendConfig
+from ray.serve.exceptions import RayServeException
+from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
@@ -56,7 +55,7 @@ def accept_batch(f):
             def __call__(self, *, python_arg=None):
                 assert isinstance(python_arg, list)
     """
-    f.serve_accept_batch = True
+    f._serve_accept_batch = True
     return f
 
 
@@ -176,15 +175,19 @@ def delete_endpoint(endpoint):
 
 
 @_ensure_connected
-def set_backend_config(backend_tag, backend_config):
-    """Set a backend configuration for a backend tag
+def update_backend_config(backend_tag, config_options):
+    """Update a backend configuration for a backend tag.
+
+    Keys not specified in the passed will be left unchanged.
 
     Args:
         backend_tag(str): A registered backend.
-        backend_config(BackendConfig) : Desired backend configuration.
+        config_options(dict): Backend config options to update.
     """
-    retry_actor_failures(master_actor.set_backend_config, backend_tag,
-                         backend_config)
+    if not isinstance(config_options, dict):
+        raise ValueError("config_options must be a dictionary.")
+    retry_actor_failures(master_actor.update_backend_config, backend_tag,
+                         config_options)
 
 
 @_ensure_connected
@@ -197,56 +200,37 @@ def get_backend_config(backend_tag):
     return retry_actor_failures(master_actor.get_backend_config, backend_tag)
 
 
-def _backend_accept_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "serve_accept_batch")
-
-
 @_ensure_connected
-def create_backend(func_or_class,
-                   backend_tag,
+def create_backend(backend_tag,
+                   func_or_class,
                    *actor_init_args,
-                   backend_config=None):
-    """Create a backend using func_or_class and assign backend_tag.
+                   ray_actor_options=None,
+                   config=None):
+    """Create a backend with the provided tag.
+
+    The backend will serve requests with func_or_class.
 
     Args:
+        backend_tag (str): a unique tag assign to identify this backend.
         func_or_class (callable, class): a function or a class implementing
             __call__.
-        backend_tag (str): a unique tag assign to this backend. It will be used
-            to associate services in traffic policy.
-        backend_config (BackendConfig): An object defining backend properties
-        for starting a backend.
-        *actor_init_args (optional): the argument to pass to the class
+        actor_init_args (optional): the arguments to pass to the class.
             initialization method.
+        ray_actor_options (optional): options to be passed into the
+            @ray.remote decorator for the backend actor.
+        config: (optional) configuration options for this backend.
     """
-    # Configure backend_config
-    if backend_config is None:
-        backend_config = BackendConfig()
-    assert isinstance(backend_config,
-                      BackendConfig), ("backend_config must be"
-                                       " of instance BackendConfig")
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary.")
 
-    # Validate that func_or_class is a function or class.
-    if inspect.isfunction(func_or_class):
-        if len(actor_init_args) != 0:
-            raise ValueError(
-                "actor_init_args not supported for function backend.")
-    elif not inspect.isclass(func_or_class):
-        raise ValueError(
-            "Backend must be a function or class, it is {}.".format(
-                type(func_or_class)))
-
-    # Make sure the batch size is correct.
-    should_accept_batch = backend_config.max_batch_size is not None
-    if should_accept_batch and not _backend_accept_batch(func_or_class):
-        raise batch_annotation_not_found
-    if _backend_accept_batch(func_or_class):
-        backend_config.has_accept_batch_annotation = True
+    replica_config = ReplicaConfig(
+        func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
+    backend_config = BackendConfig(config, replica_config.accepts_batches)
 
     retry_actor_failures(master_actor.create_backend, backend_tag,
-                         backend_config, func_or_class, actor_init_args)
+                         backend_config, replica_config)
 
 
 @_ensure_connected
