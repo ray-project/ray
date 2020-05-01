@@ -130,8 +130,8 @@ It's important to note that RayServe places these backends in individual workers
     def __call__(self, flask_request):
         return self.msg
 
-  serve.create_backend(handle_request, "simple_backend")
-  serve.create_backend(RequestHandler, "simple_backend_class")
+  serve.create_backend("simple_backend", handle_request)
+  serve.create_backend("simple_backend_class", RequestHandler)
 
 Lastly, we need to link the particular backend to the server endpoint. 
 To do that we'll use the ``link`` capability.
@@ -141,7 +141,7 @@ For instance, you can route 50% of traffic to Model A and 50% of traffic to Mode
 
 .. code-block:: python
 
-  serve.link("simple_backend", "simple_endpoint")
+  serve.set_traffic("simple_backend", {"simple_endpoint": 1.0})
 
 Once we've done that, we can now query our endpoint via HTTP (we use `requests` to make HTTP calls here).
 
@@ -173,8 +173,8 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 
 .. code-block:: python
 
-  config = serve.BackendConfig(num_replicas=2)
-  serve.create_backend(handle_request, "my_scaled_endpoint_backend", backend_config=config)
+  config = {"num_replicas": 2}
+  serve.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
 
 This will scale out the number of workers that can accept requests.
 
@@ -210,9 +210,9 @@ You can also have RayServe batch requests for performance. You'll configure this
 
   serve.create_endpoint("counter1", "/increment")
 
-  config = BackendConfig(max_batch_size=5)
-  serve.create_backend(BatchingExample, "counter1", backend_config=config)
-  serve.link("counter1", "counter1")
+  config = {"max_batch_size": 5}
+  serve.create_backend("counter1", BatchingExample, config=config)
+  serve.set_traffic("counter1", {"counter1": 1.0})
 
 Other Resources
 ----------------

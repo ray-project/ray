@@ -6,10 +6,8 @@ import time
 
 import ray
 import ray.cloudpickle as pickle
-from ray.serve.backend_config import BackendConfig
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
                                  SERVE_PROXY_NAME, SERVE_METRIC_MONITOR_NAME)
-from ray.serve.exceptions import batch_annotation_not_found
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
@@ -56,7 +54,7 @@ class ServeMaster:
         self.kv_store_client = kv_store_connector("serve_checkpoints")
         # path -> (endpoint, methods).
         self.routes = {}
-        # backend -> (worker_creator, init_args, backend_config).
+        # backend -> (backend_worker, backend_config, replica_config).
         self.backends = {}
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
@@ -238,9 +236,9 @@ class ServeMaster:
                 await self.router.add_new_worker.remote(
                     backend_tag, replica_tag, worker)
 
-        for backend, (_, _, backend_config_dict) in self.backends.items():
+        for backend, (_, backend_config, _) in self.backends.items():
             await self.router.set_backend_config.remote(
-                backend, backend_config_dict)
+                backend, backend_config)
 
         # Push configuration state to the HTTP proxy.
         await self.http_proxy.set_route_table.remote(self.routes)
@@ -261,8 +259,8 @@ class ServeMaster:
     def get_backend_configs(self):
         """Fetched by the router on startup."""
         backend_configs = {}
-        for backend, (_, _, backend_config_dict) in self.backends.items():
-            backend_configs[backend] = backend_config_dict
+        for backend, (_, backend_config, _) in self.backends.items():
+            backend_configs[backend] = backend_config
         return backend_configs
 
     def get_traffic_policies(self):
@@ -285,16 +283,15 @@ class ServeMaster:
         """
         logger.debug("Starting worker '{}' for backend '{}'.".format(
             replica_tag, backend_tag))
-        worker_creator, init_args, config_dict = self.backends[backend_tag]
-        # TODO(edoakes): just store the BackendConfig in self.backends.
-        backend_config = BackendConfig(**config_dict)
-        kwargs = backend_config.get_actor_creation_args()
+        (backend_worker, backend_config,
+         replica_config) = self.backends[backend_tag]
 
-        worker_handle = async_retryable(ray.remote(worker_creator)).options(
+        worker_handle = async_retryable(ray.remote(backend_worker)).options(
             detached=True,
             name=replica_tag,
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-            **kwargs).remote(backend_tag, replica_tag, init_args)
+            **replica_config.ray_actor_options).remote(
+                backend_tag, replica_tag, replica_config.actor_init_args)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle
@@ -534,20 +531,19 @@ class ServeMaster:
             await self.http_proxy.set_route_table.remote(self.routes)
             await self._remove_pending_endpoints()
 
-    async def create_backend(self, backend_tag, backend_config, func_or_class,
-                             actor_init_args):
+    async def create_backend(self, backend_tag, backend_config,
+                             replica_config):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            backend_config_dict = dict(backend_config)
-            backend_worker = create_backend_worker(func_or_class)
+            backend_worker = create_backend_worker(
+                replica_config.func_or_class)
 
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
-            self.backends[backend_tag] = (backend_worker, actor_init_args,
-                                          backend_config_dict)
+            self.backends[backend_tag] = (backend_worker, backend_config,
+                                          replica_config)
 
-            self._scale_replicas(backend_tag,
-                                 backend_config_dict["num_replicas"])
+            self._scale_replicas(backend_tag, backend_config.num_replicas)
 
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
@@ -558,7 +554,7 @@ class ServeMaster:
             # Set the backend config inside the router
             # (particularly for max-batch-size).
             await self.router.set_backend_config.remote(
-                backend_tag, backend_config_dict)
+                backend_tag, backend_config)
 
     async def delete_backend(self, backend_tag):
         async with self.write_lock:
@@ -592,37 +588,21 @@ class ServeMaster:
             await self._stop_pending_replicas()
             await self._remove_pending_backends()
 
-    async def set_backend_config(self, backend_tag, backend_config):
+    async def update_backend_config(self, backend_tag, config_options):
         """Set the config for the specified backend."""
         async with self.write_lock:
-            if backend_tag not in self.backends:
-                raise ValueError(
-                    "Backend '{}' is not registered.".format(backend_tag))
-            if not isinstance(backend_config, BackendConfig):
-                raise ValueError("backend_config must be a BackendConfig.")
-            backend_config_dict = dict(backend_config)
-            backend_worker, init_args, old_backend_config_dict = self.backends[
+            assert (backend_tag in self.backends
+                    ), "Backend {} is not registered.".format(backend_tag)
+            assert isinstance(config_options, dict)
+            backend_worker, backend_config, replica_config = self.backends[
                 backend_tag]
 
-            if (not old_backend_config_dict["has_accept_batch_annotation"]
-                    and backend_config.max_batch_size is not None):
-                raise batch_annotation_not_found
-
-            self.backends[backend_tag] = (backend_worker, init_args,
-                                          backend_config_dict)
-
-            # Restart replicas if there is a change in the backend config
-            # related to restart_configs.
-            need_to_restart_replicas = any(
-                old_backend_config_dict[k] != backend_config_dict[k]
-                for k in BackendConfig.restart_on_change_fields)
-            if need_to_restart_replicas:
-                # Kill all the replicas for restarting with new configurations.
-                self._scale_replicas(backend_tag, 0)
+            backend_config.update(config_options)
+            self.backends[backend_tag] = (backend_worker, backend_config,
+                                          replica_config)
 
             # Scale the replicas with the new configuration.
-            self._scale_replicas(backend_tag,
-                                 backend_config_dict["num_replicas"])
+            self._scale_replicas(backend_tag, backend_config.num_replicas)
 
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
@@ -632,7 +612,7 @@ class ServeMaster:
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
             await self.router.set_backend_config.remote(
-                backend_tag, backend_config_dict)
+                backend_tag, backend_config)
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
@@ -641,4 +621,4 @@ class ServeMaster:
         """Get the current config for the specified backend."""
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
-        return BackendConfig(**self.backends[backend_tag][2])
+        return self.backends[backend_tag][2]

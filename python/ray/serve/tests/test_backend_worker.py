@@ -8,7 +8,7 @@ import ray.serve.context as context
 from ray.serve.policy import RoundRobinPolicyQueueActor
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.request_params import RequestMetadata
-from ray.serve.backend_config import BackendConfig
+from ray.serve.config import BackendConfig
 
 pytestmark = pytest.mark.asyncio
 
@@ -161,7 +161,10 @@ async def test_task_runner_custom_method_batch(serve_instance):
 
     await q.set_traffic.remote(PRODUCER_NAME, {CONSUMER_NAME: 1.0})
     await q.set_backend_config.remote(
-        CONSUMER_NAME, BackendConfig(max_batch_size=10).__dict__)
+        CONSUMER_NAME,
+        BackendConfig({
+            "max_batch_size": 10
+        }, accepts_batches=True))
 
     a_query_param = RequestMetadata(
         PRODUCER_NAME, context.TaskContext.Python, call_method="a")
