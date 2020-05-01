@@ -154,10 +154,10 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
-    JNIEnv *env, jclass, jbyteArray actorId, jboolean noReconstruction) {
+    JNIEnv *env, jclass, jbyteArray actorId, jboolean noRestart) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
       JavaByteArrayToId<ActorID>(env, actorId),
-      /*force_kill=*/true, noReconstruction);
+      /*force_kill=*/true, noRestart);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

@@ -62,7 +62,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(BaseActor actor, boolean noReconstruction) {
+  public void killActor(BaseActor actor, boolean noRestart) {
     throw new UnsupportedOperationException();
   }
 

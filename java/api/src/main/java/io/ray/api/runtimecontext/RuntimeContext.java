@@ -22,11 +22,11 @@ public interface RuntimeContext {
   ActorId getCurrentActorId();
 
   /**
-   * Returns true if the current actor was reconstructed, false if it's created for the first time.
+   * Returns true if the current actor was restarted, false if it's created for the first time.
    *
    * Note, this method should only be called from an actor creation task.
    */
-  boolean wasCurrentActorReconstructed();
+  boolean wasCurrentActorRestarted();
 
   /**
    * Get the raylet socket name.

@@ -125,7 +125,7 @@ public class GcsClient {
     return primary.exists(key);
   }
 
-  public boolean wasCurrentActorReconstructed(ActorId actorId) {
+  public boolean wasCurrentActorRestarted(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
     if (!RayConfig.getInstance().gcsServiceEnabled) {
       return primary.exists(key);
@@ -142,7 +142,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-    return actorTableData.getNumReconstructions() == 0;
+    return actorTableData.getNumRestarts() == 0;
   }
 
   /**

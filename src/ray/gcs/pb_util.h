@@ -60,7 +60,7 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
 /// Helper function to produce actor table data.
 inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
     const TaskSpecification &task_spec, const ray::rpc::Address &address,
-    ray::rpc::ActorTableData::ActorState state, uint64_t num_reconstructions) {
+    ray::rpc::ActorTableData::ActorState state, uint64_t num_restarts) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_info_ptr = std::make_shared<ray::rpc::ActorTableData>();
@@ -71,10 +71,10 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_actor_creation_dummy_object_id(
       task_spec.ActorDummyObject().Binary());
   actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_restarts(task_spec.MaxActorReconstructions());
+  actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_num_reconstructions(num_reconstructions);
+  actor_info_ptr->set_num_restarts(num_restarts);
   actor_info_ptr->mutable_address()->CopyFrom(address);
   actor_info_ptr->mutable_owner_address()->CopyFrom(
       task_spec.GetMessage().caller_address());

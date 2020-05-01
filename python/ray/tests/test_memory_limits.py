@@ -5,7 +5,7 @@ import ray
 
 MB = 1024 * 1024
 
-OBJECT_EVICTED = ray.exceptions.UnreconstructableError
+OBJECT_EVICTED = ray.exceptions.UnrestartableError
 OBJECT_TOO_LARGE = ray.exceptions.ObjectStoreFullError
 
 

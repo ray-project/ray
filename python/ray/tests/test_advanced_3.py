@@ -507,7 +507,7 @@ def test_put_pins_object(ray_start_object_store_memory):
     y_id = ray.put("HI", weakref=True)
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.UnrestartableError):
         ray.get(y_id)
 
 

@@ -299,7 +299,7 @@ class CoreWorkerTest : public ::testing::Test {
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(std::unordered_map<std::string, double> &resources);
+  void TestActorRestart(std::unordered_map<std::string, double> &resources);
 
  protected:
   bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
@@ -479,7 +479,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
   }
 }
 
-void CoreWorkerTest::TestActorReconstruction(
+void CoreWorkerTest::TestActorRestart(
     std::unordered_map<std::string, double> &resources) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
@@ -510,10 +510,10 @@ void CoreWorkerTest::TestActorReconstruction(
         };
         ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
 
-        RAY_LOG(INFO) << "actor has been reconstructed";
+        RAY_LOG(INFO) << "actor has been restarted";
       }
 
-      // wait for actor being reconstructed.
+      // wait for actor being restarted.
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByValue.
@@ -556,7 +556,7 @@ void CoreWorkerTest::TestActorFailure(
         ASSERT_EQ(system("pkill mock_worker"), 0);
       }
 
-      // wait for actor being reconstructed.
+      // wait for actor being restarted.
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByRef and PassByValue.
@@ -998,13 +998,13 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestActorTaskLocalReconstruction) {
   std::unordered_map<std::string, double> resources;
-  TestActorReconstruction(resources);
+  TestActorRestart(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodesReconstruction) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorReconstruction(resources);
+  TestActorRestart(resources);
 }
 
 TEST_F(SingleNodeTest, TestActorTaskLocalFailure) {

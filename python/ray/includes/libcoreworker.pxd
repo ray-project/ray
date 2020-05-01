@@ -96,7 +96,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
-            c_bool no_reconstruction)
+            c_bool no_restart)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)

@@ -878,7 +878,7 @@ cdef class CoreWorker:
                      Language language,
                      FunctionDescriptor function_descriptor,
                      args,
-                     int64_t max_reconstructions,
+                     int64_t max_restarts,
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
@@ -904,7 +904,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, max_concurrency,
+                        max_restarts, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
@@ -945,13 +945,13 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def kill_actor(self, ActorID actor_id, c_bool no_reconstruction):
+    def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_reconstruction))
+                  c_actor_id, True, no_restart))
 
     def resource_ids(self):
         cdef:

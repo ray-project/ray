@@ -70,9 +70,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_id The actor_id of the actor to kill.
   /// \param[in] force_kill Whether to force kill the actor, or let the actor
   /// try a clean exit.
-  /// \param[in] no_reconstruction If set to true, the killed actor will not be
-  /// reconstructed anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Create connection to actor and send all pending tasks.
   ///

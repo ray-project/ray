@@ -13,7 +13,7 @@ from ray.exceptions import (
     RayTaskError,
     RayActorError,
     RayWorkerError,
-    UnreconstructableError,
+    UnrestartableError,
 )
 from ray._raylet import (
     split_buffer,
@@ -280,7 +280,7 @@ class SerializationContext:
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return UnreconstructableError(ray.ObjectID(object_id.binary()))
+                return UnrestartableError(ray.ObjectID(object_id.binary()))
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."

@@ -652,7 +652,7 @@ def init(address=None,
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
-            pressure, ray.UnreconstructableError may be thrown. If False, then
+            pressure, ray.UnrestartableError may be thrown. If False, then
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
@@ -1498,7 +1498,7 @@ def get(object_ids, timeout=None):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
-                if isinstance(value, ray.exceptions.UnreconstructableError):
+                if isinstance(value, ray.exceptions.UnrestartableError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -1754,10 +1754,10 @@ def remote(*args, **kwargs):
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
     * **max_restarts**: Only for *actors*. This specifies the maximum
-      number of times that the actor should be reconstructed when it dies
+      number of times that the actor should be restarted when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
-      that the actor doesn't need to be reconstructed. A value of -1
-      indicates that an actor should be reconstructed indefinitely.
+      that the actor doesn't need to be restarted. A value of -1
+      indicates that an actor should be restarted indefinitely.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
@@ -1823,7 +1823,7 @@ def remote(*args, **kwargs):
             "object_store_memory",
             "resources",
             "max_calls",
-            "max_reconstructions",
+            "max_restarts",
             "max_retries",
         ], error_string
 
@@ -1841,7 +1841,7 @@ def remote(*args, **kwargs):
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
-    max_reconstructions = kwargs.get("max_reconstructions")
+    max_restarts = kwargs.get("max_restarts")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
@@ -1854,6 +1854,6 @@ def remote(*args, **kwargs):
         object_store_memory=object_store_memory,
         resources=resources,
         max_calls=max_calls,
-        max_reconstructions=max_reconstructions,
+        max_restarts=max_restarts,
         max_retries=max_retries,
         worker=worker)

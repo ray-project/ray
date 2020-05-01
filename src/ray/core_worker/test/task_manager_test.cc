@@ -142,7 +142,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
-TEST_F(TaskManagerTest, TestTaskRetry) {
+TEST_F(TaskManagerTest, TestTaskReconstruction) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();

@@ -49,10 +49,10 @@ If an actor process crashes unexpectedly, Ray will attempt to reconstruct the
 actor process. The desired functionality can be specified with
 the ``max_restarts`` keyword, which by default is ``0``. A
 ``max_restarts`` set to -1 indicates to retry indefinitely on failure.
-After the specified number of reconstructions, subsequent actor methods will
+After the specified number of restarts, subsequent actor methods will
 raise exceptions.
 
-When an actor is reconstructed, its state will be recreated by rerunning its
+When an actor is restarted, its state will be recreated by rerunning its
 constructor.
 
 You can experiment with this behavior by running the following code.
@@ -79,8 +79,8 @@ You can experiment with this behavior by running the following code.
 
     actor = Actor.remote()
 
-    # The actor will be reconstructed up to 5 times. After that, methods will
-    # raise exceptions. The actor is reconstructed by rerunning its
+    # The actor will be restarted up to 5 times. After that, methods will
+    # raise exceptions. The actor is restarted by rerunning its
     # constructor. Methods that were executing when the actor died will also
     # raise exceptions.
     for _ in range(100):

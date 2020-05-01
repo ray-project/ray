@@ -16,20 +16,20 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 @Test
-public class ActorReconstructionTest extends BaseTest {
+public class ActorRetryTest extends BaseTest {
 
   public static class Counter {
 
     protected int value = 0;
 
-    private boolean wasCurrentActorReconstructed = false;
+    private boolean wasCurrentActorRestarted = false;
 
     public Counter() {
-      wasCurrentActorReconstructed = Ray.getRuntimeContext().wasCurrentActorReconstructed();
+      wasCurrentActorRestarted = Ray.getRuntimeContext().wasCurrentActorRestarted();
     }
 
-    public boolean wasCurrentActorReconstructed() {
-      return wasCurrentActorReconstructed;
+    public boolean wasCurrentActorRestarted() {
+      return wasCurrentActorRestarted;
     }
 
     public int increase() {
@@ -42,17 +42,17 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  public void testActorReconstruction() throws InterruptedException, IOException {
+  public void testActorRestart() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
+        new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(Counter::increase).get();
     }
 
-    Assert.assertFalse(actor.call(Counter::wasCurrentActorReconstructed).get());
+    Assert.assertFalse(actor.call(Counter::wasCurrentActorRestarted).get());
 
     // Kill the actor process.
     int pid = actor.call(Counter::getPid).get();
@@ -63,7 +63,7 @@ public class ActorReconstructionTest extends BaseTest {
     int value = actor.call(Counter::increase).get();
     Assert.assertEquals(value, 1);
 
-    Assert.assertTrue(actor.call(Counter::wasCurrentActorReconstructed).get());
+    Assert.assertTrue(actor.call(Counter::wasCurrentActorRestarted).get());
 
     // Kill the actor process again.
     pid = actor.call(Counter::getPid).get();
@@ -124,7 +124,7 @@ public class ActorReconstructionTest extends BaseTest {
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
-        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
+        new ActorCreationOptions.Builder().setMaxRestarts(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {

@@ -37,7 +37,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
             with pytest.raises(ray.exceptions.RayTimeoutError):
                 ray.get(oid, timeout=0.1)
         else:
-            with pytest.raises(ray.exceptions.UnreconstructableError):
+            with pytest.raises(ray.exceptions.UnrestartableError):
                 ray.get(oid)
 
 
@@ -401,7 +401,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
         assert ray.get(tail_oid) is None
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
+    except ray.exceptions.UnrestartableError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -500,7 +500,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         ray.get(child_return_id)
         assert not failure
     except (ray.exceptions.RayWorkerError,
-            ray.exceptions.UnreconstructableError):
+            ray.exceptions.UnrestartableError):
         assert failure
     del child_return_id
 

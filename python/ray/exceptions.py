@@ -145,7 +145,7 @@ class ObjectStoreFullError(RayError):
             "https://docs.ray.io/en/latest/memory-management.html.")
 
 
-class UnreconstructableError(RayError):
+class UnrestartableError(RayError):
     """Indicates that an object is lost and cannot be reconstructed.
 
     Note, this exception only happens for actor objects. If actor's current
@@ -187,6 +187,6 @@ RAY_EXCEPTION_TYPES = [
     RayWorkerError,
     RayActorError,
     ObjectStoreFullError,
-    UnreconstructableError,
+    UnrestartableError,
     RayTimeoutError,
 ]

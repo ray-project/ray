@@ -274,7 +274,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
     def error_check(errors):
         if num_nodes == 1:
             # In a single-node setting, each object is evicted and
-            # reconstructed exactly once, so exactly half the objects will
+            # restarted exactly once, so exactly half the objects will
             # produce an error during reconstruction.
             min_errors = num_objects // 2
         else:
@@ -339,7 +339,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
 
     errors = wait_for_errors(error_check)
     assert all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-               or "ray.exceptions.UnreconstructableError" in error["message"]
+               or "ray.exceptions.UnrestartableError" in error["message"]
                for error in errors)
 
 

@@ -119,7 +119,7 @@ def test_actor_eviction(ray_start_object_store_memory):
             val = ray.get(obj)
             assert isinstance(val, np.ndarray), val
             num_success += 1
-        except ray.exceptions.UnreconstructableError:
+        except ray.exceptions.UnrestartableError:
             num_evicted += 1
     # Some objects should have been evicted, and some should still be in the
     # object store.
@@ -127,12 +127,12 @@ def test_actor_eviction(ray_start_object_store_memory):
     assert num_success > 0
 
 
-def test_actor_reconstruction(ray_start_regular):
+def test_actor_restart(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
     @ray.remote(max_restarts=1)
     class ReconstructableActor:
-        """An actor that will be reconstructed at most once."""
+        """An actor that will be restarted at most once."""
 
         def __init__(self):
             self.value = 0
@@ -156,14 +156,14 @@ def test_actor_reconstruction(ray_start_regular):
     time.sleep(0.2)
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, signal.SIGKILL)
-    # Check that the above task didn't fail and the actor is reconstructed.
+    # Check that the above task didn't fail and the actor is restarted.
     assert ray.get(result) == 4
     # Check that we can still call the actor.
     assert ray.get(actor.increase.remote()) == 5
     # kill actor process one more time.
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
-    # The actor has exceeded max reconstructions, and this task should fail.
+    # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
 
@@ -171,13 +171,13 @@ def test_actor_reconstruction(ray_start_regular):
     actor = ReconstructableActor.remote()
     # Intentionlly exit the actor
     actor.__ray_terminate__.remote()
-    # Check that the actor won't be reconstructed.
+    # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
 
 
-def test_actor_reconstruction_without_task(ray_start_regular):
-    """Test a dead actor can be reconstructed without sending task to it."""
+def test_actor_restart_without_task(ray_start_regular):
+    """Test a dead actor can be restarted without sending task to it."""
 
     @ray.remote(max_restarts=1)
     class ReconstructableActor:
@@ -200,20 +200,20 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     os.kill(pid, signal.SIGKILL)
 
     # Wait until the actor is reconstructed.
-    def check_reconstructed():
+    def check_restarted():
         worker = ray.worker.global_worker
         return worker.core_worker.object_exists(obj_ids[1])
 
-    assert wait_for_condition(check_reconstructed)
+    assert wait_for_condition(check_restarted)
 
 
-def test_caller_actor_reconstruction(ray_start_regular):
-    """Test tasks from a reconstructed actor can be correctly processed
+def test_caller_actor_restart(ray_start_regular):
+    """Test tasks from a restarted actor can be correctly processed
        by the receiving actor."""
 
     @ray.remote(max_restarts=1)
     class ReconstructableActor:
-        """An actor that will be reconstructed at most once."""
+        """An actor that will be restarted at most once."""
 
         def __init__(self, actor):
             self.actor = actor
@@ -226,7 +226,7 @@ def test_caller_actor_reconstruction(ray_start_regular):
 
     @ray.remote(max_restarts=1)
     class Actor:
-        """An actor that will be reconstructed at most once."""
+        """An actor that will be restarted at most once."""
 
         def __init__(self):
             self.value = 0
@@ -263,7 +263,7 @@ def test_caller_task_reconstruction(ray_start_regular):
 
     @ray.remote(max_restarts=1)
     class Actor:
-        """An actor that will be reconstructed at most once."""
+        """An actor that will be restarted at most once."""
 
         def __init__(self):
             self.value = 0
@@ -277,7 +277,7 @@ def test_caller_task_reconstruction(ray_start_regular):
     assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
-def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
+def test_actor_restart_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
     cluster = ray_start_cluster_head
     max_restarts = 3
@@ -319,11 +319,11 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
 
     for i in range(max_restarts):
         object_store_socket = ray.get(actor.get_object_store_socket.remote())
-        # Kill actor's node and the actor should be reconstructed
+        # Kill actor's node and the actor should be restarted
         # on a different node.
         kill_node(object_store_socket)
         # Call increase again.
-        # Check that the actor is reconstructed and value is correct.
+        # Check that the actor is restarted and value is correct.
         assert ray.get(actor.increase.remote()) == 4 + i
         # Check that the actor is now on a different node.
         assert object_store_socket != ray.get(
@@ -332,7 +332,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     # kill the node again.
     object_store_socket = ray.get(actor.get_object_store_socket.remote())
     kill_node(object_store_socket)
-    # The actor has exceeded max reconstructions, and this task should fail.
+    # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
 
@@ -347,7 +347,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
             initial_reconstruction_timeout_milliseconds=1000)
     ],
     indirect=True)
-def test_multiple_actor_reconstruction(ray_start_cluster_head):
+def test_multiple_actor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be
@@ -525,7 +525,7 @@ def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
 
-    @ray.remote(max_reconstructions=2)
+    @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
             raise Exception("Intentional error saving checkpoint.")
@@ -564,7 +564,7 @@ def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
 
-    @ray.remote(max_reconstructions=2)
+    @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
             raise Exception("Intentional error loading checkpoint.")

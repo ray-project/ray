@@ -290,7 +290,7 @@ message AddTaskLeaseReply {
 }
 
 message AttemptTaskReconstructionRequest {
-  TaskReconstructionData task_reconstruction = 1;
+  TaskReconstructionData task_retry = 1;
 }
 
 message AttemptTaskReconstructionReply {

@@ -568,7 +568,7 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
   // will eventually be stored for the objects (either an
-  // UnreconstructableError or a value reconstructed from lineage).
+  // UnrestartableError or a value reconstructed from lineage).
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
@@ -1209,10 +1209,10 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
-                             bool no_reconstruction) {
+                             bool no_restart) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_reconstruction);
+  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
   return Status::OK();
 }
 
@@ -1312,7 +1312,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
           }
         }));
   }
@@ -1757,7 +1757,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
-    if (request.no_reconstruction()) {
+    if (request.no_restart()) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
     if (options_.num_workers > 1) {

@@ -206,7 +206,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     results = []
     for _ in range(10):
         results += [inc.remote(actor) for actor in actors]
-    # Make sure that we can get the results from the reconstructed actor.
+    # Make sure that we can get the results from the restarted actor.
     results = ray.get(results)
 
 
@@ -729,7 +729,7 @@ def test_actor_creation_task_crash(ray_start_regular):
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.f.remote())
 
-    # Test an actor can be reconstructed successfully
+    # Test an actor can be restarted successfully
     # afte it dies in its constructor.
     @ray.remote(max_restarts=3)
     class ReconstructableActor:

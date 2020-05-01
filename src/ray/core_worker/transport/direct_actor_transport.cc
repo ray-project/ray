@@ -24,26 +24,26 @@ namespace ray {
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
                                                    bool force_kill,
-                                                   bool no_reconstruction) {
+                                                   bool no_restart) {
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(force_kill);
-  request.set_no_reconstruction(no_reconstruction);
+  request.set_no_restart(no_restart);
   auto inserted = pending_force_kills_.emplace(actor_id, request);
   if (!inserted.second && force_kill) {
     // Overwrite the previous request to kill the actor if the new request is a
     // force kill.
     inserted.first->second.set_force_kill(true);
-    if (no_reconstruction) {
+    if (no_restart) {
       // Overwrite the previous request to disable reconstruction if the new request's
-      // no_reconstruction flag is set to true.
-      inserted.first->second.set_no_reconstruction(true);
+      // no_restart flag is set to true.
+      inserted.first->second.set_no_restart(true);
     }
   }
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
-    // Actor is not yet created, or is being reconstructed, cache the request
+    // Actor is not yet created, or is being restarted, cache the request
     // and submit after actor is alive.
     // TODO(zhijunfu): it might be possible for a user to specify an invalid
     // actor handle (e.g. from unpickling), in that case it might be desirable
@@ -85,7 +85,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
     auto it = rpc_clients_.find(actor_id);
     if (it == rpc_clients_.end()) {
-      // Actor is not yet created, or is being reconstructed, cache the request
+      // Actor is not yet created, or is being restarted, cache the request
       // and submit after actor is alive.
       // TODO(zhijunfu): it might be possible for a user to specify an invalid
       // actor handle (e.g. from unpickling), in that case it might be desirable
@@ -322,7 +322,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   if (it != scheduling_queue_.end()) {
     if (it->second.first.caller_worker_id != caller_worker_id) {
       // We received a request with the same caller ID, but from a different worker,
-      // this indicates the caller (actor) is reconstructed.
+      // this indicates the caller (actor) is restarted.
       if (it->second.first.caller_creation_timestamp_ms < caller_version) {
         // The new request has a newer caller version, then remove the old entry
         // from scheduling queue since it's invalid now.

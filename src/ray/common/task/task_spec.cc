@@ -190,9 +190,9 @@ ActorID TaskSpecification::ActorCreationId() const {
   return ActorID::FromBinary(message_->actor_creation_task_spec().actor_id());
 }
 
-int64_t TaskSpecification::MaxActorReconstructions() const {
+int64_t TaskSpecification::MaxActorRestarts() const {
   RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().max_actor_reconstructions();
+  return message_->actor_creation_task_spec().max_actor_restarts();
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
@@ -267,7 +267,7 @@ std::string TaskSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorReconstructions()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";

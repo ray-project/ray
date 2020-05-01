@@ -170,7 +170,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
   java_actor_creation_options_max_restarts =
-      env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
+      env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
   java_actor_creation_options_max_concurrency =

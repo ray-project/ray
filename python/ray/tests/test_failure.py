@@ -849,7 +849,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.UnrestartableError):
         ray.get(object_id)
     thread.join()
 
@@ -1001,7 +1001,7 @@ def test_eviction(ray_start_cluster):
     while ray.worker.global_worker.core_worker.object_exists(obj):
         time.sleep(1)
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.UnrestartableError):
         ray.get(obj)
 
     @ray.remote
