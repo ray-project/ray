@@ -1,5 +1,4 @@
 from functools import wraps
-from tempfile import mkstemp
 
 from multiprocessing import cpu_count
 
@@ -8,7 +7,6 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME)
 from ray.serve.master import ServeMaster
 from ray.serve.handle import RayServeHandle
-from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.utils import block_until_http_ready, retry_actor_failures
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
@@ -60,8 +58,6 @@ def accept_batch(f):
 
 
 def init(
-        kv_store_connector=None,
-        kv_store_path=None,
         blocking=False,
         start_server=True,
         http_host=DEFAULT_HTTP_HOST,
@@ -83,9 +79,6 @@ def init(
     requirement.
 
     Args:
-        kv_store_connector (callable): Function of (namespace) => TableObject.
-            We will use a SQLite connector that stores to /tmp by default.
-        kv_store_path (str, path): Path to the SQLite table.
         blocking (bool): If true, the function will wait for the HTTP server to
             be healthy, and other components to be ready before returns.
         start_server (bool): If true, `serve.init` starts http server.
@@ -128,21 +121,12 @@ def init(
                                    RequestMetadata.ray_serialize,
                                    RequestMetadata.ray_deserialize)
 
-    if kv_store_path is None:
-        _, kv_store_path = mkstemp()
-
-    # Serve has not been initialized, perform init sequence
-    # TODO move the db to session_dir.
-    #    ray.worker._global_node.address_info["session_dir"]
-    def kv_store_connector(namespace):
-        return SQLiteKVStore(namespace, db_path=kv_store_path)
-
     master_actor = ServeMaster.options(
         detached=True,
         name=SERVE_MASTER_NAME,
         max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-    ).remote(kv_store_connector, queueing_policy.value, policy_kwargs,
-             start_server, http_host, http_port, gc_window_seconds)
+    ).remote(queueing_policy.value, policy_kwargs, start_server, http_host,
+             http_port, gc_window_seconds)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
