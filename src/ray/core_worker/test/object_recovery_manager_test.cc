@@ -123,7 +123,7 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
             },
             task_resubmitter_, ref_counter_, memory_store_,
             [&](const ObjectID &object_id, bool pin_object) {
-              RAY_CHECK(failed_restarts_.count(object_id) == 0);
+              RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
               failed_reconstructions_[object_id] = pin_object;
 
               std::string meta =
