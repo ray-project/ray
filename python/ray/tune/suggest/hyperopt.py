@@ -88,6 +88,7 @@ class HyperOptSearch(Searcher):
             mode=mode,
             max_concurrent=max_concurrent,
             use_early_stopped_trials=use_early_stopped_trials)
+        self.max_concurrent = max_concurrent
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.
@@ -118,6 +119,9 @@ class HyperOptSearch(Searcher):
             self.rstate = np.random.RandomState(random_state_seed)
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         if self._points_to_evaluate > 0:
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
