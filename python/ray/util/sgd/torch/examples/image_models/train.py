@@ -29,7 +29,7 @@ from timm.optim import create_optimizer
 from timm.utils import setup_default_logging, distribute_bn, AverageMeter
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.loss import JsdCrossEntropy
-from timm.utils import OrderedDict
+from timm.utils import OrderedDict, reduce_tensor
 from timm.scheduler import create_scheduler
 
 import ray
@@ -153,7 +153,7 @@ class ImagenetOperator(TrainingOperator):
 
         with self.timers.record("fwd"):
             output = self.model(input)
-            loss = self.criterion(output, target)
+            loss = self.train_criterion(output, target)
 
         with self.timers.record("grad"):
             self.optimizer.zero_grad()
@@ -166,12 +166,13 @@ class ImagenetOperator(TrainingOperator):
         with self.timers.record("apply"):
             self.optimizer.step()
 
-        torch.cuda.synchronize()
+        if self.use_gpu:
+            torch.cuda.synchronize()
 
         if self.model_ema is not None:
             self.model_ema.update(model)
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
+        return {"train_loss": loss, NUM_SAMPLES: input.size(0)}
 
     def train_epoch(self, iterator, info):
         loader = self.train_loader
@@ -209,8 +210,6 @@ class ImagenetOperator(TrainingOperator):
         last_idx = len(loader) - 1
         num_updates = info["epoch_idx"] * len(loader)
         for batch_idx, batch in enumerate(iterator):
-            print('AAA', batch_idx)
-
             last_batch = batch_idx == last_idx
             data_time_m.update(time.time() - end)
 
@@ -223,7 +222,6 @@ class ImagenetOperator(TrainingOperator):
 
             batch_time_m.update(time.time() - end)
 
-            print('a')
             if last_batch or batch_idx % args.log_interval == 0:
                 lrl = [
                     param_group["lr"]
@@ -231,14 +229,14 @@ class ImagenetOperator(TrainingOperator):
                 ]
                 lr = sum(lrl) / len(lrl)
 
-                print('hello')
-                reduced_loss = reduce_tensor(loss.data, self.world_size)
-                losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
+                reduced_loss = reduce_tensor(
+                    metrics["train_loss"].data, self.world_size)
+                losses_m.update(reduced_loss.item(), metrics[NUM_SAMPLES])
 
                 total_samples = (
-                    metrics["NUM_STEPS"] * args.ray_num_workers)
+                    metrics[NUM_SAMPLES] * args.ray_num_workers)
 
-                logging.info(
+                _progress_bar.write(
                     "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
                     "Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  "
                     "Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  "
@@ -286,6 +284,7 @@ class ImagenetOperator(TrainingOperator):
 
             end = time.time()
             self.global_step += 1
+        _progress_bar.close()
 
 
         if hasattr(self.optimizer, 'sync_lookahead'):
@@ -466,11 +465,11 @@ def main():
         info["num_epochs"] = args.epochs
 
         trainer.train(
-            num_steps=10 if args.smoke_test else None,
+            num_steps=2 if args.smoke_test else None,
             reduce_results=False,
             info=info)
 
-        val_stats = trainer.validate(num_steps=10 if args.smoke_test else None)
+        val_stats = trainer.validate(num_steps=2 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()

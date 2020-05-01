@@ -14,6 +14,20 @@ BATCH_COUNT = "batch_count"
 NUM_SAMPLES = "num_samples"
 BATCH_SIZE = "*batch_size"
 
+_world_rank = None
+def world_rank():
+    if _world_rank is None:
+        raise ValueError(
+            "Ray SGD has not been initialized. "
+            "Cluster info is unavailable.")
+    return _world_rank
+_world_size = None
+def world_size():
+    if _world_size is None:
+        raise ValueError(
+            "Ray SGD has not been initialized. "
+            "Cluster info is unavailable.")
+    return _world_size
 
 class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
