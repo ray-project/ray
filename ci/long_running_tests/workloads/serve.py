@@ -36,7 +36,6 @@ ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
 serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
 
 
-@serve.route("/echo")
 @serve.accept_batch
 def echo(_):
     time.sleep(0.01)  # Sleep for 10ms
@@ -44,19 +43,18 @@ def echo(_):
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
-print("Scaling to 30 replicas")
-config = serve.get_backend_config("echo:v0")
-config.num_replicas = 30
-config.max_batch_size = 16
-serve.set_backend_config("echo:v0", config)
+serve.create_endpoint("echo", "/echo")
+config = {"num_replicas": 30, "max_batch_size": 16}
+serve.create_backend("echo:v1", echo, config=config)
+serve.set_traffic("echo", {"echo:v1": 1})
 
 print("Warming up")
 for _ in range(5):
-    resp = requests.get("http://127.0.0.1:8000/echo").json()
+    resp = requests.get("http://127.0.0.1:8000/echo").text
     print(resp)
     time.sleep(0.5)
 
-connections = int(config.num_replicas * config.max_batch_size * 0.75)
+connections = int(config["num_replicas"] * config["max_batch_size"] * 0.75)
 
 while True:
     proc = subprocess.Popen(

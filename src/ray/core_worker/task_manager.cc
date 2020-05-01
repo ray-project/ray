@@ -416,6 +416,15 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
   }
 }
 
+bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it != submissible_tasks_.end()) {
+    it->second.num_retries_left = 0;
+  }
+  return it != submissible_tasks_.end();
+}
+
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
@@ -434,6 +443,15 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
     // a number of retries.
     actor_manager_->PublishTerminatedActor(spec);
   }
+}
+
+absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return absl::optional<TaskSpecification>();
+  }
+  return it->second.spec;
 }
 
 }  // namespace ray

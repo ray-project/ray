@@ -1,5 +1,5 @@
 import gym
-from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
+from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
 import unittest
@@ -31,6 +31,13 @@ ACTION_SPACES_TO_TEST = {
         [Discrete(2),
          Discrete(3),
          Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    "dict": Dict({
+        "action_choice": Discrete(3),
+        "parameters": Box(-1.0, 1.0, (1, ), dtype=np.float32),
+        "yet_another_nested_dict": Dict({
+            "a": Tuple([Discrete(2), Discrete(3)])
+        })
+    }),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
@@ -89,9 +96,6 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
             try:
                 if a_name in covered_a and o_name in covered_o:
                     stat = "skip"  # speed up tests by avoiding full grid
-                # TODO(sven): Add necessary torch distributions.
-                elif torch and a_name in ["tuple", "multidiscrete"]:
-                    stat = "unsupported"
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
                     if alg not in ["DDPG", "ES", "ARS", "SAC"]:
@@ -196,7 +200,10 @@ class ModelSupportedSpaces(unittest.TestCase):
             check_bounds=True)
 
     def test_dqn(self):
-        check_support("DQN", {"timesteps_per_iteration": 1}, self.stats)
+        config = {"timesteps_per_iteration": 1}
+        check_support("DQN", config, self.stats)
+        config["use_pytorch"] = True
+        check_support("DQN", config, self.stats)
 
     def test_es(self):
         check_support(

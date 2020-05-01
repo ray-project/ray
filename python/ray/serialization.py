@@ -12,6 +12,7 @@ from ray.exceptions import (
     PlasmaObjectNotAvailable,
     RayTaskError,
     RayActorError,
+    RayCancellationError,
     RayWorkerError,
     UnrestartableError,
 )
@@ -279,6 +280,8 @@ class SerializationContext:
                 return RayWorkerError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
+            elif error_type == ErrorType.Value("TASK_CANCELLED"):
+                return RayCancellationError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return UnrestartableError(ray.ObjectID(object_id.binary()))
             else:

@@ -5,6 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.ActorCreationOptions.Builder;
+import io.ray.runtime.config.RayConfig;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
@@ -67,7 +68,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
-    // ray init
+    RayConfig.reset();
     Ray.init();
   }
 
@@ -142,6 +143,14 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
   @Test(timeOut = 60000)
   public void testWordCount() {
+    Ray.shutdown();
+    System.setProperty("ray.resources", "CPU:4,RES-A:4");
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+
+    System.setProperty("ray.run-mode", "CLUSTER");
+    System.setProperty("ray.redirect-output", "true");
+    // ray init
+    Ray.init();
     LOGGER.info("testWordCount");
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
         System.getProperty("ray.run-mode"));
@@ -157,7 +166,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.fromCollection(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
@@ -176,7 +185,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
           serializeResultToFile(resultFile, wordCount);
         });
 
-    streamingContext.execute("testWordCount");
+    streamingContext.execute("testSQWordCount");
 
     Map<String, Integer> checkWordCount =
         (Map<String, Integer>) deserializeResultFromFile(resultFile);

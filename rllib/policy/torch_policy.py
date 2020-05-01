@@ -333,7 +333,9 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def get_initial_state(self):
-        return [s.numpy() for s in self.model.get_initial_state()]
+        return [
+            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+        ]
 
     def extra_grad_process(self, optimizer, loss):
         """Called after each optimizer.zero_grad() + loss.backward() call.

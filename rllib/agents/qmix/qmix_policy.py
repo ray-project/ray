@@ -10,11 +10,10 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import _unpack_obs
+from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.tuple_actions import TupleActions
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
@@ -289,7 +288,7 @@ class QMixTorchPolicy(Policy):
             actions = actions.cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
-        return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
+        return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(Policy)
     def compute_log_likelihoods(self,
