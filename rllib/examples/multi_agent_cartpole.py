@@ -28,7 +28,9 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
-parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--stop-iters", type=int, default=20)
+parser.add_argument("--stop-reward", type=int, default=150)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--torch", action="store_true")
@@ -66,25 +68,33 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
-    results = tune.run(
-        "PPO",
-        stop={"training_iteration": args.num_iters},
-        config={
-            "env": MultiAgentCartPole,
-            "env_config": {
-                "num_agents": args.num_agents,
-            },
-            "log_level": "DEBUG",
-            "simple_optimizer": args.simple,
-            "num_sgd_iter": 10,
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": (
-                    lambda agent_id: random.choice(policy_ids)),
-            },
-            "use_pytorch": args.torch,
+    config = {
+        "env": MultiAgentCartPole,
+        "env_config": {
+            "num_agents": args.num_agents,
         },
-    )
+        "log_level": "DEBUG",
+        "simple_optimizer": args.simple,
+        "num_sgd_iter": 10,
+        "multiagent": {
+            "policies": policies,
+            "policy_mapping_fn": (
+                lambda agent_id: random.choice(policy_ids)),
+        },
+        "use_pytorch": args.torch,
+    }
+    stop = {
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+        "training_iteration": args.stop_iters,
+    }
+    from ray.rllib.agents.ppo import PPOTrainer
+    config["num_workers"] = 0
+    trainer = PPOTrainer(config=config)
+    trainer.train()
+
+    results = tune.run("PPO", stop=stop, config=config)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
+    ray.shutdown()

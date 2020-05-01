@@ -92,11 +92,7 @@ if __name__ == "__main__":
             "use_pytorch": args.torch,
         }
 
-        results = tune.run(
-            "PPO",
-            stop=stop,
-            config=config,
-        )
+        results = tune.run("PPO", stop=stop, config=config)
 
     # Error if stop-reward not reached.
     if results.trials[0].last_result["episode_reward_mean"] < \

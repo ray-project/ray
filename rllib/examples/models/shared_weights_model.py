@@ -84,9 +84,7 @@ class SharedWeightsModel2(TFModelV2):
 
 TORCH_GLOBAL_SHARED_LAYER = None
 if torch:
-    TORCH_GLOBAL_SHARED_LAYER = nn.Module()
-    TORCH_GLOBAL_SHARED_LAYER.add_module(
-        "shared_layer", SlimFC(32, 32))
+    TORCH_GLOBAL_SHARED_LAYER = SlimFC(32, 32)
 
 
 class TorchSharedWeightsModel(TorchModelV2, nn.Module):
@@ -102,15 +100,19 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         # Non-shared initial layer.
-        self.layer = SlimFC(int(np.product(observation_space.shape)),
-                            self.num_outputs, activation_fn=nn.ReLU)
+        self.first_layer = SlimFC(int(np.product(observation_space.shape)),
+                                  32, activation_fn=nn.ReLU)
+
+        # Non-shared final layer.
+        self.last_layer = SlimFC(32, self.num_outputs, activation_fn=nn.ReLU)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        out = self.layer(input_dict["obs"])
-        out = self._value_out = TORCH_GLOBAL_SHARED_LAYER(out)
+        out = self.first_layer(input_dict["obs"])
+        out = TORCH_GLOBAL_SHARED_LAYER(out)
+        out = self._value_out = self.last_layer(out)
         return out, []
 
     @override(ModelV2)
     def value_function(self):
-        return tf.reshape(self._value_out, [-1])
+        return torch.reshape(self._value_out, [-1])
