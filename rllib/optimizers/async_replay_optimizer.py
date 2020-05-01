@@ -285,6 +285,10 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
 
+# Visible for testing.
+_local_replay_buffer = None
+
+
 # TODO(ekl) move this class to common
 class LocalReplayBuffer(ParallelIteratorWorker):
     """A replay buffer shard.
@@ -324,6 +328,17 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.update_priorities_timer = TimerStat()
         self.num_added = 0
 
+        # Make externally accessible for testing.
+        global _local_replay_buffer
+        _local_replay_buffer = self
+        # If set, return this instead of the usual data for testing.
+        self._fake_batch = None
+
+    @staticmethod
+    def get_instance_for_testing():
+        global _local_replay_buffer
+        return _local_replay_buffer
+
     def get_host(self):
         return os.uname()[1]
 
@@ -343,6 +358,12 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.num_added += batch.count
 
     def replay(self):
+        if self._fake_batch:
+            fake_batch = SampleBatch(self._fake_batch)
+            return MultiAgentBatch({
+                DEFAULT_POLICY_ID: fake_batch
+            }, fake_batch.count)
+
         if self.num_added < self.replay_starts:
             return None
 
