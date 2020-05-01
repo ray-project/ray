@@ -78,8 +78,7 @@ class PolicyClient:
         """
 
         if self.local:
-            if self.update_interval:
-                self._update_local_policy()
+            self._update_local_policy()
             return self.env.start_episode(episode_id, training_enabled)
 
         return self._send({
@@ -101,8 +100,7 @@ class PolicyClient:
         """
 
         if self.local:
-            if self.update_interval:
-                self._update_local_policy()
+            self._update_local_policy()
             return self.env.get_action(episode_id, observation)
 
         return self._send({
@@ -122,8 +120,7 @@ class PolicyClient:
         """
 
         if self.local:
-            if self.update_interval:
-                self._update_local_policy()
+            self._update_local_policy()
             return self.env.log_action(episode_id, observation, action)
 
         self._send({
@@ -148,8 +145,7 @@ class PolicyClient:
         """
 
         if self.local:
-            if self.update_interval:
-                self._update_local_policy()
+            self._update_local_policy()
             return self.env.log_returns(episode_id, reward, done, info)
 
         self._send({
@@ -170,8 +166,7 @@ class PolicyClient:
         """
 
         if self.local:
-            if self.update_interval:
-                self._update_local_policy()
+            self._update_local_policy()
             return self.env.end_episode(episode_id, observation)
 
         self._send({
@@ -184,7 +179,7 @@ class PolicyClient:
     def update_policy_weights(self):
         """Query the server for new policy weights, if local inference is enabled.
         """
-        self._update_local_policy()
+        self._update_local_policy(force=True)
 
     def _send(self, data):
         payload = pickle.dumps(data)
@@ -209,10 +204,10 @@ class PolicyClient:
              kwargs, self._send)
         self.env = self.rollout_worker.env
 
-    def _update_local_policy(self):
+    def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
         if self.update_interval is None or time.time(
-        ) - self.last_updated > self.update_interval:
+        ) - self.last_updated > self.update_interval or force:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,
