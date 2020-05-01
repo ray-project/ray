@@ -106,6 +106,8 @@ struct CoreWorkerOptions {
   std::function<void()> gc_collect;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
+  // Function that tries to interrupt the currently running Python thread.
+  std::function<bool()> kill_main;
   /// Whether to enable object ref counting.
   bool ref_counting_enabled;
   /// Is local mode being used.
@@ -501,7 +503,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// For actors, this is the current actor ID. To make sure that all caller
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
-  TaskID GetCallerId() const;
+  TaskID GetCallerId() const LOCKS_EXCLUDED(mutex_);
 
   /// Push an error to the relevant driver.
   ///
@@ -543,10 +545,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  /// \return Status error if task submission fails, likely due to raylet failure.
-  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                    int max_retries);
+  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                  int max_retries);
 
   /// Create an actor.
   ///
@@ -587,6 +588,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
 
+  /// Stops the task associated with the given Object ID.
+  ///
+  /// \param[in] object_id of the task to kill (must be a Non-Actor task)
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  /// \param[out] Status
+  Status CancelTask(const ObjectID &object_id, bool force_kill);
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -627,7 +634,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const { return *resource_ids_; }
+  const ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -694,6 +701,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleCancelTask(const rpc::CancelTaskRequest &request,
+                        rpc::CancelTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
@@ -821,9 +833,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
   /// \param spec[in] task_spec Task specification.
-  /// \return Status.
-  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
-                              const ActorID &actor_id = ActorID::Nil());
+  void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                            const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -895,7 +906,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
-  TaskID main_thread_task_id_;
+  TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   // Flag indicating whether this worker has been shut down.
   bool shutdown_ = false;
@@ -1017,7 +1028,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_;
+  std::shared_ptr<ResourceMappingType> resource_ids_ GUARDED_BY(mutex_);
 
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;

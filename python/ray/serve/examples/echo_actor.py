@@ -26,8 +26,8 @@ class MagicCounter:
 
 serve.init(blocking=True)
 serve.create_endpoint("magic_counter", "/counter")
-serve.create_backend(MagicCounter, "counter:v1", 42)  # increment=42
-serve.link("magic_counter", "counter:v1")
+serve.create_backend("counter:v1", MagicCounter, 42)  # increment=42
+serve.set_traffic("magic_counter", {"counter:v1": 1.0})
 
 print("Sending ten queries via HTTP")
 for i in range(10):

@@ -1,3 +1,5 @@
+.. _tune-api-ref:
+
 Tune API Reference
 ==================
 
@@ -16,6 +18,7 @@ on `Github`_.
    grid_random.rst
    suggestion.rst
    schedulers.rst
+   logging.rst
    internals.rst
    client.rst
    cli.rst

@@ -1,17 +1,23 @@
+import numpy as np
 import pytest
 import time
 import gym
 import queue
 
+import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
-    ConcatBatches
+    ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
+from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
+    ReplayActor
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
 
@@ -47,6 +53,18 @@ def test_concurrently(ray_start_regular_shared):
     assert c.take(6) == [1, 2, 3, 4, 5, 6]
 
 
+def test_concurrently_output(ray_start_regular_shared):
+    a = iter_list([1, 2, 3])
+    b = iter_list([4, 5, 6])
+    c = Concurrently([a, b], mode="round_robin", output_indexes=[1])
+    assert c.take(6) == [4, 5, 6]
+
+    a = iter_list([1, 2, 3])
+    b = iter_list([4, 5, 6])
+    c = Concurrently([a, b], mode="round_robin", output_indexes=[0, 1])
+    assert c.take(6) == [1, 4, 2, 5, 3, 6]
+
+
 def test_enqueue_dequeue(ray_start_regular_shared):
     a = iter_list([1, 2, 3])
     q = queue.Queue(100)
@@ -70,6 +88,7 @@ def test_metrics(ray_start_regular_shared):
     b = StandardMetricsReporting(
         a, workers, {
             "min_iter_time_s": 2.5,
+            "timesteps_per_iteration": 0,
             "metrics_smoothing_episodes": 10,
             "collect_metrics_timeout": 10,
         })
@@ -114,6 +133,15 @@ def test_concat_batches(ray_start_regular_shared):
     assert "sample" in timers
 
 
+def test_standardize(ray_start_regular_shared):
+    workers = make_workers(0)
+    a = ParallelRollouts(workers, mode="async")
+    b = a.for_each(StandardizeFields(["t"]))
+    batch = next(b)
+    assert abs(np.mean(batch["t"])) < 0.001, batch
+    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
+
+
 def test_async_grads(ray_start_regular_shared):
     workers = make_workers(2)
     a = AsyncGradients(workers)
@@ -128,7 +156,9 @@ def test_train_one_step(ray_start_regular_shared):
     workers = make_workers(0)
     a = ParallelRollouts(workers, mode="bulk_sync")
     b = a.for_each(TrainOneStep(workers))
-    assert "learner_stats" in next(b)
+    batch, stats = next(b)
+    assert isinstance(batch, SampleBatch)
+    assert "learner_stats" in stats
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters
@@ -154,6 +184,54 @@ def test_avg_gradients(ray_start_regular_shared):
     c = b.for_each(AverageGradients())
     grads, counts = next(c)
     assert counts == 400, counts
+
+
+def test_store_to_replay_local(ray_start_regular_shared):
+    buf = LocalReplayBuffer(
+        num_shards=1,
+        learning_starts=200,
+        buffer_size=1000,
+        replay_batch_size=100,
+        prioritized_replay_alpha=0.6,
+        prioritized_replay_beta=0.4,
+        prioritized_replay_eps=0.0001)
+    assert buf.replay() is None
+
+    workers = make_workers(0)
+    a = ParallelRollouts(workers, mode="bulk_sync")
+    b = a.for_each(StoreToReplayBuffer(local_buffer=buf))
+
+    next(b)
+    assert buf.replay() is None  # learning hasn't started yet
+    next(b)
+    assert buf.replay().count == 100
+
+    replay_op = Replay(local_buffer=buf)
+    assert next(replay_op).count == 100
+
+
+def test_store_to_replay_actor(ray_start_regular_shared):
+    actor = ReplayActor.remote(
+        num_shards=1,
+        learning_starts=200,
+        buffer_size=1000,
+        replay_batch_size=100,
+        prioritized_replay_alpha=0.6,
+        prioritized_replay_beta=0.4,
+        prioritized_replay_eps=0.0001)
+    assert ray.get(actor.replay.remote()) is None
+
+    workers = make_workers(0)
+    a = ParallelRollouts(workers, mode="bulk_sync")
+    b = a.for_each(StoreToReplayBuffer(actors=[actor]))
+
+    next(b)
+    assert ray.get(actor.replay.remote()) is None  # learning hasn't started
+    next(b)
+    assert ray.get(actor.replay.remote()).count == 100
+
+    replay_op = Replay(actors=[actor])
+    assert next(replay_op).count == 100
 
 
 if __name__ == "__main__":

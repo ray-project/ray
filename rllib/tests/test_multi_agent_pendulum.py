@@ -2,7 +2,7 @@
 import unittest
 
 import ray
-from ray.rllib.tests.test_multi_agent_env import make_multiagent
+from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
@@ -15,12 +15,12 @@ class TestMultiAgentPendulum(unittest.TestCase):
         ray.shutdown()
 
     def test_multi_agent_pendulum(self):
-        MultiPendulum = make_multiagent("Pendulum-v0")
-        register_env("multi_pend", lambda _: MultiPendulum(1))
+        register_env("multi_agent_pendulum",
+                     lambda _: MultiAgentPendulum({"num_agents": 1}))
         trials = run_experiments({
             "test": {
                 "run": "PPO",
-                "env": "multi_pend",
+                "env": "multi_agent_pendulum",
                 "stop": {
                     "timesteps_total": 500000,
                     "episode_reward_mean": -200,
@@ -36,7 +36,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                     "sgd_minibatch_size": 64,
                     "num_sgd_iter": 10,
                     "model": {
-                        "fcnet_hiddens": [64, 64],
+                        "fcnet_hiddens": [128, 128],
                     },
                     "batch_mode": "complete_episodes",
                 },

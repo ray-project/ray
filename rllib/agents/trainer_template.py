@@ -120,10 +120,6 @@ def build_trainer(name,
             self.execution_plan = execution_plan
 
             if use_exec_api:
-                logger.warning(
-                    "The experimental distributed execution API is enabled "
-                    "for this algorithm. Disable this by setting "
-                    "'use_exec_api': False.")
                 self.train_exec_impl = execution_plan(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
@@ -173,10 +169,10 @@ def build_trainer(name,
 
         def _train_exec_impl(self):
             if before_train_step:
-                logger.warning("Ignoring before_train_step callback")
+                logger.debug("Ignoring before_train_step callback")
             res = next(self.train_exec_impl)
             if after_train_result:
-                logger.warning("Ignoring after_train_result callback")
+                logger.debug("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)

@@ -1,17 +1,27 @@
 import numpy as np
-import logging
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils import try_import_torch, try_import_tree
 
 torch, _ = try_import_torch()
+tree = try_import_tree()
 
-logger = logging.getLogger(__name__)
 
-try:
-    import tree
-except (ImportError, ModuleNotFoundError) as e:
-    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
-    raise e
+def global_norm(tensors):
+    """Returns the global L2 norm over a list of tensors.
+
+    output = sqrt(SUM(t ** 2 for t in tensors)),
+        where SUM reduces over all tensors and over all elements in tensors.
+
+    Args:
+        tensors (List[torch.Tensor]): The list of tensors to calculate the
+            global norm over.
+    """
+    # List of single tensors' L2 norms: SQRT(SUM(xi^2)) over all xi in tensor.
+    single_l2s = [
+        torch.pow(torch.sum(torch.pow(t, 2.0)), 0.5) for t in tensors
+    ]
+    # Compute global norm from all single tensors' L2 norms.
+    return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
 
 def huber_loss(x, delta=1.0):

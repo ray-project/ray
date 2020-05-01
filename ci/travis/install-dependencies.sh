@@ -22,7 +22,9 @@ install_base() {
       pkg_install_helper build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
       if [ "${LINUX_WHEELS-}" = 1 ]; then
         pkg_install_helper docker
-        sudo usermod -a -G docker travis
+        if [ -n "${TRAVIS-}" ]; then
+          sudo usermod -a -G docker travis
+        fi
       fi
       if [ -n "${PYTHON-}" ]; then
         "${ROOT_DIR}/install-strace.sh" || true
@@ -32,6 +34,13 @@ install_base() {
 }
 
 install_miniconda() {
+  local miniconda_dir="${HOME}/miniconda"
+  if [ "${OSTYPE}" = msys ]; then
+    miniconda_dir="${miniconda_dir}/bin"  # HACK: Compensate for python.exe being in the installation root on Windows
+  fi
+  if [ -d "${miniconda_dir}" ]; then
+    return 0  # already installed
+  fi
   local miniconda_version="3-4.5.4" miniconda_platform="" exe_suffix=".sh"
   case "${OSTYPE}" in
     linux*) miniconda_platform=Linux;;
@@ -39,25 +48,21 @@ install_miniconda() {
     msys*) miniconda_platform=Windows; exe_suffix=".exe";;
   esac
   local miniconda_url="https://repo.continuum.io/miniconda/Miniconda${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-  local miniconda_target="./${miniconda_url##*/}"
-  local miniconda_dir="$HOME/miniconda"
+  local miniconda_target="${HOME}/${miniconda_url##*/}"
   curl -s -L -o "${miniconda_target}" "${miniconda_url}"
   chmod +x "${miniconda_target}"
   case "${OSTYPE}" in
     msys*)
-      miniconda_dir="${miniconda_dir}/bin"  # HACK: Compensate for python.exe being in the installation root on Windows
       MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /S /D="$(cygpath -w -- "${miniconda_dir}")"
       ;;
     *)
       "${miniconda_target}" -b -p "${miniconda_dir}" | grep --line-buffered -v "^\(installing: \|installation finished\.\)"
       ;;
   esac
-  { local set_x="${-//[^x]/}"; } 2> /dev/null  # save set -x to suppress noise
-  set +x
-  local source_line='PYTHON3_BIN_PATH=python; PATH="$HOME/miniconda/bin:$PATH"; export PYTHON3_BIN_PATH PATH;'
-  test -f ~/.bashrc && grep -x -q -F "${source_line}" -- ~/.bashrc || echo "${source_line}" >> ~/.bashrc
-  test -z "${set_x}" || set -x  # restore set -x
-  eval "${source_line}"
+  reload_env
+  if [ -n "${PYTHON-}" ]; then
+    conda install -q -y python="${PYTHON}"
+  fi
   python -m pip install --upgrade --quiet pip
 }
 
@@ -121,6 +126,15 @@ run_npm() {
   npm ci
 }
 
+install_npm_project() {
+  if [ "${OSTYPE}" = msys ]; then
+    # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
+    { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
+  else
+    run_npm
+  fi
+}
+
 install_dependencies() {
 
   install_base
@@ -132,22 +146,33 @@ install_dependencies() {
 
   if [ -n "${PYTHON-}" ]; then
     install_miniconda
+
+    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+    # We want to install the CPU version only.
+    case "${OSTYPE}" in
+      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html;;
+      darwin*) pip install torch torchvision;;
+      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html;;
+    esac
+
     pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym opencv-python-headless pyyaml \
       pandas==0.24.2 requests feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
       uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-      scikit-learn numba)
+      scikit-learn numba Pillow)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
     CC=gcc pip install "${pip_packages[@]}"
-  elif [ "${LINT-}" = 1 ]; then
+  fi
+
+  if [ "${LINT-}" = 1 ]; then
     install_miniconda
-    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0  # Python linters
-    pushd "${WORKSPACE_DIR}/python/ray/dashboard/client"  # TypeScript & HTML linters
-      install_node
-      run_npm
-    popd
+    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0  # Python linters
+    # readthedocs has an antiquated build env.
+    # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
+    pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+    pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
   fi
 
   # Install modules needed in all jobs.
@@ -164,7 +189,7 @@ install_dependencies() {
     pip install msgpack>=0.6.2
   fi
 
-  if [ -n "${PYTHON-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
     install_node
   fi
 

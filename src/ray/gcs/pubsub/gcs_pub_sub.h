@@ -25,6 +25,9 @@
 namespace ray {
 namespace gcs {
 
+#define JOB_CHANNEL "JOB"
+#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+
 /// \class GcsPubSub
 ///
 /// GcsPubSub supports publishing, subscription and unsubscribing of data.

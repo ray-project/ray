@@ -19,10 +19,7 @@ class Worker:
         self.reader = None
 
     def init_writer(self, output_channel, reader_actor):
-        conf = {
-            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
-            Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
-        }
+        conf = {Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL}
         reader_async_func = PythonFunctionDescriptor(
             __name__, self.on_reader_message.__name__, self.__class__.__name__)
         reader_sync_func = PythonFunctionDescriptor(
@@ -36,10 +33,7 @@ class Worker:
         self.output_channel_id = transfer.ChannelID(output_channel)
 
     def init_reader(self, input_channel, writer_actor):
-        conf = {
-            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
-            Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
-        }
+        conf = {Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL}
         writer_async_func = PythonFunctionDescriptor(
             __name__, self.on_writer_message.__name__, self.__class__.__name__)
         writer_sync_func = PythonFunctionDescriptor(

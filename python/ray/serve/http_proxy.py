@@ -8,7 +8,7 @@ from ray.serve.constants import SERVE_MASTER_NAME
 from ray.serve.context import TaskContext
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.utils import logger
+from ray.serve.utils import logger, retry_actor_failures_async
 
 from urllib.parse import parse_qs
 
@@ -26,11 +26,12 @@ class HTTPProxy:
     # blocks forever
     """
 
-    def __init__(self):
+    async def fetch_config_from_master(self):
         assert ray.is_initialized()
         master = ray.util.get_actor(SERVE_MASTER_NAME)
-        self.route_table, [self.router_handle] = ray.get(
-            master.get_http_proxy_config.remote())
+        self.route_table, [
+            self.router_handle
+        ] = await retry_actor_failures_async(master.get_http_proxy_config)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -163,8 +164,9 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    def __init__(self, host, port):
+    async def __init__(self, host, port):
         self.app = HTTPProxy()
+        await self.app.fetch_config_from_master()
         self.host = host
         self.port = port
 

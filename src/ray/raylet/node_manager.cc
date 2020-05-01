@@ -1083,8 +1083,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
   flatbuffers::FlatBufferBuilder fbb;
-  auto reply =
-      ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
+  std::vector<std::string> internal_config_keys;
+  std::vector<std::string> internal_config_values;
+  for (auto kv : initial_config_.raylet_config) {
+    internal_config_keys.push_back(kv.first);
+    internal_config_values.push_back(kv.second);
+  }
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, self_node_id_),
+      string_vec_to_flatbuf(fbb, internal_config_keys),
+      string_vec_to_flatbuf(fbb, internal_config_values));
   fbb.Finish(reply);
   client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -2506,9 +2514,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                                                  : worker->GetTaskResourceIds());
 
     // If the owner has died since this task was queued, cancel the task by
-    // killing the worker.
-    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
-        failed_nodes_cache_.count(owner_node_id) > 0) {
+    // killing the worker (unless this task is for a detached actor).
+    if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
+                                       failed_nodes_cache_.count(owner_node_id) > 0)) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
       KillWorker(worker);

@@ -13,10 +13,24 @@ py_library(
 py_test(
     name = "test_serve",
     size = "medium",
-    srcs = glob(["tests/*.py"]),
+    srcs = glob(["tests/*.py"],
+                exclude=["tests/test_nonblocking.py",
+                         "tests/test_master_crashes.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
+
+# Runs test_api and test_failure with injected failures in the master actor.
+# TODO(edoakes): reenable this once we're using GCS actor fault tolerance.
+# py_test(
+    # name = "test_master_crashes",
+    # size = "medium",
+    # srcs = glob(["tests/test_master_crashes.py",
+                 # "tests/test_api.py",
+                 # "tests/test_failure.py"],
+                # exclude=["tests/test_nonblocking.py",
+                         # "tests/test_serve.py"]),
+# )
 
 py_test(
     name = "echo_full",
@@ -24,6 +38,14 @@ py_test(
     srcs = glob(["examples/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
+)
+
+py_test(
+    name = "test_nonblocking",
+    size = "small",
+    srcs = glob(["tests/test_nonblocking.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -37,6 +59,30 @@ py_test(
 
 py_test(
     name = "quickstart_function",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "tutorial_tensorflow",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "tutorial_pytorch",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "tutorial_sklearn",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
