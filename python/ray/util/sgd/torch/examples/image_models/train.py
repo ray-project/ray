@@ -26,6 +26,8 @@ from timm.data import resolve_data_config, FastCollateMixup
 from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
 from timm.utils import setup_default_logging, distribute_bn, AverageMeter
+from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
+from timm.loss import JsdCrossEntropy
 from timm.utils import OrderedDict
 from timm.scheduler import create_scheduler
 
@@ -407,29 +409,26 @@ def optimizer_creator(model, config):
 
 
 def loss_creator(config):
-    # todo:
-    # there should be more complicated logic here, but we don't support
-    # separate train and eval losses yet
+    args = config["args"]
 
-    # if args.jsd:
-    #     assert num_aug_splits > 1  # JSD only valid with aug splits set
-    #     train_loss_fn =
-    # JsdCrossEntropy(num_splits=num_aug_splits,
-    # smoothing=args.smoothing).cuda()
-    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    # elif args.mixup > 0.:
-    #     # smoothing is handled with mixup label transform
-    #     train_loss_fn = SoftTargetCrossEntropy().cuda()
-    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    # elif args.smoothing:
-    #     train_loss_fn =
-    # LabelSmoothingCrossEntropy(smoothing=args.smoothing).cuda()
-    #     validate_loss_fn = nn.CrossEntropyLoss().cuda()
-    # else:
-    #     train_loss_fn = nn.CrossEntropyLoss().cuda()
-    #     validate_loss_fn = train_loss_fn
+    if args.jsd:
+        assert args.num_aug_splits > 1  # JSD only valid with aug splits set
+        train_loss_fn = JsdCrossEntropy(
+            num_splits=args.num_aug_splits,
+            smoothing=args.smoothing)
+        validate_loss_fn = nn.CrossEntropyLoss()
+    elif args.mixup > 0.:
+        # smoothing is handled with mixup label transform
+        train_loss_fn = SoftTargetCrossEntropy()
+        validate_loss_fn = nn.CrossEntropyLoss()
+    elif args.smoothing:
+        train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+        validate_loss_fn = nn.CrossEntropyLoss()
+    else:
+        train_loss_fn = nn.CrossEntropyLoss()
+        validate_loss_fn = train_loss_fn
 
-    return nn.CrossEntropyLoss()
+    return train_loss_fn, validate_loss_fn
 
 def scheduler_creator(optimizer, config):
     args = config["args"]

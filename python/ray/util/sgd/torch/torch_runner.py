@@ -66,7 +66,7 @@ class TorchRunner:
         self.epochs = 0
         self.models = None
         self.optimizers = None
-        self.criterion = None
+        self.criterions = None
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
@@ -124,14 +124,18 @@ class TorchRunner:
         logger.debug("Creating loss.")
         if inspect.isclass(self.loss_creator) and issubclass(
                 self.loss_creator, torch.nn.modules.loss._Loss):
-            self.criterion = self.loss_creator()
+            self.criterions = self.loss_creator()
         else:
-            self.criterion = _call_fn_with_optional_param(
+            self.criterions = _call_fn_with_optional_param(
                 self.loss_creator, self.config, self.sys_info)
 
+        if not isinstance(self.criterions, Iterable):
+            self.criterions = [self.criterions]
+
         if self.use_gpu and torch.cuda.is_available():
-            if hasattr(self.criterion, "cuda"):
-                self.criterion = self.criterion.cuda()
+            for i, criterion in enumerate(self.criterions):
+                if hasattr(criterion, "cuda"):
+                    self.criterions[i] = criterion.cuda()
 
     def _create_schedulers_if_available(self):
         # Learning rate schedules are optional.
@@ -186,7 +190,7 @@ class TorchRunner:
             self.config,
             models=self.models,
             optimizers=self.optimizers,
-            criterion=self.criterion,
+            criterions=self.criterions,
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
             world_rank=0,
@@ -314,11 +318,18 @@ class TorchRunner:
         del self.training_operator
         del self.validation_loader
         del self.train_loader
-        del self.criterion
+        del self.criterions
         del self.optimizers
         del self.models
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    @property
+    def given_criterions(self):
+        if len(self.criterions) > 1:
+            return self.criterions
+        else:
+            return self.criterions[0]
 
     @property
     def given_models(self):

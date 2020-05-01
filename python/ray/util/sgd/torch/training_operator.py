@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -63,7 +65,7 @@ class TrainingOperator:
                  validation_loader,
                  world_rank,
                  world_size,
-                 criterion=None,
+                 criterions=None,
                  schedulers=None,
                  device_ids=None,
                  use_gpu=False,
@@ -84,7 +86,7 @@ class TrainingOperator:
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._world_size = world_size
-        self._criterion = criterion
+        self._criterions = criterions
         self._schedulers = schedulers
         if schedulers:
             assert isinstance(
@@ -248,7 +250,7 @@ class TrainingOperator:
         # Compute output.
         with self.timers.record("fwd"):
             output = self.model(features)
-            loss = self.criterion(output, target)
+            loss = self.train_criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
@@ -272,8 +274,8 @@ class TrainingOperator:
         over the validation dataloader.
 
         If overriding this method, you can access model, criterion via
-        ``self.model`` and ``self.criterion``. You also do not need to call
-        ``validate_batch`` if overriding this method.
+        ``self.model`` and ``self.val_criterion``. You also do not need
+        to call ``validate_batch`` if overriding this method.
 
         Args:
             val_iterator (iter): Iterable constructed from the
@@ -328,7 +330,7 @@ class TrainingOperator:
 
         with self.timers.record("eval_fwd"):
             output = self.model(features)
-            loss = self.criterion(output, target)
+            loss = self.val_criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
@@ -407,7 +409,35 @@ class TrainingOperator:
     @property
     def criterion(self):
         """Criterion created by the provided ``loss_creator``."""
-        return self._criterion
+
+        warnings.warn(
+            "criterion is deprecated, use train_criterion instead",
+            DeprecationWarning
+        )
+
+        if len(self._criterions) > 1:
+            raise ValueError(
+                "Multiple criterion provided, but an non-specific "
+                "criterion was requested.")
+
+        return self.train_criterion
+
+    @property
+    def train_criterion(self):
+        """First criterion created by the provided ``loss_creator``."""
+        return self._criterions[0]
+
+    @property
+    def val_criterion(self):
+        """
+        Second criterion created by the provided ``loss_creator``.
+
+        Returns the ``train_criterion`` if only one criterion was returned.
+        """
+        if len(self._criterions) < 2:
+            return self.train_criterion
+
+        return self._criterions[1]
 
     @property
     def scheduler(self):

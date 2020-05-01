@@ -135,12 +135,12 @@ parser.add_argument(
     default=None,
     metavar="PCT",
     help="Drop block rate (default: None)")
-# parser.add_argument(
-#     "--jsd",
-#     action="store_true",
-#     default=False,
-#     help="Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`."
-# )
+parser.add_argument(
+    "--jsd",
+    action="store_true",
+    default=False,
+    help="Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`."
+)
 # Optimizer parameters
 parser.add_argument(
     "--opt",
@@ -288,7 +288,6 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Do not random erase first (clean) augmentation split")
-# todo: mixup has the wrong evaluation loss currently
 parser.add_argument(
     "--mixup",
     type=float,
@@ -300,7 +299,6 @@ parser.add_argument(
     type=int,
     metavar="N",
     help="turn off mixup after this epoch, disabled if 0 (default: 0)")
-# todo: smoothing has the wrong evaluation loss currently
 parser.add_argument(
     "--smoothing",
     type=float,
