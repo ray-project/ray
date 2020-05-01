@@ -44,8 +44,8 @@ def echo(_):
 
 
 serve.create_endpoint("echo", "/echo")
-config = serve.BackendConfig(num_replicas=30, max_batch_size=16)
-serve.create_backend(echo, "echo:v1", backend_config=config)
+config = {"num_replicas": 30, "max_batch_size": 16}
+serve.create_backend("echo:v1", echo, config=config)
 serve.set_traffic("echo", {"echo:v1": 1})
 
 print("Warming up")
@@ -54,7 +54,7 @@ for _ in range(5):
     print(resp)
     time.sleep(0.5)
 
-connections = int(config.num_replicas * config.max_batch_size * 0.75)
+connections = int(config["num_replicas"] * config["max_batch_size"] * 0.75)
 
 while True:
     proc = subprocess.Popen(

@@ -11,6 +11,9 @@ def _callable_accepts_batch(func_or_class):
 class BackendConfig:
     def __init__(self, config_dict, accepts_batches=False):
         assert isinstance(config_dict, dict)
+        # Make a copy so that we don't modify the input dict.
+        config_dict = config_dict.copy()
+
         self.accepts_batches = accepts_batches
         self.num_replicas = config_dict.pop("num_replicas", 1)
         self.max_batch_size = config_dict.pop("max_batch_size", None)

@@ -9,6 +9,11 @@ def test_backend_config_validation():
     with pytest.raises(ValueError, match="unknown_key"):
         BackendConfig({"unknown_key": -1})
 
+    # Test that the input dict isn't modified.
+    config = {"num_replicas": 2}
+    BackendConfig(config)
+    assert len(config) == 1 and config["num_replicas"] == 2
+
     # Test num_replicas validation.
     BackendConfig({"num_replicas": 1})
     with pytest.raises(TypeError):
