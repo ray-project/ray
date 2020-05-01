@@ -281,7 +281,7 @@ def test_delete_endpoint(serve_instance, route):
     def function():
         return "hello"
 
-    serve.create_backend(function, "delete-endpoint:v1")
+    serve.create_backend("delete-endpoint:v1", function)
     serve.set_traffic(endpoint_name, {"delete-endpoint:v1": 1.0})
 
     if route is not None:
