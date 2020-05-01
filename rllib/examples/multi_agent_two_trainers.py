@@ -16,7 +16,7 @@ from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
@@ -28,7 +28,8 @@ if __name__ == "__main__":
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env("multi_cartpole", lambda _: MultiCartpole(4))
+    register_env("multi_agent_cartpole",
+                 lambda _: MultiAgentCartPole({"num_agents": 4}))
     single_env = gym.make("CartPole-v0")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
@@ -47,7 +48,7 @@ if __name__ == "__main__":
             return "dqn_policy"
 
     ppo_trainer = PPOTrainer(
-        env="multi_cartpole",
+        env="multi_agent_cartpole",
         config={
             "multiagent": {
                 "policies": policies,
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         })
 
     dqn_trainer = DQNTrainer(
-        env="multi_cartpole",
+        env="multi_agent_cartpole",
         config={
             "multiagent": {
                 "policies": policies,
