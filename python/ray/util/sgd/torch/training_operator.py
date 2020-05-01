@@ -6,6 +6,7 @@ from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
+from ray.util.sgd import utils
 
 amp = None
 
@@ -63,8 +64,6 @@ class TrainingOperator:
                  optimizers,
                  train_loader,
                  validation_loader,
-                 world_rank,
-                 world_size,
                  criterions=None,
                  schedulers=None,
                  device_ids=None,
@@ -84,8 +83,6 @@ class TrainingOperator:
                 type(optimizers)))
         self._train_loader = train_loader
         self._validation_loader = validation_loader
-        self._world_rank = world_rank
-        self._world_size = world_size
         self._criterions = criterions
         self._schedulers = schedulers
         if schedulers:
@@ -399,12 +396,24 @@ class TrainingOperator:
     @property
     def world_rank(self):
         """int: The rank of the parent runner. Always 0 if not distributed."""
-        return self._world_rank
+
+        warnings.warn(
+            "operator.world_rank is deprecated, "
+            "use ray.util.sgd.utilsworld_rank instead",
+            DeprecationWarning)
+
+        return utils.world_rank()
 
     @property
     def world_size(self):
         """int: The total number of workers. Always 1 if not distributed."""
-        return self._world_size
+
+        warnings.warn(
+            "operator.world_size is deprecated, "
+            "use ray.util.sgd.utilsworld_size instead",
+            DeprecationWarning)
+
+        return utils.world_size()
 
     @property
     def criterion(self):
@@ -412,8 +421,7 @@ class TrainingOperator:
 
         warnings.warn(
             "criterion is deprecated, use train_criterion instead",
-            DeprecationWarning
-        )
+            DeprecationWarning)
 
         if len(self._criterions) > 1:
             raise ValueError(

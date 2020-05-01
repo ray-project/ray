@@ -33,6 +33,7 @@ from timm.scheduler import create_scheduler
 
 import ray
 from ray.util.sgd.utils import BATCH_SIZE
+import ray.util.sgd.utils as sgd_utils
 
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
@@ -79,11 +80,10 @@ class ImagenetOperator(TrainingOperator):
             from torch.nn.parallel import DistributedDataParallel as DDP
             pass
 
-        if self.world_rank == 0:
-            logging.info(
-                "NVIDIA APEX {}. AMP {}.".format(
-                "installed" if has_apex else 'not installed',
-                "on" if (has_apex and args.amp) else "off"))
+        logging.info(
+            "NVIDIA APEX {}. AMP {}.".format(
+            "installed" if has_apex else 'not installed',
+            "on" if (has_apex and args.amp) else "off"))
 
         self.model_ema = None
         if args.model_ema:
@@ -102,13 +102,12 @@ class ImagenetOperator(TrainingOperator):
                 else:
                     self.mymodel = (
                         nn.SyncBatchNorm.convert_sync_batchnorm(self.model))
-                if args.world_rank == 0:
-                    logging.info(
-                        "Converted model to use Synchronized BatchNorm. "
-                        "WARNING: You may have issues if "
-                        "using zero initialized BN layers "
-                        "(enabled by default for ResNets) "
-                        "while sync-bn enabled.")
+                logging.info(
+                    "Converted model to use Synchronized BatchNorm. "
+                    "WARNING: You may have issues if "
+                    "using zero initialized BN layers "
+                    "(enabled by default for ResNets) "
+                    "while sync-bn enabled.")
             except Exception as e:
                 logging.error(
                     "Failed to enable Synchronized BatchNorm. "
@@ -117,10 +116,9 @@ class ImagenetOperator(TrainingOperator):
             if has_apex:
                 self.mymodel = DDP(self.model, delay_allreduce=True)
             else:
-                if args.world_rank == 0:
-                    logging.info(
-                        "Using torch DistributedDataParallel. "
-                        "Install NVIDIA Apex for Apex DDP.")
+                logging.info(
+                    "Using torch DistributedDataParallel. "
+                    "Install NVIDIA Apex for Apex DDP.")
 
                 # can use device str in Torch >= 1.1
                 self.mymodel = DDP(self.model, device_ids=[0])
@@ -131,8 +129,7 @@ class ImagenetOperator(TrainingOperator):
             real_start_epoch = args.start_epoch
             self.scheduler.step(real_start_epoch)
 
-        if self.world_rank == 0:
-            logging.info("Scheduled epochs: {}".format(real_start_epoch))
+        logging.info("Scheduled epochs: {}".format(real_start_epoch))
 
     def train_batch(self, batch, batch_info):
         input, target = batch
@@ -189,7 +186,7 @@ class ImagenetOperator(TrainingOperator):
             if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
                 loader.mixup_enabled = False
 
-        if self.use_tqdm and self.world_rank == 0:
+        if self.use_tqdm:
             desc = ""
             if info is not None and "epoch_idx" in info:
                 if "num_epochs" in info:
@@ -235,27 +232,26 @@ class ImagenetOperator(TrainingOperator):
                 reduced_loss = reduce_tensor(loss.data, self.world_size)
                 losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
 
-                if self.world_rank == 0:
-                    total_samples = (
-                        metrics["NUM_STEPS"] * args.ray_num_workers)
+                total_samples = (
+                    metrics["NUM_STEPS"] * args.ray_num_workers)
 
-                    logging.info(
-                        "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
-                        "Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  "
-                        "Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  "
-                        "({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  "
-                        "LR: {lr:.3e}  "
-                        "Data: {data_time.val:.3f} "
-                        "({data_time.avg:.3f})".format(
-                            info["epoch_idx"],
-                            batch_idx, len(loader),
-                            100. * batch_idx / last_idx,
-                            loss=losses_m,
-                            batch_time=batch_time_m,
-                            rate=total_samples / batch_time_m.val,
-                            rate_avg=total_samples / batch_time_m.avg,
-                            lr=lr,
-                            data_time=data_time_m))
+                logging.info(
+                    "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
+                    "Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  "
+                    "Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  "
+                    "({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  "
+                    "LR: {lr:.3e}  "
+                    "Data: {data_time.val:.3f} "
+                    "({data_time.avg:.3f})".format(
+                        info["epoch_idx"],
+                        batch_idx, len(loader),
+                        100. * batch_idx / last_idx,
+                        loss=losses_m,
+                        batch_time=batch_time_m,
+                        rate=total_samples / batch_time_m.val,
+                        rate_avg=total_samples / batch_time_m.avg,
+                        lr=lr,
+                        data_time=data_time_m))
 
                     # todo: calculate output_dir
                     # if args.save_images and output_dir:
@@ -267,7 +263,7 @@ class ImagenetOperator(TrainingOperator):
                     #         padding=0,
                     #         normalize=True)
 
-            if self.use_tqdm and self.world_rank == 0:
+            if self.use_tqdm:
                 _progress_bar.n = batch_idx + 1
                 postfix = {}
                 if "train_loss" in metrics:
@@ -293,8 +289,7 @@ class ImagenetOperator(TrainingOperator):
             self.optimizer.sync_lookahead()
 
         if args.dist_bn in ('broadcast', 'reduce'):
-            if self.world_rank == 0:
-                logging.info("Distributing BatchNorm running means and vars")
+            logging.info("Distributing BatchNorm running means and vars")
             distribute_bn(model, self.world_size, args.dist_bn == "reduce")
 
         return OrderedDict([('loss', losses_m.avg)])
@@ -316,10 +311,9 @@ def model_creator(config, sys_info):
         bn_eps=args.bn_eps,
         checkpoint_path=args.initial_checkpoint)
 
-    if sys_info["world_rank"] == 0:
-        logging.info(
-            "Model %s created, param count: %d" %
-            (args.model, sum([m.numel() for m in model.parameters()])))
+    logging.info(
+        "Model %s created, param count: %d" %
+        (args.model, sum([m.numel() for m in model.parameters()])))
 
     if args.split_bn:
         model = convert_splitbn_model(model, max(args.num_aug_splits, 2))
@@ -333,7 +327,7 @@ def model_creator(config, sys_info):
 def data_creator(config, sys_info):
     args = config["args"]
 
-    torch.manual_seed(args.seed + sys_info["world_rank"])
+    torch.manual_seed(args.seed + sgd_utils.world_rank())
 
     train_dir = join(args.data, "train")
     val_dir = join(args.data, "val")
@@ -342,7 +336,7 @@ def data_creator(config, sys_info):
         util.mock_data(train_dir, val_dir)
 
     data_config = resolve_data_config(
-        vars(args), verbose=sys_info["world_rank"] == 0)
+        vars(args), verbose=True)
 
     if not os.path.exists(train_dir):
         logging.error(

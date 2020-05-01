@@ -9,6 +9,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
+from ray.util.sgd import utils
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -45,29 +46,20 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
 
-        self.world_rank = world_rank
-        self.world_size = world_size
+        utils._world_rank = 0
+        utils._world_size = 1
 
     def setup(self):
         raise RuntimeError("Need to call setup commands separately.")
-
-    @property
-    def sys_info(self):
-        return {
-            "world_rank": self.world_rank,
-            "world_size": self.world_size
-        }
 
     def setup_process_group(self, url):
         """Connects the distributed PyTorch backend.
 
         Args:
             url (str): the URL used to connect to distributed PyTorch.
-            world_rank (int): the index of the runner.
-            world_size (int): the total number of runners.
         """
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-            url, self.world_rank, self.world_size))
+            url, utils.world_rank(), utils.world_size()))
         logger.debug("using {}".format(self.backend))
         if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
             logger.debug(
@@ -79,7 +71,7 @@ class DistributedTorchRunner(TorchRunner):
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
-            rank=self.world_rank,
+            rank=utils.world_rank(),
             world_size=self.world_size,
             timeout=timeout)
 
@@ -110,8 +102,6 @@ class DistributedTorchRunner(TorchRunner):
             criterion=self.criterion,
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
-            world_rank=self.world_rank,
-            world_size=self.world_size,
             schedulers=self.schedulers,
             device_ids=device_ids,
             use_gpu=self.use_gpu,

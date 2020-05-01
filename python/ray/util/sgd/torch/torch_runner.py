@@ -28,15 +28,6 @@ except ImportError:
     pass
 
 
-def _call_fn_with_optional_param(f, *params):
-    sig = inspect.signature(f)
-
-    if len(sig.parameters) == len(params):
-        return f(*params)
-
-    return f(*params[:-1])  # this might error in some natural way
-
-
 class TorchRunner:
     """Manages a PyTorch model for training."""
 
@@ -82,6 +73,9 @@ class TorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
+        utils._world_rank = 0
+        utils._world_size = 1
+
     def _validate_loaders(self, loaders):
         assert loaders, "Loaders need to be returned in data_creator."
         if isinstance(loaders, (tuple, list)):
@@ -95,13 +89,6 @@ class TorchRunner:
         # No great way of checking type otherwise
         return loaders, None
 
-    @property
-    def sys_info(self):
-        return {
-            "world_rank": 0,
-            "world_size": 1
-        }
-
     def _initialize_dataloaders(self):
         logger.debug("Instantiating dataloaders.")
         loaders = None
@@ -109,11 +96,9 @@ class TorchRunner:
             logger.debug("Serializing the dataloading process.")
             with FileLock(
                     os.path.join(tempfile.gettempdir(), ".raydata.lock")):
-                loaders = _call_fn_with_optional_param(
-                    self.data_creator, self.config, self.sys_info)
+                loaders = self.data_creator(self.config)
         else:
-            loaders = _call_fn_with_optional_param(
-                self.data_creator, self.config, self.sys_info)
+            loaders = self.data_creator(self.config)
         train_loader, val_loader = self._validate_loaders(loaders)
 
         self.train_loader, self.validation_loader = train_loader, val_loader
@@ -126,8 +111,7 @@ class TorchRunner:
                 self.loss_creator, torch.nn.modules.loss._Loss):
             self.criterions = self.loss_creator()
         else:
-            self.criterions = _call_fn_with_optional_param(
-                self.loss_creator, self.config, self.sys_info)
+            self.criterions = self.loss_creator(self.config)
 
         if not isinstance(self.criterions, Iterable):
             self.criterions = [self.criterions]
@@ -141,9 +125,9 @@ class TorchRunner:
         # Learning rate schedules are optional.
         if not self.scheduler_creator:
             return
-        self.schedulers = _call_fn_with_optional_param(
-            self.scheduler_creator, self.given_optimizers,
-            self.config, self.sys_info)
+        self.schedulers = self.scheduler_creator(
+            self.given_optimizers,
+            self.config)
 
         if not isinstance(self.schedulers, Iterable):
             self.schedulers = [self.schedulers]
@@ -164,8 +148,7 @@ class TorchRunner:
         logger.debug("Loading data.")
         self._initialize_dataloaders()
         logger.debug("Creating model")
-        self.models = _call_fn_with_optional_param(
-            self.model_creator, self.config, self.sys_info)
+        self.models = self.model_creator(self.config)
         if not isinstance(self.models, Iterable):
             self.models = [self.models]
         assert all(isinstance(model, nn.Module) for model in self.models), (
@@ -174,9 +157,7 @@ class TorchRunner:
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer.")
-        self.optimizers = _call_fn_with_optional_param(
-            self.optimizer_creator, self.given_models,
-            self.config, self.sys_info)
+        self.optimizers = self.optimizer_creator(self.given_models, self.config)
         if not isinstance(self.optimizers, Iterable):
             self.optimizers = [self.optimizers]
 
@@ -193,8 +174,6 @@ class TorchRunner:
             criterions=self.criterions,
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
-            world_rank=0,
-            world_size=1,
             schedulers=self.schedulers,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
