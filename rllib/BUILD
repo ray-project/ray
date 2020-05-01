@@ -1402,6 +1402,22 @@ py_test(
 )
 
 py_test(
+    name = "examples/hierarchical_training_tf",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--stop-reward=0.0"]
+)
+
+py_test(
+    name = "examples/hierarchical_training_torch",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--torch", "--stop-reward=0.0"]
+)
+
+py_test(
     name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",

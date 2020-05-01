@@ -3,6 +3,7 @@ import random
 import unittest
 
 import ray
+from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
@@ -16,7 +17,6 @@ from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
-from ray.tune.registry import register_env
 
 
 def one_hot(i, n):
