@@ -1,9 +1,9 @@
 import argparse
 
 import ray
-from ray.rllib.examples.cartpole_lstm import CartPoleStatelessEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
 from ray.rllib.models.modelv2 import ModelV2
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "repeat_initial", lambda _: RepeatInitialObsEnv(episode_len=100))
     tune.register_env(
         "repeat_after_me", lambda _: RepeatAfterMeEnv({"repeat_delay": 1}))
-    tune.register_env("cartpole_stateless", lambda _: CartPoleStatelessEnv())
+    tune.register_env("stateless_cartpole", lambda _: StatelessCartPole())
 
     config = {
         "env": args.env,

@@ -5,7 +5,7 @@ from gym.utils import seeding
 import numpy as np
 
 
-class CartPoleStatelessEnv(gym.Env):
+class StatelessCartPole(gym.Env):
     """Partially observable variant of the CartPole gym environment.
 
     https://github.com/openai/gym/blob/master/gym/envs/classic_control/

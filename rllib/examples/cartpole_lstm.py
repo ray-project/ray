@@ -1,6 +1,6 @@
 import argparse
 
-from ray.rllib.examples.env.cartpole_stateless_env import CartPoleStatelessEnv
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
@@ -14,8 +14,6 @@ if __name__ == "__main__":
     from ray import tune
 
     args = parser.parse_args()
-
-    tune.register_env("cartpole_stateless", lambda _: CartPoleStatelessEnv())
 
     ray.init(num_cpus=args.num_cpus or None)
 
@@ -37,7 +35,7 @@ if __name__ == "__main__":
         stop={"episode_reward_mean": args.stop},
         config=dict(
             configs[args.run], **{
-                "env": "cartpole_stateless",
+                "env": StatelessCartPole,
                 "model": {
                     "use_lstm": True,
                     "lstm_use_prev_action_reward": args.use_prev_action_reward,
