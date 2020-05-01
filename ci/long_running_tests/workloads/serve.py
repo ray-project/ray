@@ -7,7 +7,6 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.kv_store_service import RayInternalKVStore
 
 num_redis_shards = 1
 redis_max_memory = 10**8
@@ -33,7 +32,7 @@ subprocess.call([
 ])
 
 ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
-serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
+serve.init(blocking=True)
 
 
 @serve.accept_batch
