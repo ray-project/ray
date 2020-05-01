@@ -170,19 +170,19 @@ void GcsServer::InitGcsActorManager() {
         gcs_actor_manager_->SchedulePendingActors();
       });
 
-  gcs_node_manager_->AddNodeRemovedListener([this](
-                                                std::shared_ptr<rpc::GcsNodeInfo> node) {
-    // All of the related actors should be reconstructed when a node is removed from the
-    // GCS.
-    gcs_actor_manager_->ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
-  });
+  gcs_node_manager_->AddNodeRemovedListener(
+      [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        // All of the related actors should be reconstructed when a node is removed from
+        // the GCS.
+        gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
+      });
   RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
         auto &worker_address = worker_failure_data.worker_address();
         WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
         ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
-        auto needs_restart = !worker_failure_data.intentional_disconnect();
-        gcs_actor_manager_->ReconstructActorOnWorker(node_id, worker_id, needs_restart);
+        gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
+                                         worker_failure_data.intentional_disconnect());
       },
       /*done_callback=*/nullptr));
 }

@@ -252,9 +252,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
 }
 
-void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
-                                               const ray::WorkerID &worker_id,
-                                               bool need_reschedule) {
+void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
+                                   const ray::WorkerID &worker_id,
+                                   bool intentional_exit) {
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
@@ -284,21 +284,23 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " failed, reconstructing actor " << actor_id;
     // Reconstruct the actor.
-    ReconstructActor(actor_id, need_reschedule);
+    ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
   }
 }
 
-void GcsActorManager::ReconstructActorsOnNode(const ClientID &node_id) {
+void GcsActorManager::OnNodeDead(const ClientID &node_id) {
   RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
+    std::vector<ActorID> children_ids;
+    // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
-      // Make a copy of the children actor IDs since we will delete from the
-      // list.
-      const auto children_ids = owner.second.children_actor_ids;
-      for (const auto &child_id : children_ids) {
-        DestroyActor(child_id);
+      for (const auto &child_id : owner.second.children_actor_ids) {
+        children_ids.push_back(child_id);
       }
+    }
+    for (const auto &child_id : children_ids) {
+      DestroyActor(child_id);
     }
   }
 
