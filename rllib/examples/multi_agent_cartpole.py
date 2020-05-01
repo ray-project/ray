@@ -15,7 +15,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.multi_agent import MultiCartPole
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -104,7 +104,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
 
-    # Simple environment with `num_agents` independent cartpole entities
     ModelCatalog.register_custom_model("model1", CustomModel1)
     ModelCatalog.register_custom_model("model2", CustomModel2)
     single_env = gym.make("CartPole-v0")
@@ -132,7 +131,7 @@ if __name__ == "__main__":
         "PPO",
         stop={"training_iteration": args.num_iters},
         config={
-            "env": MultiCartPole,
+            "env": MultiAgentCartPole,
             "env_config": {
                 "num_agents": args.num_agents,
             },

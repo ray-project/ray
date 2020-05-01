@@ -13,7 +13,7 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.examples.env.multi_agent import MultiCartPole
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -149,7 +149,7 @@ class AgentIOTest(unittest.TestCase):
         self.assertTrue(not np.isnan(result["episode_reward_mean"]))
 
     def testMultiAgent(self):
-        register_env("multi_cartpole", lambda _: MultiCartPole(10))
+        register_env("multi_agent_cartpole", lambda _: MultiAgentCartPole(10))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():
@@ -158,7 +158,7 @@ class AgentIOTest(unittest.TestCase):
             return (PGTFPolicy, obs_space, act_space, {})
 
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "output": self.test_dir,
@@ -177,7 +177,7 @@ class AgentIOTest(unittest.TestCase):
 
         pg.stop()
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "input": self.test_dir,

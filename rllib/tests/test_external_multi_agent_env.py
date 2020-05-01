@@ -8,7 +8,8 @@ from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiCartPole
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent, \
+    MultiAgentCartPole
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving
@@ -63,7 +64,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
 
-    def test_train_external_multi_cartpole_many_policies(self):
+    def test_train_external_multi_agent_cartpole_many_policies(self):
         n = 20
         single_env = gym.make("CartPole-v0")
         act_space = single_env.action_space
@@ -74,7 +75,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                                            {})
         policy_ids = list(policies.keys())
         ev = RolloutWorker(
-            env_creator=lambda _: MultiCartPole(n),
+            env_creator=lambda _: MultiAgentCartPole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             rollout_fragment_length=100)

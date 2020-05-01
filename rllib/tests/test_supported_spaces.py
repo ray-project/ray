@@ -6,7 +6,8 @@ import traceback
 import ray
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.examples.env.multi_agent import MultiCartPole, MultiMountainCar
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
+    MultiAgentMountainCar
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
@@ -120,13 +121,13 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
 
 
 def check_support_multiagent(alg, config):
-    register_env("multi_mountaincar", lambda _: MultiMountainCar(2))
-    register_env("multi_cartpole", lambda _: MultiCartPole(2))
+    register_env("multi_agent_mountaincar", lambda _: MultiAgentMountainCar(2))
+    register_env("multi_agent_cartpole", lambda _: MultiAgentCartPole(2))
     config["log_level"] = "ERROR"
     if "DDPG" in alg:
-        a = get_agent_class(alg)(config=config, env="multi_mountaincar")
+        a = get_agent_class(alg)(config=config, env="multi_agent_mountaincar")
     else:
-        a = get_agent_class(alg)(config=config, env="multi_cartpole")
+        a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
     try:
         a.train()
     finally:
