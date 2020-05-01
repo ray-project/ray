@@ -14,7 +14,7 @@ def mock_data(train_dir, val_dir):
     per_cls = max_cls_n // total_classes
 
     max_img_n = 99999999
-    total_imgs = 3
+    total_imgs = 64
     per_img = max_img_n // total_imgs
 
     def mock_class(base, n):

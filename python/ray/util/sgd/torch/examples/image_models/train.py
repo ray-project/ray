@@ -20,6 +20,7 @@ import torch.nn as nn
 
 from timm.data.distributed_sampler import OrderedDistributedSampler
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import BatchSampler
 
 from timm.data import Dataset, create_loader
 from timm.data import resolve_data_config, FastCollateMixup
@@ -49,27 +50,25 @@ class ImagenetOperator(TrainingOperator):
     def setup(self, config):
         args = self.config["args"]
 
-        if is_training:
-            sampler = DistributedSampler
-        else:
-            # This will add extra duplicate entries to result in equal num
-            # of samples per-process, will slightly alter validation results
-            sampler = OrderedDistributedSampler
-        batch_sampler = BatchSampler(
-            sampler(train_loader.dataset),
-            train_loader.batch_size,
-            train_loader.drop_last)
-        self.train_loader.batch_sampler = batch_sampler
+        # batch_sampler = BatchSampler(
+        #     DistributedSampler(self.train_loader.dataset),
+        #     self.train_loader.batch_size,
+        #     self.train_loader.drop_last)
+        # self.train_loader.batch_sampler = batch_sampler
 
-        batch_sampler = BatchSampler(
-            sampler(eval_loader.dataset),
-            eval_loader.batch_size,
-            eval_loader.drop_last)
-        self.eval_loader.batch_sampler = batch_sampler
-        # we can't patch sampler directly after creation,
-        # but if you look at the DataLoader constructor sources,
-        # we can just make a batch_sampler out of our new sampler and then
-        # set that
+        # # This will add extra duplicate entries to result in equal num
+        # # of samples per-process, will slightly alter validation results
+        # batch_sampler = BatchSampler(
+        #     OrderedDistributedSampler(self.validation_loader.dataset),
+        #     self.validation_loader.batch_size,
+        #     self.validation_loader.drop_last)
+        # self.validation_loader.batch_sampler = batch_sampler
+        # # we can't patch sampler directly after creation,
+        # # but if you look at the DataLoader constructor sources,
+        # # we can just make a batch_sampler out of our new sampler and then
+        # # set that
+
+        # # fixme: haha jk we cant do this in 1.4.0
 
         has_apex = False
         try:
@@ -210,6 +209,8 @@ class ImagenetOperator(TrainingOperator):
         last_idx = len(loader) - 1
         num_updates = info["epoch_idx"] * len(loader)
         for batch_idx, batch in enumerate(iterator):
+            print('AAA', batch_idx)
+
             last_batch = batch_idx == last_idx
             data_time_m.update(time.time() - end)
 
@@ -222,6 +223,7 @@ class ImagenetOperator(TrainingOperator):
 
             batch_time_m.update(time.time() - end)
 
+            print('a')
             if last_batch or batch_idx % args.log_interval == 0:
                 lrl = [
                     param_group["lr"]
@@ -229,6 +231,7 @@ class ImagenetOperator(TrainingOperator):
                 ]
                 lr = sum(lrl) / len(lrl)
 
+                print('hello')
                 reduced_loss = reduce_tensor(loss.data, self.world_size)
                 losses_m.update(metrics["train_loss"], metrics["NUM_STEPS"])
 
@@ -294,7 +297,7 @@ class ImagenetOperator(TrainingOperator):
 
         return OrderedDict([('loss', losses_m.avg)])
 
-def model_creator(config, sys_info):
+def model_creator(config):
     args = config["args"]
 
     model = create_model(
@@ -324,7 +327,7 @@ def model_creator(config, sys_info):
     return model
 
 
-def data_creator(config, sys_info):
+def data_creator(config):
     args = config["args"]
 
     torch.manual_seed(args.seed + sgd_utils.world_rank())
@@ -433,7 +436,7 @@ def main():
 
     args, args_text = parse_args()
 
-    ray.init(address=args.ray_address)
+    ray.init(address=args.ray_address, log_to_driver=False)
 
     trainer = TorchTrainer(
         model_creator=model_creator,
@@ -445,7 +448,7 @@ def main():
         use_tqdm=True,
         use_fp16=args.amp,
         wrap_ddp=False,
-        add_dist_sampler=False,  # we handle this manually
+        add_dist_sampler=True,  # todo: handle this manually
         apex_args={"opt_level": "O1"},
         config={
             "args": args,
@@ -463,11 +466,11 @@ def main():
         info["num_epochs"] = args.epochs
 
         trainer.train(
-            num_steps=1 if args.smoke_test else None,
+            num_steps=10 if args.smoke_test else None,
             reduce_results=False,
             info=info)
 
-        val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
+        val_stats = trainer.validate(num_steps=10 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()

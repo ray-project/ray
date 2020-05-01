@@ -46,8 +46,8 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
 
-        utils._world_rank = 0
-        utils._world_size = 1
+        utils._world_rank = world_rank
+        utils._world_size = world_size
 
     def setup(self):
         raise RuntimeError("Need to call setup commands separately.")
@@ -72,7 +72,7 @@ class DistributedTorchRunner(TorchRunner):
             backend=self.backend,
             init_method=url,
             rank=utils.world_rank(),
-            world_size=self.world_size,
+            world_size=utils.world_size(),
             timeout=timeout)
 
     def setup_ddp_and_operator(self):
@@ -99,7 +99,7 @@ class DistributedTorchRunner(TorchRunner):
             self.config,
             models=training_models,
             optimizers=self.optimizers,
-            criterion=self.criterion,
+            criterions=self.criterions,
             train_loader=self.train_loader,
             validation_loader=self.validation_loader,
             schedulers=self.schedulers,
