@@ -298,14 +298,21 @@ def update_target_if_needed(trainer, fetches):
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
+    if config.get("prioritized_replay"):
+        prio_args = {
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        }
+    else:
+        prio_args = {}
+
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"])
+        **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -317,7 +324,7 @@ def execution_plan(workers, config):
 
     def update_prio(item):
         samples, info_dict = item
-        if config["prioritized_replay"]:
+        if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
                 # TODO(sven): This is currently structured differently for

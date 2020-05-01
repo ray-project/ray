@@ -82,6 +82,9 @@ DEFAULT_CONFIG = with_common_config({
         "lstm_cell_size": 64,
         "max_seq_len": 999999,
     },
+
+    # TODO(ekl) support sync batch replay.
+    "use_exec_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
