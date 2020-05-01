@@ -88,16 +88,6 @@ class Router:
 
     The traffic policy is used to assign requests to workers.
 
-    Behavior:
-        >>> # psuedo-code
-        >>> router = Router()
-        >>> router.enqueue_request(
-            "service-name", request_args, request_kwargs, request_context)
-        # nothing happens, request is queued.
-        >>> router.add_new_worker("backend-1", worker_handle)
-        >>> router.link("service-name", "backend-1")
-        # the request is assigned to the worker
-
     Traffic policy splits the traffic among different replicas
     probabilistically:
 
@@ -254,15 +244,21 @@ class Router:
             # on it.
             worker_handle.__ray_terminate__.remote()
 
-    async def link(self, service, backend):
-        logger.debug("Link %s with %s", service, backend)
-        await self.set_traffic(service, {backend: 1.0})
-
     async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
         await self.flush()
+
+    async def remove_service(self, service):
+        logger.debug("Removing service {}".format(service))
+        async with self.flush_lock:
+            await self._flush_service_queues()
+            await self._flush_buffer_queues()
+            if service in self.service_queues:
+                del self.service_queues[service]
+            if service in self.traffic:
+                del self.traffic[service]
 
     async def set_backend_config(self, backend, config):
         logger.debug("Setting backend config for "

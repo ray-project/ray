@@ -65,6 +65,9 @@ class ServeMaster:
         # backends that should be removed from the router if recovering from a
         # checkpoint.
         self.backends_to_remove = list()
+        # endpoints that should be removed from the router if recovering from a
+        # checkpoint.
+        self.endpoints_to_remove = list()
         # endpoint -> traffic_dict
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
@@ -181,7 +184,7 @@ class ServeMaster:
         checkpoint = pickle.dumps(
             (self.routes, self.backends, self.traffic_policies, self.replicas,
              self.replicas_to_start, self.replicas_to_stop,
-             self.backends_to_remove))
+             self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store_client.put("checkpoint", checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -211,7 +214,8 @@ class ServeMaster:
         # Load internal state from the checkpoint data.
         (self.routes, self.backends, self.traffic_policies, self.replicas,
          self.replicas_to_start, self.replicas_to_stop,
-         self.backends_to_remove) = pickle.loads(checkpoint_bytes)
+         self.backends_to_remove,
+         self.endpoints_to_remove) = pickle.loads(checkpoint_bytes)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
@@ -243,8 +247,9 @@ class ServeMaster:
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
 
-        # Remove any pending backends.
+        # Remove any pending backends and endpoints.
         await self._remove_pending_backends()
+        await self._remove_pending_endpoints()
 
         logger.info(
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
@@ -354,6 +359,15 @@ class ServeMaster:
         for backend_tag in self.backends_to_remove:
             await self.router.remove_backend.remote(backend_tag)
         self.backends_to_remove.clear()
+
+    async def _remove_pending_endpoints(self):
+        """Removes the pending endpoints in self.endpoints_to_remove.
+
+        Clears self.endpoints_to_remove.
+        """
+        for endpoint_tag in self.endpoints_to_remove:
+            await self.router.remove_service.remote(endpoint_tag)
+        self.endpoints_to_remove.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
         """Scale the given backend to the number of replicas.
@@ -475,6 +489,47 @@ class ServeMaster:
             # update.
             self._checkpoint()
             await self.http_proxy.set_route_table.remote(self.routes)
+
+    async def delete_endpoint(self, endpoint):
+        """Delete the specified endpoint.
+
+        Does not modify any corresponding backends.
+        """
+        logger.info("Deleting endpoint '{}'".format(endpoint))
+        async with self.write_lock:
+            # This method must be idempotent. We should validate that the
+            # specified endpoint exists on the client.
+            if endpoint not in self.traffic_policies:
+                logger.info("Endpoint '{}' doesn't exist".format(endpoint))
+                return
+
+            # Remove the traffic policy entry.
+            del self.traffic_policies[endpoint]
+
+            for route, (route_endpoint, _) in self.routes.items():
+                if route_endpoint == endpoint:
+                    route_to_delete = route
+                    break
+            else:
+                # This should never happen, we either add to or delete from
+                # both self.traffic_policies and self.routes.
+                assert False, "No route found for endpoint '{}'".format(
+                    endpoint)
+
+            # Remove the routing entry.
+            del self.routes[route_to_delete]
+
+            self.endpoints_to_remove.append(endpoint)
+
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # updates to the HTTP proxy and router to avoid inconsistent state
+            # if we crash after pushing the update.
+            self._checkpoint()
+
+            # Update the HTTP proxy first to ensure no new requests for the
+            # endpoint are sent to the router.
+            await self.http_proxy.set_route_table.remote(self.routes)
+            await self._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag, backend_config,
                              replica_config):
