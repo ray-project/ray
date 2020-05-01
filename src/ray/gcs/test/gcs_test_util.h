@@ -76,7 +76,7 @@ struct Mocker {
     actor_table_data->set_state(
         rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
     actor_table_data->set_max_restarts(1);
-    actor_table_data->set_num_reconstructions(0);
+    actor_table_data->set_num_restarts(0);
     return actor_table_data;
   }
 

@@ -4,7 +4,7 @@ import unittest
 import ray
 
 
-class TestUnrestartableErrors(unittest.TestCase):
+class TestUnreconstructableErrors(unittest.TestCase):
     def setUp(self):
         ray.init(
             num_cpus=1,
@@ -19,7 +19,7 @@ class TestUnrestartableErrors(unittest.TestCase):
         ray.get(x_id)
         for _ in range(20):
             ray.put(np.zeros(10 * 1024 * 1024))
-        self.assertRaises(ray.exceptions.UnrestartableError,
+        self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
 
 

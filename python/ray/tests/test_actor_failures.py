@@ -119,7 +119,7 @@ def test_actor_eviction(ray_start_object_store_memory):
             val = ray.get(obj)
             assert isinstance(val, np.ndarray), val
             num_success += 1
-        except ray.exceptions.UnrestartableError:
+        except ray.exceptions.UnreconstructableError:
             num_evicted += 1
     # Some objects should have been evicted, and some should still be in the
     # object store.

@@ -654,7 +654,7 @@ def init(address=None,
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
-            pressure, ray.UnrestartableError may be thrown. If False, then
+            pressure, ray.UnreconstructableError may be thrown. If False, then
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
@@ -1510,7 +1510,7 @@ def get(object_ids, timeout=None):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
-                if isinstance(value, ray.exceptions.UnrestartableError):
+                if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()

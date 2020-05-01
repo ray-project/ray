@@ -574,7 +574,7 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
   // will eventually be stored for the objects (either an
-  // UnrestartableError or a value reconstructed from lineage).
+  // UnreconstructableError or a value reconstructed from lineage).
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;

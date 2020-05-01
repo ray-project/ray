@@ -44,7 +44,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
             with pytest.raises(ray.exceptions.RayTimeoutError):
                 ray.get(oid, timeout=0.1)
         else:
-            with pytest.raises(ray.exceptions.UnrestartableError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 ray.get(oid)
 
 
@@ -91,7 +91,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
         ray.get(tail_oid)
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnrestartableError:
+    except ray.exceptions.UnreconstructableError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -232,7 +232,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
         _fill_object_store_and_get(inner_oid)
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnrestartableError:
+    except ray.exceptions.UnreconstructableError:
         assert failure
 
     inner_oid_bytes = inner_oid.binary()

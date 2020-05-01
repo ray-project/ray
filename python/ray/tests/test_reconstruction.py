@@ -108,7 +108,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.UnrestartableError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -160,7 +160,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.UnrestartableError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -215,7 +215,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     if reconstruction_enabled:
         ray.get(result)
     else:
-        with pytest.raises(ray.exceptions.UnrestartableError):
+        with pytest.raises(ray.exceptions.UnreconstructableError):
             ray.get(result)
 
 
@@ -278,7 +278,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                     dependent_task.options(resources={
                         "node1": 1
                     }).remote(obj))
-            with pytest.raises(ray.exceptions.UnrestartableError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -325,7 +325,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.UnrestartableError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
