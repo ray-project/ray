@@ -25,15 +25,11 @@ class Actor:
 
 @ray.remote
 class AsyncActor:
-    async def private_coroutine(self):
-        await asyncio.sleep(0)
+    async def small_value(self):
         return b"ok"
 
-    async def small_value(self):
-        return await self.private_coroutine()
-
     async def small_value_with_arg(self, x):
-        return await self.private_coroutine()
+        return b"ok"
 
     async def small_value_batch(self, n):
         await asyncio.wait([small_value.remote() for _ in range(n)])
