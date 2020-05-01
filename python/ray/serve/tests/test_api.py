@@ -3,7 +3,6 @@ import pytest
 import requests
 
 from ray import serve
-from ray.serve import BackendConfig
 import ray
 
 
@@ -30,7 +29,7 @@ def test_e2e(serve_instance):
     def function(flask_request):
         return {"method": flask_request.method}
 
-    serve.create_backend(function, "echo:v1")
+    serve.create_backend("echo:v1", function)
     serve.set_traffic("endpoint", {"echo:v1": 1.0})
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
@@ -47,7 +46,7 @@ def test_call_method(serve_instance):
         def method(self, request):
             return "hello"
 
-    serve.create_backend(CallMethod, "call-method")
+    serve.create_backend("call-method", CallMethod)
     serve.set_traffic("call-method", {"call-method": 1.0})
 
     # Test HTTP path.
@@ -68,31 +67,24 @@ def test_no_route(serve_instance):
     def func(_, i=1):
         return 1
 
-    serve.create_backend(func, "backend:1")
+    serve.create_backend("backend:1", func)
     serve.set_traffic("noroute-endpoint", {"backend:1": 1.0})
     service_handle = serve.get_handle("noroute-endpoint")
     result = ray.get(service_handle.remote(i=1))
     assert result == 1
 
 
-def test_reject_duplicate_backend_tag(serve_instance):
-    backend_name = "foo"
-    serve.create_backend(lambda foo: foo, backend_name)
-    with pytest.raises(AssertionError):
-        serve.create_backend(lambda foo: foo, backend_name)
-
-
 def test_reject_duplicate_route(serve_instance):
     route = "/foo"
     serve.create_endpoint("bar", route=route)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.create_endpoint("foo", route=route)
 
 
 def test_reject_duplicate_endpoint(serve_instance):
     endpoint_name = "foo"
     serve.create_endpoint(endpoint_name, route="/ok")
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         serve.create_endpoint(endpoint_name, route="/different")
 
 
@@ -100,11 +92,11 @@ def test_set_traffic_missing_data(serve_instance):
     endpoint_name = "foobar"
     backend_name = "foo_backend"
     serve.create_endpoint(endpoint_name)
-    serve.create_backend(lambda: 5, backend_name)
-    with pytest.raises(AssertionError):
-        serve.set_traffic(endpoint_name, {"nonexistant_backend": 1.0})
-    with pytest.raises(AssertionError):
-        serve.set_traffic("nonexistant_endpoint_name", {backend_name: 1.0})
+    serve.create_backend(backend_name, lambda: 5)
+    with pytest.raises(ValueError):
+        serve.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
+    with pytest.raises(ValueError):
+        serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
 
 def test_scaling_replicas(serve_instance):
@@ -123,8 +115,7 @@ def test_scaling_replicas(serve_instance):
             "http://127.0.0.1:8000/-/routes").json():
         time.sleep(0.2)
 
-    b_config = BackendConfig(num_replicas=2)
-    serve.create_backend(Counter, "counter:v1", backend_config=b_config)
+    serve.create_backend("counter:v1", Counter, config={"num_replicas": 2})
     serve.set_traffic("counter", {"counter:v1": 1.0})
 
     counter_result = []
@@ -135,9 +126,7 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    b_config = serve.get_backend_config("counter:v1")
-    b_config.num_replicas = 1
-    serve.set_backend_config("counter:v1", b_config)
+    serve.update_backend_config("counter:v1", {"num_replicas": 1})
 
     counter_result = []
     for _ in range(10):
@@ -167,9 +156,8 @@ def test_batching(serve_instance):
         time.sleep(0.2)
 
     # set the max batch size
-    b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
-        BatchingExample, "counter:v11", backend_config=b_config)
+        "counter:v11", BatchingExample, config={"max_batch_size": 5})
     serve.set_traffic("counter1", {"counter:v11": 1.0})
 
     future_list = []
@@ -197,9 +185,8 @@ def test_batching_exception(serve_instance):
 
     serve.create_endpoint("exception-test", "/noListReturned")
     # set the max batch size
-    b_config = BackendConfig(max_batch_size=5)
     serve.create_backend(
-        NoListReturned, "exception:v1", backend_config=b_config)
+        "exception:v1", NoListReturned, config={"max_batch_size": 5})
     serve.set_traffic("exception-test", {"exception:v1": 1.0})
 
     handle = serve.get_handle("exception-test")
@@ -207,41 +194,7 @@ def test_batching_exception(serve_instance):
         assert ray.get(handle.remote(temp=1))
 
 
-def test_killing_replicas(serve_instance):
-    class Simple:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, flask_request, temp=None):
-            return temp
-
-    serve.create_endpoint("simple", "/simple")
-    b_config = BackendConfig(num_replicas=3, num_cpus=2)
-    serve.create_backend(Simple, "simple:v1", backend_config=b_config)
-    master_actor = serve.api._get_master_actor()
-    old_replica_tag_list = ray.get(
-        master_actor._list_replicas.remote("simple:v1"))
-
-    bnew_config = serve.get_backend_config("simple:v1")
-    # change the config
-    bnew_config.num_cpus = 1
-    # set the config
-    serve.set_backend_config("simple:v1", bnew_config)
-    new_replica_tag_list = ray.get(
-        master_actor._list_replicas.remote("simple:v1"))
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            master_actor.get_all_worker_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the new_replica_tag_list must be subset of all_tag_list
-    assert set(new_replica_tag_list) <= set(new_all_tag_list)
-
-    # the old_replica_tag_list must not be subset of all_tag_list
-    assert not set(old_replica_tag_list) <= set(new_all_tag_list)
-
-
-def test_not_killing_replicas(serve_instance):
+def test_updating_config(serve_instance):
     class BatchSimple:
         def __init__(self):
             self.count = 0
@@ -252,17 +205,18 @@ def test_not_killing_replicas(serve_instance):
             return [1] * batch_size
 
     serve.create_endpoint("bsimple", "/bsimple")
-    b_config = BackendConfig(num_replicas=3, max_batch_size=2)
-    serve.create_backend(BatchSimple, "bsimple:v1", backend_config=b_config)
+    serve.create_backend(
+        "bsimple:v1",
+        BatchSimple,
+        config={
+            "max_batch_size": 2,
+            "num_replicas": 3
+        })
     master_actor = serve.api._get_master_actor()
     old_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("bsimple:v1"))
 
-    bnew_config = serve.get_backend_config("bsimple:v1")
-    # change the config
-    bnew_config.max_batch_size = 5
-    # set the config
-    serve.set_backend_config("bsimple:v1", bnew_config)
+    serve.update_backend_config("bsimple:v1", {"max_batch_size": 5})
     new_replica_tag_list = ray.get(
         master_actor._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = []
@@ -274,3 +228,77 @@ def test_not_killing_replicas(serve_instance):
     # and should be subset of all_tag_list
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
+
+
+def test_delete_backend(serve_instance):
+    serve.create_endpoint("delete_backend", "/delete-backend")
+
+    def function():
+        return "hello"
+
+    serve.create_backend("delete:v1", function)
+    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
+
+    # Check that we can't delete the backend while it's in use.
+    with pytest.raises(ValueError):
+        serve.delete_backend("delete:v1")
+
+    serve.create_backend("delete:v2", function)
+    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
+
+    with pytest.raises(ValueError):
+        serve.delete_backend("delete:v1")
+
+    # Check that the backend can be deleted once it's no longer in use.
+    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
+    serve.delete_backend("delete:v1")
+
+    # Check that we can no longer use the previously deleted backend.
+    with pytest.raises(ValueError):
+        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    def function2():
+        return "olleh"
+
+    # Check that we can now reuse the previously delete backend's tag.
+    serve.create_backend("delete:v1", function2)
+    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+
+    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
+
+
+@pytest.mark.parametrize("route", [None, "/delete-endpoint"])
+def test_delete_endpoint(serve_instance, route):
+    endpoint_name = "delete_endpoint" + str(route)
+    serve.create_endpoint(endpoint_name, route=route)
+    serve.delete_endpoint(endpoint_name)
+
+    # Check that we can reuse a deleted endpoint name and route.
+    serve.create_endpoint(endpoint_name, route=route)
+
+    def function():
+        return "hello"
+
+    serve.create_backend("delete-endpoint:v1", function)
+    serve.set_traffic(endpoint_name, {"delete-endpoint:v1": 1.0})
+
+    if route is not None:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    else:
+        handle = serve.get_handle(endpoint_name)
+        assert ray.get(handle.remote()) == "hello"
+
+    # Check that deleting the endpoint doesn't delete the backend.
+    serve.delete_endpoint(endpoint_name)
+    serve.create_endpoint(endpoint_name, route=route)
+    serve.set_traffic(endpoint_name, {"delete-endpoint:v1": 1.0})
+
+    if route is not None:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
+    else:
+        handle = serve.get_handle(endpoint_name)
+        assert ray.get(handle.remote()) == "hello"

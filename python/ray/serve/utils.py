@@ -1,3 +1,6 @@
+import asyncio
+from functools import wraps
+import inspect
 import json
 import logging
 import random
@@ -6,11 +9,11 @@ import time
 import io
 import os
 
+import ray
 import requests
 from pygments import formatters, highlight, lexers
 from ray.serve.context import FakeFlaskRequest, TaskContext
 from ray.serve.http_util import build_flask_request
-import itertools
 import numpy as np
 
 try:
@@ -18,19 +21,7 @@ try:
 except ImportError:
     pydantic = None
 
-
-def expand(l):
-    """
-    Implements a nested flattening of a list.
-    Example:
-    >>> serve.utils.expand([1,2,[3,4,5],6])
-    [1,2,3,4,5,6]
-    >>> serve.utils.expand(["a", ["b", "c"], "d", ["e", "f"]])
-    ["a", "b", "c", "d", "e", "f"]
-    """
-    return list(
-        itertools.chain.from_iterable(
-            [x if isinstance(x, list) else [x] for x in l]))
+ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 def parse_request_item(request_item):
@@ -116,3 +107,69 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
 
 def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
+
+
+def async_retryable(cls):
+    """Make all actor method invocations on the class retryable.
+
+    Note: This will retry actor_handle.method_name.remote(), but it must
+    be invoked in an async context.
+
+    Usage:
+        @ray.remote(max_reconstructions=10000)
+        @async_retryable
+        class A:
+            pass
+    """
+    for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+
+        def decorate_with_retry(f):
+            @wraps(f)
+            async def retry_method(*args, **kwargs):
+                start = time.time()
+                while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+                    try:
+                        return await f(*args, **kwargs)
+                    except ray.exceptions.RayActorError:
+                        logger.warning(
+                            "Actor method '{}' failed, retrying after 100ms.".
+                            format(name))
+                        await asyncio.sleep(0.1)
+                raise RuntimeError("Timed out after {}s waiting for actor "
+                                   "method '{}' to succeed.".format(
+                                       ACTOR_FAILURE_RETRY_TIMEOUT_S, name))
+
+            return retry_method
+
+        method.__ray_invocation_decorator__ = decorate_with_retry
+    return cls
+
+
+def retry_actor_failures(f, *args, **kwargs):
+    start = time.time()
+    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+        try:
+            return ray.get(f.remote(*args, **kwargs))
+        except ray.exceptions.RayActorError:
+            logger.warning(
+                "Actor method '{}' failed, retrying after 100ms".format(
+                    f._method_name))
+            time.sleep(0.1)
+    raise RuntimeError("Timed out after {}s waiting for actor "
+                       "method '{}' to succeed.".format(
+                           ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))
+
+
+async def retry_actor_failures_async(f, *args, **kwargs):
+    start = time.time()
+    while time.time() - start < ACTOR_FAILURE_RETRY_TIMEOUT_S:
+        try:
+            return await f.remote(*args, **kwargs)
+        except ray.exceptions.RayActorError:
+            logger.warning(
+                "Actor method '{}' failed, retrying after 100ms".format(
+                    f._method_name))
+            await asyncio.sleep(0.1)
+    raise RuntimeError("Timed out after {}s waiting for actor "
+                       "method '{}' to succeed.".format(
+                           ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))

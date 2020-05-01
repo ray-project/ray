@@ -62,6 +62,7 @@ class NevergradSearch(Searcher):
                  parameter_names,
                  metric="episode_reward_mean",
                  mode="max",
+                 max_concurrent=None,
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
@@ -74,8 +75,9 @@ class NevergradSearch(Searcher):
             self._metric_op = 1.
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
+        self.max_concurrent = max_concurrent
         super(NevergradSearch, self).__init__(
-            metric=metric, mode=mode, **kwargs)
+            metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs)
         # validate parameters
         if hasattr(optimizer, "instrumentation"):  # added in v0.2.0
             if optimizer.instrumentation.kwargs:
@@ -98,6 +100,9 @@ class NevergradSearch(Searcher):
                              "dimension for non-instrumented optimizers")
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         suggested_config = self._nevergrad_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,

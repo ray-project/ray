@@ -93,6 +93,7 @@ class SkOptSearch(Searcher):
         _validate_warmstart(parameter_names, points_to_evaluate,
                             evaluated_rewards)
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        self.max_concurrent = max_concurrent
         super(SkOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -114,6 +115,9 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping = {}
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         if self._initial_points:
             suggested_config = self._initial_points[0]
             del self._initial_points[0]

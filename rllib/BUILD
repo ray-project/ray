@@ -41,23 +41,45 @@
 # --------------------------------------------------------------------
 
 py_test(
-    name = "run_regression_tests_cartpole",
+    name = "run_regression_tests_cartpole_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/cartpole-*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*-tf.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 
 py_test(
-    name = "run_regression_tests_pendulum",
+    name = "run_regression_tests_cartpole_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests", "learning_tests_pendulum"],
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/pendulum-*.yaml"]),
+    data = glob(["tuned_examples/regression_tests/cartpole-*-torch.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum-*-tf.yaml"]),
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "enormous",  # = 60min timeout
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/pendulum-*-torch.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
@@ -1406,7 +1428,7 @@ py_test(
     name = "examples/nested_action_spaces_ppo",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--stop=-500", "--run=PPO"]
 )

@@ -15,10 +15,13 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.models import Model, ModelCatalog
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
 
 tf = try_import_tf()
 
@@ -31,8 +34,13 @@ parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
-class CustomModel1(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+class CustomModel1(TFModelV2):
+    def __init__(self, observation_space, action_space, num_outputs,
+                 model_config, name):
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
+
+        inputs = tf.keras.layers.Input(observation_space.shape)
         # Example of (optional) weight sharing between two different policies.
         # Here, we share the variables defined in the 'shared' variable scope
         # by entering it explicitly with tf.AUTO_REUSE. This creates the
@@ -42,29 +50,55 @@ class CustomModel1(Model):
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = tf.layers.dense(
-                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
-        last_layer = tf.layers.dense(
-            last_layer, 64, activation=tf.nn.relu, name="fc2")
-        output = tf.layers.dense(
-            last_layer, num_outputs, activation=None, name="fc_out")
-        return output, last_layer
+            last_layer = tf.keras.layers.Dense(
+                units=64, activation=tf.nn.relu, name="fc1")(inputs)
+        output = tf.keras.layers.Dense(
+            units=num_outputs, activation=None, name="fc_out")(last_layer)
+        vf = tf.keras.layers.Dense(
+            units=1, activation=None, name="value_out")(last_layer)
+        self.base_model = tf.keras.models.Model(inputs, [output, vf])
+        self.register_variables(self.base_model.variables)
+
+    @override(ModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        out, self._value_out = self.base_model(input_dict["obs"])
+        return out, []
+
+    @override(ModelV2)
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
 
 
-class CustomModel2(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        # Weights shared with CustomModel1
+class CustomModel2(TFModelV2):
+    def __init__(self, observation_space, action_space, num_outputs,
+                 model_config, name):
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
+
+        inputs = tf.keras.layers.Input(observation_space.shape)
+
+        # Weights shared with CustomModel1.
         with tf.variable_scope(
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = tf.layers.dense(
-                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
-        last_layer = tf.layers.dense(
-            last_layer, 64, activation=tf.nn.relu, name="fc2")
-        output = tf.layers.dense(
-            last_layer, num_outputs, activation=None, name="fc_out")
-        return output, last_layer
+            last_layer = tf.keras.layers.Dense(
+                units=64, activation=tf.nn.relu, name="fc1")(inputs)
+        output = tf.keras.layers.Dense(
+            units=num_outputs, activation=None, name="fc_out")(last_layer)
+        vf = tf.keras.layers.Dense(
+            units=1, activation=None, name="value_out")(last_layer)
+        self.base_model = tf.keras.models.Model(inputs, [output, vf])
+        self.register_variables(self.base_model.variables)
+
+    @override(ModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        out, self._value_out = self.base_model(input_dict["obs"])
+        return out, []
+
+    @override(ModelV2)
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
 
 
 if __name__ == "__main__":

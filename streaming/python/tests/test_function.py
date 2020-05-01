@@ -14,9 +14,9 @@ class MapFunc(function.MapFunction):
 
 
 def test_load_function():
-    # function_bytes, module_name, class_name, function_name,
+    # function_bytes, module_name, function_name/class_name,
     # function_interface
     descriptor_func_bytes = gateway_client.serialize(
-        [None, __name__, MapFunc.__name__, None, "MapFunction"])
+        [None, __name__, MapFunc.__name__, "MapFunction"])
     func = function.load_function(descriptor_func_bytes)
     assert type(func) is MapFunc
