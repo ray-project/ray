@@ -70,15 +70,18 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Setting max "
                            "concurrency to 1.")
             max_concurrent = 1
+        self.max_concurrent = max_concurrent
         self._parameters = list(exp.parameters)
         self._live_index_mapping = {}
         super(AxSearch, self).__init__(
             metric=self._objective_name,
             mode=mode,
-            max_concurrent=max_concurrent,
             use_early_stopped_trials=use_early_stopped_trials)
 
     def suggest(self, trial_id):
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         parameters, trial_index = self._ax.get_next_trial()
         self._live_index_mapping[trial_id] = trial_index
         return parameters

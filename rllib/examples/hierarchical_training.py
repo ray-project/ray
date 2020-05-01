@@ -28,9 +28,11 @@ import logging
 
 import ray
 from ray import tune
+from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
-from ray.tune import function
+from ray.rllib.utils.test_utils import check_learning_achieved
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
@@ -94,9 +96,7 @@ if __name__ == "__main__":
 
         results = tune.run("PPO", stop=stop, config=config)
 
-    # Error if stop-reward not reached.
-    if results.trials[0].last_result["episode_reward_mean"] < \
-            args.stop_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(
-            args.stop_reward))
-    print("ok")
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

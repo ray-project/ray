@@ -9,6 +9,7 @@ import ray.cloudpickle as pickle
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
                                  SERVE_PROXY_NAME, SERVE_METRIC_MONITOR_NAME)
 from ray.serve.http_proxy import HTTPProxyActor
+from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import async_retryable, get_random_letters, logger
@@ -18,6 +19,7 @@ import numpy as np
 # Used for testing purposes only. If this is set, the master actor will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
+CHECKPOINT_KEY = "serve-master-checkpoint"
 
 
 @ray.remote
@@ -46,12 +48,11 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, kv_store_connector, router_class, router_kwargs,
-                       start_http_proxy, http_proxy_host, http_proxy_port,
-                       metric_gc_window_s):
+    async def __init__(self, router_class, router_kwargs, start_http_proxy,
+                       http_proxy_host, http_proxy_port, metric_gc_window_s):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
-        self.kv_store_client = kv_store_connector("serve_checkpoints")
+        self.kv_store = RayInternalKVStore()
         # path -> (endpoint, methods).
         self.routes = {}
         # backend -> (backend_worker, backend_config, replica_config).
@@ -102,7 +103,7 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint = self.kv_store_client.get("checkpoint")
+        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -186,7 +187,7 @@ class ServeMaster:
              self.replicas_to_start, self.replicas_to_stop,
              self.backends_to_remove, self.endpoints_to_remove))
 
-        self.kv_store_client.put("checkpoint", checkpoint)
+        self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
 
         if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:

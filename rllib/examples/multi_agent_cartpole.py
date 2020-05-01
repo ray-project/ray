@@ -88,10 +88,10 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
-    from ray.rllib.agents.ppo import PPOTrainer
-    config["num_workers"] = 0
-    trainer = PPOTrainer(config=config)
-    trainer.train()
+    #from ray.rllib.agents.ppo import PPOTrainer
+    #config["num_workers"] = 0
+    #trainer = PPOTrainer(config=config)
+    #trainer.train()
 
     results = tune.run("PPO", stop=stop, config=config)
 
