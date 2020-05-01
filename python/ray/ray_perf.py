@@ -244,11 +244,11 @@ def main():
     a = [AsyncActor.remote() for _ in range(n_cpu)]
 
     @ray.remote
-    def work(actors):
+    def async_actor_work(actors):
         ray.get([actors[i % n_cpu].small_value.remote() for i in range(n)])
 
     def async_actor_multi():
-        ray.get([work.remote(a) for _ in range(m)])
+        ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     timeit("n:n async-actor calls async", async_actor_multi, m * n)
 
