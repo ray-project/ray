@@ -19,6 +19,7 @@ import numpy as np
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
 
+
 @ray.remote
 class ServeMaster:
     """Responsible for managing the state of the serving system.
