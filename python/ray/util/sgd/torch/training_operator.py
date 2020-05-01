@@ -212,8 +212,9 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (features, labels) format. If using amp/fp16
-        training, it will also scale the loss automatically.
+        are in (*features, labels) format. So we also support multiple inputs
+        model. If using amp/fp16 training, it will also scale the loss
+        automatically.
 
         You can provide custom loss metrics and training operations if you
         override this method. If overriding this method, you can access model,
@@ -306,6 +307,10 @@ class TrainingOperator:
         """Calcuates the loss and accuracy over a given batch.
 
         You can override this method to provide arbitrary metrics.
+
+        Same as ``train_batch``, this method implementation assumes that
+        batches are in (*features, labels) format by default. So we also
+        support multiple inputs model.
 
         Args:
             batch: One item of the validation iterator.
