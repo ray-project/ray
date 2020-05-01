@@ -35,18 +35,44 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
+class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+ public:
+  ray::Status WaitForActorOutOfScope(
+      const rpc::WaitForActorOutOfScopeRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
+    callbacks.push_back(callback);
+    return Status::OK();
+  }
+
+  bool Reply(Status status = Status::OK()) {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    auto reply = rpc::WaitForActorOutOfScopeReply();
+    callback(status, reply);
+    callbacks.pop_front();
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks;
+};
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
       : mock_actor_scheduler_(new MockActorScheduler()),
-        gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_) {}
+        worker_client_(new MockWorkerClient()),
+        gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_,
+                           [&](const rpc::Address &addr) { return worker_client_; }) {}
 
   GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
+  std::shared_ptr<MockWorkerClient> worker_client_;
   gcs::GcsActorManager gcs_actor_manager_;
 };
 
-TEST_F(GcsActorManagerTest, TestBasic) {
+TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
@@ -87,9 +113,11 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   // No more actors to schedule.
   gcs_actor_manager_.SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+
+  ASSERT_TRUE(worker_client_->Reply());
 }
 
-TEST_F(GcsActorManagerTest, TestBasicNodeFailure) {
+TEST_F(GcsActorManagerTest, TestNodeFailure) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
@@ -131,6 +159,8 @@ TEST_F(GcsActorManagerTest, TestBasicNodeFailure) {
   // No more actors to schedule.
   gcs_actor_manager_.SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+
+  ASSERT_TRUE(worker_client_->Reply());
 }
 
 TEST_F(GcsActorManagerTest, TestActorReconstruction) {
@@ -188,6 +218,8 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   // No more actors to schedule.
   gcs_actor_manager_.SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+
+  ASSERT_TRUE(worker_client_->Reply());
 }
 
 }  // namespace ray

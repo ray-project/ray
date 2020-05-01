@@ -120,7 +120,7 @@ void GcsActorManager::RegisterActor(
   auto actor = std::make_shared<GcsActor>(request);
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
-  if (!actor->IsDetached()) {
+  if (!actor->IsDetached() && worker_client_factory_) {
     // This actor is owned. Send a long polling request to the actor's
     // owner to determine when the actor should be removed.
     PollOwnerForActorOutOfScope(actor);
@@ -169,8 +169,35 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
+  const auto actor = std::move(it->second);
+  registered_actors_.erase(it);
 
-  const auto &actor = it->second;
+  // Clean up the client to the actor's owner, if necessary.
+  if (!actor->IsDetached()) {
+    const auto &owner_node_id = actor->GetOwnerNodeID();
+    const auto &owner_id = actor->GetOwnerID();
+    RAY_LOG(DEBUG) << "Erasing actor " << actor_id << " owned by " << owner_id;
+
+    auto &node = owners_[owner_node_id];
+    auto worker_it = node.find(owner_id);
+    RAY_CHECK(worker_it != node.end());
+    auto &owner = worker_it->second;
+    RAY_CHECK(owner.children_actor_ids.erase(actor_id));
+    if (owner.children_actor_ids.empty()) {
+      node.erase(worker_it);
+      if (node.empty()) {
+        owners_.erase(owner_node_id);
+      }
+    }
+  }
+
+  // The actor is already dead, most likely due to process or node failure.
+  if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    return;
+  }
+
+  // The actor is still alive or pending creation. Clean up all remaining
+  // state.
   const auto &node_id = actor->GetNodeID();
   const auto &worker_id = actor->GetWorkerID();
   auto node_it = created_actors_.find(node_id);
@@ -211,25 +238,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     }
   }
 
-  // Clean up the client to the actor's owner, if necessary.
-  if (!actor->IsDetached()) {
-    const auto &owner_node_id = actor->GetOwnerNodeID();
-    const auto &owner_id = actor->GetOwnerID();
-    RAY_LOG(DEBUG) << "Erasing actor " << actor_id << " owned by " << owner_id;
-
-    auto &node = owners_[owner_node_id];
-    auto worker_it = node.find(owner_id);
-    RAY_CHECK(worker_it != node.end());
-    auto &owner = worker_it->second;
-    RAY_CHECK(owner.children_actor_ids.erase(actor_id));
-    if (owner.children_actor_ids.empty()) {
-      node.erase(worker_it);
-      if (node.empty()) {
-        owners_.erase(owner_node_id);
-      }
-    }
-  }
-
   // Update the actor to DEAD in case any callers are still alive. This can
   // happen if the owner of the actor dies while there are still callers.
   // TODO(swang): We can skip this step and delete the actor table entry
@@ -242,8 +250,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(
       actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
-
-  registered_actors_.erase(it);
 }
 
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
