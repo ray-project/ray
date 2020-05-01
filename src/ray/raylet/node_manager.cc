@@ -2514,9 +2514,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                                                  : worker->GetTaskResourceIds());
 
     // If the owner has died since this task was queued, cancel the task by
-    // killing the worker.
-    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
-        failed_nodes_cache_.count(owner_node_id) > 0) {
+    // killing the worker (unless this task is for a detached actor).
+    if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
+                                       failed_nodes_cache_.count(owner_node_id) > 0)) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
       KillWorker(worker);
