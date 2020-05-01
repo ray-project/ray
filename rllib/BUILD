@@ -1339,7 +1339,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(

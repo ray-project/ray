@@ -15,7 +15,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.multi_agent_cartpole import MultiAgentCartPole
+from ray.rllib.examples.env.multi_agent import MultiCartPole
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -132,7 +132,7 @@ if __name__ == "__main__":
         "PPO",
         stop={"training_iteration": args.num_iters},
         config={
-            "env": MultiAgentCartPole,
+            "env": MultiCartPole,
             "env_config": {
                 "num_agents": args.num_agents,
             },

@@ -92,7 +92,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
-    register_env("RepeatInitialEnv", lambda _: RepeatInitialObsEnv())
+    register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
     config = {
         "env": args.env,

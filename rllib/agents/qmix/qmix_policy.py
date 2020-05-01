@@ -5,7 +5,7 @@ import numpy as np
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
@@ -181,9 +181,9 @@ class QMixTorchPolicy(Policy):
                         "Action mask shape must be {}, got {}".format(
                             (self.n_actions, ), mask_shape))
                 self.has_action_mask = True
-            if MultiAgentEnv.ENV_STATE in space_keys:
+            if ENV_STATE in space_keys:
                 self.env_global_state_shape = _get_size(
-                    agent_obs_space.spaces[MultiAgentEnv.ENV_STATE])
+                    agent_obs_space.spaces[ENV_STATE])
                 self.has_env_global_state = True
             else:
                 self.env_global_state_shape = (self.obs_size, self.n_agents)
@@ -487,7 +487,7 @@ class QMixTorchPolicy(Policy):
                 dtype=np.float32)
 
         if self.has_env_global_state:
-            state = unpacked[0][MultiAgentEnv.ENV_STATE]
+            state = unpacked[0][ENV_STATE]
         else:
             state = None
         return obs, action_mask, state

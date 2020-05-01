@@ -3,7 +3,7 @@ from gym.spaces import Discrete
 import random
 
 
-class RepeatInitialEnv(gym.Env):
+class RepeatInitialObsEnv(gym.Env):
     """Env in which the initial observation has to be repeated all the time.
 
     Runs for n steps.

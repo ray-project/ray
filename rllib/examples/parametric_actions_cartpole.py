@@ -22,7 +22,7 @@ from ray import tune
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.examples.env.parametric_actions_cartpole import \
-    ParametricActionsCartpole
+    ParametricActionsCartPole
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
-    register_env("pa_cartpole", lambda _: ParametricActionsCartpole(10))
+    register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
     if args.run == "DQN":
         cfg = {
             # TODO(ekl) we need to set these to prevent the masked values
