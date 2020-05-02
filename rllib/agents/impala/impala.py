@@ -282,6 +282,44 @@ def simple_aggregator(workers, config):
     return train_batches
 
 
+@ray.remote(num_cpus=0)
+class Aggregator(ParallelIteratorWorker):
+    def __init__(self, config: dict,
+                 rollout_group: "ParallelIterator[SampleBatchType]"):
+        self.weights = None
+
+        def generator():
+            it = rollout_group.gather_async(async_queue_depth=config[
+                "max_sample_requests_in_flight_per_worker"])
+
+            def update_worker(item):
+                worker, batch = item
+                if self.weights:
+                    worker.set_weights.remote(self.weights)
+                return batch
+
+            it = it.zip_with_source_actor() \
+                .for_each(update_worker) \
+                .for_each(lambda batch: batch.decompress_if_needed()) \
+                .for_each(MixInReplay(
+                    num_slots=config["replay_buffer_num_slots"],
+                    replay_proportion=config["replay_proportion"])) \
+                .flatten() \
+                .combine(
+                    ConcatBatches(
+                        min_batch_size=config["train_batch_size"]))
+            for train_batch in it:
+                yield train_batch
+
+        super().__init__(generator, repeat=False)
+
+    def get_host(self):
+        return os.uname()[1]
+
+    def set_weights(self, weights):
+        self.weights = weights
+
+
 def tree_aggregator(workers, config):
     rollouts = ParallelRollouts(workers, mode="raw")
 
@@ -298,47 +336,12 @@ def tree_aggregator(workers, config):
         rollouts.select_shards(assigned) for assigned in worker_assignments
     ]
 
-    @ray.remote(num_cpus=0)
-    class Aggregator(ParallelIteratorWorker):
-        def __init__(self, rollout_group: "ParallelIterator[SampleBatchType]"):
-            self.weights = None
-
-            def generator():
-                it = rollout_group.gather_async(async_queue_depth=config[
-                    "max_sample_requests_in_flight_per_worker"])
-
-                def update_worker(item):
-                    worker, batch = item
-                    if self.weights:
-                        worker.set_weights.remote(self.weights)
-                    return batch
-
-                it = it.zip_with_source_actor() \
-                    .for_each(update_worker) \
-                    .for_each(lambda batch: batch.decompress_if_needed()) \
-                    .for_each(MixInReplay(
-                        num_slots=config["replay_buffer_num_slots"],
-                        replay_proportion=config["replay_proportion"])) \
-                    .flatten() \
-                    .combine(
-                        ConcatBatches(
-                            min_batch_size=config["train_batch_size"]))
-                for train_batch in it:
-                    yield train_batch
-
-            super().__init__(generator, repeat=False)
-
-        def get_host(self):
-            return os.uname()[1]
-
-        def set_weights(self, weights):
-            self.weights = weights
-
     # This spawns |num_aggregation_workers| intermediate actors that aggregate
     # experiences in parallel. We force colocation on the same node to maximize
     # data bandwidth between them and the driver.
-    train_batches = from_actors(
-        [create_colocated(Aggregator, [g], 1)[0] for g in rollout_groups])
+    train_batches = from_actors([
+        create_colocated(Aggregator, [config, g], 1)[0] for g in rollout_groups
+    ])
 
     # TODO(ekl) properly account for replay.
     def record_steps_sampled(batch):
