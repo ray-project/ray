@@ -263,6 +263,8 @@ class UpdateWorkerWeights:
 
 def record_steps_trained(count):
     metrics = LocalIterator.get_metrics()
+    # Manually update the steps trained counter since the learner thread
+    # is executing outside the pipeline.
     metrics.counters[STEPS_TRAINED_COUNTER] += count
 
 
@@ -271,6 +273,8 @@ def gather_experiences_directly(workers, config):
         workers,
         mode="async",
         async_queue_depth=config["max_sample_requests_in_flight_per_worker"])
+
+    # Augment with replay and concat to desired train batch size.
     train_batches = rollouts \
         .for_each(lambda batch: batch.decompress_if_needed()) \
         .for_each(MixInReplay(
@@ -279,6 +283,7 @@ def gather_experiences_directly(workers, config):
         .flatten() \
         .combine(
             ConcatBatches(min_batch_size=config["train_batch_size"]))
+
     return train_batches
 
 
@@ -292,12 +297,14 @@ class Aggregator(ParallelIteratorWorker):
             it = rollout_group.gather_async(async_queue_depth=config[
                 "max_sample_requests_in_flight_per_worker"])
 
+            # Update the rollout worker with our latest policy weights.
             def update_worker(item):
                 worker, batch = item
                 if self.weights:
                     worker.set_weights.remote(self.weights)
                 return batch
 
+            # Augment with replay and concat to desired train batch size.
             it = it.zip_with_source_actor() \
                 .for_each(update_worker) \
                 .for_each(lambda batch: batch.decompress_if_needed()) \
@@ -308,6 +315,7 @@ class Aggregator(ParallelIteratorWorker):
                 .combine(
                     ConcatBatches(
                         min_batch_size=config["train_batch_size"]))
+
             for train_batch in it:
                 yield train_batch
 
@@ -330,8 +338,9 @@ def gather_experiences_tree_aggregation(workers, config):
         worker_assignments[i].append(w)
         i += 1
         i %= len(worker_assignments)
-    print("Worker assignments", worker_assignments)
+    logger.info("Worker assignments", worker_assignments)
 
+    # Create parallel iterators that represent each aggregation group.
     rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
         rollouts.select_shards(assigned) for assigned in worker_assignments
     ]
@@ -363,7 +372,7 @@ def execution_plan(workers, config):
     learner_thread = make_learner_thread(workers.local_worker(), config)
     learner_thread.start()
 
-    # Here `rollouts` is a stream of batches of size `train_batch_size`.
+    # This sub-flow sends experiences to the learner.
     enqueue_op = train_batches \
         .for_each(Enqueue(learner_thread.inqueue)) \
         .zip_with_source_actor() \
@@ -371,6 +380,7 @@ def execution_plan(workers, config):
             learner_thread, workers,
             broadcast_interval=config["broadcast_interval"]))
 
+    # This sub-flow updates the steps trained counter based on learner output.
     dequeue_op = Dequeue(
             learner_thread.outqueue, check=learner_thread.is_alive) \
         .for_each(record_steps_trained)
