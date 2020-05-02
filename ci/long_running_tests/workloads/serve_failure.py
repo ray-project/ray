@@ -92,10 +92,10 @@ class RandomTest:
                 time.sleep(0.01)
 
     def run(self):
+        iteration = 0
+        start_time = time.time()
+        previous_time = start_time
         while True:
-            iteration = 0
-            start_time = time.time()
-            previous_time = start_time
             for _ in range(100):
                 actions, weights = zip(*self.weighted_actions)
                 random.choices(actions, weights=weights)[0]()
