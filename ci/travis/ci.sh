@@ -56,16 +56,6 @@ reload_env() {
     TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"  # Need a hash on GitHub Actions when possible (even though on Travis it's always a name)
     export TRAVIS_BRANCH
   fi
-
-  # NOTE: Modifying PATH invalidates Bazel's cache! Do not add to PATH unnecessarily.
-  PATH="${HOME}/miniconda/bin":"${PATH}"
-  if [ "${OSTYPE}" = msys ]; then
-    PATH="${HOME}/miniconda/bin/Scripts":"${PATH}"
-  fi
-
-  # Deduplicate PATH
-  PATH="$(set +x && printf "%s\n" "${PATH}" | tr ":" "\n" | awk '!a[$0]++' | tr "\n" ":")"
-  PATH="${PATH%:}"  # Remove trailing colon
 }
 
 need_wheels() {

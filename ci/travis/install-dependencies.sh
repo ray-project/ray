@@ -41,36 +41,67 @@ install_base() {
 }
 
 install_miniconda() {
-  local miniconda_dir="${HOME}/miniconda"
-  if [ "${OSTYPE}" = msys ]; then
-    miniconda_dir="${miniconda_dir}/bin"  # HACK: Compensate for python.exe being in the installation root on Windows
+  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
+
+  if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
+    conda="$(command -v conda || true)"
   fi
-  if [ -d "${miniconda_dir}" ]; then
-    return 0  # already installed
+
+  if [ ! -x "${conda}" ]; then  # If no conda is found, install it
+    local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
+    case "${OSTYPE}" in
+      linux*) miniconda_dir="/opt/miniconda";;
+      darwin*) miniconda_dir="/usr/local/opt/miniconda";;
+      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Need a path without spaces; prefer the default path
+    esac
+    local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
+    case "${OSTYPE}" in
+      linux*) miniconda_platform=Linux;;
+      darwin*) miniconda_platform=MacOSX;;
+      msys*) miniconda_platform=Windows; exe_suffix=".exe";;
+    esac
+    local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniconda_target="${HOME}/${miniconda_url##*/}"
+    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
+    chmod +x "${miniconda_target}"
+    case "${OSTYPE}" in
+      msys*)
+        # We set /AddToPath=0 because (1)  (2) it's consistent with -b in the UNIX installers.
+        MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
+        conda="${miniconda_dir}\Scripts\conda.exe"
+        ;;
+      *)
+        mkdir -p -- "${miniconda_dir}"
+        # We're forced to pass -b for non-interactive mode, which inhibits PATH modifications as a side effect.
+        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        conda="${miniconda_dir}/bin/conda"
+        ;;
+    esac
   fi
-  local miniconda_version="3-4.5.4" miniconda_platform="" exe_suffix=".sh"
-  case "${OSTYPE}" in
-    linux*) miniconda_platform=Linux;;
-    darwin*) miniconda_platform=MacOSX;;
-    msys*) miniconda_platform=Windows; exe_suffix=".exe";;
-  esac
-  local miniconda_url="https://repo.continuum.io/miniconda/Miniconda${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-  local miniconda_target="${HOME}/${miniconda_url##*/}"
-  curl -s -L -o "${miniconda_target}" "${miniconda_url}"
-  chmod +x "${miniconda_target}"
-  case "${OSTYPE}" in
-    msys*)
-      MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /S /D="$(cygpath -w -- "${miniconda_dir}")"
-      ;;
-    *)
-      "${miniconda_target}" -b -p "${miniconda_dir}" | grep --line-buffered -v "^\(installing: \|installation finished\.\)"
-      ;;
-  esac
-  reload_env
-  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "$(python -s -c "import sys; sys.stdout.write('.'.join(map(str, sys.version_info[:2])))")" ]; then
-    conda install -q -y python="${PYTHON}"
+
+  if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
+    local restore_shell_state=""
+    if [ -o xtrace ]; then set +x && restore_shell_state="set -x"; fi  # Suppress set -x (it gets noisy here)
+
+    # TODO(mehrdadn): conda activation is buggy on MSYS2; it adds C:/... to PATH, which gets split on a colon. Is it necessary to work around this?
+    eval "$("${conda}" shell."${SHELL##*/}" hook)"  # Activate conda
+    conda init "${SHELL##*/}"  # Add to future shells
+
+    ${restore_shell_state}  # Restore set -x
   fi
-  python -m pip install --upgrade --quiet pip
+
+  local python_version
+  python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
+    (
+      set +x
+      echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
+      conda install -q -y python="${PYTHON}"
+    )
+  fi
+
+  command -V python
+  test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
 install_nvm() {
