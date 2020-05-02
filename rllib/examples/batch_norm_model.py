@@ -155,10 +155,6 @@ if __name__ == "__main__":
         "num_workers": 0,
     }
 
-    from ray.rllib.agents.ppo import PPOTrainer
-    trainer = PPOTrainer(config=config)
-    trainer.train()
-
     tune.run(
         args.run,
         stop={"training_iteration": args.num_iters},

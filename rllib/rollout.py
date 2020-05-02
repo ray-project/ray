@@ -33,7 +33,7 @@ Example Usage via executable:
 # Note: if you use any custom models or envs, register them here first, e.g.:
 #
 # ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
-# register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
+# register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
 
 
 class RolloutSaver:
