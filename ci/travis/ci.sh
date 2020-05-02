@@ -134,7 +134,11 @@ build_sphinx_docs() {
 }
 
 install_cython_examples() {
-  "${ROOT_DIR}"/install-cython-examples.sh
+  (
+    cd "${WORKSPACE_DIR}"/doc/examples/cython
+    pip install scipy
+    python setup.py install --user
+  )
 }
 
 install_go() {
