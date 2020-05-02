@@ -19,6 +19,7 @@ parser.add_argument("--stop", type=int, default=90)
 parser.add_argument("--max-trainstop", type=int, default=90)
 parser.add_argument("--num-cpus", type=int, default=0)
 
+
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)

@@ -1,8 +1,0 @@
-cartpole-dqn-torch:
-    env: CartPole-v0
-    run: SimpleQ
-    stop:
-        episode_reward_mean: 150
-        timesteps_total: 50000
-    config:
-        use_pytorch: true

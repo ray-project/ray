@@ -1,0 +1,20 @@
+# Runs on a g3.16xl node with 3 m4.16xl workers
+# See https://github.com/ray-project/rl-experiments for results
+atari-impala:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4 
+    run: IMPALA
+    config:
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        num_workers: 32
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]

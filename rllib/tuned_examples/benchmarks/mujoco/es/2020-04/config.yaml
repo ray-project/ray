@@ -1,0 +1,9 @@
+humanoid-v2-es:
+    env: Humanoid-v2
+    run: ES
+    stop:
+        episode_reward_mean: 6000
+    config:
+        # Works with either framework (use_pytorch=false|true).
+        use_pytorch: false
+        num_workers: 95

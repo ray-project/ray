@@ -1,0 +1,11 @@
+# This can reach 18-19 reward within 10 minutes on a Tesla M60 GPU (e.g., G3 EC2 node)
+# with 32 workers and 10 envs per worker. This is more efficient than the non-vectorized
+# configuration which requires 128 workers to achieve the same performance.
+pong-impala-vectorized:
+    env: PongNoFrameskip-v4
+    run: IMPALA
+    config:
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        num_workers: 32
+        num_envs_per_worker: 10
