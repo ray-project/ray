@@ -1,13 +1,16 @@
 import copy
 import logging
+import os
 import random
+from typing import List
 
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, SampleBatchType
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -15,10 +18,12 @@ from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
+from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
-from ray.util.iter import LocalIterator
+from ray.util.iter import LocalIterator, ParallelIterator, \
+    ParallelIteratorWorker, from_actors
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +173,7 @@ class OverrideDefaultResourceRequest:
             cf["num_workers"])
 
 
-def _make_learner_thread(local_worker, config):
+def make_learner_thread(local_worker, config):
     if config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1:
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
@@ -258,29 +263,106 @@ class UpdateWorkerWeights:
 
 def record_steps_trained(count):
     metrics = LocalIterator.get_metrics()
-    # Manually update the steps trained counter since the learner thread
-    # is executing outside the pipeline.
     metrics.counters[STEPS_TRAINED_COUNTER] += count
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
-def execution_plan(workers, config):
+def simple_aggregator(workers, config):
     rollouts = ParallelRollouts(
         workers,
         mode="async",
         async_queue_depth=config["max_sample_requests_in_flight_per_worker"])
-
-    # Start the learner thread.
-    learner_thread = _make_learner_thread(workers.local_worker(), config)
-    learner_thread.start()
-
-    enqueue_op = rollouts \
+    train_batches = rollouts \
+        .for_each(lambda batch: batch.decompress_if_needed()) \
         .for_each(MixInReplay(
             num_slots=config["replay_buffer_num_slots"],
             replay_proportion=config["replay_proportion"])) \
         .flatten() \
         .combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(min_batch_size=config["train_batch_size"]))
+    return train_batches
+
+
+def tree_aggregator(workers, config):
+    rollouts = ParallelRollouts(workers, mode="raw")
+
+    # Divide up the workers between aggregators.
+    worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
+    i = 0
+    for w in range(len(workers.remote_workers())):
+        worker_assignments[i].append(w)
+        i += 1
+        i %= len(worker_assignments)
+    print("Worker assignments", worker_assignments)
+
+    rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
+        rollouts.select_shards(assigned) for assigned in worker_assignments
+    ]
+
+    @ray.remote(num_cpus=0)
+    class Aggregator(ParallelIteratorWorker):
+        def __init__(self, rollout_group: "ParallelIterator[SampleBatchType]"):
+            self.weights = None
+
+            def generator():
+                it = rollout_group.gather_async(async_queue_depth=config[
+                    "max_sample_requests_in_flight_per_worker"])
+
+                def update_worker(item):
+                    worker, batch = item
+                    if self.weights:
+                        worker.set_weights.remote(self.weights)
+                    return batch
+
+                it = it.zip_with_source_actor() \
+                    .for_each(update_worker) \
+                    .for_each(lambda batch: batch.decompress_if_needed()) \
+                    .for_each(MixInReplay(
+                        num_slots=config["replay_buffer_num_slots"],
+                        replay_proportion=config["replay_proportion"])) \
+                    .flatten() \
+                    .combine(
+                        ConcatBatches(
+                            min_batch_size=config["train_batch_size"]))
+                for train_batch in it:
+                    yield train_batch
+
+            super().__init__(generator, repeat=False)
+
+        def get_host(self):
+            return os.uname()[1]
+
+        def set_weights(self, weights):
+            self.weights = weights
+
+    # This spawns |num_aggregation_workers| intermediate actors that aggregate
+    # experiences in parallel. We force colocation on the same node to maximize
+    # data bandwidth between them and the driver.
+    train_batches = from_actors(
+        [create_colocated(Aggregator, [g], 1)[0] for g in rollout_groups])
+
+    # TODO(ekl) properly account for replay.
+    def record_steps_sampled(batch):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+        return batch
+
+    return train_batches.gather_async().for_each(record_steps_sampled)
+
+
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
+
+    if config["num_aggregation_workers"] > 0:
+        train_batches = tree_aggregator(workers, config)
+    else:
+        train_batches = simple_aggregator(workers, config)
+
+    # Start the learner thread.
+    learner_thread = make_learner_thread(workers.local_worker(), config)
+    learner_thread.start()
+
+    # Here `rollouts` is a stream of batches of size `train_batch_size`.
+    enqueue_op = train_batches \
         .for_each(Enqueue(learner_thread.inqueue)) \
         .zip_with_source_actor() \
         .for_each(UpdateWorkerWeights(

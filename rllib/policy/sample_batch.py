@@ -216,6 +216,7 @@ class SampleBatch:
                 elif len(arr) > 0 and is_compressed(arr[0]):
                     self.data[key] = np.array(
                         [unpack(o) for o in self.data[key]])
+        return self
 
     def __str__(self):
         return "SampleBatch({})".format(str(self.data))
@@ -291,6 +292,7 @@ class MultiAgentBatch:
     def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
+        return self
 
     def __str__(self):
         return "MultiAgentBatch({}, count={})".format(
