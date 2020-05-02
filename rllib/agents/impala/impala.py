@@ -89,9 +89,6 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
-
-    # use fake (infinite speed) sampler for testing
-    "_fake_sampler": False,
 })
 # __sphinx_doc_end__
 # yapf: enable

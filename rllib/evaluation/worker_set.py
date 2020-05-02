@@ -280,7 +280,7 @@ class WorkerSet:
             no_done_at_end=config["no_done_at_end"],
             seed=(config["seed"] + worker_index)
             if config["seed"] is not None else None,
-            _fake_sampler=config.get("_fake_sampler", False),
+            fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs)
 
         return worker

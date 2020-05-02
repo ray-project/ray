@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 "rollout_fragment_length": 100,
                 "train_batch_size": sample_from(
                     lambda spec: 1000 * max(1, spec.config.num_gpus)),
-                "_fake_sampler": True,
+                "fake_sampler": True,
             },
         },
     })
