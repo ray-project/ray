@@ -1,4 +1,3 @@
-import numpy as np
 import unittest
 
 import ray
@@ -21,21 +20,21 @@ class TestIMPALA(unittest.TestCase):
     def test_impala_compilation(self):
         """Test whether an ImpalaTrainer can be built with both frameworks."""
         config = impala.DEFAULT_CONFIG.copy()
-        num_iterations = 2
+        num_iterations = 1
 
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             local_cfg = config.copy()
+            for env in ["CartPole-v0"]:
+                # Test w/o LSTM.
+                trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
+                for i in range(num_iterations):
+                    print(trainer.train())
 
-            # Test w/o LSTM.
-            trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
-            for i in range(num_iterations):
-                print(trainer.train())
-
-            # Test w/ LSTM.
-            local_cfg["model"]["use_lstm"] = True
-            trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
-            for i in range(num_iterations):
-                print(trainer.train())
+                # Test w/ LSTM.
+                local_cfg["model"]["use_lstm"] = True
+                trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
+                for i in range(num_iterations):
+                    print(trainer.train())
 
 
 if __name__ == "__main__":

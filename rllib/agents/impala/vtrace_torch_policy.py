@@ -75,8 +75,8 @@ class VTraceLoss:
         if valid_mask is None:
             valid_mask = torch.ones_like(actions_logp)
 
-        # Compute vtrace on the CPU for better perf.
-        #with tf.device("/cpu:0"):
+        # Compute vtrace on the CPU for better perf
+        # (devices handled inside `vtrace.multi_from_logits`).
         self.vtrace_returns = vtrace.multi_from_logits(
             behaviour_action_log_probs=behaviour_action_logp,
             behaviour_policy_logits=behaviour_logits,
@@ -93,7 +93,8 @@ class VTraceLoss:
         self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss
-        self.pi_loss = -torch.sum(actions_logp * self.vtrace_returns.pg_advantages * valid_mask)
+        self.pi_loss = -torch.sum(
+            actions_logp * self.vtrace_returns.pg_advantages * valid_mask)
 
         # The baseline loss
         delta = (values - self.vtrace_returns.vs) * valid_mask
@@ -229,7 +230,8 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1]), framework="torch"),
+            torch.reshape(values_batched, [-1]),
+            framework="torch"),
     }
 
 
@@ -247,8 +249,6 @@ def choose_optimizer(policy, config):
 
 
 def setup_mixins(policy, obs_space, action_space, config):
-    #ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    #KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])

@@ -159,13 +159,13 @@ def get_policy_class(config):
 
 
 def validate_config(config):
-    if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
+    if config["entropy_coeff"] < 0.0:
+        raise DeprecationWarning("`entropy_coeff` must be >= 0.0!")
 
     if config["vtrace"] and not config["in_evaluation"]:
         if config["batch_mode"] != "truncate_episodes":
             raise ValueError(
-                "Must use `truncate_episodes` batch mode with V-trace.")
+                "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
 
 
 ImpalaTrainer = build_trainer(
