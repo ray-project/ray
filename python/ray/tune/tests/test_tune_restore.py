@@ -230,7 +230,8 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer, ["width", "height"],
+            optimizer,
+            ["width", "height"],
             metric="loss",
             mode="min",
             max_concurrent=1000,  # Here to avoid breaking back-compat.
