@@ -23,13 +23,15 @@ class TestIMPALA(unittest.TestCase):
         config = impala.DEFAULT_CONFIG.copy()
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             local_cfg = config.copy()
-            # Check w/o LSTM.
+
+            # Test w/o LSTM.
             trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())
-            # Check LSTM.
+
+            # Test w/ LSTM.
             local_cfg["model"]["use_lstm"] = True
             trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
             for i in range(num_iterations):

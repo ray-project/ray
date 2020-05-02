@@ -136,6 +136,12 @@ py_test(
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
+py_test(
+    name = "test_impala",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/impala/tests/test_impala.py"]
+)
 
 # MARWILTrainer
 py_test(
