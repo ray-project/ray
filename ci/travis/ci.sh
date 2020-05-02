@@ -53,7 +53,6 @@ reload_env() {
   fi
 
   export PYTHON3_BIN_PATH=python
-  export GOROOT="${HOME}/go" GOPATH="${HOME}/go_dir"
   if [ "${OSTYPE}" = msys ]; then
     export USE_CLANG_CL=1
   fi
@@ -166,7 +165,12 @@ install_cython_examples() {
 }
 
 install_go() {
-  eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=stable bash)"
+  eval "$(curl -f -s -L https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=1.14.2 bash)"
+
+  if [ -z "${GOPATH-}" ]; then
+    GOPATH="${GOPATH:-${HOME}/go_dir}"
+    export GOPATH
+  fi
 }
 
 install_ray() {
@@ -225,10 +229,6 @@ lint_python() {
 lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
-    # TODO: Move installing Go & building buildifier to the dependency installation step?
-    if [ ! -d "${GOROOT}" ]; then
-      curl -s -L "https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz" | tar -C "${GOROOT%/*}" -xz
-    fi
     mkdir -p -- "${GOPATH}"
     export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
 
@@ -368,7 +368,7 @@ build() {
     install_cython_examples
   fi
 
-  if [ "${RAY_DEFAULT_BUILD-}" = 1 ]; then
+  if [ "${RAY_DEFAULT_BUILD-}" = 1 ] || [ "${LINT-}" = 1 ]; then
     install_go
   fi
 
