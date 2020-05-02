@@ -246,7 +246,7 @@ lint_web() {
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project
-    nvm use node
+    nvm use --silent node
     node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
     node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
     node_modules/.bin/prettier --check public/index.html
@@ -301,10 +301,13 @@ _preload() {
   local variable_definitions
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    local expression
-    expression="$(printf "%q " "${variable_definitions[@]}")"
-    eval "${expression}"
-    printf "%s\n" "${expression}" >> ~/.bashrc
+    local expression restore_shell_state=""
+    if [ -o xtrace ]; then set +x && restore_shell_state="set -x;"; fi  # Suppress & save set -x (it gets noisy here)
+    {
+      expression="$(printf "%q " "${variable_definitions[@]}")"
+      printf "%s\n" "${expression}" >> ~/.bashrc
+    }
+    eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
   fi
 
   if ! (set +x && should_run_job ${job_names//,/ }); then

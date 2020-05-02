@@ -45,7 +45,6 @@ install_toolchains() {
     )
   else
     sudo tar -x -J --strip-components=1 -C "${targetdir}"
-    command -V clang 1>&2
   fi
   "${targetdir}"/bin/clang --version 1>&2
 }
