@@ -608,7 +608,7 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
         std::max(FixedPoint(0), resources.predefined_resources[i].available -
-                 task_req.predefined_resources[i].demand);             
+                                    task_req.predefined_resources[i].demand);
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
@@ -639,14 +639,14 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
         std::min(resources.predefined_resources[i].available +
-                 task_req.predefined_resources[i].demand,
+                     task_req.predefined_resources[i].demand,
                  resources.predefined_resources[i].total);
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
     if (it != resources.custom_resources.end()) {
-       it->second.available = std::min(
+      it->second.available = std::min(
           it->second.available + task_req_custom_resource.demand, it->second.total);
     }
   }
