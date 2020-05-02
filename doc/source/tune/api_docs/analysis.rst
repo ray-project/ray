@@ -3,9 +3,6 @@
 Analysis (tune.analysis)
 ========================
 
-Analyzing Results
------------------
-
 You can use the ``ExperimentAnalysis`` object for analyzing results. It is returned automatically when calling ``tune.run``.
 
 .. code-block:: python
@@ -41,15 +38,15 @@ You may want to get a summary of multiple experiments that point to the same ``l
 
 .. _exp-analysis-docstring:
 
-ExperimentAnalysis
-~~~~~~~~~~~~~~~~~~
+ExperimentAnalysis (tune.ExperimentAnalysis)
+--------------------------------------------
 
 .. autoclass:: ray.tune.ExperimentAnalysis
     :show-inheritance:
     :members:
 
-Analysis
-~~~~~~~~
+Analysis (tune.Analysis)
+------------------------
 
 .. autoclass:: ray.tune.Analysis
     :members:

@@ -1,38 +1,173 @@
-.. _schedulers-ref:
+.. _tune-schedulers:
 
 Trial Schedulers (tune.schedulers)
 ==================================
 
-FIFOScheduler
-~~~~~~~~~~~~~
+In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms". These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial.
 
-.. autoclass:: ray.tune.schedulers.FIFOScheduler
+All Trial Schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
 
-HyperBandScheduler
-~~~~~~~~~~~~~~~~~~
+.. code-block:: python
 
-.. autoclass:: ray.tune.schedulers.HyperBandScheduler
+    tune.run( ... , scheduler=Scheduler(metric="accuracy", mode="max"))
 
-ASHAScheduler/AsyncHyperBandScheduler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _schedulers-ref:
+
+Summary
+-------
+
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://homes.cs.washington.edu/~jamieson/hyperband.html>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
+
+.. note::
+
+    * Certain schedulers are only compatible withthe  :ref:`tune-class-api` - refer to the below compatibility matrix.
+    * Unlike :ref:`Tune's Search Algorithms <tune-search-alg>`, Tune TrialSchedulers do not select which hyperparameter configurations to evaluate. However, you can use them together. Please refer to the below compatibility matrix.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Scheduler
+     - Class API Required?
+     - SearchAlg Compat?
+     - Example
+   * - :ref:`ASHA <tune-scheduler-hyperband>`
+     - No
+     - Yes
+     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__
+   * - :ref:`Median Stopping Rule <tune-scheduler-msr>`
+     - No
+     - Yes
+     - :ref:`Link <tune-scheduler-msr>`
+   * - :ref:`HyperBand <tune-original-hyperband>`
+     - Yes
+     - Yes
+     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__
+   * - :ref:`BOHB <tune-scheduler-bohb>`
+     - Yes
+     - Only TuneBOHB
+     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`__
+   * - :ref:`Population Based Training <tune-scheduler-pbt>`
+     - Yes
+     - Not Compatible
+     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__
+
+.. _tune-scheduler-hyperband:
+
+ASHA (tune.schedulers.ASHAScheduler)
+------------------------------------
+
+The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+
+.. code-block:: python
+
+    asha_scheduler = ASHAScheduler(
+        time_attr='training_iteration',
+        metric='episode_reward_mean',
+        mode='max',
+        max_t=100,
+        grace_period=10,
+        reduction_factor=3,
+        brackets=3)
+    tune.run( ... , scheduler=asha_scheduler)
+
+Compared to the original version of HyperBand, this implementation provides better parallelism and avoids straggler issues during eliminations. **We recommend using this over the standard HyperBand scheduler.** An example of this can be `found here  <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`_.
 
 .. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
 
 .. autoclass:: ray.tune.schedulers.ASHAScheduler
 
-MedianStoppingRule
-~~~~~~~~~~~~~~~~~~
+.. _tune-original-hyperband:
+
+HyperBand (tune.schedulers.HyperBandScheduler)
+----------------------------------------------
+
+Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
+
+.. autoclass:: ray.tune.schedulers.HyperBandScheduler
+
+
+HyperBand Implementation Details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ for context.
+
+1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.  In many practical settings, ``R``, which represents some resource unit and often the number of training iterations, can be set reasonably large, like ``R >= 200``. For simplicity, assume ``eta = 3``. Varying ``R`` between ``R = 200`` and ``R = 1000`` creates a huge range of the number of trials needed to fill up all brackets.
+
+.. image:: /images/hyperband_bracket.png
+
+On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` also leads to HyperBand configurations that are not very intuitive:
+
+.. image:: /images/hyperband_eta.png
+
+The implementation takes the same configuration as the example given in the paper and exposes ``max_t``, which is not a parameter in the paper.
+
+2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
+
+.. image:: /images/hyperband_allocation.png
+
+
+3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
+
+.. _tune-scheduler-msr:
+
+Median Stopping Rule (tune.schedulers.MedianStoppingRule)
+---------------------------------------------------------
+
+The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls below the median of other trials at similar points in time.
 
 .. autoclass:: ray.tune.schedulers.MedianStoppingRule
 
-PopulationBasedTraining
-~~~~~~~~~~~~~~~~~~~~~~~
+.. _tune-scheduler-pbt:
+
+Population Based Training (tune.schedulers.PopulationBasedTraining)
+-------------------------------------------------------------------
+
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__. This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+
+.. code-block:: python
+
+    pbt_scheduler = PopulationBasedTraining(
+            time_attr='time_total_s',
+            metric='mean_accuracy',
+            mode='max',
+            perturbation_interval=600.0,
+            hyperparam_mutations={
+                "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
+                "alpha": lambda: random.uniform(0.0, 1.0),
+            ...
+            })
+    tune.run( ... , scheduler=pbt_scheduler)
+
+When the PBT scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support :ref:`save and restore <tune-checkpoint>`). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
+
+You can run this `toy PBT example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__ to get an idea of how how PBT operates. When training in PBT mode, a single trial may see many different hyperparameters over its lifetime, which is recorded in its ``result.json`` file. The following figure generated by the example shows PBT with optimizing a LR schedule over the course of a single experiment:
+
+.. image:: /pbt.png
 
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining
 
 
+.. _tune-scheduler-bohb:
+
+BOHB (tune.schedulers.HyperBandForBOHB)
+---------------------------------------
+
+This class is a variant of HyperBand that enables the BOHB Algorithm. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
+
+This is to be used in conjunction with the Tune BOHB search algorithm. See :ref:`TuneBOHB <suggest-TuneBOHB>` for package requirements, examples, and details.
+
+An example of this in use can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_.
+
+.. autoclass:: ray.tune.schedulers.HyperBandForBOHB
+
+
+FIFOScheduler
+-------------
+
+.. autoclass:: ray.tune.schedulers.FIFOScheduler
+
 TrialScheduler
-~~~~~~~~~~~~~~
+--------------
 
 .. autoclass:: ray.tune.schedulers.TrialScheduler
     :members:

@@ -132,7 +132,7 @@ To optimize the hyperparameters of your training process, you will want to use a
         stop={"training_iteration": 20}
     )
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <tune-nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
 
 See the documentation: :ref:`tune-search-alg`.
 

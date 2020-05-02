@@ -16,7 +16,7 @@ class ZOOptSearch(Searcher):
     """A wrapper around ZOOpt to provide trial suggestions.
 
     ZOOptSearch is a library for derivative-free optimization. It is backed by
-    the `ZOOpt <https://github.com/polixir/ZOOpt>`_ package. Currently,
+    the `ZOOpt <https://github.com/polixir/ZOOpt>`__ package. Currently,
     Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos)
     is implemented in Tune.
 

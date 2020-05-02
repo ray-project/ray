@@ -41,10 +41,10 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
 
 
 class SkOptSearch(Searcher):
-    """Uses Scikit Optimize (skopt) to optimize hyperparameters
+    """Uses Scikit Optimize (skopt) to optimize hyperparameters.
 
     Scikit-optimize is a black-box optimization library.
-    Read more here: https://scikit-optimize.github.io
+    Read more here: https://scikit-optimize.github.io.
 
     You will need to install Scikit-Optimize to use this module.
 
