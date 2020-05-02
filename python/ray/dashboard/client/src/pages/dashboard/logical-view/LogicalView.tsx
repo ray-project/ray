@@ -5,7 +5,6 @@ import {
   WithStyles,
   withStyles,
 } from "@material-ui/core";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../../store";
@@ -31,7 +30,7 @@ class LogicalView extends React.Component<
   WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
   render() {
-    const { classes, rayletInfo } = this.props;
+    const { rayletInfo } = this.props;
     return (
       <div>
         {rayletInfo === null ? (

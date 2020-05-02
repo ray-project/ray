@@ -10,7 +10,6 @@ import {
   WithStyles,
   withStyles,
 } from "@material-ui/core";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { getTuneInfo, setTuneExperiment } from "../../../api";
