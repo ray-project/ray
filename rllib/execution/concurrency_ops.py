@@ -56,6 +56,8 @@ def Concurrently(ops: List[LocalIterator],
 class Enqueue:
     """Enqueue data items into a queue.Queue instance.
 
+    Returns the input item as output.
+
     The enqueue is non-blocking, so Enqueue operations can executed with
     Dequeue via the Concurrently() operator.
 
@@ -79,6 +81,7 @@ class Enqueue:
             self.queue.put_nowait(x)
         except queue.Full:
             return _NextValueNotReady()
+        return x
 
 
 def Dequeue(input_queue: queue.Queue, check=lambda: True):

@@ -84,6 +84,32 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+# Update worker weights as they finish generating experiences.
+class UpdateWorkerWeights:
+    def __init__(self, learner_thread, workers, max_weight_sync_delay):
+        self.learner_thread = learner_thread
+        self.workers = workers
+        self.steps_since_update = collections.defaultdict(int)
+        self.max_weight_sync_delay = max_weight_sync_delay
+        self.weights = None
+
+    def __call__(self, item):
+        actor, batch = item
+        self.steps_since_update[actor] += batch.count
+        if self.steps_since_update[actor] >= self.max_weight_sync_delay:
+            # Note that it's important to pull new weights once
+            # updated to avoid excessive correlation between actors.
+            if self.weights is None or self.learner_thread.weights_updated:
+                self.learner_thread.weights_updated = False
+                self.weights = ray.put(
+                    self.workers.local_worker().get_weights())
+            actor.set_weights.remote(self.weights)
+            self.steps_since_update[actor] = 0
+            # Update metrics.
+            metrics = LocalIterator.get_metrics()
+            metrics.counters["num_weight_syncs"] += 1
+
+
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     # Create a number of replay buffer actors.
@@ -110,31 +136,6 @@ def execution_plan(workers, config):
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer
         metrics.timers["learner_overall"] = learner_thread.overall_timer
-
-    # Update worker weights as they finish generating experiences.
-    class UpdateWorkerWeights:
-        def __init__(self, learner_thread, workers, max_weight_sync_delay):
-            self.learner_thread = learner_thread
-            self.workers = workers
-            self.steps_since_update = collections.defaultdict(int)
-            self.max_weight_sync_delay = max_weight_sync_delay
-            self.weights = None
-
-        def __call__(self, item):
-            actor, batch = item
-            self.steps_since_update[actor] += batch.count
-            if self.steps_since_update[actor] >= self.max_weight_sync_delay:
-                # Note that it's important to pull new weights once
-                # updated to avoid excessive correlation between actors.
-                if self.weights is None or self.learner_thread.weights_updated:
-                    self.learner_thread.weights_updated = False
-                    self.weights = ray.put(
-                        self.workers.local_worker().get_weights())
-                actor.set_weights.remote(self.weights)
-                self.steps_since_update[actor] = 0
-                # Update metrics.
-                metrics = LocalIterator.get_metrics()
-                metrics.counters["num_weight_syncs"] += 1
 
     # Start the learner thread.
     learner_thread = LearnerThread(workers.local_worker())
