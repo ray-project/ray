@@ -137,9 +137,7 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         num_errors, error_type))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout=30,
-                       retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
