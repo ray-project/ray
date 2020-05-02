@@ -72,7 +72,7 @@ class AxSearch(Searcher):
             max_concurrent = 1
         self.max_concurrent = max_concurrent
         self._parameters = list(exp.parameters)
-        self._live_index_mapping = {}
+        self._live_trial_mapping = {}
         super(AxSearch, self).__init__(
             metric=self._objective_name,
             mode=mode,
@@ -83,7 +83,7 @@ class AxSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
         parameters, trial_index = self._ax.get_next_trial()
-        self._live_index_mapping[trial_id] = trial_index
+        self._live_trial_mapping[trial_id] = trial_index
         return parameters
 
     def on_trial_complete(self, trial_id, result=None, error=False):
@@ -93,10 +93,10 @@ class AxSearch(Searcher):
         """
         if result:
             self._process_result(trial_id, result)
-        self._live_index_mapping.pop(trial_id)
+        self._live_trial_mapping.pop(trial_id)
 
     def _process_result(self, trial_id, result):
-        ax_trial_index = self._live_index_mapping[trial_id]
+        ax_trial_index = self._live_trial_mapping[trial_id]
         metric_dict = {
             self._objective_name: (result[self._objective_name], 0.0)
         }
