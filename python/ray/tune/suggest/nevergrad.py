@@ -11,14 +11,30 @@ logger = logging.getLogger(__name__)
 
 
 class NevergradSearch(Searcher):
-    """A wrapper around Nevergrad to provide trial suggestions.
-
-    Requires Nevergrad to be installed.
+    """Uses Nevergrad to optimize hyperparameters.
 
     Nevergrad is an open source tool from Facebook for derivative free
-    optimization of parameters and/or hyperparameters. It features a wide
-    range of optimizers in a standard ask and tell interface. More information
-    can be found at https://github.com/facebookresearch/nevergrad.
+    optimization.  More info can be found at:
+    https://github.com/facebookresearch/nevergrad.
+
+    You will need to install Nevergrad via the following command:
+
+    .. code-block:: bash
+
+        $ pip install nevergrad
+
+    This algorithm requires using an optimizer provided by Nevergrad, of
+    which there are many options. A good rundown can be found on
+    the `Nevergrad README's Optimization section`_.
+
+    .. code-block:: python
+
+        from nevergrad.optimization import optimizerlib
+
+        instrumentation = 1
+        optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
+        algo = NevergradSearch(
+            optimizer, ["lr"], metric="mean_loss", mode="min")
 
     Parameters:
         optimizer (nevergrad.optimization.Optimizer): Optimizer provided
@@ -32,15 +48,6 @@ class NevergradSearch(Searcher):
             minimizing or maximizing the metric attribute.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
-
-    .. code-block:: python
-
-        from nevergrad.optimization import optimizerlib
-
-        instrumentation = 1
-        optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
-        algo = NevergradSearch(
-            optimizer, ["lr"], metric="mean_loss", mode="min")
 
     Note:
         In nevergrad v0.2.0+, optimizers can be instrumented.

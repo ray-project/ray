@@ -10,11 +10,18 @@ logger = logging.getLogger(__name__)
 
 
 class AxSearch(Searcher):
-    """A wrapper around Ax to provide trial suggestions.
+    """Uses `Ax <https://ax.dev/>`_ to optimize hyperparameters.
 
-    Requires Ax to be installed. Ax is an open source tool from
-    Facebook for configuring and optimizing experiments. More information
-    can be found in https://ax.dev/.
+    Ax is a platform for understanding, managing, deploying, and
+    automating adaptive experiments. Ax provides an easy to use
+    interface with BoTorch, a flexible, modern library for Bayesian
+    optimization in PyTorch. More information can be found in https://ax.dev/.
+
+    To use this search algorithm, you must install Ax and sqlalchemy:
+
+    .. code-block:: bash
+
+        $ pip install ax-platform sqlalchemy
 
     This module manages its own concurrency.
 

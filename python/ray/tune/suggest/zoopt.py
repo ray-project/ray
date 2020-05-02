@@ -15,22 +15,12 @@ logger = logging.getLogger(__name__)
 class ZOOptSearch(Searcher):
     """A wrapper around ZOOpt to provide trial suggestions.
 
-    Requires zoopt package (>=0.4.0) to be installed. You can install it
-    with the command: ``pip install -U zoopt``.
+    ZOOptSearch is a library for derivative-free optimization. It is backed by
+    the `ZOOpt <https://github.com/polixir/ZOOpt>`_ package. Currently,
+    Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos)
+    is implemented in Tune.
 
-    Parameters:
-        algo (str): To specify an algorithm in zoopt you want to use.
-            Only support ASRacos currently.
-        budget (int): Number of samples.
-        dim_dict (dict): Dimension dictionary.
-            For continuous dimensions: (continuous, search_range, precision);
-            For discrete dimensions: (discrete, search_range, has_order).
-            More details can be found in zoopt package.
-        metric (str): The training result objective value attribute.
-            Defaults to "episode_reward_mean".
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-            Defaults to "min".
+    To use ZOOptSearch, install zoopt (>=0.4.0): ``pip install -U zoopt``.
 
     .. code-block:: python
 
@@ -64,6 +54,20 @@ class ZOOptSearch(Searcher):
             search_alg=zoopt_search,
             name="zoopt_search",
             **config)
+
+    Parameters:
+        algo (str): To specify an algorithm in zoopt you want to use.
+            Only support ASRacos currently.
+        budget (int): Number of samples.
+        dim_dict (dict): Dimension dictionary.
+            For continuous dimensions: (continuous, search_range, precision);
+            For discrete dimensions: (discrete, search_range, has_order).
+            More details can be found in zoopt package.
+        metric (str): The training result objective value attribute.
+            Defaults to "episode_reward_mean".
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+            Defaults to "min".
 
     """
 

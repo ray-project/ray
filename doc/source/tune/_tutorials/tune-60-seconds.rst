@@ -134,7 +134,7 @@ To optimize the hyperparameters of your training process, you will want to use a
 
 Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <tune-nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
 
-See the documentation: :ref:`searchalg-ref`.
+See the documentation: :ref:`tune-search-alg`.
 
 Trial Schedulers
 ----------------

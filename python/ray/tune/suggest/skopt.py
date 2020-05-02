@@ -41,9 +41,19 @@ def _validate_warmstart(parameter_names, points_to_evaluate,
 
 
 class SkOptSearch(Searcher):
-    """A wrapper around skopt to provide trial suggestions.
+    """Uses Scikit Optimize (skopt) to optimize hyperparameters
 
-    Requires skopt to be installed.
+    Scikit-optimize is a black-box optimization library.
+    Read more here: https://scikit-optimize.github.io
+
+    You will need to install Scikit-Optimize to use this module.
+
+    .. code-block:: bash
+
+        pip install scikit-optimize
+
+
+    This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
 
     Parameters:
         optimizer (skopt.optimizer.Optimizer): Optimizer provided
@@ -68,14 +78,18 @@ class SkOptSearch(Searcher):
         use_early_stopped_trials: Deprecated.
 
     Example:
-        >>> from skopt import Optimizer
-        >>> optimizer = Optimizer([(0,20),(-100,100)])
-        >>> current_best_params = [[10, 0], [15, -20]]
-        >>> algo = SkOptSearch(optimizer,
-        >>>     ["width", "height"],
-        >>>     metric="mean_loss",
-        >>>     mode="min",
-        >>>     points_to_evaluate=current_best_params)
+
+    .. code-block:: python
+
+        from skopt import Optimizer
+        optimizer = Optimizer([(0,20),(-100,100)])
+        current_best_params = [[10, 0], [15, -20]]
+
+        algo = SkOptSearch(optimizer,
+            ["width", "height"],
+            metric="mean_loss",
+            mode="min",
+            points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
