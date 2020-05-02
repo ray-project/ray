@@ -196,7 +196,7 @@ def build_ddpg_stats(policy, batch):
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
-        "td_error": policy.td_error
+        "mean_td_error": torch.mean(policy.td_error)
     }
     return stats
 
