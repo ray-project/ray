@@ -99,6 +99,22 @@ py_test(
     srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
+# APEXTrainer (DQN)
+py_test(
+    name = "test_apex_dqn",
+    tags = ["agents_dir"],
+    size = "large",
+    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+)
+
+# APEXDDPGTrainer
+py_test(
+    name = "test_apex_ddpg",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
+)
+
 # DDPGTrainer
 py_test(
     name = "test_ddpg",
@@ -119,14 +135,6 @@ py_test(
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_simple_q.py"]
-)
-
-# APEXTrainer
-py_test(
-    name = "test_apex",
-    tags = ["agents_dir"],
-    size = "large",
-    srcs = ["agents/dqn/tests/test_apex.py"]
 )
 
 # IMPALA

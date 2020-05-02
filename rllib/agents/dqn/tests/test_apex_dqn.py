@@ -7,14 +7,14 @@ import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-class TestApex(unittest.TestCase):
+class TestApexDQN(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
 
-    def test_apex_compilation_and_per_worker_epsilon_values(self):
+    def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
