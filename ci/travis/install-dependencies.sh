@@ -60,7 +60,7 @@ install_miniconda() {
       ;;
   esac
   reload_env
-  if [ -n "${PYTHON-}" ]; then
+  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "$(python -s -c "import sys; sys.stdout.write('.'.join(map(str, sys.version_info[:2])))")" ]; then
     conda install -q -y python="${PYTHON}"
   fi
   python -m pip install --upgrade --quiet pip
