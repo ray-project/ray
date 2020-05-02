@@ -875,8 +875,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     }
   } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    if (!RayConfig::instance().gcs_service_enabled() &&
-        RayConfig::instance().gcs_actor_service_enabled()) {
+    if (!(RayConfig::instance().gcs_service_enabled() &&
+          RayConfig::instance().gcs_actor_service_enabled())) {
       // The actor is dead and needs reconstruction. Attempting to reconstruct its
       // creation task.
       reconstruction_policy_.ListenAndMaybeReconstruct(
