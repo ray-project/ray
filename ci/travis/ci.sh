@@ -122,6 +122,30 @@ test_wheels() {
   return "${result}"
 }
 
+install_npm_project() {
+  if [ "${OSTYPE}" = msys ]; then
+    # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
+    { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
+  else
+    npm ci -q
+  fi
+}
+
+build_dashboard_front_end() {
+  if [ "${OSTYPE}" = msys ]; then
+    { echo "WARNING: Not building dashboard front-end due to NPM package incompatibilities with Windows"; } 2> /dev/null
+  else
+    (
+      cd ray/dashboard/client
+      set +x  # suppress set -x since it'll get very noisy here
+      . "${HOME}/.nvm/nvm.sh"
+      nvm use --silent node
+      install_npm_project
+      npm run -s build
+    )
+  fi
+}
+
 build_sphinx_docs() {
   (
     cd "${WORKSPACE_DIR}"/doc
@@ -147,7 +171,11 @@ install_go() {
 
 install_ray() {
   bazel build -k "//:*"   # Do a full build first to ensure everything passes
-  "${ROOT_DIR}"/install-ray.sh
+  (
+    cd "${WORKSPACE_DIR}"/python
+    build_dashboard_front_end
+    keep_alive pip install -e .
+  )
 }
 
 build_wheels() {

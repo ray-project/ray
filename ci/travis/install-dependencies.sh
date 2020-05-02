@@ -122,19 +122,6 @@ install_node() {
   fi
 }
 
-run_npm() {
-  npm ci
-}
-
-install_npm_project() {
-  if [ "${OSTYPE}" = msys ]; then
-    # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
-    { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
-  else
-    run_npm
-  fi
-}
-
 install_dependencies() {
 
   install_base
