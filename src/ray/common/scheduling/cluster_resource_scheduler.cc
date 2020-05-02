@@ -607,20 +607,15 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        resources.predefined_resources[i].available -
-        task_req.predefined_resources[i].demand;
-    if (resources.predefined_resources[i].available < zero) {
-      resources.predefined_resources[i].available = zero;
-    }
+        std::max(FixedPoint(0), resources.predefined_resources[i].available -
+                 task_req.predefined_resources[i].demand);             
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
     if (it != resources.custom_resources.end()) {
-      it->second.available = it->second.available - task_req_custom_resource.demand;
-      if (it->second.available < zero) {
-        it->second.available = zero;
-      }
+      it->second.available =
+          std::max(FixedPoint(0), it->second.available - task_req_custom_resource.demand);
     }
   }
   return true;
@@ -643,22 +638,16 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        resources.predefined_resources[i].available +
-        task_req.predefined_resources[i].demand;
-    if (resources.predefined_resources[i].available >
-        resources.predefined_resources[i].total) {
-      resources.predefined_resources[i].available =
-          resources.predefined_resources[i].total;
-    }
+        std::min(resources.predefined_resources[i].available +
+                 task_req.predefined_resources[i].demand,
+                 resources.predefined_resources[i].total);
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
     if (it != resources.custom_resources.end()) {
-      it->second.available = it->second.available + task_req_custom_resource.demand;
-      if (it->second.available > it->second.total) {
-        it->second.available = it->second.total;
-      }
+       it->second.available = std::min(
+          it->second.available + task_req_custom_resource.demand, it->second.total);
     }
   }
   return true;
