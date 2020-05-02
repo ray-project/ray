@@ -338,7 +338,7 @@ def gather_experiences_tree_aggregation(workers, config):
         worker_assignments[i].append(w)
         i += 1
         i %= len(worker_assignments)
-    logger.info("Worker assignments", worker_assignments)
+    logger.info("Worker assignments: {}".format(worker_assignments))
 
     # Create parallel iterators that represent each aggregation group.
     rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
