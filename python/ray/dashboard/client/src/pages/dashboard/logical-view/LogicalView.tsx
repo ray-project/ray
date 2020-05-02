@@ -34,10 +34,6 @@ class LogicalView extends React.Component<
     const { classes, rayletInfo } = this.props;
     return (
       <div>
-        <Typography className={classes.warning} color="textSecondary">
-          <WarningRoundedIcon className={classes.warningIcon} /> Note: This tab
-          is experimental.
-        </Typography>
         {rayletInfo === null ? (
           <Typography color="textSecondary">Loading...</Typography>
         ) : Object.entries(rayletInfo.actors).length === 0 ? (
