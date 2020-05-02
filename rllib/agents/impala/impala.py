@@ -266,7 +266,7 @@ def record_steps_trained(count):
     metrics.counters[STEPS_TRAINED_COUNTER] += count
 
 
-def simple_aggregator(workers, config):
+def gather_experiences_directly(workers, config):
     rollouts = ParallelRollouts(
         workers,
         mode="async",
@@ -320,7 +320,7 @@ class Aggregator(ParallelIteratorWorker):
         self.weights = weights
 
 
-def tree_aggregator(workers, config):
+def gather_experiences_tree_aggregation(workers, config):
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Divide up the workers between aggregators.
@@ -354,11 +354,10 @@ def tree_aggregator(workers, config):
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
-
     if config["num_aggregation_workers"] > 0:
-        train_batches = tree_aggregator(workers, config)
+        train_batches = gather_experiences_tree_aggregation(workers, config)
     else:
-        train_batches = simple_aggregator(workers, config)
+        train_batches = gather_experiences_directly(workers, config)
 
     # Start the learner thread.
     learner_thread = make_learner_thread(workers.local_worker(), config)
