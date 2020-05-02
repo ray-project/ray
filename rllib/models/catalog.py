@@ -528,9 +528,9 @@ class ModelCatalog:
                                                       FCNet)
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
-            if model_config.get("use_lstm"):
-                raise NotImplementedError(
-                    "LSTM auto-wrapping not implemented for torch")
+            #if model_config.get("use_lstm"):
+            #    raise NotImplementedError(
+            #        "LSTM auto-wrapping not implemented for torch")
         else:
             from ray.rllib.models.tf.fcnet_v2 import \
                 FullyConnectedNetwork as FCNet
