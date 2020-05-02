@@ -41,8 +41,8 @@ should_run_job() {
 
 # Idempotent environment loading
 reload_env() {
-  # TODO: We should really just use a new login shell instead of doing this manually.
-  # Otherwise we might source a script that isn't idempotent (e.g. one that blindly prepends to PATH).
+  # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...), e.g. for CI cross-compatibility.
+  # Normal environment variables should be set up at software installation time, not here.
 
   if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
     case "${GITHUB_PULL_REQUEST}" in
@@ -290,7 +290,7 @@ lint() {
   )
 }
 
-_preload() {
+_check_job_triggers() {
   local job_names
   job_names="$1"
 
@@ -342,15 +342,11 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  _preload "${1-}"
+  _check_job_triggers "${1-}"
 
   configure_system
 
-  . "${ROOT_DIR}"/install-dependencies.sh
-
-  cat <<EOF >> ~/.bashrc
-. "${BASH_SOURCE:-$0}"  # reload environment
-EOF
+  . "${ROOT_DIR}"/install-dependencies.sh  # This script is sourced to propagate up environment changes
 }
 
 build() {
@@ -378,8 +374,6 @@ build() {
 _main() {
   if [ -n "${GITHUB_WORKFLOW-}" ]; then
     exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
-    # Necessary for GitHub Actions (which uses separate shells for different commands)
-    # Unnecessary for Travis (which uses one shell for different commands)
     reload_env
   fi
   "$@"
