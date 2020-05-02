@@ -113,4 +113,6 @@ class RandomTest:
 
 random_killer = RandomKiller.remote()
 random_killer.run.remote()
+# Subtract 4 from the CPUs available for master, router, HTTP proxy,
+# and metric monitor actors.
 RandomTest(max_endpoints=(num_nodes * cpus_per_node) - 4).run()
