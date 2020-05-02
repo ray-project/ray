@@ -52,11 +52,6 @@ reload_env() {
     export TRAVIS_PULL_REQUEST
   fi
 
-  export PYTHON3_BIN_PATH=python
-  if [ "${OSTYPE}" = msys ]; then
-    export USE_CLANG_CL=1
-  fi
-
   # NOTE: Modifying PATH invalidates Bazel's cache! Do not add to PATH unnecessarily.
   PATH="${HOME}/miniconda/bin":"${PATH}"
   if [ "${OSTYPE}" = msys ]; then
@@ -350,7 +345,6 @@ init() {
 
   configure_system
 
-  "${ROOT_DIR}"/install-bazel.sh
   . "${ROOT_DIR}"/install-dependencies.sh
 
   cat <<EOF >> ~/.bashrc

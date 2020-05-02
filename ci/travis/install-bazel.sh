@@ -42,21 +42,20 @@ esac
   fi
 }
 
-if [ "${OSTYPE}" = "msys" ]; then
-  target="${MINGW_DIR-/usr}/bin/bazel.exe"
-  mkdir -p "${target%/*}"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
-else
-  target="./install.sh"
-  curl -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
-  chmod +x "${target}"
-  if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
-    sudo "${target}" > /dev/null  # system-wide install for CI
-    command -V bazel 1>&2
-  else
-    "${target}" --user > /dev/null
-  fi
-  rm -f "${target}"
+sudo=sudo
+exe_suffix=""
+bazel_target="/usr/local/bin/bazel"
+if [ "${OSTYPE}" = msys ]; then
+  sudo=""
+  exe_suffix=".exe"
+  bazel_target="${MINGW_PREFIX}/bin/bazel.exe"
+fi
+${sudo} curl -f -s -L -R -o "${bazel_target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}${exe_suffix}"
+${sudo} chmod +x "${bazel_target}"
+if [ "${OSTYPE}" = msys ]; then
+  ${sudo} tee /etc/profile.d/bazel.sh > /dev/null <<EOF; . /etc/profile.d/bazel.sh
+export USE_CLANG_CL=1  # Clang front-end for Visual C++
+EOF
 fi
 
 if [ "${TRAVIS-}" = true ]; then

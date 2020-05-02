@@ -15,6 +15,13 @@ pkg_install_helper() {
   esac
 }
 
+install_bazel() {
+  "${ROOT_DIR}"/install-bazel.sh
+  if [ -f /etc/profile.d/bazel.sh ]; then
+    . /etc/profile.d/bazel.sh
+  fi
+}
+
 install_base() {
   case "${OSTYPE}" in
     linux*)
@@ -124,6 +131,7 @@ install_node() {
 
 install_dependencies() {
 
+  install_bazel
   install_base
   if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Keep Travis's built-in compilers and only use this for GitHub Actions (for now)
     "${ROOT_DIR}"/install-toolchains.sh
