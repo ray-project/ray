@@ -31,7 +31,7 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
       RAY_LOG(ERROR) << "Failed to add task, job id = " << job_id
                      << ", task id = " << task_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task_id.Hex(),
                                          task_table_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding task, job id = " << job_id
                      << ", task id = " << task_id;
@@ -96,7 +96,7 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
                              << ", task id list size = " << task_ids.size();
             } else {
               for (auto &task : *tasks) {
-                RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task.first.Binary(),
+                RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task.first.Hex(),
                                                    task.second.SerializeAsString(),
                                                    nullptr));
               }
@@ -132,7 +132,7 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Hex(),
                                          task_lease_data->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
@@ -179,7 +179,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   if (!status.ok()) {
     on_done(status);
   }
-}  // namespace rpc
+}
 
 }  // namespace rpc
 }  // namespace ray

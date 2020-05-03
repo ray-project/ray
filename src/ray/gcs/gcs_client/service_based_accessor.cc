@@ -632,12 +632,13 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
     TaskTableData task_data;
     task_data.ParseFromString(data);
-    subscribe(TaskID::FromBinary(id), task_data);
+    subscribe(task_id, task_data);
   };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Binary(),
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
                                                        on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
@@ -645,7 +646,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
-  auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Binary());
+  auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -677,13 +678,14 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
     TaskLeaseData task_lease_data;
     task_lease_data.ParseFromString(data);
-    subscribe(TaskID::FromBinary(id), task_lease_data);
+    subscribe(task_id, task_lease_data);
   };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(
-      TASK_LEASE_CHANNEL, task_id.Binary(), on_subscribe, done);
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
+                                                       on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
@@ -691,7 +693,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
   auto status =
-      client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Binary());
+      client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
