@@ -139,7 +139,7 @@ py_test(
 py_test(
     name = "test_impala",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/impala/tests/test_impala.py"]
 )
 

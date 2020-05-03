@@ -6,3 +6,4 @@ cartpole-impala-tf:
         timesteps_total: 500000
     config:
         use_pytorch: false
+        num_gpus: 0
