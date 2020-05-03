@@ -3,7 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.ddpg.apex as apex_ddpg
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestApexDDPG(unittest.TestCase):
@@ -27,6 +27,12 @@ class TestApexDDPG(unittest.TestCase):
             plain_config = config.copy()
             trainer = apex_ddpg.ApexDDPGTrainer(
                 config=plain_config, env="Pendulum-v0")
+
+            # Test per-worker epsilon distribution.
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            scale = [i["cur_scale"] for i in infos]
+            check(scale, [0.0, 0.4, 0.016190862, 0.00065536])
 
             for _ in range(num_iterations):
                 print(trainer.train())
