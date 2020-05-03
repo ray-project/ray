@@ -230,6 +230,12 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
+
+  ClientID subscribe_id_;
+
+  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
+      TaskLeaseSubscriptionExecutor;
+  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
