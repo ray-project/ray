@@ -189,10 +189,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     bool subscribed;
   };
 
-  bool isObjectLocationsUpdated(bool is_added,
-                                const std::vector<rpc::ObjectTableData> &location_updates,
-                                std::unordered_set<ClientID> *node_ids);
-
   /// Reference to the event loop.
   boost::asio::io_service &io_service_;
   /// Reference to the gcs client.

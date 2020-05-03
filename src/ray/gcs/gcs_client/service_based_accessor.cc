@@ -588,7 +588,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
           callback(status);
         }
         RAY_LOG(INFO) << "Finished adding task, status = " << status
-                       << ", task id = " << task_id << ", job id = " << job_id;
+                      << ", task id = " << task_id << ", job id = " << job_id;
       });
   return Status::OK();
 }
@@ -607,7 +607,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
           callback(status, boost::none);
         }
         RAY_LOG(INFO) << "Finished getting task, status = " << status
-                       << ", task id = " << task_id;
+                      << ", task id = " << task_id;
       });
   return Status::OK();
 }
@@ -795,10 +795,11 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
     const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(INFO) << "Subscribing object location, object id = " << object_id;
+  RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+  auto on_subscribe = [object_id, subscribe](const std::string &id,
+                                             const std::string &data) {
     rpc::ObjectLocationChange object_location_change;
     object_location_change.ParseFromString(data);
     std::vector<rpc::ObjectTableData> object_data_vector;
@@ -806,7 +807,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     auto change_mode = object_location_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
                                                        : rpc::GcsChangeMode::REMOVE;
     gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-    subscribe(ObjectID::FromBinary(id), notification);
+    subscribe(object_id, notification);
   };
   auto on_done = [this, object_id, subscribe, done](const Status &status) {
     if (status.ok()) {
@@ -827,17 +828,16 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
       done(status);
     }
   };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Binary(),
+  auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
                                                        on_subscribe, on_done);
-  RAY_LOG(INFO) << "Finished subscribing object location, object id = " << object_id;
+  RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
-  auto status =
-      client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Binary());
+  auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }

@@ -29,19 +29,22 @@ using ray::rpc::ObjectTableData;
 /// Process a notification of the object table entries and store the result in
 /// node_ids. This assumes that node_ids already contains the result of the
 /// object table entries up to but not including this notification.
-void UpdateObjectLocations(bool is_added,
+bool UpdateObjectLocations(bool is_added,
                            const std::vector<ObjectTableData> &location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<ClientID> *node_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
+  bool isUpdated = false;
   for (const auto &object_table_data : location_updates) {
     ClientID node_id = ClientID::FromBinary(object_table_data.manager());
-    if (is_added) {
+    if (is_added && 0 == node_ids->count(node_id)) {
       node_ids->insert(node_id);
-    } else {
+      isUpdated = true;
+    } else if (!is_added && 1 == node_ids->count(node_id)) {
       node_ids->erase(node_id);
+      isUpdated = true;
     }
   }
   // Filter out the removed clients from the object locations.
@@ -52,6 +55,8 @@ void UpdateObjectLocations(bool is_added,
       it++;
     }
   }
+
+  return isUpdated;
 }
 
 }  // namespace
@@ -130,8 +135,6 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
     auto object_notification_callback =
         [this](const ObjectID &object_id,
                const gcs::ObjectChangeNotification &object_notification) {
-          RAY_LOG(INFO) << "Subscribing object 111111111111............., object id = " << object_id;
-
           // Objects are added to this map in SubscribeObjectLocations.
           auto it = listeners_.find(object_id);
           // Do nothing for objects we are not listening for.
@@ -142,22 +145,12 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           // Once this flag is set to true, it should never go back to false.
           it->second.subscribed = true;
 
-          // Filter duplicate data.
-          RAY_LOG(INFO) << "Subscribing object 22222222222............., object id = " << object_id;
-          if (object_notification.GetData().empty() || !isObjectLocationsUpdated(object_notification.IsAdded(),
-                                        object_notification.GetData(),
-                                        &it->second.current_object_locations)) {
-            RAY_LOG(INFO) << "isObjectLocationsUpdated......, object id = " << object_id
-              << ", size = " << object_notification.GetData().size();
+          // Update entries for this object.
+          if (!UpdateObjectLocations(object_notification.IsAdded(),
+                                     object_notification.GetData(), gcs_client_,
+                                     &it->second.current_object_locations)) {
             return;
           }
-
-          RAY_LOG(INFO) << "Subscribing object 333333333333............., object id = " << object_id;
-
-          // Update entries for this object.
-          UpdateObjectLocations(object_notification.IsAdded(),
-                                object_notification.GetData(), gcs_client_,
-                                &it->second.current_object_locations);
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
           // looping over the callbacks.
           auto callbacks = it->second.callbacks;
@@ -245,19 +238,6 @@ std::string ObjectDirectory::DebugString() const {
   result << "ObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
   return result.str();
-}
-
-bool ObjectDirectory::isObjectLocationsUpdated(
-    bool is_added, const std::vector<rpc::ObjectTableData> &location_updates,
-    std::unordered_set<ClientID> *node_ids) {
-  for (const auto &object_table_data : location_updates) {
-    ClientID node_id = ClientID::FromBinary(object_table_data.manager());
-    if ((is_added && 0 == node_ids->count(node_id)) ||
-        (!is_added && 1 == node_ids->count(node_id))) {
-      return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace ray

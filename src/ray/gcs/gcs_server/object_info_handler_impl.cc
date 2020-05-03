@@ -54,16 +54,16 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
     SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Adding object location, job id = " << object_id.TaskId().JobId()
+  RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
 
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
-          OBJECT_CHANNEL, object_id.Binary(),
+          OBJECT_CHANNEL, object_id.Hex(),
           gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
-      RAY_LOG(INFO) << "Finished adding object location, job id = "
+      RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id << ", task id = " << object_id.TaskId();
     } else {
@@ -92,7 +92,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
-          OBJECT_CHANNEL, object_id.Binary(),
+          OBJECT_CHANNEL, object_id.Hex(),
           gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
