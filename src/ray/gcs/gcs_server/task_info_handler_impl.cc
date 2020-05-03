@@ -78,43 +78,20 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   JobID job_id = task_ids.empty() ? JobID::Nil() : task_ids[0].JobId();
   RAY_LOG(DEBUG) << "Deleting tasks, job id = " << job_id
                  << ", task id list size = " << task_ids.size();
+  auto on_done = [job_id, task_ids, request, reply, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
+                     << ", task id list size = " << task_ids.size();
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
 
-  auto tasks = std::make_shared<std::unordered_map<TaskID, TaskTableData>>();
-  for (auto &task_id : task_ids) {
-    auto on_done = [this, job_id, task_id, task_ids, tasks, request, reply,
-                    send_reply_callback](Status status,
-                                         const boost::optional<TaskTableData> &result) {
-      if (status.ok()) {
-        RAY_DCHECK(result);
-        (*tasks)[task_id] = *result;
-
-        if (tasks->size() == task_ids.size()) {
-          auto on_done = [this, job_id, task_ids, tasks, request, reply,
-                          send_reply_callback](const Status &status) {
-            if (!status.ok()) {
-              RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
-                             << ", task id list size = " << task_ids.size();
-            } else {
-              for (auto &task : *tasks) {
-                RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_CHANNEL, task.first.Hex(),
-                                                   task.second.SerializeAsString(),
-                                                   nullptr));
-              }
-              RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
-                             << ", task id list size = " << task_ids.size();
-            }
-            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-          };
-
-          status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
-          if (!status.ok()) {
-            on_done(status);
-          }
-        }
-      }
-    };
-    RAY_CHECK_OK(gcs_client_.Tasks().AsyncGet(task_id, on_done));
+  Status status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
+  if (!status.ok()) {
+    on_done(status);
   }
+  RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
+                 << ", task id list size = " << task_ids.size();
 }
 
 void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
