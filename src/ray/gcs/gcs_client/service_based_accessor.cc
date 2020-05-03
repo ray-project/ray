@@ -578,7 +578,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
   TaskID task_id = TaskID::FromBinary(data_ptr->task().task_spec().task_id());
   JobID job_id = JobID::FromBinary(data_ptr->task().task_spec().job_id());
-  RAY_LOG(INFO) << "Adding task, task id = " << task_id << ", job id = " << job_id;
+  RAY_LOG(DEBUG) << "Adding task, task id = " << task_id << ", job id = " << job_id;
   rpc::AddTaskRequest request;
   request.mutable_task_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddTask(
@@ -587,15 +587,15 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
         if (callback) {
           callback(status);
         }
-        RAY_LOG(INFO) << "Finished adding task, status = " << status
-                      << ", task id = " << task_id << ", job id = " << job_id;
+        RAY_LOG(DEBUG) << "Finished adding task, status = " << status
+                       << ", task id = " << task_id << ", job id = " << job_id;
       });
   return Status::OK();
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncGet(
     const TaskID &task_id, const OptionalItemCallback<rpc::TaskTableData> &callback) {
-  RAY_LOG(INFO) << "Getting task, task id = " << task_id;
+  RAY_LOG(DEBUG) << "Getting task, task id = " << task_id;
   rpc::GetTaskRequest request;
   request.set_task_id(task_id.Binary());
   client_impl_->GetGcsRpcClient().GetTask(
@@ -606,8 +606,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
         } else {
           callback(status, boost::none);
         }
-        RAY_LOG(INFO) << "Finished getting task, status = " << status
-                      << ", task id = " << task_id;
+        RAY_LOG(DEBUG) << "Finished getting task, status = " << status
+                       << ", task id = " << task_id;
       });
   return Status::OK();
 }
@@ -634,19 +634,19 @@ Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task
 Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(INFO) << "Subscribing task, task id = " << task_id;
+  RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
   auto status =
       task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
-  RAY_LOG(INFO) << "Finished subscribing task, task id = " << task_id;
+  RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                       const StatusCallback &done) {
-  RAY_LOG(INFO) << "Unsubscribing task, task id = " << task_id;
+  RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
   auto status = task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
-  RAY_LOG(INFO) << "Finished unsubscribing task, task id = " << task_id;
+  RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
 

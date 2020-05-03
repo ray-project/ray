@@ -64,7 +64,7 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
             # objects are delayed by long enough, then this causes concurrent
             # fetch calls to timeout and mistakenly mark the object as lost.
             # Set the timeout very high to prevent this.
-            "initial_reconstruction_timeout_milliseconds": 6000,
+            "initial_reconstruction_timeout_milliseconds": 60000,
         })
     }],
     indirect=True)

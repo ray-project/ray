@@ -347,7 +347,6 @@ Status RedisTaskInfoAccessor::AsyncAdd(const std::shared_ptr<TaskTableData> &dat
   }
 
   TaskID task_id = TaskID::FromBinary(data_ptr->task().task_spec().task_id());
-  RAY_LOG(INFO) << "RedisTaskInfoAccessor Adding task, task id = " << task_id;
   raylet::TaskTable &task_table = client_impl_->raylet_task_table();
   return task_table.Add(task_id.JobId(), task_id, data_ptr, on_done);
 }
