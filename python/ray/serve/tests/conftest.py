@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-import ray
 from ray import serve
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
