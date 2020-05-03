@@ -569,7 +569,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      subscribe_id_(ClientID::FromRandom()),
+      task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
 
 Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
@@ -695,14 +697,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                           const std::string &data) {
-    TaskLeaseData task_lease_data;
-    task_lease_data.ParseFromString(data);
-    subscribe(task_id, task_lease_data);
-  };
-  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                                       on_subscribe, done);
+  auto status =
+      task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
@@ -710,7 +706,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
   auto status =
-      client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
+      task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }

@@ -720,7 +720,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Assert unsubscribe succeeded.
   usleep(100 * 1000);
-  EXPECT_EQ(task_lease_count, 1);
+  EXPECT_EQ(task_lease_count, 2);
 
   // Attempt task reconstruction to GCS.
   auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
