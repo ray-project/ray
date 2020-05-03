@@ -176,7 +176,7 @@ matrix:
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
       install:
         - . ./ci/travis/ci.sh build
       script:
