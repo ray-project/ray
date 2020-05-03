@@ -4,7 +4,8 @@ import pytest
 import requests
 
 from ray import serve
-from ray.serve.metric import MetricClient, InMemorySink, PrometheusSink
+from ray.serve.metric.client import MetricClient
+from ray.serve.metric.sink import InMemorySink, PrometheusSink
 from ray.serve.metric.types import MetricType, MetricMetadata
 
 pytestmark = pytest.mark.asyncio
@@ -26,7 +27,8 @@ class MockSinkActor:
 
 async def test_client():
     sink = MockSinkActor()
-    collector = MetricClient(sink, default_labels={"default": "label"})
+    collector = MetricClient(
+        sink, push_interval=2, default_labels={"default": "label"})
     counter = collector.new_counter(name="counter", label_names=("a", "b"))
 
     with pytest.raises(
@@ -61,7 +63,7 @@ async def test_client():
     }
     assert sink.batches == [("counter", {
         "a": "1",
-        "b": "3"
+        "b": "2"
     }, 1), ("counter", {
         "a": "1",
         "b": "3"
@@ -70,7 +72,8 @@ async def test_client():
 
 async def test_in_memory_sink(ray_instance):
     sink = InMemorySink.remote()
-    collector = MetricClient(sink, default_labels={"default": "label"})
+    collector = MetricClient(
+        sink, push_interval=2, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
@@ -106,7 +109,8 @@ async def test_in_memory_sink(ray_instance):
 
 async def test_prometheus_sink(ray_instance):
     sink = PrometheusSink.remote()
-    collector = MetricClient(sink, default_labels={"default": "label"})
+    collector = MetricClient(
+        sink, push_interval=2, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
@@ -140,16 +144,14 @@ async def test_system_metric_endpoints(serve_instance):
         1 / 0
 
     serve.create_backend(test_error_counter, "m:v1")
-    serve.create_endpoint("test_metrics", "/measure", methods=["GET", "POST"])
+    serve.create_endpoint("test_metrics", "/measure")
     serve.set_traffic("test_metrics", {"m:v1": 1})
-
-    # Send one query
-    requests.get("http://127.0.0.1:8000/measure")
 
     # Check metrics are exposed under http endpoint
     def test_metric_endpoint():
+        requests.get("http://127.0.0.1:8000/measure", timeout=5)
         in_memory_metric = requests.get(
-            "http://127.0.0.1:8000/-/metrics").json()
+            "http://127.0.0.1:8000/-/metrics", timeout=5).json()
 
         # We don't want to check the values since this check might be retried.
         in_memory_metric_without_values = []
@@ -186,8 +188,9 @@ async def test_system_metric_endpoints(serve_instance):
             test_metric_endpoint()
             success = True
             break
-        except AssertionError:
+        except (AssertionError, requests.ReadTimeout):
             # Metrics may not have been propagated yet
             time.sleep(2)
+            print("Metric not correct, retrying...")
     if not success:
         test_metric_endpoint()

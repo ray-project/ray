@@ -3,6 +3,9 @@ from collections import Counter, namedtuple
 
 import ray
 from ray.serve.metric.types import MetricType, MetricMetadata, MetricBatch
+from ray.serve.utils import _get_logger
+
+logger = _get_logger()
 
 
 def make_metric_namedtuple(metadata: MetricMetadata, record: MetricBatch):
@@ -21,6 +24,7 @@ class BaseSink:
     def __init__(self):
         self.metadata = dict()
         self.recording = []
+        logger.debug("Sink initialized {}".format(type(self)))
 
     def push_batch(self, metadata: Dict[str, MetricMetadata],
                    batch: MetricBatch):
@@ -37,7 +41,7 @@ class BaseSink:
             "This method should be implemented by subclass.")
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class InMemorySink(BaseSink):
     def __init__(self):
         super().__init__()
@@ -70,7 +74,7 @@ class InMemorySink(BaseSink):
         return items
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class PrometheusSink(BaseSink):
     def __init__(self):
         super().__init__()

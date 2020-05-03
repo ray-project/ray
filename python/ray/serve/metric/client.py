@@ -7,7 +7,9 @@ from ray.serve.metric.types import (
     MetricMetadata,
     MetricRecord,
 )
-from ray.serve.utils import retry_actor_failures, retry_actor_failures_async
+from ray.serve.utils import retry_actor_failures, retry_actor_failures_async, _get_logger
+
+logger = _get_logger()
 
 
 class MetricClient:
@@ -30,8 +32,17 @@ class MetricClient:
         self.registered_metrics: Dict[str, MetricMetadata] = dict()
         self.metric_records = []
 
+        assert asyncio.get_event_loop().is_running()
         self.push_task = asyncio.get_event_loop().create_task(
             self.push_forever(push_interval))
+        logger.debug("Initialized client")
+
+    def __del__(self):
+        if asyncio.get_event_loop().is_running() and not self.push_task.done():
+            try:
+                self.push_task.cancel()
+            except:
+                pass
 
     @staticmethod
     def connect_from_serve(default_labels: Optional[Dict[str, str]] = None):
@@ -39,8 +50,10 @@ class MetricClient:
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
+        import ray
+        assert ray.is_initialized()
         [metric_sink,
-         push_interval] = retry_actor_failures(master_actor.get_metric_sink)
+         push_interval] = ray.get(master_actor.get_metric_sink.remote())
         return MetricClient(
             metric_sink_actor=metric_sink,
             default_labels=default_labels,
@@ -137,7 +150,11 @@ class MetricClient:
         return metric_object
 
     async def _push_once(self):
+        if not len(self.metric_records):
+            return
+
         old_batch, self.metric_records = self.metric_records, []
+        logger.debug("Pushing metric batch {}".format(old_batch))
         await retry_actor_failures_async(self.sink.push_batch,
                                          self.registered_metrics, old_batch)
 

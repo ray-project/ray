@@ -6,10 +6,12 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import parse_request_item
+from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.serve.metric import MetricClient
 from ray.async_compat import sync_to_async
+
+logger = _get_logger()
 
 
 def create_backend_worker(func_or_class):

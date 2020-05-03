@@ -105,7 +105,8 @@ class HTTPProxy:
         if current_path == "/-/routes":
             await Response(self.route_table).send(scope, receive, send)
         elif current_path == "/-/metrics":
-            metric_info = await self.metric_sink.get_metric.remote()
+            metric_info = await retry_actor_failures_async(
+                self.metric_sink.get_metric)
             await Response(metric_info).send(scope, receive, send)
         else:
             await Response(

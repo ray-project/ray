@@ -20,7 +20,7 @@ def serve_instance():
         kv_store_path=new_db_path,
         blocking=True,
         ray_init_kwargs={"num_cpus": 36},
-        metric_push_interval=1)
+        metric_push_interval=2)
     yield
     os.remove(new_db_path)
 
@@ -29,7 +29,7 @@ def serve_instance():
 def ray_instance():
     ray_already_initialized = ray.is_initialized()
     if not ray_already_initialized:
-        ray.init(object_store_memory=int(1e8))
+        ray.init(num_cpus=36, object_store_memory=int(1e8))
     yield
     if not ray_already_initialized:
         ray.shutdown()

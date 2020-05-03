@@ -349,7 +349,10 @@ class Router:
         logger.debug("Sending query to replica:" + backend_replica_tag)
         start = time.time()
         worker = self.replicas[backend_replica_tag]
-        result = await worker.handle_request.remote(req)
+        try:
+            result = await worker.handle_request.remote(req)
+        except RayTaskError as error:
+            result = error
         await self.mark_worker_idle(backend, backend_replica_tag)
         logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result

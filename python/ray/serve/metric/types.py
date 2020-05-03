@@ -1,5 +1,5 @@
 import enum
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Optional
 from collections import namedtuple
 
 # We split the information about a metric into two parts: the MetricMetadata
@@ -13,14 +13,29 @@ MetricBatch = List[MetricRecord]
 
 
 class BaseMetric:
-    def __init__(self, client, name: str, label_names: Tuple[str]):
+    def __init__(self,
+                 client,
+                 name: str,
+                 label_names: Tuple[str],
+                 dynamic_labels: Optional[Dict[str, str]] = None):
+        """Represent a single metric stream
+
+        Args:
+            client(MetricClient): The client object to push update to.
+            name(str): The name of the metric.
+            label_names(Tuple[str]): The names of the labels that must be set
+                before an observation.
+            dynamic_labels(Optional[Dict[str,str]]): A partially preset labels.
+                This fields make it possible to chain label calls together:
+                ``metric.labels(a=b).labels(c=d)``.
+        """
         self.client = client
         self.name = name
-        self.dynamic_labels = dict()
-        self.labelnames = label_names
+        self.dynamic_labels = dynamic_labels or dict()
+        self.label_names = label_names
 
     def check_all_labels_fulfilled_or_error(self):
-        unfulfilled = set(self.labelnames) - set(self.dynamic_labels.keys())
+        unfulfilled = set(self.label_names) - set(self.dynamic_labels.keys())
         if len(unfulfilled) != 0:
             raise ValueError("The following labels doesn't have associated "
                              "values: {}".format(unfulfilled))
@@ -33,14 +48,16 @@ class BaseMetric:
         >>> metric.labels(a=1, b=2)
         >>> metric.labels(a=1).labels(b=2) # Equivalent
         """
+        new_dynamic_labels = self.dynamic_labels.copy()
         for k, v in kwargs.items():
-            if k not in self.labelnames:
+            if k not in self.label_names:
                 raise ValueError(
                     "Label {} was not part of registered "
                     "label names. Allowed label names are {}.".format(
-                        k, self.labelnames))
-            self.dynamic_labels[k] = str(v)
-        return self
+                        k, self.label_names))
+            new_dynamic_labels[k] = str(v)
+        return type(self)(self.client, self.name, self.label_names,
+                          new_dynamic_labels)
 
 
 # The metric types are inspired by OpenTelemetry spec:
