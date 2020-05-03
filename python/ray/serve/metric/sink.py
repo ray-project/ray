@@ -21,6 +21,8 @@ def make_metric_namedtuple(metadata: MetricMetadata, record: MetricBatch):
 
 
 class BaseSink:
+    """A sink is the place to store or forward metrics to external services"""
+
     def __init__(self):
         self.metadata = dict()
         self.recording = []

@@ -35,8 +35,10 @@ class HTTPProxy:
             self.router_handle
         ] = await retry_actor_failures_async(master.get_http_proxy_config)
 
+        # The sink is required to return results for /-/metrics endpoint
         self.metric_sink, _ = await retry_actor_failures_async(
             master.get_metric_sink)
+
         self.metric_client = MetricClient.connect_from_serve()
         self.request_counter = self.metric_client.new_counter(
             "num_http_requests",
