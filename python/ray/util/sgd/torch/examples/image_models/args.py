@@ -427,10 +427,7 @@ parser.add_argument("--local_rank", default=0, type=int)
 
 # ray
 parser.add_argument(
-    "--ray-address",
-    default="auto",
-    metavar="ADDR",
-    help="Ray cluster address. [default=auto]")
+    "--ray-address", metavar="ADDR", help="Ray cluster address.")
 parser.add_argument(
     "-n",
     "--ray-num-workers",
@@ -438,6 +435,16 @@ parser.add_argument(
     default=1,
     metavar="N",
     help="Number of Ray replicas to use. [default=1]")
+parser.add_argument(
+    "--mock-data",
+    action="store_true",
+    default=False,
+    help="Use mocked data for testing. [default=False]")
+parser.add_argument(
+    "--smoke-test",
+    action="store_true",
+    default=False,
+    help="Only run one step for testing. [default=False]")
 
 
 def parse_args():
@@ -460,7 +467,7 @@ def parse_args():
     args.distributed = False  # ray SGD handles this (DistributedSampler)
     args.device = "cuda"  # ray should handle this
 
-    if args.no_gpu == 0 and args.prefetcher:
+    if args.no_gpu and args.prefetcher:
         logging.warning("Prefetcher needs CUDA currently "
                         "(might be a bug in timm). "
                         "Disabling it.")

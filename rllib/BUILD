@@ -136,6 +136,12 @@ py_test(
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
+py_test(
+    name = "test_impala",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/impala/tests/test_impala.py"]
+)
 
 # MARWILTrainer
 py_test(
@@ -1339,7 +1345,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -1402,6 +1408,22 @@ py_test(
 )
 
 py_test(
+    name = "examples/hierarchical_training_tf",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--stop-reward=0.0"]
+)
+
+py_test(
+    name = "examples/hierarchical_training_torch",
+    tags = ["examples", "examples_H"],
+    size = "small",
+    srcs = ["examples/hierarchical_training.py"],
+    args = ["--torch", "--stop-reward=0.0"]
+)
+
+py_test(
     name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
@@ -1434,34 +1456,30 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_actions_cartpole_pg",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PG", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_actions_cartpole_ppo",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=PPO", "--stop=50"]
 )
 
 py_test(
-    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
+    name = "examples/parametric_actions_cartpole_dqn",
+    main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
+    srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
-)
-
-py_test(
-    name = "examples/random_env", main = "examples/random_env.py",
-    tags = ["examples", "examples_R"],
-    size = "large",
-    srcs = ["examples/random_env.py"]
 )
 
 py_test(

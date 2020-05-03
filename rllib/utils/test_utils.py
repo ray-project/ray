@@ -47,7 +47,7 @@ def framework_iterator(config=None,
             logger.warning(
                 "framework_iterator skipping torch (not installed)!")
             continue
-        elif not tf:
+        if fw != "torch" and not tf:
             logger.warning("framework_iterator skipping {} (tf not "
                            "installed)!".format(fw))
             continue

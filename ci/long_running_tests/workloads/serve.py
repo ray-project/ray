@@ -7,7 +7,6 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.kv_store_service import RayInternalKVStore
 
 num_redis_shards = 1
 redis_max_memory = 10**8
@@ -33,7 +32,7 @@ subprocess.call([
 ])
 
 ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
-serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
+serve.init(blocking=True)
 
 
 @serve.accept_batch
@@ -44,8 +43,8 @@ def echo(_):
 
 
 serve.create_endpoint("echo", "/echo")
-config = serve.BackendConfig(num_replicas=30, max_batch_size=16)
-serve.create_backend(echo, "echo:v1", backend_config=config)
+config = {"num_replicas": 30, "max_batch_size": 16}
+serve.create_backend("echo:v1", echo, config=config)
 serve.set_traffic("echo", {"echo:v1": 1})
 
 print("Warming up")
@@ -54,7 +53,7 @@ for _ in range(5):
     print(resp)
     time.sleep(0.5)
 
-connections = int(config.num_replicas * config.max_batch_size * 0.75)
+connections = int(config["num_replicas"] * config["max_batch_size"] * 0.75)
 
 while True:
     proc = subprocess.Popen(

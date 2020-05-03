@@ -67,18 +67,16 @@ Result for PG_SimpleCorridor_0de4e686:
 """
 
 import argparse
-import numpy as np
-import gym
-from gym.spaces import Discrete, Box
 
 import ray
 from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--custom-eval", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
-args = parser.parse_args()
+parser.add_argument("--torch", action="store_true")
 
 
 def custom_eval_function(trainer, eval_workers):
@@ -123,36 +121,9 @@ def custom_eval_function(trainer, eval_workers):
     return metrics
 
 
-class SimpleCorridor(gym.Env):
-    """Custom env we use for this example."""
-
-    def __init__(self, env_config):
-        self.end_pos = env_config["corridor_length"]
-        self.cur_pos = 0
-        self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, 9999, shape=(1, ), dtype=np.float32)
-        print("Created env for worker index", env_config.worker_index,
-              "with corridor length", self.end_pos)
-
-    def set_corridor_length(self, length):
-        print("Update corridor length to", length)
-        self.end_pos = length
-
-    def reset(self):
-        self.cur_pos = 0
-        return [self.cur_pos]
-
-    def step(self, action):
-        assert action in [0, 1], action
-        if action == 0 and self.cur_pos > 0:
-            self.cur_pos -= 1
-        elif action == 1:
-            self.cur_pos += 1
-        done = self.cur_pos >= self.end_pos
-        return [self.cur_pos], 1 if done else 0, done, {}
-
-
 if __name__ == "__main__":
+    args = parser.parse_args()
+
     if args.custom_eval:
         eval_fn = custom_eval_function
     else:
@@ -196,4 +167,5 @@ if __name__ == "__main__":
                     "corridor_length": 5,
                 },
             },
+            "use_pytorch": args.torch,
         })
