@@ -132,9 +132,14 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
-    unpacked_behaviour_logits = torch.split(
-        behaviour_logits, output_hidden_shape, dim=1)
-    unpacked_outputs = torch.split(model_out, output_hidden_shape, dim=1)
+    if isinstance(output_hidden_shape, list):
+        unpacked_behaviour_logits = torch.split(
+            behaviour_logits, output_hidden_shape, dim=1)
+        unpacked_outputs = torch.split(model_out, output_hidden_shape, dim=1)
+    else:
+        unpacked_behaviour_logits = torch.chunk(
+            behaviour_logits, output_hidden_shape, dim=1)
+        unpacked_outputs = torch.chunk(model_out, output_hidden_shape, dim=1)
     values = model.value_function()
 
     if policy.is_recurrent():
@@ -144,7 +149,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     else:
         mask = torch.ones_like(rewards)
 
-    # Prepare actions for loss
+    # Prepare actions for loss.
     loss_actions = actions if is_multidiscrete else torch.unsqueeze(
         actions, dim=1)
 
