@@ -26,6 +26,8 @@ namespace ray {
 namespace gcs {
 
 #define JOB_CHANNEL "JOB"
+#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define OBJECT_CHANNEL "OBJECT"
 
 /// \class GcsPubSub
 ///

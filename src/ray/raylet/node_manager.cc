@@ -805,7 +805,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    if (RayConfig::instance().gcs_service_enabled()) {
+    if (RayConfig::instance().gcs_service_enabled() &&
+        RayConfig::instance().gcs_actor_service_enabled()) {
       it->second = actor_registration;
     } else {
       // Only process the state transition if it is to a later state than ours.
@@ -874,7 +875,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     }
   } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    if (!RayConfig::instance().gcs_service_enabled()) {
+    if (!(RayConfig::instance().gcs_service_enabled() &&
+          RayConfig::instance().gcs_actor_service_enabled())) {
       // The actor is dead and needs reconstruction. Attempting to reconstruct its
       // creation task.
       reconstruction_policy_.ListenAndMaybeReconstruct(
@@ -1083,8 +1085,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   client->Register();
   flatbuffers::FlatBufferBuilder fbb;
-  auto reply =
-      ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
+  std::vector<std::string> internal_config_keys;
+  std::vector<std::string> internal_config_values;
+  for (auto kv : initial_config_.raylet_config) {
+    internal_config_keys.push_back(kv.first);
+    internal_config_values.push_back(kv.second);
+  }
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, self_node_id_),
+      string_vec_to_flatbuf(fbb, internal_config_keys),
+      string_vec_to_flatbuf(fbb, internal_config_values));
   fbb.Finish(reply);
   client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -1127,7 +1137,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                           bool intentional_disconnect) {
-  if (RayConfig::instance().gcs_service_enabled()) {
+  if (RayConfig::instance().gcs_service_enabled() &&
+      RayConfig::instance().gcs_actor_service_enabled()) {
     // If gcs actor management is enabled, the gcs will take over the status change of all
     // actors.
     return;
@@ -2504,9 +2515,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                                                  : worker->GetTaskResourceIds());
 
     // If the owner has died since this task was queued, cancel the task by
-    // killing the worker.
-    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
-        failed_nodes_cache_.count(owner_node_id) > 0) {
+    // killing the worker (unless this task is for a detached actor).
+    if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
+                                       failed_nodes_cache_.count(owner_node_id) > 0)) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
       KillWorker(worker);
@@ -2675,7 +2686,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
       worker.MarkDetachedActor();
     }
 
-    if (RayConfig::instance().gcs_service_enabled()) {
+    if (RayConfig::instance().gcs_service_enabled() &&
+        RayConfig::instance().gcs_actor_service_enabled()) {
       // Gcs server is responsible for notifying other nodes of the changes of actor
       // status, and thus raylet doesn't need to handle this anymore.
       // And if `new_scheduler_enabled_` is true, this function `FinishAssignedActorTask`

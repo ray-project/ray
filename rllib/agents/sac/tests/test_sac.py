@@ -67,7 +67,7 @@ class TestSAC(unittest.TestCase):
                     print(results)
 
     def test_sac_loss_function(self):
-        """Tests SAC function results across all frameworks."""
+        """Tests SAC loss function results across all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
         # Run locally.
         config["num_workers"] = 0

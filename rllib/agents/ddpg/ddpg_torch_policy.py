@@ -65,10 +65,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
                 mean=torch.zeros(policy_tp1.size()),
                 std=policy.config["target_noise"]), -target_noise_clip,
             target_noise_clip)
-        policy_tp1_smoothed = torch.clamp(
-            policy_tp1 + clipped_normal_sample,
-            policy.action_space.low * torch.ones_like(policy_tp1),
-            policy.action_space.high * torch.ones_like(policy_tp1))
+        policy_tp1_smoothed = torch.clamp(policy_tp1 + clipped_normal_sample,
+                                          policy.action_space.low.item(0),
+                                          policy.action_space.high.item(0))
     else:
         # No smoothing, just use deterministic actions.
         policy_tp1_smoothed = policy_tp1
@@ -163,9 +162,12 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
     policy._actor_optimizer = torch.optim.Adam(
-        params=policy.model.policy_variables(), lr=config["actor_lr"])
+        params=policy.model.policy_variables(),
+        lr=config["actor_lr"],
+        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(), lr=config["critic_lr"])
+        params=policy.model.q_variables(), lr=config["critic_lr"],
+        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
     return policy._actor_optimizer, policy._critic_optimizer
 
 

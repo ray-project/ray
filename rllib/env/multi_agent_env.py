@@ -1,5 +1,8 @@
 from ray.rllib.utils.annotations import PublicAPI
 
+# If the obs space is Dict type, look for the global state under this key.
+ENV_STATE = "state"
+
 
 @PublicAPI
 class MultiAgentEnv:

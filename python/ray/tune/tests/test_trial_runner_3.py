@@ -15,7 +15,7 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
-                                         SuggestionAlgorithm)
+                                         SearchGenerator, Searcher)
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -30,11 +30,11 @@ class TrialRunnerTest3(unittest.TestCase):
         def on_step_begin(self, trialrunner):
             self._update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
-            setattr(self, "pre_step", cnt + 1)
+            self.pre_step = cnt + 1
 
         def on_step_end(self, trialrunner):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
-            setattr(self, "post_step", 1 + cnt)
+            self.post_step = 1 + cnt
 
         import types
         runner.trial_executor.on_step_begin = types.MethodType(
@@ -101,9 +101,10 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
-        searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher)
+        search_alg = _MockSuggestionAlgorithm()
+        searcher = search_alg.searcher
+        search_alg.add_configurations(experiments)
+        runner = TrialRunner(search_alg=search_alg)
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -122,7 +123,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
         runner = TrialRunner(search_alg=searcher)
         runner.step()
@@ -147,7 +148,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=10)
+        searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
         runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
         runner.step()
@@ -162,30 +163,6 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
 
-    def testSearchAlgSchedulerEarlyStop(self):
-        """Early termination notif to Searcher can be turned off."""
-
-        class _MockScheduler(FIFOScheduler):
-            def on_trial_result(self, *args, **kwargs):
-                return TrialScheduler.STOP
-
-        ray.init(num_cpus=4, num_gpus=2)
-        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
-        experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=True)
-        searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
-        runner.step()
-        runner.step()
-        self.assertEqual(len(searcher.final_results), 1)
-
-        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=False)
-        searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
-        runner.step()
-        runner.step()
-        self.assertEqual(len(searcher.final_results), 0)
-
     def testSearchAlgStalled(self):
         """Checks that runner and searcher state is maintained when stalled."""
         ray.init(num_cpus=4, num_gpus=2)
@@ -197,9 +174,10 @@ class TrialRunnerTest3(unittest.TestCase):
             }
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
-        searcher = _MockSuggestionAlgorithm(max_concurrent=1)
-        searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher)
+        search_alg = _MockSuggestionAlgorithm(max_concurrent=1)
+        search_alg.add_configurations(experiments)
+        searcher = search_alg.searcher
+        runner = TrialRunner(search_alg=search_alg)
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -219,7 +197,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(len(searcher.live_trials), 0)
 
         self.assertTrue(all(trial.is_finished() for trial in trials))
-        self.assertFalse(searcher.is_finished())
+        self.assertFalse(search_alg.is_finished())
         self.assertFalse(runner.is_finished())
 
         searcher.stall = False
@@ -232,25 +210,27 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[2].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
-        self.assertTrue(searcher.is_finished())
+        self.assertTrue(search_alg.is_finished())
         self.assertTrue(runner.is_finished())
 
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
 
-        class FinishFastAlg(SuggestionAlgorithm):
+        class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
 
             def next_trials(self):
+                spec = self._experiment.spec
                 trials = []
+                if self._index < spec["num_samples"]:
+                    trial = Trial(
+                        spec.get("run"), stopping_criterion=spec.get("stop"))
+                    trials.append(trial)
                 self._index += 1
-
-                for trial in self._trial_generator:
-                    trials += [trial]
-                    break
 
                 if self._index > 4:
                     self.set_finished()
+
                 return trials
 
             def suggest(self, trial_id):
@@ -406,7 +386,7 @@ class TrialRunnerTest3(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
-        for i in range(5):
+        for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
@@ -427,14 +407,14 @@ class TrialRunnerTest3(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
-        for i in range(5):
+        for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 1)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
-        for i in range(5):
+        for _ in range(5):
             runner2.step()
         self.assertEquals(count_checkpoints(tmpdir), 2)
 
@@ -473,50 +453,64 @@ class SearchAlgorithmTest(unittest.TestCase):
         _register_all()
 
     def testNestedSuggestion(self):
-        class TestSuggestion(SuggestionAlgorithm):
+        class TestSuggestion(Searcher):
             def suggest(self, trial_id):
                 return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
 
-        alg = TestSuggestion()
+        searcher = TestSuggestion()
+        alg = SearchGenerator(searcher)
         alg.add_configurations({"test": {"run": "__fake"}})
         trial = alg.next_trials()[0]
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
 
-    def _test_repeater(self, repeat):
+    def _test_repeater(self, num_samples, repeat):
         ray.init(num_cpus=4)
 
-        class TestSuggestion(SuggestionAlgorithm):
-            count = 0
+        class TestSuggestion(Searcher):
+            index = 0
 
             def suggest(self, trial_id):
-                return {"test_variable": 5}
+                self.index += 1
+                return {"test_variable": 5 + self.index}
 
             def on_trial_complete(self, *args, **kwargs):
-                self.count += 1
+                return
 
-        alg = TestSuggestion(metric="episode_reward_mean")
-        repeat_alg = Repeater(alg, repeat=repeat, set_index=False)
+        searcher = TestSuggestion(metric="episode_reward_mean")
+        repeat_searcher = Repeater(searcher, repeat=repeat, set_index=False)
+        alg = SearchGenerator(repeat_searcher)
         experiment_spec = {
             "run": "__fake",
-            "num_samples": 1,
+            "num_samples": num_samples,
             "stop": {
                 "training_iteration": 1
             }
         }
-        repeat_alg.add_configurations({"test": experiment_spec})
-        runner = TrialRunner(search_alg=repeat_alg)
-        for i in range(repeat * 2):
+        alg.add_configurations({"test": experiment_spec})
+        runner = TrialRunner(search_alg=alg)
+        while not runner.is_finished():
             runner.step()
 
-        trials = runner.get_trials()
-        self.assertEquals(len(trials), repeat)
+        return runner.get_trials()
 
     def testRepeat1(self):
-        self._test_repeater(repeat=1)
+        trials = self._test_repeater(num_samples=2, repeat=1)
+        self.assertEquals(len(trials), 2)
+        parameter_set = {t.evaluated_params["test_variable"] for t in trials}
+        self.assertEquals(len(parameter_set), 2)
 
     def testRepeat4(self):
-        self._test_repeater(repeat=4)
+        trials = self._test_repeater(num_samples=12, repeat=4)
+        self.assertEquals(len(trials), 12)
+        parameter_set = {t.evaluated_params["test_variable"] for t in trials}
+        self.assertEquals(len(parameter_set), 3)
+
+    def testOddRepeat(self):
+        trials = self._test_repeater(num_samples=11, repeat=5)
+        self.assertEquals(len(trials), 11)
+        parameter_set = {t.evaluated_params["test_variable"] for t in trials}
+        self.assertEquals(len(parameter_set), 3)
 
 
 class ResourcesTest(unittest.TestCase):

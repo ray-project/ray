@@ -79,8 +79,7 @@ space = {
     "momentum": hp.uniform("momentum", 0.1, 0.9),
 }
 
-hyperopt_search = HyperOptSearch(
-    space, max_concurrent=2, reward_attr="mean_accuracy")
+hyperopt_search = HyperOptSearch(space, metric="mean_accuracy", mode="max")
 
 analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 # __run_searchalg_end__

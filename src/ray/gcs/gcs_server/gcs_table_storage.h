@@ -17,6 +17,7 @@
 
 #include <utility>
 
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -382,6 +383,31 @@ class RedisGcsTableStorage : public GcsTableStorage {
  public:
   explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client) {
     store_client_ = std::make_shared<RedisStoreClient>(redis_client);
+    job_table_.reset(new GcsJobTable(store_client_));
+    actor_table_.reset(new GcsActorTable(store_client_));
+    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
+    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
+    task_table_.reset(new GcsTaskTable(store_client_));
+    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
+    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
+    object_table_.reset(new GcsObjectTable(store_client_));
+    node_table_.reset(new GcsNodeTable(store_client_));
+    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
+    heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
+    heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
+    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
+    profile_table_.reset(new GcsProfileTable(store_client_));
+    worker_failure_table_.reset(new GcsWorkerFailureTable(store_client_));
+  }
+};
+
+/// \class InMemoryGcsTableStorage
+/// InMemoryGcsTableStorage is an implementation of `GcsTableStorage`
+/// that uses memory as storage.
+class InMemoryGcsTableStorage : public GcsTableStorage {
+ public:
+  explicit InMemoryGcsTableStorage(boost::asio::io_service &main_io_service) {
+    store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));

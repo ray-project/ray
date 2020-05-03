@@ -70,7 +70,7 @@ class TuneErrors extends React.Component<
     const { classes, tuneInfo } = this.props;
     const { currentError, open } = this.state;
 
-    if (tuneInfo === null || Object.keys(tuneInfo["errors"]).length === 0) {
+    if (tuneInfo === null || Object.keys(tuneInfo.errors).length === 0) {
       return null;
     }
 
@@ -86,14 +86,14 @@ class TuneErrors extends React.Component<
             </TableRow>
           </TableHead>
           <TableBody>
-            {tuneInfo["errors"] !== null &&
-              Object.keys(tuneInfo["errors"]).map((key, index) => (
+            {tuneInfo.errors !== null &&
+              Object.keys(tuneInfo.errors).map((key, index) => (
                 <TableRow key={index}>
                   <TableCell className={classes.cell}>
-                    {tuneInfo["errors"][key]["job_id"]}
+                    {tuneInfo.errors[key].job_id}
                   </TableCell>
                   <TableCell className={classes.cell}>
-                    {tuneInfo["errors"][key]["trial_id"]}
+                    {tuneInfo.errors[key].trial_id}
                   </TableCell>
                   <TableCell className={classes.cell}>{key}</TableCell>
                   <TableCell className={classes.cell}>
@@ -115,9 +115,7 @@ class TuneErrors extends React.Component<
           <DialogWithTitle handleClose={this.handleClose} title="Error Log">
             {open && (
               <NumberedLines
-                lines={tuneInfo["errors"][currentError]["text"]
-                  .trim()
-                  .split("\n")}
+                lines={tuneInfo.errors[currentError].text.trim().split("\n")}
               />
             )}
           </DialogWithTitle>

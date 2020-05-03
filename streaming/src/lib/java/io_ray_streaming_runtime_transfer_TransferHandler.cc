@@ -26,6 +26,13 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
   return reinterpret_cast<jlong>(reader_client);
 }
 
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
+    JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
+  auto *writer_client = reinterpret_cast<WriterClient *>(ptr);
+  writer_client->OnWriterMessage(JByteArrayToBuffer(env, bytes));
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {

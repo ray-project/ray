@@ -311,6 +311,12 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
+// A notification message about one object's locations being changed.
+message ObjectLocationChange {
+  bool is_add = 1;
+  ObjectTableData data = 2;
+}
+
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
@@ -340,4 +346,7 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
+
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
 }

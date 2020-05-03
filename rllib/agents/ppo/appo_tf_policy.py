@@ -8,7 +8,7 @@ import gym
 
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
-    clip_gradients, validate_config, choose_optimizer
+    clip_gradients, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -449,7 +449,6 @@ AsyncPPOTFPolicy = build_tf_policy(
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=add_values,
-    before_init=validate_config,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[

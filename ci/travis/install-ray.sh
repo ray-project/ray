@@ -24,11 +24,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    if [ "${OSTYPE}" = msys ]; then
-      "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e . || echo "WARNING: Ignoring Ray package build failure on Windows for now" 1>&2
-    else
-      "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
-    fi
+    "${WORKSPACE_DIR}"/ci/keep_alive pip install -e .
   )
 }
 

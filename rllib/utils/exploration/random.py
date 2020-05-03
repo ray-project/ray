@@ -1,14 +1,14 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
 import numpy as np
+import tree
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
-from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.utils import force_tuple
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -75,10 +75,7 @@ class Random(Exploration):
             false_fn=false_fn)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-        if isinstance(action, TupleActions):
-            batch_size = tf.shape(action[0][0])[0]
-        else:
-            batch_size = tf.shape(action)[0]
+        batch_size = tf.shape(tree.flatten(action)[0])[0]
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
