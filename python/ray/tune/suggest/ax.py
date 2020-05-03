@@ -16,8 +16,6 @@ class AxSearch(Searcher):
     Facebook for configuring and optimizing experiments. More information
     can be found in https://ax.dev/.
 
-    This module manages its own concurrency.
-
     Parameters:
         parameters (list[dict]): Parameters in the experiment search space.
             Required elements in the dictionaries are: "name" (name of
