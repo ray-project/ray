@@ -41,6 +41,7 @@ class AxSearch(Searcher):
 
     .. code-block:: python
 
+        from ax.service.ax_client import AxClient
         from ray import tune
         from ray.tune.suggest.ax import AxSearch
 
@@ -49,8 +50,15 @@ class AxSearch(Searcher):
             {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
         ]
 
-        algo = AxSearch(parameters=parameters, objective_name="hartmann6")
-        tune.run(my_func, algo=algo)
+        def easy_objective(config):
+            for i in range(100):
+                intermediate_result = config["x1"] + config["x2"] * i
+                tune.track.log(score=intermediate_result)
+
+        client = AxClient(enforce_sequential_optimization=False)
+        client.create_experiment(parameters=parameters, objective_name="score")
+        algo = AxSearch(client)
+        tune.run(easy_objective, search_alg=algo)
 
     """
 
