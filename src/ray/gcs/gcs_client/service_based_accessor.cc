@@ -610,18 +610,18 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
   }
 
   // Add the notification to our cache.
-  RAY_LOG(INFO) << "Insertion/Deletion notification for node id = " << node_id
+  RAY_LOG(INFO) << "Received notification for node id = " << node_id
                 << ", IsAlive = " << is_alive;
   node_cache_[node_id] = node_info;
 
   // If the notification is new, call registered callback.
-  GcsNodeInfo &cache_data = node_cache_[node_id];
   if (is_notif_new) {
     if (is_alive) {
       RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
     } else {
       removed_nodes_.insert(node_id);
     }
+    GcsNodeInfo &cache_data = node_cache_[node_id];
     node_change_callback_(node_id, cache_data);
   }
 }

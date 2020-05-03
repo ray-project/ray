@@ -129,7 +129,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                   send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id;
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Binary(),
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                        request.node_info().SerializeAsString(), nullptr));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -148,7 +148,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     auto on_done = [this, node_id, node, reply, send_reply_callback](Status status) {
       RAY_CHECK_OK(status);
       RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                          node->SerializeAsString(), nullptr));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
