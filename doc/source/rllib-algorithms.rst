@@ -18,7 +18,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf         **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
@@ -94,7 +94,7 @@ SpaceInvaders  646                               ~300
 
 Importance Weighted Actor-Learner Architecture (IMPALA)
 -------------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1802.01561>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/impala/impala.py>`__
 In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.

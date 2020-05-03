@@ -26,13 +26,14 @@ from ray.util.sgd import TorchTrainer
 # from ray.util.sgd.torch import TrainingOperator
 
 from ray.util.sgd.torch.examples.image_models.args import parse_args
+import ray.util.sgd.torch.examples.image_models.util as util
 
 
 def model_creator(config):
     args = config["args"]
 
     model = create_model(
-        "resnet101",  # args.model,
+        args.model,
         pretrained=args.pretrained,
         num_classes=args.num_classes,
         drop_rate=args.drop,
@@ -57,6 +58,12 @@ def data_creator(config):
     # torch.manual_seed(args.seed + torch.distributed.get_rank())
 
     args = config["args"]
+
+    train_dir = join(args.data, "train")
+    val_dir = join(args.data, "val")
+
+    if args.mock_data:
+        util.mock_data(train_dir, val_dir)
 
     # todo: verbose should depend on rank
     data_config = resolve_data_config(vars(args), verbose=True)
@@ -137,11 +144,14 @@ def main():
         },
         num_workers=args.ray_num_workers)
 
+    if args.smoke_test:
+        args.epochs = 1
+
     pbar = trange(args.epochs, unit="epoch")
     for i in pbar:
-        trainer.train()
+        trainer.train(num_steps=1 if args.smoke_test else None)
 
-        val_stats = trainer.validate()
+        val_stats = trainer.validate(num_steps=1 if args.smoke_test else None)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()
