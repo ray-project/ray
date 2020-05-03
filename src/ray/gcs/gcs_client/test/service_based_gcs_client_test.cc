@@ -710,7 +710,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitPendingDone(task_lease_count, 1);
+  WaitPendingDone(task_lease_count, 2);
 
   // Cancel subscription to a task lease.
   UnsubscribeTaskLease(task_id);
