@@ -110,7 +110,11 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
               node->set_state(rpc::GcsNodeInfo::DEAD);
               RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
-              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
+              auto on_done = [this, node_id, node](const Status &status) {
+                RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                                   node->SerializeAsString(), nullptr));
+              };
+              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
               // TODO(Shanly): Remove node resources from resource table.
             }
           })),
