@@ -645,7 +645,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
       auto callback = [task_id, subscribe, done](
                           const Status &status,
                           const boost::optional<rpc::TaskTableData> &result) {
-        if (status.ok() && result) {
+        if (result) {
           subscribe(task_id, *result);
         }
         if (done) {

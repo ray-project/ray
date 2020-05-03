@@ -56,10 +56,10 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
     if (status.ok()) {
       RAY_DCHECK(result);
       reply->mutable_task_data()->CopyFrom(*result);
-      RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
-                     << ", task id = " << task_id;
     }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    RAY_LOG(DEBUG) << "Finished getting task, job id = " << task_id.JobId()
+                   << ", task id = " << task_id << ", status = " << status.ToString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
   Status status = gcs_client_.Tasks().AsyncGet(task_id, on_done);
