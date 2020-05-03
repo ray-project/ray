@@ -16,10 +16,5 @@ def serve_instance():
 
 
 @pytest.fixture(scope="session")
-def ray_instance():
-    ray_already_initialized = ray.is_initialized()
-    if not ray_already_initialized:
-        ray.init(num_cpus=36, object_store_memory=int(1e8))
-    yield
-    if not ray_already_initialized:
-        ray.shutdown()
+def ray_instance(serve_instance):
+    pass
