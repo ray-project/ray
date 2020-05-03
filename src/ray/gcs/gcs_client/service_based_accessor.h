@@ -267,17 +267,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
-      ObjectSubscriptionExecutor;
-  ObjectSubscriptionExecutor object_sub_executor_;
 
   Sequencer<ObjectID> sequencer_;
 };

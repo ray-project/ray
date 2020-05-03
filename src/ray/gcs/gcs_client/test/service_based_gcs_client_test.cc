@@ -373,11 +373,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeToLocations(const ObjectID &object_id) {
+  void UnsubscribeToLocations(const ObjectID &object_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(
-        object_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
   }
 
   bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
@@ -770,7 +768,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ASSERT_TRUE(GetLocations(object_id).empty());
 
   // Cancel subscription to any update of an object's location.
-  ASSERT_TRUE(UnsubscribeToLocations(object_id));
+  UnsubscribeToLocations(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));

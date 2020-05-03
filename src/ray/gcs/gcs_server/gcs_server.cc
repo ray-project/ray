@@ -149,7 +149,7 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
   return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
-      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
