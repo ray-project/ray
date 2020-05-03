@@ -11,7 +11,7 @@ from ray.tune.resources import Resources
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
-    # V-trace params (see vtrace_tf.py).
+    # V-trace params (see vtrace_tf/torch.py).
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
     "vtrace_clip_pg_rho_threshold": 1.0,
@@ -83,22 +83,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def choose_policy(config):
-    if config["vtrace"]:
-        return VTraceTFPolicy
-    else:
-        return A3CTFPolicy
-
-
-def validate_config(config):
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError(
-            "IMPALA does not support PyTorch yet! Use tf instead.")
-    if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
-
-
 def defer_make_workers(trainer, env_creator, policy, config):
     # Defer worker creation to after the optimizer has been created.
     return trainer._make_workers(env_creator, policy, config, 0)
@@ -157,12 +141,39 @@ class OverrideDefaultResourceRequest:
             cf["num_workers"])
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        if config["vtrace"]:
+            from ray.rllib.agents.impala.vtrace_torch_policy import \
+                VTraceTorchPolicy
+            return VTraceTorchPolicy
+        else:
+            from ray.rllib.agents.a3c.a3c_torch_policy import \
+                A3CTorchPolicy
+            return A3CTorchPolicy
+    else:
+        if config["vtrace"]:
+            return VTraceTFPolicy
+        else:
+            return A3CTFPolicy
+
+
+def validate_config(config):
+    if config["entropy_coeff"] < 0.0:
+        raise DeprecationWarning("`entropy_coeff` must be >= 0.0!")
+
+    if config["vtrace"] and not config["in_evaluation"]:
+        if config["batch_mode"] != "truncate_episodes":
+            raise ValueError(
+                "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
+
+
 ImpalaTrainer = build_trainer(
     name="IMPALA",
     default_config=DEFAULT_CONFIG,
     default_policy=VTraceTFPolicy,
     validate_config=validate_config,
-    get_policy_class=choose_policy,
+    get_policy_class=get_policy_class,
     make_workers=defer_make_workers,
     make_policy_optimizer=make_aggregators_and_optimizer,
     mixins=[OverrideDefaultResourceRequest])
