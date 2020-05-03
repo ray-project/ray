@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 import unittest
 
@@ -30,13 +29,19 @@ class TestApexDQN(unittest.TestCase):
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
                 lambda p, _: p.get_exploration_info())
-            eps = [i["cur_epsilon"] for i in infos]
-            check(eps, [0.0, 0.4, 0.016190862, 0.00065536])
+            expected = [0.4, 0.016190862, 0.00065536]
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
             #            for i in range(1):
             #                results = trainer.train()
             #                print(results)
+
+            # Test again per-worker epsilon distribution
+            # (should not have changed).
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
 

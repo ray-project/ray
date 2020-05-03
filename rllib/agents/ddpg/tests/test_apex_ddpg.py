@@ -28,14 +28,25 @@ class TestApexDDPG(unittest.TestCase):
             trainer = apex_ddpg.ApexDDPGTrainer(
                 config=plain_config, env="Pendulum-v0")
 
-            # Test per-worker epsilon distribution.
+            # Test per-worker scale distribution.
             infos = trainer.workers.foreach_policy(
                 lambda p, _: p.get_exploration_info())
             scale = [i["cur_scale"] for i in infos]
-            check(scale, [0.0, 0.4, 0.016190862, 0.00065536])
+            expected = [
+                0.4**(1 + (i + 1) / float(config["num_workers"] - 1) * 7)
+                for i in range(config["num_workers"])
+            ]
+            check(scale, [0.0] + expected)
 
             for _ in range(num_iterations):
                 print(trainer.train())
+
+            # Test again per-worker scale distribution
+            # (should not have changed).
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            scale = [i["cur_scale"] for i in infos]
+            check(scale, [0.0] + expected)
 
             trainer.stop()
 
