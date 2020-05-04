@@ -229,9 +229,8 @@ class TaskInfoAccessor {
   /// Cancel subscription to a task asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
 
   /// Add a task lease to GCS asynchronously.
   ///
@@ -257,10 +256,8 @@ class TaskInfoAccessor {
   /// Cancel subscription to a task lease asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                           const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id) = 0;
 
   /// Attempt task reconstruction to GCS asynchronously.
   ///

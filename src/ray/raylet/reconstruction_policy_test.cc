@@ -128,8 +128,7 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return ray::Status::OK();
   }
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const gcs::StatusCallback &done) override {
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
