@@ -303,5 +303,5 @@ def stat():
             For PrometheusExporter, it returns the metrics in prometheus format
             in plain text.
     """
-    [metric_exporter, _] = ray.get(master_actor.get_metric_exporter.remote())
+    [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
     return ray.get(metric_exporter.inspect_metrics.remote())
