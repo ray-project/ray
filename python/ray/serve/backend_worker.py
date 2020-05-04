@@ -32,7 +32,8 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            self.backend = RayServeWorker(backend_tag, _callable, is_function)
+            self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
+                                          is_function)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -65,8 +66,9 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, _callable, is_function):
+    def __init__(self, name, replica_tag, _callable, is_function):
         self.name = name
+        self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
 
@@ -82,6 +84,13 @@ class RayServeWorker:
             description=("Number of exceptions that have "
                          "occurred in the backend"),
         )
+        self.restart_counter = self.metric_client.new_counter(
+            "backend_worker_starts",
+            description=("The number of time this replica workers "
+                         "has been restarted due to failure."),
+            label_names=("replica_tag", ))
+
+        self.restart_counter.labels(replica_tag=self.replica_tag).add()
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method

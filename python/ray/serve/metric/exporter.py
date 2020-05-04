@@ -22,29 +22,9 @@ def make_metric_namedtuple(metric_metadata: MetricMetadata,
         name=metric_metadata.name, type=metric_metadata.type, **merged_labels)
 
 
-class BaseExporter:
-    """Aggregate metrics from all RayServe actors and export them.
-
-    Metrics are aggregated pushed from other actors in the system to
-    this actor. They can then be stored or pushed to an external monitoring
-    system.
-    """
-
-    def __init__(self):
-        # Stores the mapping metric_name -> MetricMetadata
-        # This field is tolerant to failures since each client will always push
-        # an updated copy of the metadata.
-        self.metric_metadata = dict()
-
-        logger.debug("Initialized with metric exporter of type {}".format(
-            type(self)))
-
-    def ingest(self, metric_metadata: Dict[str, MetricMetadata],
-               batch: MetricBatch):
-        self.metric_metadata.update(metric_metadata)
-        self.export(self.metric_metadata, batch)
-
-    def export(self, metric_metadata, metric_batch):
+class ExporterInterface:
+    def export(self, metric_metadata: Dict[str, MetricMetadata],
+               metric_batch: MetricBatch):
         raise NotImplementedError(
             "This method should be implemented by subclass.")
 
@@ -54,10 +34,37 @@ class BaseExporter:
 
 
 @ray.remote(num_cpus=0)
-class InMemoryExporter(BaseExporter):
-    def __init__(self):
-        super().__init__()
+class MetricExporterActor:
+    """Aggregate metrics from all RayServe actors and export them.
 
+    Metrics are aggregated pushed from other actors in the system to
+    this actor. They can then be stored or pushed to an external monitoring
+    system.
+    """
+
+    def __init__(self, exporter_class: ExporterInterface):
+        # TODO(simon): Add support for initializer args and kwargs.
+        self.exporter = exporter_class()
+
+        # Stores the mapping metric_name -> MetricMetadata
+        # This field is tolerant to failures since each client will always push
+        # an updated copy of the metadata for each ingest call.
+        self.metric_metadata = dict()
+
+        logger.debug("Initialized with metric exporter of type {}".format(
+            type(self.exporter)))
+
+    def ingest(self, metric_metadata: Dict[str, MetricMetadata],
+               batch: MetricBatch):
+        self.metric_metadata.update(metric_metadata)
+        self.exporter.export(self.metric_metadata, batch)
+
+    def inspect_metrics(self):
+        return self.exporter.inspect_metrics()
+
+
+class InMemoryExporter(ExporterInterface):
+    def __init__(self):
         # Keep track of counters
         self.counters: Counter[namedtuple, float] = Counter()
         # Keep track of latest observation of measures
@@ -79,14 +86,13 @@ class InMemoryExporter(BaseExporter):
         items = []
         metrics_to_collect = {**self.counters, **self.latest_measures}
         for info_tuple, value in metrics_to_collect.items():
-            # Represent the metric type in human readable name
+            # Represent the metric type as a human readable name
             info_tuple = info_tuple._replace(type=str(info_tuple.type))
             items.append({"info": info_tuple._asdict(), "value": value})
         return items
 
 
-@ray.remote(num_cpus=0)
-class PrometheusExporter(BaseExporter):
+class PrometheusExporter(ExporterInterface):
     def __init__(self):
         super().__init__()
         from prometheus_client import (CollectorRegistry, Counter, Gauge,

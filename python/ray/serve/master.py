@@ -7,12 +7,12 @@ import time
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
-                                 SERVE_PROXY_NAME, SERVE_METRIC_SINK_NAME,
-                                 METRIC_PUSH_INTERVAL_S)
+                                 SERVE_PROXY_NAME, SERVE_METRIC_SINK_NAME)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import async_retryable, get_random_letters, logger
+from ray.serve.metric.exporter import MetricExporterActor
 
 import numpy as np
 
@@ -50,7 +50,7 @@ class ServeMaster:
 
     async def __init__(self, router_class, router_kwargs, start_http_proxy,
                        http_proxy_host, http_proxy_port,
-                       metric_exporter_actor_class):
+                       metric_exporter_class):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store = RayInternalKVStore()
@@ -87,7 +87,7 @@ class ServeMaster:
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self._get_or_start_metric_exporter(metric_exporter_actor_class)
+        self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
@@ -158,7 +158,7 @@ class ServeMaster:
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes, self.get_router()
 
-    def _get_or_start_metric_exporter(self, metric_exporter_actor_class):
+    def _get_or_start_metric_exporter(self, metric_exporter_class):
         """Get the metric exporter belonging to this serve cluster.
 
         If the metric exporter does not already exist, it will be started.
@@ -168,12 +168,13 @@ class ServeMaster:
         except ValueError:
             logger.info("Starting metric exporter with name '{}'".format(
                 SERVE_METRIC_SINK_NAME))
-            self.metric_exporter = metric_exporter_actor_class.options(
-                detached=True, name=SERVE_METRIC_SINK_NAME).remote()
+            self.metric_exporter = MetricExporterActor.options(
+                detached=True,
+                name=SERVE_METRIC_SINK_NAME).remote(metric_exporter_class)
 
     def get_metric_exporter(self):
         """Returns a handle to the metric exporter managed by this actor."""
-        return [self.metric_exporter, METRIC_PUSH_INTERVAL_S]
+        return [self.metric_exporter]
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
@@ -210,10 +211,16 @@ class ServeMaster:
         logger.info("Recovering from checkpoint")
 
         # Load internal state from the checkpoint data.
-        (self.routes, self.backends, self.traffic_policies, self.replicas,
-         self.replicas_to_start, self.replicas_to_stop,
-         self.backends_to_remove, self.endpoints_to_remove,
-         self.config) = pickle.loads(checkpoint_bytes)
+        (
+            self.routes,
+            self.backends,
+            self.traffic_policies,
+            self.replicas,
+            self.replicas_to_start,
+            self.replicas_to_stop,
+            self.backends_to_remove,
+            self.endpoints_to_remove,
+        ) = pickle.loads(checkpoint_bytes)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they

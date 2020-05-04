@@ -93,7 +93,7 @@ def init(blocking=False,
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
-        metric_exporter(BaseExporter): The actor that aggregates metrics from
+        metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter

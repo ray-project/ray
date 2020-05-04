@@ -5,7 +5,8 @@ import requests
 
 from ray import serve
 from ray.serve.metric.client import MetricClient
-from ray.serve.metric.exporter import InMemoryExporter, PrometheusExporter
+from ray.serve.metric.exporter import (InMemoryExporter, PrometheusExporter,
+                                       MetricExporterActor)
 from ray.serve.metric.types import MetricType, MetricMetadata
 
 pytestmark = pytest.mark.asyncio
@@ -70,8 +71,8 @@ async def test_client():
     }, 42), ("measure", {}, 2)]
 
 
-async def test_in_memory_exporter(ray_instance):
-    exporter = InMemoryExporter.remote()
+async def test_in_memory_exporter(serve_instance):
+    exporter = MetricExporterActor.remote(InMemoryExporter)
     collector = MetricClient(
         exporter, push_interval=2, default_labels={"default": "label"})
 
@@ -107,8 +108,8 @@ async def test_in_memory_exporter(ray_instance):
     }]
 
 
-async def test_prometheus_exporter(ray_instance):
-    exporter = PrometheusExporter.remote()
+async def test_prometheus_exporter(serve_instance):
+    exporter = MetricExporterActor.remote(PrometheusExporter)
     collector = MetricClient(
         exporter, push_interval=2, default_labels={"default": "label"})
 

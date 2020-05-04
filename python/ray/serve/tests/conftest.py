@@ -12,8 +12,3 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 def serve_instance():
     serve.init(blocking=True, ray_init_kwargs={"num_cpus": 36})
     yield
-
-
-@pytest.fixture(scope="session")
-def ray_instance(serve_instance):
-    pass

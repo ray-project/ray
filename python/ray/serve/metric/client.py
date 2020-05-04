@@ -8,6 +8,7 @@ from ray.serve.metric.types import (
 )
 from ray.serve.utils import (retry_actor_failures, retry_actor_failures_async,
                              _get_logger)
+from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
 logger = _get_logger()
 
@@ -16,7 +17,7 @@ class MetricClient:
     def __init__(
             self,
             metric_exporter_actor,
-            push_interval: float,
+            push_interval: float = METRIC_PUSH_INTERVAL_S,
             default_labels: Optional[Dict[str, str]] = None,
     ):
         """Initialize a client to push metrics to the exporter actor.
@@ -43,12 +44,11 @@ class MetricClient:
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
-        [metric_exporter, push_interval] = retry_actor_failures(
+        [metric_exporter] = retry_actor_failures(
             master_actor.get_metric_exporter)
         return MetricClient(
             metric_exporter_actor=metric_exporter,
-            default_labels=default_labels,
-            push_interval=push_interval)
+            default_labels=default_labels)
 
     def new_counter(self,
                     name: str,

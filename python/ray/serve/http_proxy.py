@@ -36,7 +36,7 @@ class HTTPProxy:
         ] = await retry_actor_failures_async(master.get_http_proxy_config)
 
         # The exporter is required to return results for /-/metrics endpoint.
-        self.metric_exporter, _ = await retry_actor_failures_async(
+        [self.metric_exporter] = await retry_actor_failures_async(
             master.get_metric_exporter)
 
         self.metric_client = MetricClient.connect_from_serve()
