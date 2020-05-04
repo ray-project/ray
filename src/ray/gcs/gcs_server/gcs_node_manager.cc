@@ -213,6 +213,22 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
   RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
 }
 
+void GcsNodeManager::HandleGetAllNodeResources(
+    const rpc::GetAllNodeResourcesRequest &request, rpc::GetAllNodeResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all node's resources.";
+  for (auto &it : cluster_resources_) {
+    rpc::NodeResources node_resources;
+    node_resources.set_node_id(it.first.Binary());
+    for (auto &resource_map : it.second) {
+      (*node_resources.mutable_resources())[resource_map.first] = *(resource_map.second);
+    }
+    reply->add_resources_list()->CopyFrom(node_resources);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  RAY_LOG(DEBUG) << "Finished getting all node's resources.";
+}
+
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
@@ -228,9 +244,22 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     for (auto &entry : *to_be_updated_resources) {
       iter->second[entry.first] = entry.second;
     }
-    auto on_done = [node_id, to_be_updated_resources, reply,
+    auto on_done = [this, node_id, to_be_updated_resources, reply,
                     send_reply_callback](Status status) {
       RAY_CHECK_OK(status);
+
+      rpc::ResourceMap resource_data;
+      for (auto &it : *to_be_updated_resources) {
+        (*resource_data.mutable_items())[it.first] = *(it.second);
+      }
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_is_add(true);
+      node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.mutable_data()->CopyFrom(resource_data);
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                         node_resource_change.SerializeAsString(),
+                                         nullptr));
+
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
@@ -252,11 +281,30 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
+    auto to_be_deleted_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
     for (auto &resource_name : resource_names) {
-      iter->second.erase(resource_name);
+      auto resource = iter->second.find(resource_name);
+      if (resource != iter->second.end()) {
+        (*to_be_deleted_resources)[resource_name] = std::move(resource->second);
+        iter->second.erase(resource);
+      }
     }
-    auto on_done = [reply, send_reply_callback](Status status) {
+    auto on_done = [this, node_id, to_be_deleted_resources, reply,
+                    send_reply_callback](Status status) {
       RAY_CHECK_OK(status);
+
+      rpc::ResourceMap resource_data;
+      for (auto &it : *to_be_deleted_resources) {
+        (*resource_data.mutable_items())[it.first] = *(it.second);
+      }
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_is_add(false);
+      node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.mutable_data()->CopyFrom(resource_data);
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                         node_resource_change.SerializeAsString(),
+                                         nullptr));
+
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
     RAY_CHECK_OK(

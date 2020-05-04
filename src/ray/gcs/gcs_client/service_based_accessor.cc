@@ -526,8 +526,27 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.ParseFromString(data);
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resource_map;
+    for (auto &item : node_resource_change.data().items()) {
+      resource_map[item.first] = std::make_shared<rpc::ResourceTableData>(item.second);
+    }
+    auto change_mode = node_resource_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
+                                                     : rpc::GcsChangeMode::REMOVE;
+    gcs::ResourceChangeNotification notification(change_mode, resource_map);
+    subscribe(ClientID::FromBinary(node_resource_change.node_id()), notification);
+  };
+
+  auto on_done = [this, subscribe, done](const Status &status) {
+    // Get node resource from GCS Service.
+    AsyncGetAllNodeResources(subscribe, done);
+  };
+
+  auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
+                                                          on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return status;
 }
@@ -622,6 +641,32 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     GcsNodeInfo &cache_data = node_cache_[node_id];
     node_change_callback_(node_id, cache_data);
   }
+}
+
+void ServiceBasedNodeInfoAccessor::AsyncGetAllNodeResources(
+    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  rpc::GetAllNodeResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllNodeResources(
+      request, [subscribe, done](const Status &status,
+                                 const rpc::GetAllNodeResourcesReply &reply) {
+        std::vector<rpc::NodeResources> node_resources_list =
+            VectorFromProtobuf(reply.resources_list());
+        for (auto &node_resources : node_resources_list) {
+          std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+              resources_map;
+          for (auto resource : node_resources.resources()) {
+            resources_map[resource.first] =
+                std::make_shared<rpc::ResourceTableData>(resource.second);
+          }
+          ResourceChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                  resources_map);
+          subscribe(ClientID::FromBinary(node_resources.node_id()), notification);
+        }
+        if (done) {
+          done(status);
+        }
+      });
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(

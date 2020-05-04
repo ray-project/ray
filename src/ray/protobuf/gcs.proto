@@ -317,6 +317,13 @@ message ObjectLocationChange {
   ObjectTableData data = 2;
 }
 
+// A notification message about one node's resources being changed.
+message NodeResourceChange {
+  bool is_add = 1;
+  bytes node_id = 2;
+  ResourceMap data = 3;
+}
+
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
