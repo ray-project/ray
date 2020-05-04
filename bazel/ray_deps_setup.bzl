@@ -82,6 +82,7 @@ def ray_deps_setup():
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:redis-quiet.patch",
         ],
     )
 
