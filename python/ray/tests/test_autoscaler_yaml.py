@@ -27,9 +27,11 @@ class AutoscalingConfigTest(unittest.TestCase):
                 self.fail("Config did not pass validation test!")
 
     def testValidateNetworkConfig(self):
-        web_yaml = 'https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml'
-        config_path = os.path.join(RAY_PATH, "autoscaler", "downloaded_cluster_config.yaml")
-        response = urllib.request.urlopen(web_yaml, timeout = 5)
+        web_yaml = """https://raw.githubusercontent.com/ray-project/ray/
+        master/python/ray/autoscaler/aws/example-full.yaml"""
+        config_path = os.path.join(RAY_PATH, "autoscaler",
+                                   "downloaded_cluster_config.yaml")
+        response = urllib.request.urlopen(web_yaml, timeout=5)
         content = response.read()
         f = open(config_path, "wb")
         f.write(content)
@@ -40,7 +42,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         try:
             validate_config(config)
         except Exception:
-            self.fail("Config did not pass validation test!")        
+            self.fail("Config did not pass validation test!")
 
     def _test_invalid_config(self, config_path):
         with open(os.path.join(RAY_PATH, config_path)) as f:
