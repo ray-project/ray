@@ -20,7 +20,7 @@ import java.util.Map;
  */
 public class ChannelCreationParametersBuilder {
 
-  public class Parameter {
+  public static class Parameter {
 
     private ActorId actorId;
     private FunctionDescriptor asyncFunctionDescriptor;
@@ -138,7 +138,7 @@ public class ChannelCreationParametersBuilder {
         parameter.setAsyncFunctionDescriptor(pyAsyncFunctionDesc);
         parameter.setSyncFunctionDescriptor(pySyncFunctionDesc);
       } else {
-        Preconditions.checkArgument(false, "Invalid actor type");
+        throw new IllegalArgumentException("Invalid actor type");
       }
       parameters.add(parameter);
     }
@@ -152,10 +152,10 @@ public class ChannelCreationParametersBuilder {
   }
 
   public String toString() {
-    String str = "";
+    StringBuilder str = new StringBuilder();
     for (Parameter param : parameters) {
-      str += param.toString();
+      str.append(param.toString());
     }
-    return str;
+    return str.toString();
   }
 }

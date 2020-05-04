@@ -163,9 +163,12 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
     policy._actor_optimizer = torch.optim.Adam(
-        params=policy.model.policy_variables(), lr=config["actor_lr"])
+        params=policy.model.policy_variables(),
+        lr=config["actor_lr"],
+        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(), lr=config["critic_lr"])
+        params=policy.model.q_variables(), lr=config["critic_lr"],
+        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
     return policy._actor_optimizer, policy._critic_optimizer
 
 

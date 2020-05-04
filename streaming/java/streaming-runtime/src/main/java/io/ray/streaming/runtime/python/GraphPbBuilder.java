@@ -12,6 +12,7 @@ import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionTask;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.generated.Streaming;
+import io.ray.streaming.runtime.serialization.MsgPackSerializer;
 import java.util.Arrays;
 
 public class GraphPbBuilder {
@@ -74,11 +75,10 @@ public class GraphPbBuilder {
   private byte[] serializeFunction(Function function) {
     if (function instanceof PythonFunction) {
       PythonFunction pyFunc = (PythonFunction) function;
-      // function_bytes, module_name, class_name, function_name, function_interface
+      // function_bytes, module_name, function_name, function_interface
       return serializer.serialize(Arrays.asList(
           pyFunc.getFunction(), pyFunc.getModuleName(),
-          pyFunc.getClassName(), pyFunc.getFunctionName(),
-          pyFunc.getFunctionInterface()
+          pyFunc.getFunctionName(), pyFunc.getFunctionInterface()
       ));
     } else {
       return new byte[0];
@@ -88,10 +88,10 @@ public class GraphPbBuilder {
   private byte[] serializePartition(Partition partition) {
     if (partition instanceof PythonPartition) {
       PythonPartition pythonPartition = (PythonPartition) partition;
-      // partition_bytes, module_name, class_name, function_name
+      // partition_bytes, module_name, function_name
       return serializer.serialize(Arrays.asList(
           pythonPartition.getPartition(), pythonPartition.getModuleName(),
-          pythonPartition.getClassName(), pythonPartition.getFunctionName()
+          pythonPartition.getFunctionName()
       ));
     } else {
       return new byte[0];

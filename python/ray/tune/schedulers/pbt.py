@@ -270,7 +270,6 @@ class PopulationBasedTraining(FIFOScheduler):
 
         For each step, logs: [target trial tag, clone trial tag, target trial
         iteration, clone trial iteration, old config, new config].
-
         """
         trial_name, trial_to_clone_name = (trial_state.orig_tag,
                                            new_state.orig_tag)
@@ -301,9 +300,7 @@ class PopulationBasedTraining(FIFOScheduler):
         """Transfers perturbed state from trial_to_clone -> trial.
 
         If specified, also logs the updated hyperparam state.
-
         """
-
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
@@ -326,13 +323,20 @@ class PopulationBasedTraining(FIFOScheduler):
                                       self._hyperparam_mutations)
         reset_successful = trial_executor.reset_trial(trial, new_config,
                                                       new_tag)
+
+        # TODO(ujvl): Refactor Scheduler abstraction to abstract
+        #  mechanism for trial restart away. We block on restore
+        #  and suppress train on start as a stop-gap fix to
+        #  https://github.com/ray-project/ray/issues/7258.
         if reset_successful:
-            trial_executor.restore(trial, new_state.last_checkpoint)
+            trial_executor.restore(
+                trial, new_state.last_checkpoint, block=True)
         else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag
-            trial_executor.start_trial(trial, new_state.last_checkpoint)
+            trial_executor.start_trial(
+                trial, new_state.last_checkpoint, train=False)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -342,9 +346,7 @@ class PopulationBasedTraining(FIFOScheduler):
         """Returns trials in the lower and upper `quantile` of the population.
 
         If there is not enough data to compute this, returns empty lists.
-
         """
-
         trials = []
         for trial, state in self._trial_state.items():
             if state.last_score is not None and not trial.is_finished():
@@ -366,9 +368,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         This enables the PBT scheduler to support a greater number of
         concurrent trials than can fit in the cluster at any given time.
-
         """
-
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \

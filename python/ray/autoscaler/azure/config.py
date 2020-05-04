@@ -54,29 +54,32 @@ def _configure_resource_group(config):
     resource_client.resource_groups.create_or_update(
         resource_group_name=resource_group, parameters=params)
 
-    # load the template
-    template_path = os.path.join(
-        os.path.dirname(__file__), "azure-config-template.json")
-    with open(template_path, "r") as template_file_fd:
-        template = json.load(template_file_fd)
+    # load the template file
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    template_path = os.path.join(current_path, "azure-config-template.json")
+    with open(template_path, "r") as template_fp:
+        template = json.load(template_fp)
 
-    # choose a random subnet
+    # choose a random subnet, skipping most common value of 0
     random.seed(resource_group)
-    # start at 1 to avoid most likely collision at 0
-    parameters = {"subnet": "10.{}.0.0/16".format(random.randint(1, 254))}
+    subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
 
-    deployment_properties = {
-        "mode": DeploymentMode.incremental,
-        "template": template,
-        "parameters": {k: {
-            "value": v
+    parameters = {
+        "properties": {
+            "mode": DeploymentMode.incremental,
+            "template": template,
+            "parameters": {
+                "subnet": {
+                    "value": subnet_mask
+                }
+            }
         }
-                       for k, v in parameters.items()}
     }
 
-    deployment_async_operation = resource_client.deployments.create_or_update(
-        resource_group, "ray-config", deployment_properties)
-    deployment_async_operation.wait()
+    resource_client.deployments.create_or_update(
+        resource_group_name=resource_group,
+        deployment_name="ray-config",
+        parameters=parameters).wait()
 
     return config
 

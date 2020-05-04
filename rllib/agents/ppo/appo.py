@@ -1,4 +1,4 @@
-from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
+from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
@@ -81,10 +81,24 @@ def initialize_target(trainer):
         * trainer.config["minibatch_buffer_size"]
 
 
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+        return AsyncPPOTorchPolicy
+    else:
+        return AsyncPPOTFPolicy
+
+
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
+
+
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=AsyncPPOTFPolicy,
-    get_policy_class=lambda _: AsyncPPOTFPolicy,
+    get_policy_class=get_policy_class,
     after_init=initialize_target,
     after_optimizer_step=update_target_and_kl)

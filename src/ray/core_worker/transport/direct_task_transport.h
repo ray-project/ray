@@ -56,7 +56,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms,
       std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-          actor_create_callback = nullptr)
+          actor_create_callback = nullptr,
+      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         client_factory_(client_factory),
@@ -65,12 +66,19 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_create_callback_(std::move(actor_create_callback)) {}
+        actor_create_callback_(std::move(actor_create_callback)),
+        cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
   /// \param[in] task_spec The task to schedule.
   Status SubmitTask(TaskSpecification task_spec);
+
+  /// Either remove a pending task or send an RPC to kill a running task
+  ///
+  /// \param[in] task_spec The task to kill.
+  /// \param[in] force_kill Whether to kill the worker executing the task.
+  Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -180,6 +188,15 @@ class CoreWorkerDirectTaskSubmitter {
   // Invariant: if a queue is in this map, it has at least one task.
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
       GUARDED_BY(mu_);
+
+  // Tasks that were cancelled while being resolved.
+  absl::flat_hash_set<TaskID> cancelled_tasks_ GUARDED_BY(mu_);
+
+  // Keeps track of where currently executing tasks are being run.
+  absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
+
+  // Retries cancelation requests if they were not successful.
+  absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 };
 
 };  // namespace ray

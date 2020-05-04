@@ -5,12 +5,13 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer
+from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, LocalReplay
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
@@ -125,6 +126,9 @@ DEFAULT_CONFIG = with_common_config({
     "soft_q": DEPRECATED_VALUE,
     "parameter_noise": DEPRECATED_VALUE,
     "grad_norm_clipping": DEPRECATED_VALUE,
+
+    # Use the execution plan API instead of policy optimizers.
+    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -297,24 +301,52 @@ def update_target_if_needed(trainer, fetches):
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
-    local_replay_buffer = ReplayBuffer(config["buffer_size"])
+    local_replay_buffer = LocalReplayBuffer(
+        num_shards=1,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        replay_batch_size=config["train_batch_size"],
+        prioritized_replay_alpha=config["prioritized_replay_alpha"],
+        prioritized_replay_beta=config["prioritized_replay_beta"],
+        prioritized_replay_eps=config["prioritized_replay_eps"])
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our local replay buffer. Calling
     # next() on store_op drives this.
-    store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
+    store_op = rollouts.for_each(
+        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+
+    def update_prio(item):
+        samples, info_dict = item
+        if config["prioritized_replay"]:
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error",
+                                    info[LEARNER_STATS_KEY].get("td_error"))
+                prio_dict[policy_id] = (samples.policy_batches[policy_id]
+                                        .data.get("batch_indexes"), td_error)
+            local_replay_buffer.update_priorities(prio_dict)
+        return info_dict
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
-    replay_op = LocalReplay(local_replay_buffer, config["train_batch_size"]) \
+    replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(TrainOneStep(workers)) \
+        .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently([store_op, replay_op], mode="round_robin")
+    # Alternate deterministically between (1) and (2). Only return the output
+    # of (2) since training metrics are not available until (2) runs.
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 

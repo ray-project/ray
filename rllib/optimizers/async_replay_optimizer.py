@@ -285,19 +285,19 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
 
-@ray.remote(num_cpus=0)
-class ReplayActor(ParallelIteratorWorker):
+# TODO(ekl) move this class to common
+class LocalReplayBuffer(ParallelIteratorWorker):
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
     may be created to increase parallelism."""
 
     def __init__(self, num_shards, learning_starts, buffer_size,
-                 train_batch_size, prioritized_replay_alpha,
+                 replay_batch_size, prioritized_replay_alpha,
                  prioritized_replay_beta, prioritized_replay_eps):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
-        self.train_batch_size = train_batch_size
+        self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
 
@@ -323,6 +323,8 @@ class ReplayActor(ParallelIteratorWorker):
         return os.uname()[1]
 
     def add_batch(self, batch):
+        # Make a copy so the replay buffer doesn't pin plasma memory.
+        batch = batch.copy()
         # Handle everything as if multiagent
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
@@ -331,7 +333,8 @@ class ReplayActor(ParallelIteratorWorker):
                 for row in s.rows():
                     self.replay_buffers[policy_id].add(
                         row["obs"], row["actions"], row["rewards"],
-                        row["new_obs"], row["dones"], row["weights"])
+                        row["new_obs"], row["dones"], row["weights"]
+                        if "weights" in row else None)
         self.num_added += batch.count
 
     def replay(self):
@@ -343,7 +346,7 @@ class ReplayActor(ParallelIteratorWorker):
             for policy_id, replay_buffer in self.replay_buffers.items():
                 (obses_t, actions, rewards, obses_tp1, dones, weights,
                  batch_indexes) = replay_buffer.sample(
-                     self.train_batch_size, beta=self.prioritized_replay_beta)
+                     self.replay_batch_size, beta=self.prioritized_replay_beta)
                 samples[policy_id] = SampleBatch({
                     "obs": obses_t,
                     "actions": actions,
@@ -353,7 +356,7 @@ class ReplayActor(ParallelIteratorWorker):
                     "weights": weights,
                     "batch_indexes": batch_indexes
                 })
-            return MultiAgentBatch(samples, self.train_batch_size)
+            return MultiAgentBatch(samples, self.replay_batch_size)
 
     def update_priorities(self, prio_dict):
         with self.update_priorities_timer:
@@ -377,10 +380,13 @@ class ReplayActor(ParallelIteratorWorker):
         return stat
 
 
+ReplayActor = ray.remote(num_cpus=0)(LocalReplayBuffer)
+
+
+# TODO(ekl) move this class to common
 # note: we set num_cpus=0 to avoid failing to create replay actors when
 # resources are fragmented. This isn't ideal.
-@ray.remote(num_cpus=0)
-class BatchReplayActor:
+class LocalBatchReplayBuffer(LocalReplayBuffer):
     """The batch replay version of the replay actor.
 
     This allows for RNN models, but ignores prioritization params.
@@ -397,9 +403,6 @@ class BatchReplayActor:
         # Metrics
         self.num_added = 0
         self.cur_size = 0
-
-    def get_host(self):
-        return os.uname()[1]
 
     def add_batch(self, batch):
         # Handle everything as if multiagent
@@ -425,6 +428,9 @@ class BatchReplayActor:
             "num_added": self.num_added,
         }
         return stat
+
+
+BatchReplayActor = ray.remote(num_cpus=0)(LocalBatchReplayBuffer)
 
 
 class LearnerThread(threading.Thread):

@@ -25,10 +25,12 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
         assert worker_index <= num_workers, (worker_index, num_workers)
         if num_workers > 0:
-            if worker_index >= 0:
-                exponent = (1 + worker_index / float(num_workers - 1) * 7)
+            if worker_index > 0:
+                # From page 5 of https://arxiv.org/pdf/1803.00933.pdf
+                alpha, eps, i = 7, 0.4, worker_index - 1
                 epsilon_schedule = ConstantSchedule(
-                    0.4**exponent, framework=framework)
+                    eps**(1 + i / (num_workers - 1) * alpha),
+                    framework=framework)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:

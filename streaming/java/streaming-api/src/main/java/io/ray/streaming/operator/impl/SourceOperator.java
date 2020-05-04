@@ -10,7 +10,6 @@ import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
 
 public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
-
   private SourceContextImpl sourceContext;
 
   public SourceOperator(SourceFunction<T> function) {
@@ -38,6 +37,7 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
   }
 
   class SourceContextImpl implements SourceContext<T> {
+
     private List<Collector> collectors;
 
     public SourceContextImpl(List<Collector> collectors) {

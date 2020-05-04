@@ -111,7 +111,8 @@ message PushTaskRequest {
   // caller, which might happen theoretically when network has issues.
   // - For an actor, this is set to the timestamp when the actor is created,
   //   so it can be used to differentiate which is the new reconstructed actor.
-  // - For a non-actor task, it's set to the timestamp the task starts execution.
+  // - For a non-actor task, it's set to the timestamp the task starts
+  // execution.
   int64 caller_version = 7;
 }
 
@@ -121,9 +122,11 @@ message PushTaskReply {
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
   // The references that the worker borrowed during the task execution. A
-  // borrower is a process that is currently using the object ID, in one of 3 ways:
+  // borrower is a process that is currently using the object ID, in one of 3
+  // ways:
   // 1. Has an ObjectID copy in Python.
-  // 2. Has submitted a task that depends on the object and that is still pending.
+  // 2. Has submitted a task that depends on the object and that is still
+  // pending.
   // 3. Owns another object that is in scope and whose value contains the
   // ObjectID.
   // This list includes the reference counts for any IDs that were passed to
@@ -156,9 +159,7 @@ message GetObjectStatusRequest {
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus {
-    CREATED = 0;
-  }
+  enum ObjectStatus { CREATED = 0; }
   ObjectStatus status = 1;
 }
 
@@ -182,6 +183,18 @@ message KillActorRequest {
 }
 
 message KillActorReply {
+}
+
+message CancelTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+}
+
+message CancelTaskReply {
+  // Whether the requested task is the currently running task.
+  bool attempt_succeeded = 1;
 }
 
 message GetCoreWorkerStatsRequest {
@@ -281,6 +294,8 @@ service CoreWorkerService {
       returns (WaitForObjectEvictionReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Request that a worker cancels a task.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.

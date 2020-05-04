@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
 #include <ray/gcs/test/gcs_test_util.h>
 
 #include <memory>
@@ -22,8 +23,8 @@ class GcsNodeManagerTest : public ::testing::Test {};
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
-  auto node_info_accessor = Mocker::MockedNodeInfoAccessor();
-  auto error_info_accessor = Mocker::MockedErrorInfoAccessor();
+  auto node_info_accessor = GcsServerMocker::MockedNodeInfoAccessor();
+  auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
   gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
@@ -38,8 +39,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 
 TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
-  auto node_info_accessor = Mocker::MockedNodeInfoAccessor();
-  auto error_info_accessor = Mocker::MockedErrorInfoAccessor();
+  auto node_info_accessor = GcsServerMocker::MockedNodeInfoAccessor();
+  auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
   gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
   // Test AddNodeAddedListener.
   int node_count = 1000;

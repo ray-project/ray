@@ -60,7 +60,6 @@ if __name__ == "__main__":
     }
     algo = HyperOptSearch(
         space,
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         points_to_evaluate=current_best_params)

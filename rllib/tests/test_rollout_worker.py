@@ -29,7 +29,7 @@ class MockPolicy(TestPolicy):
                         explore=None,
                         timestep=None,
                         **kwargs):
-        return [random.choice([0, 1])] * len(obs_batch), [], {}
+        return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
 
     def postprocess_trajectory(self,
                                batch,

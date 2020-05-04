@@ -186,7 +186,7 @@ class Trainable:
     def default_resource_request(cls, config):
         """Provides a static resource requirement for the given configuration.
 
-        This can be overriden by sub-classes to set the correct trial resource
+        This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
         .. code-block:: python
@@ -548,6 +548,16 @@ class Trainable:
     @property
     def iteration(self):
         """Current training iteration.
+
+        This value is automatically incremented every time `train()` is called
+        and is automatically inserted into the training result dict.
+
+        """
+        return self._iteration
+
+    @property
+    def training_iteration(self):
+        """Current training iteration (same as `self.iteration`).
 
         This value is automatically incremented every time `train()` is called
         and is automatically inserted into the training result dict.
