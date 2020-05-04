@@ -99,7 +99,7 @@ Here are some rules of thumb for scaling training with RLlib.
 
 3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
 
-   
+
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
 
 Common Parameters
@@ -172,9 +172,9 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
 .. note::
 
-    It's recommended that you run RLlib trainers with `Tune <tune.html>`__, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib trainers with :ref:`Tune <tune-index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This enables them to be easily used in experiments with `Tune <tune.html>`__. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Tune <tune-index>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -461,7 +461,7 @@ Advanced Python APIs
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
 For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
@@ -496,51 +496,12 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callbacks to be called at points during policy evaluation. These callbacks have access to state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``, and ``on_train_result`` are also places where custom postprocessing can be applied to intermediate data or results.
 
-.. code-block:: python
+User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
-    def on_episode_start(info):
-        print(info.keys())  # -> "env", 'episode"
-        episode = info["episode"]
-        print("episode {} started".format(episode.episode_id))
-        episode.user_data["pole_angles"] = []
-
-    def on_episode_step(info):
-        episode = info["episode"]
-        pole_angle = abs(episode.last_observation_for()[2])
-        episode.user_data["pole_angles"].append(pole_angle)
-
-    def on_episode_end(info):
-        episode = info["episode"]
-        pole_angle = np.mean(episode.user_data["pole_angles"])
-        print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, pole_angle))
-        episode.custom_metrics["pole_angle"] = pole_angle
-
-    def on_train_result(info):
-        print("trainer.train() result: {} -> {} episodes".format(
-            info["trainer"].__name__, info["result"]["episodes_this_iter"]))
-
-    def on_postprocess_traj(info):
-        episode = info["episode"]
-        batch = info["post_batch"]  # note: you can mutate this
-        print("postprocessed {} steps".format(batch.count))
-
-    ray.init()
-    analysis = tune.run(
-        "PG",
-        config={
-            "env": "CartPole-v0",
-            "callbacks": {
-                "on_episode_start": on_episode_start,
-                "on_episode_step": on_episode_step,
-                "on_episode_end": on_episode_end,
-                "on_train_result": on_train_result,
-                "on_postprocess_traj": on_postprocess_traj,
-            },
-        },
-    )
+.. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
+    :members:
 
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

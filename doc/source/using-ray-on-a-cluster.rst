@@ -19,7 +19,7 @@ This section assumes that you have a cluster running and that the nodes in the
 cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the `installation instructions`_.
 
-.. _`installation instructions`: http://ray.readthedocs.io/en/latest/installation.html
+.. _`installation instructions`: http://docs.ray.io/en/latest/installation.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

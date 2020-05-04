@@ -204,6 +204,14 @@ py_test(
 )
 
 py_test(
+    name = "test_reconstruction",
+    size = "medium",
+    srcs = ["test_reconstruction.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_reference_counting",
     size = "medium",
     srcs = ["test_reference_counting.py"],
@@ -403,6 +411,14 @@ py_test(
     name = "test_numba",
     size = "small",
     srcs = ["test_numba.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_cancel",
+    size = "medium",
+    srcs = ["test_cancel.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

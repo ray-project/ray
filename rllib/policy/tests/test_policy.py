@@ -1,3 +1,4 @@
+import numpy as np
 import random
 
 from ray.rllib.policy.policy import Policy
@@ -22,7 +23,7 @@ class TestPolicy(Policy):
                         explore=None,
                         timestep=None,
                         **kwargs):
-        return [random.choice([0, 1])] * len(obs_batch), [], {}
+        return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -31,4 +32,4 @@ class TestPolicy(Policy):
                                 state_batches=None,
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
-        return [random.random()] * len(obs_batch)
+        return np.array([random.random()] * len(obs_batch))

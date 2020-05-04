@@ -10,9 +10,11 @@ import time
 import ray
 from ray.rllib.agents import Trainer, with_common_config
 
-from ray.rllib.agents.ars import optimizers
-from ray.rllib.agents.ars import policies
-from ray.rllib.agents.ars import utils
+from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
+from ray.rllib.agents.es import optimizers
+from ray.rllib.agents.es import utils
+from ray.rllib.agents.es.es_tf_policy import rollout
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.memory import ray_get_and_free
@@ -28,6 +30,7 @@ Result = namedtuple("Result", [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    "action_noise_std": 0.0,
     "noise_stdev": 0.02,  # std deviation of parameter noise
     "num_rollouts": 32,  # number of perturbs to try
     "rollouts_used": 32,  # number of perturbs to keep in gradient estimate
@@ -69,23 +72,29 @@ class SharedNoiseTable:
 
 @ray.remote
 class Worker:
-    def __init__(self, config, env_creator, noise, min_task_runtime=0.2):
+    def __init__(self,
+                 config,
+                 env_creator,
+                 noise,
+                 worker_index,
+                 min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
+        self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
 
-        self.env = env_creator(config["env_config"])
+        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        self.env = env_creator(env_context)
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
-        self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.env.observation_space,
-            self.preprocessor, config["observation_filter"], config["model"])
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(self.env.observation_space,
+                                 self.env.action_space, config)
 
     @property
     def filters(self):
-        return {DEFAULT_POLICY_ID: self.policy.get_filter()}
+        return {DEFAULT_POLICY_ID: self.policy.observation_filter}
 
     def sync_filters(self, new_filters):
         for k in self.filters:
@@ -100,7 +109,7 @@ class Worker:
         return return_filters
 
     def rollout(self, timestep_limit, add_noise=False):
-        rollout_rewards, rollout_fragment_length = policies.rollout(
+        rollout_rewards, rollout_fragment_length = rollout(
             self.policy,
             self.env,
             timestep_limit=timestep_limit,
@@ -110,7 +119,7 @@ class Worker:
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
-        self.policy.set_weights(params)
+        self.policy.set_flat_weights(params)
 
         noise_indices, returns, sign_returns, lengths = [], [], [], []
         eval_returns, eval_lengths = [], []
@@ -119,7 +128,7 @@ class Worker:
         while (len(noise_indices) == 0):
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
-                self.policy.set_weights(params)
+                self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
                 eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
@@ -132,10 +141,10 @@ class Worker:
 
                 # These two sampling steps could be done in parallel on
                 # different actors letting us update twice as frequently.
-                self.policy.set_weights(params + perturbation)
+                self.policy.set_flat_weights(params + perturbation)
                 rewards_pos, lengths_pos = self.rollout(timestep_limit)
 
-                self.policy.set_weights(params - perturbation)
+                self.policy.set_flat_weights(params - perturbation)
                 rewards_neg, lengths_neg = self.rollout(timestep_limit)
 
                 noise_indices.append(noise_index)
@@ -154,6 +163,15 @@ class Worker:
             eval_lengths=eval_lengths)
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
+        policy_cls = ARSTorchPolicy
+    else:
+        policy_cls = ARSTFPolicy
+    return policy_cls
+
+
 class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
@@ -162,19 +180,12 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        # PyTorch check.
-        if config["use_pytorch"]:
-            raise ValueError(
-                "ARS does not support PyTorch yet! Use tf instead.")
+        env_context = EnvContext(config["env_config"] or {}, worker_index=0)
+        env = env_creator(env_context)
 
-        env = env_creator(config["env_config"])
-        from ray.rllib import models
-        preprocessor = models.ModelCatalog.get_preprocessor(env)
-
-        self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, env.observation_space, preprocessor,
-            config["observation_filter"], config["model"])
+        policy_cls = get_policy_class(config)
+        self.policy = policy_cls(env.observation_space, env.action_space,
+                                 config)
         self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
         self.rollouts_used = config["rollouts_used"]
@@ -189,8 +200,8 @@ class ARSTrainer(Trainer):
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
-            Worker.remote(config, env_creator, noise_id)
-            for _ in range(config["num_workers"])
+            Worker.remote(config, env_creator, noise_id, idx + 1)
+            for idx in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0
@@ -201,8 +212,9 @@ class ARSTrainer(Trainer):
     def _train(self):
         config = self.config
 
-        theta = self.policy.get_weights()
+        theta = self.policy.get_flat_weights()
         assert theta.dtype == np.float32
+        assert len(theta.shape) == 1
 
         # Put the current policy weights in the object store.
         theta_id = ray.put(theta)
@@ -266,14 +278,14 @@ class ARSTrainer(Trainer):
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
-        self.policy.set_weights(theta)
+        self.policy.set_flat_weights(theta)
         # update the reward list
         if len(all_eval_returns) > 0:
             self.reward_list.append(eval_returns.mean())
 
         # Now sync the filters
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self.workers)
 
         info = {
@@ -301,7 +313,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute(observation, update=True)[0]
+        return self.policy.compute_actions(observation, update=True)[0]
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0
@@ -327,15 +339,15 @@ class ARSTrainer(Trainer):
 
     def __getstate__(self):
         return {
-            "weights": self.policy.get_weights(),
-            "filter": self.policy.get_filter(),
+            "weights": self.policy.get_flat_weights(),
+            "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_weights(state["weights"])
-        self.policy.set_filter(state["filter"])
+        self.policy.set_flat_weights(state["weights"])
+        self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
-            DEFAULT_POLICY_ID: self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.observation_filter
         }, self.workers)

@@ -165,14 +165,19 @@ This document describes the process for creating new releases.
 
      pip install -U ray
 
-10. **Create a point release on readthedocs page:** In the `read the docs project page`_,
-    mark the release branch as "active" so there is a point release for the documentation.
-    Add @richardliaw to add you if you don't have access.
+10. **Create a point release on readthedocs page:** Go to the `Ray Readthedocs version page`_.
+    Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
+    Message @richardliaw to add you if you don't have access.
 
-11. **Improve the release process:** Find some way to improve the release
+11. **Update 'Default Branch' on the readthedocs page:** Go to the `Ray Readthedocs advanced settings page`_.
+    In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
+    Message @richardliaw to add you if you don't have access.
+
+12. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
 .. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/6303
 .. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/commit/a39325d818339970e51677708d5596f4b8f790ce
 .. _`GitHub release`: https://github.com/ray-project/ray/releases
-.. _`read the docs project page`: https://readthedocs.org/projects/ray/
+.. _`Ray Readthedocs version page`: https://readthedocs.org/projects/ray/versions/
+.. _`Ray Readthedocs advanced settings page`: https://readthedocs.org/dashboard/ray/advanced/

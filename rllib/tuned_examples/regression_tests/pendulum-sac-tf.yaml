@@ -1,0 +1,13 @@
+pendulum-sac-tf:
+    env: Pendulum-v0
+    run: SAC
+    stop:
+        episode_reward_mean: -300  # note that evaluation perf is higher
+        timesteps_total: 10000
+    config:
+        use_pytorch: false
+        soft_horizon: true
+        clip_actions: false
+        normalize_actions: true
+        metrics_smoothing_episodes: 5
+        no_done_at_end: true

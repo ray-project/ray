@@ -1,6 +1,10 @@
-from ray.rllib.agents.ars.ars import (ARSTrainer, DEFAULT_CONFIG)
-from ray.rllib.utils import renamed_agent
+from ray.rllib.agents.ars.ars import ARSTrainer, DEFAULT_CONFIG
+from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
+from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
 
-ARSAgent = renamed_agent(ARSTrainer)
-
-__all__ = ["ARSAgent", "ARSTrainer", "DEFAULT_CONFIG"]
+__all__ = [
+    "ARSTFPolicy",
+    "ARSTorchPolicy",
+    "ARSTrainer",
+    "DEFAULT_CONFIG",
+]

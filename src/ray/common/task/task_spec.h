@@ -177,11 +177,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  private:
   void ComputeResources();
 
-  /// Field storing required resources. Initalized in constructor.
+  /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
-  /// instead of keeping shared ptrs here.
+  /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> required_resources_;
-  /// Field storing required placement resources. Initalized in constructor.
+  /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;

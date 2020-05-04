@@ -2,7 +2,7 @@ import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
+from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, \
     DEPRECATED_VALUE
 from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
@@ -153,10 +153,6 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
-
     # TODO(sven): Remove at some point.
     #  Backward compatibility of noise-based exploration config.
     schedule_max_timesteps = None
@@ -202,10 +198,18 @@ def validate_config(config):
             config["batch_mode"] = "complete_episodes"
 
 
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+        return DDPGTorchPolicy
+    else:
+        return DDPGTFPolicy
+
+
 DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
-    get_policy_class=None,
+    get_policy_class=get_policy_class,
     validate_config=validate_config,
 )

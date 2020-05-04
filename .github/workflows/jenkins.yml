@@ -17,7 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
       - name: Run Jenkins Tests
         shell: bash -e -o pipefail -l {0}
         env:

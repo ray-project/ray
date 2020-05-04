@@ -32,7 +32,7 @@ def define_java_module(
         define_test_lib = False,
         test_deps = [],
         **kwargs):
-    lib_name = "org_ray_ray_" + name
+    lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
     native.java_library(
         name = lib_name,
@@ -44,15 +44,15 @@ def define_java_module(
         **kwargs
     )
     checkstyle_test(
-        name = "org_ray_ray_" + name + "-checkstyle",
-        target = ":org_ray_ray_" + name,
+        name = "io_ray_ray_" + name + "-checkstyle",
+        target = ":io_ray_ray_" + name,
         config = "//java:checkstyle.xml",
         suppressions = "//java:checkstyle-suppressions.xml",
         size = "small",
         tags = ["checkstyle"],
     )
     if define_test_lib:
-        test_lib_name = "org_ray_ray_" + name + "_test"
+        test_lib_name = "io_ray_ray_" + name + "_test"
         pom_file_targets.append(test_lib_name)
         native.java_library(
             name = test_lib_name,
@@ -60,15 +60,15 @@ def define_java_module(
             deps = test_deps,
         )
         checkstyle_test(
-            name = "org_ray_ray_" + name + "_test-checkstyle",
-            target = ":org_ray_ray_" + name + "_test",
+            name = "io_ray_ray_" + name + "_test-checkstyle",
+            target = ":io_ray_ray_" + name + "_test",
             config = "//java:checkstyle.xml",
             suppressions = "//java:checkstyle-suppressions.xml",
             size = "small",
             tags = ["checkstyle"],
         )
     pom_file(
-        name = "org_ray_ray_" + name + "_pom",
+        name = "io_ray_ray_" + name + "_pom",
         targets = pom_file_targets,
         template_file = name + "/pom_template.xml",
         substitutions = {

@@ -16,6 +16,7 @@
 #define RAY_GCS_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/protobuf/gcs.pb.h"
@@ -45,6 +46,14 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
+  /// Create an actor to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
+                                  const StatusCallback &callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -220,9 +229,8 @@ class TaskInfoAccessor {
   /// Cancel subscription to a task asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
 
   /// Add a task lease to GCS asynchronously.
   ///
@@ -248,10 +256,8 @@ class TaskInfoAccessor {
   /// Cancel subscription to a task lease asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                           const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id) = 0;
 
   /// Attempt task reconstruction to GCS asynchronously.
   ///
@@ -316,10 +322,8 @@ class ObjectInfoAccessor {
   /// Cancel subscription to any update of an object's location.
   ///
   /// \param object_id The ID of the object to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscription is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                             const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
 
  protected:
   ObjectInfoAccessor() = default;

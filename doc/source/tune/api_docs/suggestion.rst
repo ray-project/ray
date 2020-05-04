@@ -1,3 +1,5 @@
+.. _searchalg-ref:
+
 Search Algorithms (tune.suggest)
 ================================
 
@@ -7,6 +9,11 @@ Repeater
 --------
 
 .. autoclass:: ray.tune.suggest.Repeater
+
+ConcurrencyLimiter
+------------------
+
+.. autoclass:: ray.tune.suggest.ConcurrencyLimiter
 
 AxSearch
 --------
@@ -48,16 +55,21 @@ SkOptSearch
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
 
+ZOOptSearch
+-----------
+
+.. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+
 SearchAlgorithm
 ---------------
 
 .. autoclass:: ray.tune.suggest.SearchAlgorithm
     :members:
 
-SuggestionAlgorithm
--------------------
+Searcher
+--------
 
-.. autoclass:: ray.tune.suggest.SuggestionAlgorithm
+.. autoclass:: ray.tune.suggest.Searcher
     :members:
     :private-members:
     :show-inheritance:

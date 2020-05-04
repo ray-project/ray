@@ -1,6 +1,12 @@
 #include <limits.h>
 #include <sys/time.h>
 
+#ifdef timezone
+#pragma push_macro("timezone")  // Work around https://bugs.python.org/issue34657
+#undef timezone
+#define timezone timezone
+#endif
+
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
   // Free implementation from: https://stackoverflow.com/a/26085827
   SYSTEMTIME systime;
@@ -16,3 +22,7 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
   tv->tv_usec = static_cast<int>(systime.wMilliseconds * 1000);
   return 0;
 }
+
+#ifdef timezone
+#pragma pop_macro("timezone")
+#endif

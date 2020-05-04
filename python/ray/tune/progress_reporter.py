@@ -8,6 +8,11 @@ from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
 from ray.tune.utils import flatten_dict
 
 try:
+    from collections.abc import Mapping
+except ImportError:
+    from collections import Mapping
+
+try:
     from tabulate import tabulate
 except ImportError:
     raise ImportError("ray.tune in ray > 0.7.5 requires 'tabulate'. "
@@ -101,7 +106,7 @@ class TuneReporterBase(ProgressReporter):
         if metric in self._metric_columns:
             raise ValueError("Column {} already exists.".format(metric))
 
-        if isinstance(self._metric_columns, collections.Mapping):
+        if isinstance(self._metric_columns, Mapping):
             representation = representation or metric
             self._metric_columns[metric] = representation
         else:
@@ -291,7 +296,7 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
         num_trials, ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
-    if isinstance(metric_columns, collections.Mapping):
+    if isinstance(metric_columns, Mapping):
         keys = list(metric_columns.keys())
     else:
         keys = metric_columns
@@ -303,7 +308,7 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
     params = sorted(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
     # Format column headings
-    if isinstance(metric_columns, collections.Mapping):
+    if isinstance(metric_columns, Mapping):
         formatted_columns = [metric_columns[k] for k in keys]
     else:
         formatted_columns = keys

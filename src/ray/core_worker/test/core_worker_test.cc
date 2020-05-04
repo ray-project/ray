@@ -263,6 +263,7 @@ class CoreWorkerTest : public ::testing::Test {
           true,                           // install_failure_signal_handler
           "127.0.0.1",                    // node_ip_address
           node_manager_port,              // node_manager_port
+          "127.0.0.1",                    // raylet_ip_address
           "core_worker_test",             // driver_name
           "",                             // stdout_file
           "",                             // stderr_file
@@ -270,6 +271,7 @@ class CoreWorkerTest : public ::testing::Test {
           nullptr,                        // check_signals
           nullptr,                        // gc_collect
           nullptr,                        // get_lang_stack
+          nullptr,                        // kill_main
           true,                           // ref_counting_enabled
           false,                          // is_local_mode
           1,                              // num_workers
@@ -375,8 +377,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(
-          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0);
 
       ASSERT_EQ(return_ids.size(), 1);
 

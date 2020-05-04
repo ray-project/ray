@@ -12,38 +12,36 @@ from ray.streaming.config import Config
 @ray.remote
 class Worker:
     def __init__(self):
-        writer_async_func = PythonFunctionDescriptor(
-            __name__, self.on_writer_message.__name__, self.__class__.__name__)
-        writer_sync_func = PythonFunctionDescriptor(
-            __name__, self.on_writer_message_sync.__name__,
-            self.__class__.__name__)
-        self.writer_client = _streaming.WriterClient(writer_async_func,
-                                                     writer_sync_func)
-        reader_async_func = PythonFunctionDescriptor(
-            __name__, self.on_reader_message.__name__, self.__class__.__name__)
-        reader_sync_func = PythonFunctionDescriptor(
-            __name__, self.on_reader_message_sync.__name__,
-            self.__class__.__name__)
-        self.reader_client = _streaming.ReaderClient(reader_async_func,
-                                                     reader_sync_func)
+        self.writer_client = _streaming.WriterClient()
+        self.reader_client = _streaming.ReaderClient()
         self.writer = None
         self.output_channel_id = None
         self.reader = None
 
     def init_writer(self, output_channel, reader_actor):
-        conf = {
-            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
-            Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
-        }
+        conf = {Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL}
+        reader_async_func = PythonFunctionDescriptor(
+            __name__, self.on_reader_message.__name__, self.__class__.__name__)
+        reader_sync_func = PythonFunctionDescriptor(
+            __name__, self.on_reader_message_sync.__name__,
+            self.__class__.__name__)
+        transfer.ChannelCreationParametersBuilder.\
+            set_python_reader_function_descriptor(
+                reader_async_func, reader_sync_func)
         self.writer = transfer.DataWriter([output_channel],
                                           [pickle.loads(reader_actor)], conf)
         self.output_channel_id = transfer.ChannelID(output_channel)
 
     def init_reader(self, input_channel, writer_actor):
-        conf = {
-            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
-            Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
-        }
+        conf = {Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL}
+        writer_async_func = PythonFunctionDescriptor(
+            __name__, self.on_writer_message.__name__, self.__class__.__name__)
+        writer_sync_func = PythonFunctionDescriptor(
+            __name__, self.on_writer_message_sync.__name__,
+            self.__class__.__name__)
+        transfer.ChannelCreationParametersBuilder.\
+            set_python_writer_function_descriptor(
+                writer_async_func, writer_sync_func)
         self.reader = transfer.DataReader([input_channel],
                                           [pickle.loads(writer_actor)], conf)
 

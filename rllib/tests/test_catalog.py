@@ -4,14 +4,15 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.model import Model
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
-from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
-from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.utils import try_import_tf
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.visionnet_v2 import VisionNetwork
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -26,12 +27,22 @@ class CustomPreprocessor2(Preprocessor):
         return [1]
 
 
-class CustomModel(Model):
+class CustomModel(TFModelV2):
     def _build_layers(self, *args):
         return tf.constant([[0] * 5]), None
 
 
 class CustomActionDistribution(TFActionDistribution):
+    def __init__(self, inputs, model):
+        # Store our output shape.
+        custom_options = model.model_config["custom_options"]
+        if "output_dim" in custom_options:
+            self.output_shape = tf.concat(
+                [tf.shape(inputs)[:1], custom_options["output_dim"]], axis=0)
+        else:
+            self.output_shape = tf.shape(inputs)
+        super().__init__(inputs, model)
+
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
         custom_options = model_config["custom_options"] or {}
@@ -39,15 +50,13 @@ class CustomActionDistribution(TFActionDistribution):
             return custom_options.get("output_dim")
         return action_space.shape
 
+    @override(TFActionDistribution)
     def _build_sample_op(self):
-        custom_options = self.model.model_config["custom_options"]
-        if "output_dim" in custom_options:
-            output_shape = tf.concat(
-                [tf.shape(self.inputs)[:1], custom_options["output_dim"]],
-                axis=0)
-        else:
-            output_shape = tf.shape(self.inputs)
-        return tf.random_uniform(output_shape)
+        return tf.random_uniform(self.output_shape)
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        return tf.zeros(self.output_shape)
 
 
 class ModelCatalogTest(unittest.TestCase):
@@ -92,25 +101,29 @@ class ModelCatalogTest(unittest.TestCase):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
         with tf.variable_scope("test1"):
-            p1 = ModelCatalog.get_model({
-                "obs": tf.zeros((10, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5, {})
+            p1 = ModelCatalog.get_model_v2(
+                obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+                action_space=Discrete(5),
+                num_outputs=5,
+                model_config={})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
-            p2 = ModelCatalog.get_model({
-                "obs": tf.zeros((10, 84, 84, 3), dtype=tf.float32)
-            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), Discrete(5), 5,
-                                        {})
+            p2 = ModelCatalog.get_model_v2(
+                obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                action_space=Discrete(5),
+                num_outputs=5,
+                model_config={})
             self.assertEqual(type(p2), VisionNetwork)
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
-        p1 = ModelCatalog.get_model({
-            "obs": tf.constant([1, 2, 3])
-        }, Box(0, 1, shape=(3, ), dtype=np.float32), Discrete(5), 5,
-                                    {"custom_model": "foo"})
+        p1 = ModelCatalog.get_model_v2(
+            obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+            action_space=Discrete(5),
+            num_outputs=5,
+            model_config={"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
     def test_custom_action_distribution(self):

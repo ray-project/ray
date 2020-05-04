@@ -227,7 +227,7 @@ def test_raylet_info_endpoint(shutdown_only):
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
         else:
-            assert child_actor_info["state"] == 0
+            assert child_actor_info["state"] == 1
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 

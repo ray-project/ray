@@ -47,6 +47,42 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
+def test_resize(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=1)
+    trainer.train(num_steps=1)
+    trainer.max_replicas = 2
+    results = trainer.train(num_steps=1, reduce_results=False)
+    assert len(results) == 2
+
+
+def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
+    duration = 10
+
+    def slow_data(func):
+        def slowed_func(*args, **kwargs):
+            time.sleep(duration)
+            return func(*args, **kwargs)
+
+        return slowed_func
+
+    start = time.time()
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=slow_data(data_creator),
+        optimizer_creator=optimizer_creator,
+        serialize_data_creation=False,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2)
+    elapsed = time.time() - start
+    assert elapsed < duration * 2
+    trainer.shutdown()
+
+
 def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,
@@ -212,6 +248,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                     optimizer_creator=multi_optimizer_creator,
                     loss_creator=nn.MSELoss,
                     scheduler_creator=multi_scheduler_creator,
+                    scheduler_step_freq="epoch",
                     training_operator_cls=_TestingOperator,
                     num_workers=num_workers,
                     config={
@@ -224,7 +261,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                 trainer.shutdown()
 
 
-@pytest.mark.parametrize("scheduler_freq", ["epoch", "batch"])
+@pytest.mark.parametrize("scheduler_freq", ["epoch", "batch", "manual", None])
 def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
     def train_epoch(self, iterator, info):
         assert info[SCHEDULER_STEP] == scheduler_freq
@@ -234,19 +271,29 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
         return torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=30, gamma=0.1)
 
-    trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
-        config={"custom_func": train_epoch},
-        training_operator_cls=_TestingOperator,
-        scheduler_creator=scheduler_creator,
-        scheduler_step_freq=scheduler_freq)
+    if scheduler_freq is None:
+        with pytest.raises(ValueError):
+            trainer = TorchTrainer(
+                model_creator=model_creator,
+                data_creator=data_creator,
+                optimizer_creator=optimizer_creator,
+                loss_creator=lambda config: nn.MSELoss(),
+                scheduler_creator=scheduler_creator,
+                scheduler_step_freq=scheduler_freq)
+    else:
+        trainer = TorchTrainer(
+            model_creator=model_creator,
+            data_creator=data_creator,
+            optimizer_creator=optimizer_creator,
+            loss_creator=lambda config: nn.MSELoss(),
+            config={"custom_func": train_epoch},
+            training_operator_cls=_TestingOperator,
+            scheduler_creator=scheduler_creator,
+            scheduler_step_freq=scheduler_freq)
 
-    for i in range(3):
-        trainer.train()
-    trainer.shutdown()
+        for i in range(3):
+            trainer.train()
+        trainer.shutdown()
 
 
 def test_profiling(ray_start_2_cpus):  # noqa: F811
@@ -423,6 +470,7 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
+        scheduler_step_freq="manual",
         training_operator_cls=_TestingOperator)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
@@ -675,6 +723,55 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
         trainer1.shutdown()
+
+
+def test_multi_input_model(ray_start_2_cpus):
+    def model_creator(config):
+        class MultiInputModel(nn.Module):
+            def __init__(self):
+                super(MultiInputModel, self).__init__()
+                self._fc1 = torch.nn.Linear(1, 1)
+                self._fc2 = torch.nn.Linear(1, 1)
+
+            def forward(self, x, y):
+                return self._fc1(x) + self._fc2(y)
+
+        return MultiInputModel()
+
+    def data_creator(config):
+        class LinearDataset(torch.utils.data.Dataset):
+            def __init__(self, a, b, size=1000):
+                x = np.random.randn(size)
+                y = np.random.randn(size)
+                self.x = torch.tensor(x, dtype=torch.float32)
+                self.y = torch.tensor(y, dtype=torch.float32)
+                self.z = torch.tensor(a * (x + y) + 2 * b, dtype=torch.float32)
+
+            def __getitem__(self, index):
+                return (self.x[index, None], self.y[index, None],
+                        self.z[index, None])
+
+            def __len__(self):
+                return len(self.x)
+
+        train_dataset = LinearDataset(3, 4)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=config.get("batch_size", 32),
+        )
+        return train_loader, None
+
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=1)
+
+    metrics = trainer.train(num_steps=1)
+    assert metrics[BATCH_COUNT] == 1
+
+    trainer.shutdown()
 
 
 if __name__ == "__main__":

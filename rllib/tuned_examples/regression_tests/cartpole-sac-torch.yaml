@@ -1,0 +1,17 @@
+cartpole-sac-torch:
+    env: CartPole-v0
+    run: SAC
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 50000
+    config:
+        use_pytorch: true
+        gamma: 0.95
+        no_done_at_end: false
+        target_network_update_freq: 32
+        tau: 1.0
+        train_batch_size: 32
+        optimization:
+            actor_learning_rate: 0.005
+            critic_learning_rate: 0.005
+            entropy_learning_rate: 0.0001

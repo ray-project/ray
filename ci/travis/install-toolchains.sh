@@ -4,13 +4,12 @@ set -euxo pipefail
 
 LLVM_VERSION="9.0.0"
 
-install_clang() {
+install_toolchains() {
   local osversion="" url="" urlbase="https://releases.llvm.org" targetdir="/usr/local"
   case "${OSTYPE}" in
     msys)
-      export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
       osversion=win
-      if [ ! "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then
+      if [ "${HOSTTYPE}" != "${HOSTTYPE%64}" ]; then
         osversion="${osversion}64"
       else
         osversion="${osversion}32"
@@ -31,8 +30,19 @@ install_clang() {
   curl -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
     local target="./${url##*/}"
     install /dev/stdin "${target}"
-    7z x "${target}" -o"${targetdir}"
+    7z x -bsp0 -bso0 "${target}" -o"${targetdir}"
     rm -f -- "${target}"
+    (
+      # Add Clang/LLVM binaries to somewhere that's in already PATH
+      # (don't change PATH itself, to avoid invalidating Bazel's cache or having to manage environment variables)
+      mkdir -p -- ~/bin
+      set +x
+      local path
+      for path in "${targetdir}\\bin"/*.exe; do
+        local name="${path##*/}"
+        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | install /dev/stdin ~/bin/"${name%.*}"
+      done
+    )
   else
     sudo tar -x -J --strip-components=1 -C "${targetdir}"
     command -V clang 1>&2
@@ -40,4 +50,4 @@ install_clang() {
   "${targetdir}"/bin/clang --version 1>&2
 }
 
-install_"$@"
+install_toolchains "$@"

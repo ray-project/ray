@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ray.streaming.proto;
 
-option java_package = "org.ray.streaming.runtime.generated";
+option java_package = "io.ray.streaming.runtime.generated";
 
 enum Language {
   JAVA = 0;
@@ -29,7 +29,6 @@ enum FlowControlType {
 // all string in this message is ASCII string
 message StreamingConfig {
   string job_name = 1;
-  string task_job_id = 2;
   string worker_name = 3;
   string op_name = 4;
   NodeType role = 5;

@@ -20,3 +20,6 @@ if __name__ == "__main__":
     trainer.train()
 
     assert "torch" not in sys.modules, "Torch should not be imported"
+
+    # Clean up.
+    del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]

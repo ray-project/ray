@@ -415,7 +415,7 @@ class GlobalState:
             entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
             assert entry.job_id == job_id.binary()
             job_info["JobID"] = job_id.hex()
-            job_info["NodeManagerAddress"] = entry.node_manager_address
+            job_info["DriverIPAddress"] = entry.driver_ip_address
             job_info["DriverPid"] = entry.driver_pid
             if entry.is_dead:
                 job_info["StopTime"] = entry.timestamp
@@ -431,7 +431,7 @@ class GlobalState:
             Information about the Ray jobs in the cluster,
             namely a list of dicts with keys:
             - "JobID" (identifier for the job),
-            - "NodeManagerAddress" (IP address of the driver for this job),
+            - "DriverIPAddress" (IP address of the driver for this job),
             - "DriverPid" (process ID of the driver for this job),
             - "StartTime" (UNIX timestamp of the start time of this job),
             - "StopTime" (UNIX timestamp of the stop time of this job, if any)
@@ -991,7 +991,7 @@ def jobs():
     Returns:
         Information from the job table, namely a list of dicts with keys:
         - "JobID" (identifier for the job),
-        - "NodeManagerAddress" (IP address of the driver for this job),
+        - "DriverIPAddress" (IP address of the driver for this job),
         - "DriverPid" (process ID of the driver for this job),
         - "StartTime" (UNIX timestamp of the start time of this job),
         - "StopTime" (UNIX timestamp of the stop time of this job, if any)

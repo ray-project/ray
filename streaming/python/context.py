@@ -11,7 +11,7 @@ class StreamingContext:
     """
     Main entry point for ray streaming functionality.
     A StreamingContext is also a wrapper of java
-    `org.ray.streaming.api.context.StreamingContext`
+    `io.ray.streaming.api.context.StreamingContext`
     """
 
     class Builder:

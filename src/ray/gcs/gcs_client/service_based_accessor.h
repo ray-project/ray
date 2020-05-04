@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -44,9 +45,6 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
-  JobSubscriptionExecutor job_sub_executor_;
 };
 
 /// \class ServiceBasedActorInfoAccessor
@@ -62,6 +60,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
@@ -97,7 +98,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
 
@@ -211,7 +212,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
@@ -221,8 +222,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
@@ -232,10 +232,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
 
   typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
       TaskLeaseSubscriptionExecutor;
@@ -266,17 +262,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
-      ObjectSubscriptionExecutor;
-  ObjectSubscriptionExecutor object_sub_executor_;
 
   Sequencer<ObjectID> sequencer_;
 };
@@ -336,10 +325,6 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
-      WorkerFailureSubscriptionExecutor;
-  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
 }  // namespace gcs

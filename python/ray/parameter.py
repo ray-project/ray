@@ -33,6 +33,8 @@ class RayParams:
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         node_ip_address (str): The IP address of the node that we are on.
+        raylet_ip_address (str): The IP address of the raylet that this node
+            connects to.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
@@ -95,6 +97,7 @@ class RayParams:
                  object_manager_port=None,
                  node_manager_port=None,
                  node_ip_address=None,
+                 raylet_ip_address=None,
                  object_id_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -131,6 +134,7 @@ class RayParams:
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
+        self.raylet_ip_address = raylet_ip_address
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output

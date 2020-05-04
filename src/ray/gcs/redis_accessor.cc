@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/redis_accessor.h"
+
 #include <boost/none.hpp>
+
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
@@ -61,6 +63,14 @@ Status RedisLogBasedActorInfoAccessor::AsyncGet(
 
   return client_impl_->log_based_actor_table().Lookup(actor_id.JobId(), actor_id,
                                                       on_done);
+}
+
+Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  const std::string error_msg =
+      "Unsupported method of AsyncCreateActor in RedisLogBasedActorInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncRegister(
@@ -296,7 +306,7 @@ Status RedisJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
                                                const StatusCallback &callback) {
   std::shared_ptr<JobTableData> data_ptr =
       CreateJobTableData(job_id, /*is_dead*/ true, /*time_stamp*/ std::time(nullptr),
-                         /*node_manager_address*/ "", /*driver_pid*/ -1);
+                         /*driver_ip_address*/ "", /*driver_pid*/ -1);
   return DoAsyncAppend(data_ptr, callback);
 }
 
@@ -379,9 +389,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
   return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                               const StatusCallback &done) {
-  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AsyncAddTaskLease(
@@ -404,9 +413,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
   return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                                        const StatusCallback &done) {
-  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AttemptTaskReconstruction(
@@ -492,9 +500,8 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
   return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
 }
 
-Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                                            const StatusCallback &done) {
-  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, nullptr);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)

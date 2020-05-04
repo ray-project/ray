@@ -235,7 +235,7 @@ class ValueNetworkMixin:
                         [prev_action]),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         [prev_reward]),
-                    "is_training": tf.convert_to_tensor(False),
+                    "is_training": tf.convert_to_tensor([False]),
                 }, [tf.convert_to_tensor([s]) for s in state],
                                           tf.convert_to_tensor([1]))
                 return self.model.value_function()[0]

@@ -125,8 +125,10 @@ class DQNTorchModel(TorchModelV2):
         """
         in_size = int(action_in.shape[1])
 
-        epsilon_in = torch.normal(size=[in_size])
-        epsilon_out = torch.normal(size=[out_size])
+        epsilon_in = torch.normal(
+            mean=torch.zeros([in_size]), std=torch.ones([in_size]))
+        epsilon_out = torch.normal(
+            mean=torch.zeros([out_size]), std=torch.ones([out_size]))
         epsilon_in = self._f_epsilon(epsilon_in)
         epsilon_out = self._f_epsilon(epsilon_out)
         epsilon_w = torch.matmul(

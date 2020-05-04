@@ -21,6 +21,8 @@ from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import override
 from ray.util.sgd.torch import TrainingOperator
 
+MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
+
 
 def data_creator(config):
     dataset = datasets.MNIST(
@@ -227,9 +229,7 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
         "batch_size": 16 if test_mode else 512 // num_workers,
-        "classification_model_path": os.path.join(
-            os.path.dirname(ray.__file__),
-            "util/sgd/torch/examples/mnist_cnn.pt")
+        "classification_model_path": MODEL_PATH
     }
     trainer = TorchTrainer(
         model_creator=model_creator,
@@ -256,6 +256,16 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
 
 
 if __name__ == "__main__":
+    import urllib.request
+    # Download a pre-trained MNIST model for inception score calculation.
+    # This is a tiny model (<100kb).
+    if not os.path.exists(MODEL_PATH):
+        print("downloading model")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")

@@ -86,7 +86,8 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     name="arg_{}".format(i)))
                         symbolic_out[0] = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))
-                return session_or_none.run(symbolic_out[0], feed_dict)
+                ret = session_or_none.run(symbolic_out[0], feed_dict)
+                return ret
 
             return call
         else:

@@ -40,6 +40,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
 
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+python /ray/python/ray/util/sgd/torch/examples/image_models/train.py --no-gpu --mock-data --smoke-test --ray-num-workers=2 --model mobilenetv3_small_075 data
+
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/train_example.py
 
@@ -63,6 +67,9 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/dcgan.py --smoke-test --num-workers=2
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/util/sgd/torch/examples/benchmarks/benchmark.py --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/tf/examples/tensorflow_train_example.py

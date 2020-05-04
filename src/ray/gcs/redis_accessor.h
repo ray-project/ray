@@ -15,6 +15,7 @@
 #ifndef RAY_GCS_REDIS_ACCESSOR_H
 #define RAY_GCS_REDIS_ACCESSOR_H
 
+#include <ray/common/task/task_spec.h>
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -40,6 +41,9 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
@@ -191,7 +195,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
@@ -201,8 +205,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
@@ -250,8 +253,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

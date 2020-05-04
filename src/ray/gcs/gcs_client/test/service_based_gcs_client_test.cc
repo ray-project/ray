@@ -17,6 +17,7 @@
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
@@ -292,11 +293,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTask(const TaskID &task_id) {
+  void UnsubscribeTask(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -339,11 +338,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTaskLease(const TaskID &task_id) {
+  void UnsubscribeTaskLease(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
   bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
@@ -372,11 +369,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeToLocations(const ObjectID &object_id) {
+  void UnsubscribeToLocations(const ObjectID &object_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(
-        object_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
   }
 
   bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
@@ -452,74 +447,6 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
-  std::shared_ptr<rpc::JobTableData> GenJobTableData(JobID job_id) {
-    auto job_table_data = std::make_shared<rpc::JobTableData>();
-    job_table_data->set_job_id(job_id.Binary());
-    job_table_data->set_is_dead(false);
-    job_table_data->set_timestamp(std::time(nullptr));
-    job_table_data->set_node_manager_address("127.0.0.1");
-    job_table_data->set_driver_pid(5667L);
-    return job_table_data;
-  }
-
-  std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID &job_id) {
-    auto actor_table_data = std::make_shared<rpc::ActorTableData>();
-    ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-    actor_table_data->set_actor_id(actor_id.Binary());
-    actor_table_data->set_job_id(job_id.Binary());
-    actor_table_data->set_state(
-        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-    actor_table_data->set_max_reconstructions(1);
-    actor_table_data->set_remaining_reconstructions(1);
-    return actor_table_data;
-  }
-
-  rpc::GcsNodeInfo GenGcsNodeInfo(const std::string &node_id) {
-    rpc::GcsNodeInfo gcs_node_info;
-    gcs_node_info.set_node_id(node_id);
-    gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
-    gcs_node_info.set_node_manager_address("127.0.0.1");
-    return gcs_node_info;
-  }
-
-  std::shared_ptr<rpc::TaskTableData> GenTaskTableData(const std::string &job_id,
-                                                       const std::string &task_id) {
-    auto task_table_data = std::make_shared<rpc::TaskTableData>();
-    rpc::Task task;
-    rpc::TaskSpec task_spec;
-    task_spec.set_job_id(job_id);
-    task_spec.set_task_id(task_id);
-    task.mutable_task_spec()->CopyFrom(task_spec);
-    task_table_data->mutable_task()->CopyFrom(task);
-    return task_table_data;
-  }
-
-  std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(const std::string &task_id,
-                                                       const std::string &node_id) {
-    auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
-    task_lease_data->set_task_id(task_id);
-    task_lease_data->set_node_manager_id(node_id);
-    return task_lease_data;
-  }
-
-  std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(const ClientID &node_id) {
-    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    profile_table_data->set_component_id(node_id.Binary());
-    return profile_table_data;
-  }
-
-  std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
-    auto error_table_data = std::make_shared<rpc::ErrorTableData>();
-    error_table_data->set_job_id(job_id.Binary());
-    return error_table_data;
-  }
-
-  std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
-    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
-    worker_failure_data->set_timestamp(std::time(nullptr));
-    return worker_failure_data;
-  }
-
   // GCS server.
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -537,7 +464,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
 TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = GenJobTableData(add_job_id);
+  auto job_table_data = Mocker::GenJobTableData(add_job_id);
 
   // Subscribe to finished jobs.
   std::atomic<int> finished_job_count(0);
@@ -555,7 +482,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = GenActorTableData(job_id);
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
@@ -586,7 +513,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
   // Create actor checkpoint data.
   JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = GenActorTableData(job_id);
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
@@ -611,8 +538,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
-  auto actor_table_data1 = GenActorTableData(job_id);
-  auto actor_table_data2 = GenActorTableData(job_id);
+  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
+  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
 
   // Subscribe to any register or update operations of actors.
   std::atomic<int> actor_update_count(0);
@@ -630,8 +557,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   // Create gcs node info.
-  ClientID node1_id = ClientID::FromRandom();
-  auto gcs_node1_info = GenGcsNodeInfo(node1_id.Binary());
+  auto gcs_node1_info = Mocker::GenNodeInfo();
+  ClientID node1_id = ClientID::FromBinary(gcs_node1_info->node_id());
 
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
@@ -647,16 +574,16 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
   // Register local node to GCS.
-  ASSERT_TRUE(RegisterSelf(gcs_node1_info));
+  ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
   sleep(1);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info.node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info.state());
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info->node_id());
+  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());
 
   // Register a node to GCS.
-  ClientID node2_id = ClientID::FromRandom();
-  auto gcs_node2_info = GenGcsNodeInfo(node2_id.Binary());
-  ASSERT_TRUE(RegisterNode(gcs_node2_info));
+  auto gcs_node2_info = Mocker::GenNodeInfo();
+  ClientID node2_id = ClientID::FromBinary(gcs_node2_info->node_id());
+  ASSERT_TRUE(RegisterNode(*gcs_node2_info));
   WaitPendingDone(register_count, 2);
 
   // Get information of all nodes from GCS.
@@ -697,8 +624,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   };
   ASSERT_TRUE(SubscribeToResources(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Update resources of node in GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   gcs::NodeInfoAccessor::ResourceMap resource_map;
   std::string key = "CPU";
   auto resource = std::make_shared<rpc::ResourceTableData>();
@@ -723,8 +654,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -734,7 +669,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
+  auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
   // Subscribe to the event that the given task is added in GCS.
   std::atomic<int> task_count(0);
@@ -749,7 +684,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
 
   // Cancel subscription to a task.
-  ASSERT_TRUE(UnsubscribeTask(task_id));
+  UnsubscribeTask(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -773,12 +708,12 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Add a task lease to GCS.
   ClientID node_id = ClientID::FromRandom();
-  auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitPendingDone(task_lease_count, 2);
 
   // Cancel subscription to a task lease.
-  ASSERT_TRUE(UnsubscribeTaskLease(task_id));
+  UnsubscribeTaskLease(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -829,7 +764,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ASSERT_TRUE(GetLocations(object_id).empty());
 
   // Cancel subscription to any update of an object's location.
-  ASSERT_TRUE(UnsubscribeToLocations(object_id));
+  UnsubscribeToLocations(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));
@@ -842,7 +777,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 TEST_F(ServiceBasedGcsClientTest, TestStats) {
   // Add profile data to GCS.
   ClientID node_id = ClientID::FromRandom();
-  auto profile_table_data = GenProfileTableData(node_id);
+  auto profile_table_data = Mocker::GenProfileTableData(node_id);
   ASSERT_TRUE(AddProfileData(profile_table_data));
 }
 
@@ -856,7 +791,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
   // Report a worker failure to GCS.
-  auto worker_failure_data = GenWorkerFailureData();
+  auto worker_failure_data = Mocker::GenWorkerFailureData();
   ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
   WaitPendingDone(worker_failure_count, 1);
 }
@@ -864,14 +799,14 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
   // Report a job error to GCS.
   JobID job_id = JobID::FromInt(1);
-  auto error_table_data = GenErrorTableData(job_id);
+  auto error_table_data = Mocker::GenErrorTableData(job_id);
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = GenJobTableData(add_job_id);
+  auto job_table_data = Mocker::GenJobTableData(add_job_id);
 
   RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
   gcs_server_->Stop();

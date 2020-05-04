@@ -1,0 +1,14 @@
+cartpole-appo-vtrace-tf:
+    env: CartPole-v0
+    run: APPO
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 200000
+    config:
+        use_pytorch: false
+        rollout_fragment_length: 10
+        train_batch_size: 10
+        num_envs_per_worker: 5
+        num_workers: 1
+        num_gpus: 0
+        vtrace: true

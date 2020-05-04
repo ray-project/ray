@@ -2,7 +2,7 @@
 # Runs one or more regression tests. Retries tests up to 3 times.
 #
 # Example usage:
-# $ python run_regression_tests.py regression-tests/cartpole-es.yaml
+# $ python run_regression_tests.py regression-tests/cartpole-es-[tf|torch].yaml
 #
 # When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
 # py_test(
