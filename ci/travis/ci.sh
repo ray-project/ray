@@ -377,6 +377,7 @@ build() {
 
 _main() {
   if [ -n "${GITHUB_WORKFLOW-}" ]; then
+    exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
     # Necessary for GitHub Actions (which uses separate shells for different commands)
     # Unnecessary for Travis (which uses one shell for different commands)
     reload_env
