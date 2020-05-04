@@ -80,6 +80,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
+    actor_loss = -torch.mean(q_t_det_policy)
+
     if twin_q:
         twin_q_t = model.get_twin_q_values(model_out_t,
                                            train_batch[SampleBatch.ACTIONS])
@@ -127,7 +129,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             errors = 0.5 * torch.pow(td_error, 2.0)
 
     critic_loss = torch.mean(train_batch[PRIO_WEIGHTS] * errors)
-    actor_loss = -torch.mean(q_t_det_policy)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
@@ -154,20 +155,23 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     policy.td_error = td_error
     policy.q_t = q_t
 
-    # Return one loss value (even though we treat them separately in our
-    # 2 optimizers: actor and critic).
+    # Return two loss terms (corresponding to the two optimizers, we create).
     return policy.actor_loss, policy.critic_loss
 
 
 def make_ddpg_optimizers(policy, config):
-    # Create separate optimizers for actor & critic losses.
+    """Create separate optimizers for actor & critic losses."""
+
+    # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
     policy._actor_optimizer = torch.optim.Adam(
         params=policy.model.policy_variables(),
         lr=config["actor_lr"],
-        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
+        eps=1e-7)
+
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(), lr=config["critic_lr"],
-        eps=1e-7)  # to match tf.keras.optimizers.Adam's epsilon default
+        params=policy.model.q_variables(), lr=config["critic_lr"], eps=1e-7)
+
+    # Return them in the same order as the respective loss terms are returned.
     return policy._actor_optimizer, policy._critic_optimizer
 
 

@@ -232,6 +232,7 @@ class TorchPolicy(Policy):
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
+        assert not any(np.isnan(l.detach().numpy()) for l in loss_out)
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
@@ -240,7 +241,6 @@ class TorchPolicy(Policy):
             opt.zero_grad()
             # Recompute gradients of loss over all variables.
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
             if self.distributed_world_size:

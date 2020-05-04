@@ -96,8 +96,10 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         ou_new = self.ou_theta * -self.ou_state + \
             self.ou_sigma * gaussian_sample
         ou_state_new = tf.assign_add(self.ou_state, ou_new)
-        noise = scale * self.ou_base_scale * ou_state_new * \
-            (self.action_space.high - self.action_space.low)
+        high_m_low = self.action_space.high - self.action_space.low
+        high_m_low = tf.where(
+            tf.math.is_inf(high_m_low), tf.ones_like(high_m_low), high_m_low)
+        noise = scale * self.ou_base_scale * ou_state_new * high_m_low
         stochastic_actions = tf.clip_by_value(
             deterministic_actions + noise,
             self.action_space.low * tf.ones_like(deterministic_actions),
@@ -156,6 +158,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 high_m_low = torch.from_numpy(
                     self.action_space.high - self.action_space.low). \
                     to(self.device)
+                high_m_low = torch.where(
+                    torch.isinf(high_m_low),
+                    torch.ones_like(high_m_low).to(self.device), high_m_low)
                 noise = scale * self.ou_base_scale * self.ou_state * high_m_low
                 action = torch.clamp(det_actions + noise,
                                      self.action_space.low[0],
