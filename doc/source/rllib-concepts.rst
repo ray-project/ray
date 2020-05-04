@@ -255,7 +255,7 @@ Suppose we want to customize PPO to use an asynchronous-gradient optimization st
 
 The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
 
-Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
+Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are multiple policies each with different KL coeffs):
 
 .. code-block:: python
 
@@ -553,7 +553,7 @@ Given an environment and policy, policy evaluation produces `batches <https://gi
 
 You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `WorkerSet <https://github.com/ray-project/ray/blob/master/rllib/evaluation/worker_set.py>`__).
 
-Here is an example of creating a set of rollout workers and using them gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
+Here is an example of creating a set of rollout workers and using them to gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
 
 .. code-block:: python
 
@@ -622,4 +622,4 @@ Example of three equivalent ways of interacting with the PPO trainer, all of whi
 .. code-block:: python
 
     from ray import tune
-    tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
+    tune.run("PPO", config={"env": "CartPole-v0", "train_batch_size": 4000})
