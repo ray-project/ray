@@ -96,9 +96,10 @@ matrix:
       before_install:
         - . ./ci/travis/ci.sh init
       install:
+        - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
-        - . ./ci/travis/ci.sh lint
+        - true
 
     # Build Linux wheels.
     - os: linux

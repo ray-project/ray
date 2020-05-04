@@ -277,6 +277,7 @@ _lint() {
 }
 
 lint() {
+  install_go
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
