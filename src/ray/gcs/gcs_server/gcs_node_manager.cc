@@ -245,19 +245,12 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
       iter->second[entry.first] = entry.second;
     }
     auto on_done = [this, node_id, to_be_updated_resources, reply,
-                    send_reply_callback](Status status) {
+                    send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-
-      rpc::ResourceMap resource_data;
-      for (auto &it : *to_be_updated_resources) {
-        (*resource_data.mutable_items())[it.first] = *(it.second);
-      }
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_is_add(true);
-      node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_data()->CopyFrom(resource_data);
+      auto node_resource_change =
+          CreateNodeResourceChange(node_id, *to_be_updated_resources, true);
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
+                                         node_resource_change->SerializeAsString(),
                                          nullptr));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -290,19 +283,12 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
       }
     }
     auto on_done = [this, node_id, to_be_deleted_resources, reply,
-                    send_reply_callback](Status status) {
+                    send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-
-      rpc::ResourceMap resource_data;
-      for (auto &it : *to_be_deleted_resources) {
-        (*resource_data.mutable_items())[it.first] = *(it.second);
-      }
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_is_add(false);
-      node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_data()->CopyFrom(resource_data);
+      auto node_resource_change =
+          CreateNodeResourceChange(node_id, *to_be_deleted_resources, false);
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
+                                         node_resource_change->SerializeAsString(),
                                          nullptr));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
