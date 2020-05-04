@@ -5,19 +5,19 @@ import requests
 
 from ray import serve
 from ray.serve.metric.client import MetricClient
-from ray.serve.metric.sink import InMemorySink, PrometheusSink
+from ray.serve.metric.exporter import InMemoryExporter, PrometheusExporter
 from ray.serve.metric.types import MetricType, MetricMetadata
 
 pytestmark = pytest.mark.asyncio
 
 
-class MockSinkActor:
+class MockExporterActor:
     def __init__(self):
         self.metadata = dict()
         self.batches = []
 
     @property
-    def push_batch(self):
+    def ingest(self):
         return self
 
     async def remote(self, metadata, batch):
@@ -26,9 +26,9 @@ class MockSinkActor:
 
 
 async def test_client():
-    sink = MockSinkActor()
+    exporter = MockExporterActor()
     collector = MetricClient(
-        sink, push_interval=2, default_labels={"default": "label"})
+        exporter, push_interval=2, default_labels={"default": "label"})
     counter = collector.new_counter(name="counter", label_names=("a", "b"))
 
     with pytest.raises(
@@ -43,9 +43,9 @@ async def test_client():
     measure = collector.new_measure("measure")
     measure.record(2)
 
-    await collector._push_once()
+    await collector._push_to_exporter_once()
 
-    assert sink.metadata == {
+    assert exporter.metadata == {
         "counter": MetricMetadata(
             name="counter",
             type=MetricType.COUNTER,
@@ -61,7 +61,7 @@ async def test_client():
             default_labels={"default": "label"},
         )
     }
-    assert sink.batches == [("counter", {
+    assert exporter.batches == [("counter", {
         "a": "1",
         "b": "2"
     }, 1), ("counter", {
@@ -70,10 +70,10 @@ async def test_client():
     }, 42), ("measure", {}, 2)]
 
 
-async def test_in_memory_sink(ray_instance):
-    sink = InMemorySink.remote()
+async def test_in_memory_exporter(ray_instance):
+    exporter = InMemoryExporter.remote()
     collector = MetricClient(
-        sink, push_interval=2, default_labels={"default": "label"})
+        exporter, push_interval=2, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
@@ -84,9 +84,9 @@ async def test_in_memory_sink(ray_instance):
     measure.labels(ray="").record(0)
     measure.labels(ray="").record(42)
 
-    await collector._push_once()
+    await collector._push_to_exporter_once()
 
-    metric_stored = await sink.get_metric.remote()
+    metric_stored = await exporter.get_metric.remote()
     assert metric_stored == [{
         "info": {
             "name": "my_counter",
@@ -107,10 +107,10 @@ async def test_in_memory_sink(ray_instance):
     }]
 
 
-async def test_prometheus_sink(ray_instance):
-    sink = PrometheusSink.remote()
+async def test_prometheus_exporter(ray_instance):
+    exporter = PrometheusExporter.remote()
     collector = MetricClient(
-        sink, push_interval=2, default_labels={"default": "label"})
+        exporter, push_interval=2, default_labels={"default": "label"})
 
     counter = collector.new_counter(name="my_counter", label_names=("a", ))
     measure = collector.new_measure(
@@ -121,9 +121,9 @@ async def test_prometheus_sink(ray_instance):
     measure.labels(ray="").record(0)
     measure.labels(ray="").record(42)
 
-    await collector._push_once()
+    await collector._push_to_exporter_once()
 
-    metric_stored = await sink.get_metric.remote()
+    metric_stored = await exporter.get_metric.remote()
     metric_stored = metric_stored.decode()
 
     fragments = [

@@ -16,18 +16,18 @@ logger = _get_logger()
 class MetricClient:
     def __init__(
             self,
-            metric_sink_actor,
+            metric_exporter_actor,
             push_interval: float,
             default_labels: Optional[Dict[str, str]] = None,
     ):
-        """Initialize a client to push metric to sink.
+        """Initialize a client to push metric to exporter.
 
         Args:
-            metric_sink_actor: The actor to push metric batch to.
+            metric_exporter_actor: The actor to push metric batch to.
             default_labels(dict): The set of labels to apply for all metrics
                 created by this actor. For example, {"source": "worker"}
         """
-        self.sink = metric_sink_actor
+        self.exporter = metric_exporter_actor
         self.default_labels = default_labels or dict()
 
         self.registered_metrics: Dict[str, MetricMetadata] = dict()
@@ -35,7 +35,7 @@ class MetricClient:
 
         assert asyncio.get_event_loop().is_running()
         self.push_task = asyncio.get_event_loop().create_task(
-            self.push_forever(push_interval))
+            self.push_to_exporter_forever(push_interval))
         logger.debug("Initialized client")
 
     @staticmethod
@@ -44,10 +44,10 @@ class MetricClient:
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
-        [metric_sink,
-         push_interval] = retry_actor_failures(master_actor.get_metric_sink)
+        [metric_exporter,
+         push_interval] = retry_actor_failures(master_actor.get_metric_exporter)
         return MetricClient(
-            metric_sink_actor=metric_sink,
+            metric_exporter_actor=metric_exporter,
             default_labels=default_labels,
             push_interval=push_interval)
 
@@ -141,16 +141,16 @@ class MetricClient:
         self.registered_metrics[name] = metric_metadata
         return metric_object
 
-    async def _push_once(self):
+    async def _push_to_exporter_once(self):
         if not len(self.metric_records):
             return
 
         old_batch, self.metric_records = self.metric_records, []
         logger.debug("Pushing metric batch {}".format(old_batch))
-        await retry_actor_failures_async(self.sink.push_batch,
+        await retry_actor_failures_async(self.exporter.ingest,
                                          self.registered_metrics, old_batch)
 
-    async def push_forever(self, interval_s):
+    async def push_to_exporter_forever(self, interval_s):
         while True:
-            await self._push_once()
+            await self._push_to_exporter_once()
             await asyncio.sleep(interval_s)

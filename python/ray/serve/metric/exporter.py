@@ -20,21 +20,21 @@ def make_metric_namedtuple(metadata: MetricMetadata, record: MetricBatch):
     return tuple_type(name=metadata.name, type=metadata.type, **merged_labels)
 
 
-class BaseSink:
-    """A sink is the place to store or forward metrics to external services"""
+class BaseExporter:
+    """A exporter is the place to store or forward metrics to external services"""
 
     def __init__(self):
         self.metadata = dict()
         self.recording = []
-        logger.debug("Sink initialized {}".format(type(self)))
+        logger.debug("Exporter initialized {}".format(type(self)))
 
-    def push_batch(self, metadata: Dict[str, MetricMetadata],
+    def ingest(self, metadata: Dict[str, MetricMetadata],
                    batch: MetricBatch):
         self.metadata.update(metadata)
         self.recording.extend(batch)
-        self.compact()
+        self.export()
 
-    def compact(self):
+    def export(self):
         raise NotImplementedError(
             "This method should be implemented by subclass.")
 
@@ -44,7 +44,7 @@ class BaseSink:
 
 
 @ray.remote(num_cpus=0)
-class InMemorySink(BaseSink):
+class InMemoryExporter(BaseExporter):
     def __init__(self):
         super().__init__()
 
@@ -53,7 +53,7 @@ class InMemorySink(BaseSink):
         # Keep track of latest observation of measures
         self.latest_measures: Dict[namedtuple, float] = dict()
 
-    def compact(self):
+    def export(self):
         for record in self.recording:
             metadata = self.metadata[record.name]
             metric_key = make_metric_namedtuple(metadata, record)
@@ -77,7 +77,7 @@ class InMemorySink(BaseSink):
 
 
 @ray.remote(num_cpus=0)
-class PrometheusSink(BaseSink):
+class PrometheusExporter(BaseExporter):
     def __init__(self):
         super().__init__()
         from prometheus_client import CollectorRegistry
@@ -90,7 +90,7 @@ class PrometheusSink(BaseSink):
         from prometheus_client import generate_latest
         return generate_latest(self.registry)
 
-    def compact(self):
+    def export(self):
         self._process_metadata(self.metadata)
         self._process_batch(self.recording)
         self.recording = []

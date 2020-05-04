@@ -49,7 +49,7 @@ class ServeMaster:
 
     async def __init__(self, router_class, router_kwargs, start_http_proxy,
                        http_proxy_host, http_proxy_port,
-                       metric_sink_actor_class, metric_push_interval):
+                       metric_exporter_actor_class, metric_push_interval):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store = RayInternalKVStore()
@@ -84,11 +84,11 @@ class ServeMaster:
         # Cached handles to actors in the system.
         self.router = None
         self.http_proxy = None
-        self.metric_sink = None
+        self.metric_exporter = None
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self._get_or_start_metric_sink(metric_sink_actor_class)
+        self._get_or_start_metric_exporter(metric_exporter_actor_class)
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
@@ -159,22 +159,22 @@ class ServeMaster:
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes, self.get_router()
 
-    def _get_or_start_metric_sink(self, metric_sink_actor_class):
+    def _get_or_start_metric_exporter(self, metric_exporter_actor_class):
         """Get the metric monitor belonging to this serve cluster.
 
         If the metric monitor does not already exist, it will be started.
         """
         try:
-            self.metric_sink = ray.util.get_actor(SERVE_METRIC_SINK_NAME)
+            self.metric_exporter = ray.util.get_actor(SERVE_METRIC_SINK_NAME)
         except ValueError:
             logger.info("Starting metric monitor with name '{}'".format(
                 SERVE_METRIC_SINK_NAME))
-            self.metric_sink = metric_sink_actor_class.options(
+            self.metric_exporter = metric_exporter_actor_class.options(
                 detached=True, name=SERVE_METRIC_SINK_NAME).remote()
 
-    def get_metric_sink(self):
+    def get_metric_exporter(self):
         """Returns a handle to the metric monitor managed by this actor."""
-        return [self.metric_sink, self.config["metric_push_interval"]]
+        return [self.metric_exporter, self.config["metric_push_interval"]]
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""

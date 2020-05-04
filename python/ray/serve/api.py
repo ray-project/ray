@@ -13,7 +13,7 @@ from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
-from ray.serve.metric import InMemorySink
+from ray.serve.metric import InMemoryExporter
 
 master_actor = None
 
@@ -71,7 +71,7 @@ def init(blocking=False,
          },
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={},
-         metric_sink=InMemorySink,
+         metric_exporter=InMemoryExporter,
          metric_push_interval=2):
     """Initialize a serve cluster.
 
@@ -94,11 +94,11 @@ def init(blocking=False,
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
-        metric_sink(BaseSink): The metric storage actor for all RayServe actors
-            to push to. RayServe has two options built in: InMemorySink and
-            PrometheusSink
+        metric_exporter(BaseExporter): The metric storage actor for all RayServe actors
+            to push to. RayServe has two options built in: InMemoryExporter and
+            PrometheusExporter
         metric_push_interval(float): The interval for each actors to push to
-            the metric sink. Default is 2s.
+            the metric exporter. Default is 2s.
     """
     global master_actor
     if master_actor is not None:
@@ -131,7 +131,7 @@ def init(blocking=False,
         name=SERVE_MASTER_NAME,
         max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
     ).remote(queueing_policy.value, policy_kwargs, start_server, http_host,
-             http_port, metric_sink, metric_push_interval)
+             http_port, metric_exporter, metric_push_interval)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -285,5 +285,5 @@ def get_handle(endpoint_name,
 @_ensure_connected
 def stat():
     """Retrieve metric statistics about ray serve system."""
-    [metric_sink, _] = ray.get(master_actor.get_metric_sink.remote())
-    return ray.get(metric_sink.get_metric.remote())
+    [metric_exporter, _] = ray.get(master_actor.get_metric_exporter.remote())
+    return ray.get(metric_exporter.get_metric.remote())
