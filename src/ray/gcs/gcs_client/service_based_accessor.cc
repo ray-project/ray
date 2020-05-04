@@ -725,9 +725,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
       auto callback = [task_id, subscribe, done](
                           const Status &status,
                           const boost::optional<rpc::TaskLeaseData> &result) {
-        if (result) {
-          subscribe(task_id, *result);
-        }
+        subscribe(task_id, result);
         if (done) {
           done(status);
         }
