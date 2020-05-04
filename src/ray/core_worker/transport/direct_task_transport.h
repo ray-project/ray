@@ -80,6 +80,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] force_kill Whether to kill the worker executing the task.
   Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
+  Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
+                          bool force_kill);
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
