@@ -5,7 +5,6 @@ from ray.serve.metric.types import (
     MetricType,
     convert_event_type_to_class,
     MetricMetadata,
-    MetricRecord,
 )
 from ray.serve.utils import (retry_actor_failures, retry_actor_failures_async,
                              _get_logger)
@@ -20,12 +19,12 @@ class MetricClient:
             push_interval: float,
             default_labels: Optional[Dict[str, str]] = None,
     ):
-        """Initialize a client to push metric to exporter.
+        """Initialize a client to push metrics to the exporter actor.
 
         Args:
-            metric_exporter_actor: The actor to push metric batch to.
+            metric_exporter_actor: The actor to push metrics to.
             default_labels(dict): The set of labels to apply for all metrics
-                created by this actor. For example, {"source": "worker"}
+                created by this actor. For example, {"source": "worker"}.
         """
         self.exporter = metric_exporter_actor
         self.default_labels = default_labels or dict()
@@ -40,12 +39,12 @@ class MetricClient:
 
     @staticmethod
     def connect_from_serve(default_labels: Optional[Dict[str, str]] = None):
-        """Create the metric client automatically when running inside serve"""
+        """Create the metric client automatically when running inside serve."""
         from ray.serve.api import _get_master_actor
 
         master_actor = _get_master_actor()
-        [metric_exporter,
-         push_interval] = retry_actor_failures(master_actor.get_metric_exporter)
+        [metric_exporter, push_interval] = retry_actor_failures(
+            master_actor.get_metric_exporter)
         return MetricClient(
             metric_exporter_actor=metric_exporter,
             default_labels=default_labels,
@@ -108,10 +107,6 @@ class MetricClient:
         return self._new_metric(name, MetricType.MEASURE, description,
                                 label_names)
 
-    def record_event(self, record: MetricRecord):
-        """Called by Counter or Measure to record one observation"""
-        self.metric_records.append(record)
-
     def _new_metric(
             self,
             name,
@@ -142,7 +137,7 @@ class MetricClient:
         return metric_object
 
     async def _push_to_exporter_once(self):
-        if not len(self.metric_records):
+        if len(self.metric_records) == 0:
             return
 
         old_batch, self.metric_records = self.metric_records, []

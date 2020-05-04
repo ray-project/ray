@@ -8,37 +8,47 @@ from ray.serve.utils import _get_logger
 logger = _get_logger()
 
 
-def make_metric_namedtuple(metadata: MetricMetadata, record: MetricBatch):
+def make_metric_namedtuple(metric_metadata: MetricMetadata,
+                           record: MetricBatch):
     fields = ["name", "type"]
-    fields += list(metadata.default_labels.keys())
+    fields += list(metric_metadata.default_labels.keys())
     fields += list(record.labels.keys())
 
-    merged_labels = metadata.default_labels.copy()
+    merged_labels = metric_metadata.default_labels.copy()
     merged_labels.update(record.labels)
 
-    tuple_type = namedtuple(metadata.name, fields)
-    return tuple_type(name=metadata.name, type=metadata.type, **merged_labels)
+    tuple_type = namedtuple(metric_metadata.name, fields)
+    return tuple_type(
+        name=metric_metadata.name, type=metric_metadata.type, **merged_labels)
 
 
 class BaseExporter:
-    """A exporter is the place to store or forward metrics to external services"""
+    """Aggregate metrics from all RayServe actors and export them.
+
+    Metrics are aggregated pushed from other actors in the system to
+    this actor. They can then be stored or pushed to an external monitoring
+    system.
+    """
 
     def __init__(self):
-        self.metadata = dict()
-        self.recording = []
-        logger.debug("Exporter initialized {}".format(type(self)))
+        # Stores the mapping metric_name -> MetricMetadata
+        # This field is tolerant to failures since each client will always push
+        # an updated copy of the metadata.
+        self.metric_metadata = dict()
 
-    def ingest(self, metadata: Dict[str, MetricMetadata],
-                   batch: MetricBatch):
-        self.metadata.update(metadata)
-        self.recording.extend(batch)
-        self.export()
+        logger.debug("Initialized with metric exporter of type {}".format(
+            type(self)))
 
-    def export(self):
+    def ingest(self, metric_metadata: Dict[str, MetricMetadata],
+               batch: MetricBatch):
+        self.metric_metadata.update(metric_metadata)
+        self.export(self.metric_metadata, batch)
+
+    def export(self, metric_metadata, metric_batch):
         raise NotImplementedError(
             "This method should be implemented by subclass.")
 
-    def get_metric(self):
+    def inspect_metrics(self):
         raise NotImplementedError(
             "This method should be implemented by subclass.")
 
@@ -53,9 +63,9 @@ class InMemoryExporter(BaseExporter):
         # Keep track of latest observation of measures
         self.latest_measures: Dict[namedtuple, float] = dict()
 
-    def export(self):
-        for record in self.recording:
-            metadata = self.metadata[record.name]
+    def export(self, metric_metadata, metric_batch):
+        for record in metric_batch:
+            metadata = metric_metadata[record.name]
             metric_key = make_metric_namedtuple(metadata, record)
             if metadata.type == MetricType.COUNTER:
                 self.counters[metric_key] += record.value
@@ -64,9 +74,8 @@ class InMemoryExporter(BaseExporter):
             else:
                 raise RuntimeError("Unrecognized metric type {}".format(
                     metadata.type))
-        self.recording = []
 
-    def get_metric(self):
+    def inspect_metrics(self):
         items = []
         metrics_to_collect = {**self.counters, **self.latest_measures}
         for info_tuple, value in metrics_to_collect.items():
@@ -80,47 +89,43 @@ class InMemoryExporter(BaseExporter):
 class PrometheusExporter(BaseExporter):
     def __init__(self):
         super().__init__()
-        from prometheus_client import CollectorRegistry
+        from prometheus_client import (CollectorRegistry, Counter, Gauge,
+                                       generate_latest)
+        self.metric_type_to_prom_type = {
+            MetricType.COUNTER: Counter,
+            MetricType.MEASURE: Gauge
+        }
+        self.prom_generate_latest = generate_latest
 
         self.metrics_cache = dict()
         self.default_labels = dict()
         self.registry = CollectorRegistry()
 
-    def get_metric(self):
-        from prometheus_client import generate_latest
-        return generate_latest(self.registry)
+    def inspect_metrics(self):
+        return self.prom_generate_latest(self.registry)
 
-    def export(self):
-        self._process_metadata(self.metadata)
-        self._process_batch(self.recording)
-        self.recording = []
+    def export(self, metric_metadata, metric_batch):
+        self._process_metric_metadata(metric_metadata)
+        self._process_batch(metric_batch)
 
-    def _metric_type_to_prometheus_class(self, metric_type: MetricType):
-        from prometheus_client import Counter, Gauge
-        if metric_type == MetricType.COUNTER:
-            return Counter
-        elif metric_type == MetricType.MEASURE:
-            return Gauge
-        else:
-            raise RuntimeError("Unknown metric type {}".format(metric_type))
-
-    def _process_metadata(self, metadata):
-        for name, metadata in metadata.items():
+    def _process_metric_metadata(self, metric_metadata):
+        for name, metric_metadata in metric_metadata.items():
             if name not in self.metrics_cache:
-                constructor = self._metric_type_to_prometheus_class(
-                    metadata.type)
+                constructor = self.metric_type_to_prom_type[
+                    metric_metadata.type]
 
-                default_labels = metadata.default_labels
+                default_labels = metric_metadata.default_labels
                 label_names = tuple(
-                    default_labels.keys()) + metadata.label_names
+                    default_labels.keys()) + metric_metadata.label_names
                 metric_object = constructor(
-                    metadata.name,
-                    metadata.description,
+                    metric_metadata.name,
+                    metric_metadata.description,
                     labelnames=label_names,
                     registry=self.registry,
                 )
 
-                self.metrics_cache[name] = (metric_object, metadata.type)
+                self.metrics_cache[name] = (metric_object,
+                                            metric_metadata.type)
                 self.default_labels[name] = default_labels
 
     def _process_batch(self, batch):

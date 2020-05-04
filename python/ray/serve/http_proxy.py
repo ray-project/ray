@@ -35,7 +35,7 @@ class HTTPProxy:
             self.router_handle
         ] = await retry_actor_failures_async(master.get_http_proxy_config)
 
-        # The exporter is required to return results for /-/metrics endpoint
+        # The exporter is required to return results for /-/metrics endpoint.
         self.metric_exporter, _ = await retry_actor_failures_async(
             master.get_metric_exporter)
 
@@ -108,7 +108,7 @@ class HTTPProxy:
             await Response(self.route_table).send(scope, receive, send)
         elif current_path == "/-/metrics":
             metric_info = await retry_actor_failures_async(
-                self.metric_exporter.get_metric)
+                self.metric_exporter.inspect_metrics)
             await Response(metric_info).send(scope, receive, send)
         else:
             await Response(

@@ -26,9 +26,6 @@ def setup_worker(name, func_or_class, init_args=None):
         def ready(self):
             pass
 
-        def get_metrics(self):
-            return self.worker.get_metrics()
-
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
 

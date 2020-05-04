@@ -66,7 +66,7 @@ class Counter(BaseMetric):
     def add(self, increment=1):
         """Increment the counter by some amount. Default is 1"""
         self.check_all_labels_fulfilled_or_error()
-        self.client.record_event(
+        self.client.metric_records.append(
             MetricRecord(self.name, self.dynamic_labels, increment))
 
 
@@ -74,7 +74,7 @@ class Measure(BaseMetric):
     def record(self, value):
         """Record the given value for the measure"""
         self.check_all_labels_fulfilled_or_error()
-        self.client.record_event(
+        self.client.metric_records.append(
             MetricRecord(self.name, self.dynamic_labels, value))
 
 

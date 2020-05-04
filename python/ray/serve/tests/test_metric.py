@@ -86,7 +86,7 @@ async def test_in_memory_exporter(ray_instance):
 
     await collector._push_to_exporter_once()
 
-    metric_stored = await exporter.get_metric.remote()
+    metric_stored = await exporter.inspect_metrics.remote()
     assert metric_stored == [{
         "info": {
             "name": "my_counter",
@@ -123,7 +123,7 @@ async def test_prometheus_exporter(ray_instance):
 
     await collector._push_to_exporter_once()
 
-    metric_stored = await exporter.get_metric.remote()
+    metric_stored = await exporter.inspect_metrics.remote()
     metric_stored = metric_stored.decode()
 
     fragments = [

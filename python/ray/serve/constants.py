@@ -24,3 +24,6 @@ ASYNC_CONCURRENCY = int(1e6)
 
 #: Default latency SLO
 DEFAULT_LATENCY_SLO_MS = 1e9
+
+#: Interval for metric client to push metrics to exporters
+METRIC_PUSH_INTERVAL_S = 2

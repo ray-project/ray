@@ -71,8 +71,7 @@ def init(blocking=False,
          },
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={},
-         metric_exporter=InMemoryExporter,
-         metric_push_interval=2):
+         metric_exporter=InMemoryExporter):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -94,11 +93,10 @@ def init(blocking=False,
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
-        metric_exporter(BaseExporter): The metric storage actor for all RayServe actors
-            to push to. RayServe has two options built in: InMemoryExporter and
+        metric_exporter(BaseExporter): The actor that aggregates metrics from
+            all RayServe actors and optionally export them to external
+            services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter
-        metric_push_interval(float): The interval for each actors to push to
-            the metric exporter. Default is 2s.
     """
     global master_actor
     if master_actor is not None:
@@ -131,7 +129,7 @@ def init(blocking=False,
         name=SERVE_MASTER_NAME,
         max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
     ).remote(queueing_policy.value, policy_kwargs, start_server, http_host,
-             http_port, metric_exporter, metric_push_interval)
+             http_port, metric_exporter)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -284,6 +282,26 @@ def get_handle(endpoint_name,
 
 @_ensure_connected
 def stat():
-    """Retrieve metric statistics about ray serve system."""
+    """Retrieve metric statistics about ray serve system.
+
+    Returns:
+        metric_stats(Any): Metric information returned by the metric exporter.
+            This can vary by exporter. For the default InMemoryExporter, it
+            returns a list of the following format:
+
+            .. code-block::python
+              [
+                  {"info": {
+                      "name": ...,
+                      "type": COUNTER|MEASURE,
+                      "label_key": label_value,
+                      "label_key": label_value,
+                      ...
+                  }, "value": float}
+              ]
+
+            For PrometheusExporter, it returns the metrics in prometheus format
+            in plain text.
+    """
     [metric_exporter, _] = ray.get(master_actor.get_metric_exporter.remote())
-    return ray.get(metric_exporter.get_metric.remote())
+    return ray.get(metric_exporter.inspect_metrics.remote())
