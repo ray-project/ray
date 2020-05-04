@@ -48,7 +48,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 def defer_make_workers(trainer, env_creator, policy, config):
     # Hack to workaround https://github.com/ray-project/ray/issues/2541
     # The workers will be created later, after the optimizer is created
-    return trainer._make_workers(env_creator, policy, config, 0)
+    return trainer._make_workers(env_creator, policy, config, num_workers=0)
 
 
 def make_async_optimizer(workers, config):
