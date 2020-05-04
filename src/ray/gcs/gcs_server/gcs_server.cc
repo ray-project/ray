@@ -199,7 +199,7 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
   return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
-      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -217,7 +217,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
   return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
@@ -231,8 +231,8 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 }
 
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(new rpc::DefaultWorkerInfoHandler(
-      *redis_gcs_client_, *gcs_actor_manager_, gcs_pub_sub_));
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_, gcs_pub_sub_));
 }
 
 }  // namespace gcs

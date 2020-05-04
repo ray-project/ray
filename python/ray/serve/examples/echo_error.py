@@ -29,7 +29,7 @@ def echo(_):
 serve.init(blocking=True)
 
 serve.create_endpoint("my_endpoint", "/echo")
-serve.create_backend(echo, "echo:v1")
+serve.create_backend("echo:v1", echo)
 serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
 
 for _ in range(2):

@@ -195,7 +195,9 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             metric="loss",
             mode="min",
             random_state_seed=5,
-            n_initial_points=1)
+            n_initial_points=1,
+            max_concurrent=1000  # Here to avoid breaking back-compat.
+        )
         return search_alg, cost
 
 
@@ -228,9 +230,11 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer, ["width", "height"],
+            optimizer,
+            ["width", "height"],
             metric="loss",
             mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
             points_to_evaluate=previously_run_params,
             evaluated_rewards=known_rewards)
         return search_alg, cost
@@ -243,11 +247,15 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
         def cost(space, reporter):
-            reporter(
-                mean_loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = NevergradSearch(
-            optimizer, parameter_names, metric="mean_loss", mode="min")
+            optimizer,
+            parameter_names,
+            metric="loss",
+            mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
+        )
         return search_alg, cost
 
 
@@ -273,14 +281,13 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         ]
 
         def cost(space, reporter):
-            reporter(
-                mean_loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
             max_concurrent=1,
-            metric="mean_loss",
+            metric="loss",
             mode="min")
         return search_alg, cost
 
@@ -298,9 +305,8 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "width": (ValueType.DISCRETE, [0, 20], False)
         }
 
-        def cost(dim_dict, reporter):
-            reporter(
-                loss=(dim_dict["height"] - 14)**2 - abs(dim_dict["width"] - 3))
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
 
         search_alg = ZOOptSearch(
             algo="Asracos",  # only support ASRacos currently

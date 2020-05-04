@@ -26,7 +26,7 @@ def test_master_failure(serve_instance):
     def function():
         return "hello1"
 
-    serve.create_backend(function, "master_failure:v1")
+    serve.create_backend("master_failure:v1", function)
     serve.set_traffic("master_failure", {"master_failure:v1": 1.0})
 
     assert request_with_retries("/master_failure", timeout=1).text == "hello1"
@@ -46,7 +46,7 @@ def test_master_failure(serve_instance):
 
     ray.kill(serve.api._get_master_actor())
 
-    serve.create_backend(function, "master_failure:v2")
+    serve.create_backend("master_failure:v2", function)
     serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
 
     for _ in range(10):
@@ -59,7 +59,7 @@ def test_master_failure(serve_instance):
     ray.kill(serve.api._get_master_actor())
     serve.create_endpoint("master_failure_2", "/master_failure_2")
     ray.kill(serve.api._get_master_actor())
-    serve.create_backend(function, "master_failure_2")
+    serve.create_backend("master_failure_2", function)
     ray.kill(serve.api._get_master_actor())
     serve.set_traffic("master_failure_2", {"master_failure_2": 1.0})
 
@@ -83,7 +83,7 @@ def test_http_proxy_failure(serve_instance):
     def function():
         return "hello1"
 
-    serve.create_backend(function, "proxy_failure:v1")
+    serve.create_backend("proxy_failure:v1", function)
     serve.set_traffic("proxy_failure", {"proxy_failure:v1": 1.0})
 
     assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
@@ -97,7 +97,7 @@ def test_http_proxy_failure(serve_instance):
     def function():
         return "hello2"
 
-    serve.create_backend(function, "proxy_failure:v2")
+    serve.create_backend("proxy_failure:v2", function)
     serve.set_traffic("proxy_failure", {"proxy_failure:v2": 1.0})
 
     for _ in range(10):
@@ -117,7 +117,7 @@ def test_router_failure(serve_instance):
     def function():
         return "hello1"
 
-    serve.create_backend(function, "router_failure:v1")
+    serve.create_backend("router_failure:v1", function)
     serve.set_traffic("router_failure", {"router_failure:v1": 1.0})
 
     assert request_with_retries("/router_failure", timeout=5).text == "hello1"
@@ -135,7 +135,7 @@ def test_router_failure(serve_instance):
     def function():
         return "hello2"
 
-    serve.create_backend(function, "router_failure:v2")
+    serve.create_backend("router_failure:v2", function)
     serve.set_traffic("router_failure", {"router_failure:v2": 1.0})
 
     for _ in range(10):
@@ -160,7 +160,7 @@ def test_worker_restart(serve_instance):
         def __call__(self):
             return os.getpid()
 
-    serve.create_backend(Worker1, "worker_failure:v1")
+    serve.create_backend("worker_failure:v1", Worker1)
     serve.set_traffic("worker_failure", {"worker_failure:v1": 1.0})
 
     # Get the PID of the worker.
@@ -214,10 +214,8 @@ def test_worker_replica_failure(serve_instance):
             pass
 
     temp_path = tempfile.gettempdir() + "/" + serve.utils.get_random_letters()
-    serve.create_backend(Worker, "replica_failure", temp_path)
-    backend_config = serve.get_backend_config("replica_failure")
-    backend_config.num_replicas = 2
-    serve.set_backend_config("replica_failure", backend_config)
+    serve.create_backend("replica_failure", Worker, temp_path)
+    serve.update_backend_config("replica_failure", {"num_replicas": 2})
     serve.set_traffic("replica_failure", {"replica_failure": 1.0})
 
     # Wait until both replicas have been started.

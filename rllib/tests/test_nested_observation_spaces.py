@@ -12,7 +12,7 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.model import Model
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.rollout import rollout
@@ -119,13 +119,13 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         return obs, rew, dones, infos
 
 
-class InvalidModel(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+class InvalidModel(TorchModelV2):
+    def forward(self, input_dict, state, seq_lens):
         return "not", "valid"
 
 
-class InvalidModel2(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+class InvalidModel2(TFModelV2):
+    def forward(self, input_dict, state, seq_lens):
         return tf.constant(0), tf.constant(0)
 
 
@@ -158,10 +158,10 @@ class TorchSpyModel(TorchModelV2, nn.Module):
         return self.fc.value_function()
 
 
-class DictSpyModel(Model):
+class DictSpyModel(TFModelV2):
     capture_index = 0
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def forward(self, input_dict, state, seq_lens):
         def spy(pos, front_cam, task):
             # TF runs this function in an isolated context, so we have to use
             # redis to communicate back to our suite
@@ -183,14 +183,14 @@ class DictSpyModel(Model):
 
         with tf.control_dependencies([spy_fn]):
             output = tf.layers.dense(input_dict["obs"]["sensors"]["position"],
-                                     num_outputs)
-        return output, output
+                                     self.num_outputs)
+        return output, []
 
 
-class TupleSpyModel(Model):
+class TupleSpyModel(TFModelV2):
     capture_index = 0
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def forward(self, input_dict, state, seq_lens):
         def spy(pos, cam, task):
             # TF runs this function in an isolated context, so we have to use
             # redis to communicate back to our suite
@@ -211,8 +211,8 @@ class TupleSpyModel(Model):
             stateful=True)
 
         with tf.control_dependencies([spy_fn]):
-            output = tf.layers.dense(input_dict["obs"][0], num_outputs)
-        return output, output
+            output = tf.layers.dense(input_dict["obs"][0], self.num_outputs)
+        return output, []
 
 
 class NestedSpacesTest(unittest.TestCase):
@@ -226,17 +226,20 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_invalid_model(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
-        self.assertRaises(ValueError, lambda: PGTrainer(
-            env="CartPole-v0", config={
-                "model": {
-                    "custom_model": "invalid",
-                },
-            }))
+        self.assertRaisesRegexp(
+            ValueError,
+            "Subclasses of TorchModelV2 must also inherit from",
+            lambda: PGTrainer(
+                env="CartPole-v0", config={
+                    "model": {
+                        "custom_model": "invalid",
+                    },
+                }))
 
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
-            ValueError, "Expected output.*",
+            ValueError, "Expected output shape of",
             lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {

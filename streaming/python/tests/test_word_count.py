@@ -32,7 +32,9 @@ def test_simple_word_count():
 
     def sink_func(x):
         with open(sink_file, "a") as f:
-            f.write("{}:{},".format(x[0], x[1]))
+            line = "{}:{},".format(x[0], x[1])
+            print("sink_func", line)
+            f.write(line)
 
     ctx.from_values("a", "b", "c") \
         .set_parallelism(1) \

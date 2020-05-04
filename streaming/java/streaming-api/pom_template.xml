@@ -23,6 +23,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.ray</groupId>
+            <artifactId>ray-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.ray</groupId>
             <artifactId>streaming-state</artifactId>
             <version>${project.version}</version>

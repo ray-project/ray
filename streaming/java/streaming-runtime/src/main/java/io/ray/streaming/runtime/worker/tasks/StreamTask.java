@@ -26,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class StreamTask implements Runnable {
-
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
@@ -53,8 +52,8 @@ public abstract class StreamTask implements Runnable {
     String queueSize = worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
-    String channelType = worker.getConfig()
-        .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+    String channelType = Ray.getRuntimeContext().isSingleProcess() ?
+        Config.MEMORY_CHANNEL : Config.NATIVE_CHANNEL;
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
@@ -82,7 +81,7 @@ public abstract class StreamTask implements Runnable {
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
         Partition partition = edge.getPartition();
-        collectors.add(new OutputCollector(channelIDs, writer, partition));
+        collectors.add(new OutputCollector(writer, channelIDs, outputActors.values(), partition));
       }
     }
 
@@ -106,8 +105,8 @@ public abstract class StreamTask implements Runnable {
       reader = new DataReader(channelIDs, inputActors, queueConf);
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(worker.getExecutionTask(),
-        worker.getConfig(), executionNode.getParallelism());
+    RuntimeContext runtimeContext = new RayRuntimeContext(
+        worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
 
     processor.open(collectors, runtimeContext);
 

@@ -7,8 +7,8 @@ import io.ray.streaming.operator.StreamOperator;
  *
  * @param <T> Type of the input data of this sink.
  */
-public class StreamSink<T> extends Stream<T> {
-  public StreamSink(Stream<T> inputStream, StreamOperator streamOperator) {
+public abstract class StreamSink<T> extends Stream<StreamSink<T>, T> {
+  public StreamSink(Stream inputStream, StreamOperator streamOperator) {
     super(inputStream, streamOperator);
   }
 }

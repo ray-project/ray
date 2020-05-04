@@ -202,12 +202,12 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   gcs_actor_manager_.OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
-  // Killing another worker does not affect this actor.
+  // Killing another node does not affect this actor.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(_));
   gcs_actor_manager_.OnNodeDead(ClientID::FromRandom());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
-  // Remove worker and then check that the actor is dead.
+  // Remove node and then check that the actor is dead.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   gcs_actor_manager_.OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);

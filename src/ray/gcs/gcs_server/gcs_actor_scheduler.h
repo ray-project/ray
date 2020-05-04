@@ -226,7 +226,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       const rpc::Address &worker_address);
 
  protected:
-  /// The io loop which is used to delay execution of tasks(e.g.
+  /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
   boost::asio::io_context &io_context_;
   /// The actor info accessor.

@@ -188,6 +188,7 @@ class GcsActorManager {
   /// deregisters the actor.
   void DestroyActor(const ActorID &actor_id);
 
+ private:
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.

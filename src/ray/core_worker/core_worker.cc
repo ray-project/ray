@@ -419,7 +419,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
-  if (RayConfig::instance().gcs_service_enabled()) {
+  if (RayConfig::instance().gcs_service_enabled() &&
+      RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
                                    const gcs::StatusCallback &callback) {
       return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
@@ -1373,6 +1374,11 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
   return Status::OK();
 }
 
+const ResourceMappingType CoreWorker::GetResourceIDs() const {
+  absl::MutexLock lock(&mutex_);
+  return *resource_ids_;
+}
+
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
   return std::unique_ptr<worker::ProfileEvent>(
@@ -1434,10 +1440,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-  if (resource_ids != nullptr) {
-    resource_ids_ = resource_ids;
-  }
-
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId());
@@ -1445,6 +1447,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;
+    if (resource_ids) {
+      resource_ids_ = resource_ids;
+    }
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};

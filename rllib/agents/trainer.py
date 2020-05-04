@@ -417,7 +417,7 @@ class Trainer(Trainable):
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 "True" if config.get("eager_tracing") else "False"))
 
-        if tf and not tf.executing_eagerly():
+        if tf and not tf.executing_eagerly() and not config.get("use_pytorch"):
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
                         "TensorFlow eager execution")
 

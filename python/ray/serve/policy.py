@@ -17,18 +17,18 @@ class RandomPolicyQueue(Router):
     weights assigned to backends.
     """
 
-    async def _flush_service_queues(self):
+    async def _flush_endpoint_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.service_queues.items():
+        for endpoint, queue in self.endpoint_queues.items():
             # while there are incoming requests and there are backends
-            while queue.qsize() and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                backend_weights = list(self.traffic[service].values())
+            while queue.qsize() and len(self.traffic[endpoint]):
+                backend_names = list(self.traffic[endpoint].keys())
+                backend_weights = list(self.traffic[endpoint].values())
                 # randomly choose a backend for every query
                 chosen_backend = np.random.choice(
                     backend_names, replace=False, p=backend_weights).squeeze()
-                logger.debug("Matching service {} to backend {}".format(
-                    service, chosen_backend))
+                logger.debug("Matching endpoint {} to backend {}".format(
+                    endpoint, chosen_backend))
 
                 request = await queue.get()
                 self.buffer_queues[chosen_backend].add(request)
@@ -44,34 +44,34 @@ class RoundRobinPolicyQueue(Router):
     A wrapper class for RoundRobin policy. This backend selection policy
     is `Stateful` meaning the current decisions of selecting backend are
     dependent on previous decisions. RoundRobinPolicy assigns queries in
-    an interleaved manner to every backend serving for a service. Consider
-    backend A,B linked to a service. Now queries will be assigned to backends
+    an interleaved manner to every backend serving for an endpoint. Consider
+    backend A,B linked to a endpoint. Now queries will be assigned to backends
     in the following order - [ A, B, A, B ... ] . This policy doesn't use the
     weights assigned to backends.
     """
 
-    # Saves the information about last assigned
-    # backend for every service
+    # Saves the information about last assigned backend for every endpoint.
     round_robin_iterator_map = {}
 
-    async def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
+    async def set_traffic(self, endpoint, traffic_dict):
+        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
-        self.traffic[service] = traffic_dict
-        backend_names = list(self.traffic[service].keys())
-        self.round_robin_iterator_map[service] = itertools.cycle(backend_names)
+        self.traffic[endpoint] = traffic_dict
+        backend_names = list(self.traffic[endpoint].keys())
+        self.round_robin_iterator_map[endpoint] = itertools.cycle(
+            backend_names)
         await self.flush()
 
-    async def _flush_service_queues(self):
+    async def _flush_endpoint_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.service_queues.items():
+        for endpoint, queue in self.endpoint_queues.items():
             # if there are incoming requests and there are backends
-            if queue.qsize() and len(self.traffic[service]):
+            if queue.qsize() and len(self.traffic[endpoint]):
                 while queue.qsize():
                     # choose the next backend available from persistent
                     # information
                     chosen_backend = next(
-                        self.round_robin_iterator_map[service])
+                        self.round_robin_iterator_map[endpoint])
                     request = await queue.get()
                     self.buffer_queues[chosen_backend].add(request)
 
@@ -91,14 +91,14 @@ class PowerOfTwoPolicyQueue(Router):
     the weights assigned to backends.
     """
 
-    async def _flush_service_queues(self):
+    async def _flush_endpoint_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.service_queues.items():
+        for endpoint, queue in self.endpoint_queues.items():
             # while there are incoming requests and there are backends
-            while queue.qsize() and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                backend_weights = list(self.traffic[service].values())
-                if len(self.traffic[service]) >= 2:
+            while queue.qsize() and len(self.traffic[endpoint]):
+                backend_names = list(self.traffic[endpoint].keys())
+                backend_weights = list(self.traffic[endpoint].values())
+                if len(self.traffic[endpoint]) >= 2:
                     # randomly pick 2 backends
                     backend1, backend2 = np.random.choice(
                         backend_names, 2, replace=False, p=backend_weights)
@@ -134,38 +134,38 @@ class FixedPackingPolicyQueue(Router):
     on previous decisions. FixedPackingPolicy is k RoundRobin policy where
     first packing_num queries are handled by 'backend-1' and next k queries are
     handled by 'backend-2' and so on ... where 'backend-1' and 'backend-2' are
-    served by the same service. This policy doesn't use the weights assigned to
-    backends.
+    served by the same endpoint. This policy doesn't use the weights assigned
+    to backends.
 
     """
 
     async def __init__(self, packing_num=3):
         # Saves the information about last assigned
-        # backend for every service
+        # backend for every endpoint
         self.fixed_packing_iterator_map = {}
         self.packing_num = packing_num
         await super().__init__()
 
-    async def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
+    async def set_traffic(self, endpoint, traffic_dict):
+        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
-        self.traffic[service] = traffic_dict
-        backend_names = list(self.traffic[service].keys())
-        self.fixed_packing_iterator_map[service] = itertools.cycle(
+        self.traffic[endpoint] = traffic_dict
+        backend_names = list(self.traffic[endpoint].keys())
+        self.fixed_packing_iterator_map[endpoint] = itertools.cycle(
             itertools.chain.from_iterable(
                 itertools.repeat(x, self.packing_num) for x in backend_names))
         await self.flush()
 
-    async def _flush_service_queues(self):
+    async def _flush_endpoint_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.service_queues.items():
+        for endpoint, queue in self.endpoint_queues.items():
             # if there are incoming requests and there are backends
-            if queue.qsize() and len(self.traffic[service]):
+            if queue.qsize() and len(self.traffic[endpoint]):
                 while queue.qsize():
                     # choose the next backend available from persistent
                     # information
                     chosen_backend = next(
-                        self.fixed_packing_iterator_map[service])
+                        self.fixed_packing_iterator_map[endpoint])
                     request = await queue.get()
                     self.buffer_queues[chosen_backend].add(request)
 

@@ -83,7 +83,7 @@ def pformat_color_json(d):
     return colorful_json
 
 
-def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
+def block_until_http_ready(http_endpoint, num_retries=6, backoff_time_s=1):
     http_is_ready = False
     retries = num_retries
 
