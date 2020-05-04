@@ -69,7 +69,7 @@ install_miniconda() {
 
     case "${OSTYPE}" in
       msys*)
-        # We set /AddToPath=0 because (1)  (2) it's consistent with -b in the UNIX installers.
+        # We set /AddToPath=0 because (1) it doesn't take care of the current shell, and (2) it's consistent with -b in the UNIX installers.
         MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
