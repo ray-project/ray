@@ -27,7 +27,7 @@ install_toolchains() {
   if [ -z "${url}" ]; then
     url="${urlbase}/${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-${HOSTTYPE}-${osversion}.tar.xz"
   fi
-  curl -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
+  curl -f -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
     local target="./${url##*/}"
     install /dev/stdin "${target}"
     7z x -bsp0 -bso0 "${target}" -o"${targetdir}"

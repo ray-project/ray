@@ -76,7 +76,7 @@ install_nvm() {
       (
         cd "${NVM_HOME}"
         local target="./nvm-${version}.zip"
-        curl -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
+        curl -f -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
         printf "%s\r\n" "root: $(cygpath -w -- "${NVM_HOME}")" "path: ${NVM_SYMLINK}" > settings.txt
