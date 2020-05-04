@@ -37,7 +37,7 @@ Then, you can try out training in the following equivalent ways:
   from ray.rllib.agents.ppo import PPOTrainer
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
                                                        # "eager": True for eager execution,
-                                                       # "torch": True for PyTorch
+                                                       # "use_pytorch": True for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
