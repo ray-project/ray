@@ -14,7 +14,6 @@
 
 #include "gcs_object_manager.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -46,7 +45,7 @@ void GcsObjectManager::HandleAddObjectLocation(
                  << ", object id = " << object_id << ", node id = " << node_id;
   AddObjectLocation(object_id, node_id);
   RAY_CHECK_OK(gcs_pub_sub_->Publish(
-      OBJECT_CHANNEL, object_id.Binary(),
+      OBJECT_CHANNEL, object_id.Hex(),
       gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
   RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id
@@ -63,7 +62,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
                  << ", object id = " << object_id << ", node id = " << node_id;
   RemoveObjectLocation(object_id, node_id);
   RAY_CHECK_OK(gcs_pub_sub_->Publish(
-      OBJECT_CHANNEL, object_id.Binary(),
+      OBJECT_CHANNEL, object_id.Hex(),
       gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
   RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id
@@ -72,7 +71,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
 }
 
 void GcsObjectManager::AddObjectsLocation(
-    const ClientID &node_id, const std::unordered_set<ObjectID> &object_ids) {
+    const ClientID &node_id, const absl::flat_hash_set<ObjectID> &object_ids) {
   // TODO(micafan) Optimize the lock when necessary.
   // Maybe use read/write lock. Or reduce the granularity of the lock.
   absl::MutexLock lock(&mutex_);
@@ -99,7 +98,7 @@ void GcsObjectManager::AddObjectLocation(const ObjectID &object_id,
   object_locations->emplace(node_id);
 }
 
-std::unordered_set<ClientID> GcsObjectManager::GetObjectLocations(
+absl::flat_hash_set<ClientID> GcsObjectManager::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
 
@@ -107,7 +106,7 @@ std::unordered_set<ClientID> GcsObjectManager::GetObjectLocations(
   if (object_locations) {
     return *object_locations;
   }
-  return std::unordered_set<ClientID>{};
+  return absl::flat_hash_set<ClientID>{};
 }
 
 void GcsObjectManager::RemoveNode(const ClientID &node_id) {

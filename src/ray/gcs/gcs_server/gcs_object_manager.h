@@ -15,18 +15,9 @@
 #ifndef RAY_GCS_OBJECT_MANAGER_H
 #define RAY_GCS_OBJECT_MANAGER_H
 
-#include <memory>
-#include <unordered_map>
-#include <unordered_set>
-#include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
-#include "ray/common/id.h"
-#include "ray/util/logging.h"
-
 #include "gcs_node_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
 
@@ -64,7 +55,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
   void AddObjectsLocation(const ClientID &node_id,
-                          const std::unordered_set<ObjectID> &object_ids)
+                          const absl::flat_hash_set<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add a location of an object.
@@ -78,7 +69,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Remove a node.
@@ -93,8 +84,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  typedef std::unordered_set<ClientID> LocationSet;
-  typedef std::unordered_set<ObjectID> ObjectSet;
+  typedef absl::flat_hash_set<ClientID> LocationSet;
+  typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
@@ -119,10 +110,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   mutable absl::Mutex mutex_;
 
   /// Mapping from object id to object locations.
-  std::unordered_map<ObjectID, LocationSet> object_to_locations_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, LocationSet> object_to_locations_ GUARDED_BY(mutex_);
 
   /// Mapping from node id to objects that held by the node.
-  std::unordered_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
