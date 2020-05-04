@@ -38,12 +38,22 @@ class Schedule(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def _tf_value_op(self, t):
+        """
+        Returns the value tf op based on a time step input.
+
+        Args:
+            t (tf.Tensor): The time step tf.Tensor.
+
+        Returns:
+            tf.Tensor: The calculated value depending on the schedule and `t`.
+        """
+        # By default (most of the time), tf should work as python code.
+        return self._value(t)
+
     def value(self, t):
-        if self.framework == "tf":
-            return tf.cast(
-                tf.py_function(self._value, [t], tf.float64),
-                tf.float32,
-                name="schedule_value")
+        if self.framework == "tf" and not tf.executing_eagerly():
+            return self._tf_value_op(t)
         return self._value(t)
 
     def __call__(self, t):
