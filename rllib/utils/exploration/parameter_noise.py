@@ -260,18 +260,16 @@ class ParameterNoise(Exploration):
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
                            (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_info()["cur_epsilon"]
-            if tf_sess is not None:
-                current_epsilon = tf_sess.run(current_epsilon)
+            current_epsilon = self.sub_exploration.get_info(
+                sess=tf_sess)["cur_epsilon"]
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
         elif policy.dist_class in [Deterministic, TorchDeterministic]:
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_info()["cur_scale"]
-            if tf_sess is not None:
-                current_scale = tf_sess.run(current_scale)
+            current_scale = self.sub_exploration.get_info(
+                sess=tf_sess)["cur_scale"]
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
                 current_scale
 
@@ -408,5 +406,5 @@ class ParameterNoise(Exploration):
             return tf.no_op()
 
     @override(Exploration)
-    def get_info(self):
-        return {"cur_stddev": self.stddev}
+    def get_info(self, sess=None):
+        return {"cur_stddev": self.stddev_val}
