@@ -52,6 +52,13 @@ reload_env() {
     export TRAVIS_PULL_REQUEST
   fi
 
+  if [ -z "${TRAVIS_BRANCH-}" ] && [ -n "${GITHUB_WORKFLOW-}" ]; then
+    TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"
+    TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"
+    TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"  # Need a hash on GitHub Actions when possible (even though on Travis it's always a name)
+    export TRAVIS_BRANCH
+  fi
+
   # NOTE: Modifying PATH invalidates Bazel's cache! Do not add to PATH unnecessarily.
   PATH="${HOME}/miniconda/bin":"${PATH}"
   if [ "${OSTYPE}" = msys ]; then
@@ -76,9 +83,9 @@ need_wheels() {
 upload_wheels() {
   local branch="" commit
   commit="$(git rev-parse --verify HEAD)"
-  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
   if [ -z "${branch}" ]; then branch="${GITHUB_BASE_REF-}"; fi
   if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
+  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
   if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
   local local_dir="python/dist"
   local remote_dir="${branch}/${commit}"
@@ -254,12 +261,7 @@ _lint() {
     linux*) platform=linux;;
   esac
 
-  if [ -n "${TRAVIS_BRANCH-}" ]; then
-    "${ROOT_DIR}"/check-git-clang-format-output.sh
-  else
-    # TODO(mehrdadn): Implement this on GitHub Actions
-    echo "WARNING: Not running clang-format due to TRAVIS_BRANCH not being defined."
-  fi
+  "${ROOT_DIR}"/check-git-clang-format-output.sh
 
   # Run Python linting
   lint_python
