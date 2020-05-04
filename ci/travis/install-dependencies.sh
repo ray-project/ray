@@ -54,16 +54,19 @@ install_miniconda() {
       darwin*) miniconda_dir="/usr/local/opt/miniconda";;
       msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Need a path without spaces; prefer the default path
     esac
+
     local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
     case "${OSTYPE}" in
       linux*) miniconda_platform=Linux;;
       darwin*) miniconda_platform=MacOSX;;
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
     esac
+
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
     curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
     chmod +x "${miniconda_target}"
+
     case "${OSTYPE}" in
       msys*)
         # We set /AddToPath=0 because (1)  (2) it's consistent with -b in the UNIX installers.
