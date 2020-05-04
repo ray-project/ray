@@ -217,6 +217,10 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
 
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) override;
+
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
@@ -230,12 +234,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
-      TaskLeaseSubscriptionExecutor;
-  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
