@@ -175,7 +175,7 @@ def test_for_each_concur(ray_start_regular_shared):
 
     it = from_items(
         [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
-    it = it.for_each(task, max_concurrent=2, resources={"num_cpus": 0.1})
+    it = it.for_each(task, max_concurrency=2, resources={"num_cpus": 0.1})
 
     for i in range(4):
         ray.get(main_wait.acquire.remote())
