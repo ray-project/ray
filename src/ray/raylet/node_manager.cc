@@ -514,7 +514,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from client id " << node_id;
-  if (0 == cluster_resource_map_.count(node_id)) {
+  if (1 == cluster_resource_map_.count(node_id)) {
     RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
                    << node_id;
     return;
