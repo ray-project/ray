@@ -119,12 +119,12 @@ TEST_F(GcsActorManagerTest, TestBasicNodeFailure) {
   gcs_actor_manager_.OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
-  // Killing another worker does not affect this actor.
+  // Killing another node does not affect this actor.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(_));
   gcs_actor_manager_.ReconstructActorsOnNode(ClientID::FromRandom());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
-  // Remove worker and then check that the actor is dead.
+  // Remove node and then check that the actor is dead.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   gcs_actor_manager_.ReconstructActorsOnNode(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
@@ -158,7 +158,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   gcs_actor_manager_.OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
-  // Remove worker and then check that the actor is being restarted.
+  // Remove node and then check that the actor is being restarted.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   gcs_actor_manager_.ReconstructActorsOnNode(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RECONSTRUCTING);
@@ -176,12 +176,12 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetNodeID(), node_id2);
 
-  // Killing another worker does not affect this actor.
+  // Killing another node does not affect this actor.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(_));
   gcs_actor_manager_.ReconstructActorsOnNode(ClientID::FromRandom());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
-  // Remove worker and then check that the actor is dead.
+  // Remove node and then check that the actor is dead.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
   gcs_actor_manager_.ReconstructActorsOnNode(node_id2);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
