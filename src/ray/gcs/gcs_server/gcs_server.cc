@@ -161,7 +161,7 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, redis_gcs_client_->Actors(), [this](const rpc::Address &address) {
+      scheduler, redis_gcs_client_->Actors(), gcs_pub_sub_, [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_node_manager_->AddNodeAddedListener(
@@ -194,8 +194,8 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultActorInfoHandler>(
-      new rpc::DefaultActorInfoHandler(*redis_gcs_client_, *gcs_actor_manager_));
+  return std::unique_ptr<rpc::DefaultActorInfoHandler>(new rpc::DefaultActorInfoHandler(
+      *redis_gcs_client_, *gcs_actor_manager_, gcs_pub_sub_));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {

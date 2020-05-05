@@ -143,9 +143,8 @@ Status RedisLogBasedActorInfoAccessor::AsyncSubscribe(
                                                       done);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                        const StatusCallback &done) {
-  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncAddCheckpoint(
@@ -289,9 +288,8 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
   return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
-Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)

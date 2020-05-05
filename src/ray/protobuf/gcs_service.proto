@@ -73,6 +73,15 @@ message GetNamedActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
+message GetAllActorInfoRequest {
+}
+
+message GetAllActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.
+  repeated ActorTableData actor_table_data = 2;
+}
+
 message RegisterActorInfoRequest {
   // Data of actor.
   ActorTableData actor_table_data = 1;
@@ -126,8 +135,13 @@ service ActorInfoGcsService {
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+<<<<<<< HEAD
   // Get actor data from GCS Service by name.
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
+=======
+  // Get information of all actor from GCS Service.
+  rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
+>>>>>>> add part code
   // Register an actor to GCS Service.
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.

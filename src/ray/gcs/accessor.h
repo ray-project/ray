@@ -110,10 +110,8 @@ class ActorInfoAccessor {
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id,
-                                  const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
 
   /// Add actor checkpoint data to GCS asynchronously.
   ///

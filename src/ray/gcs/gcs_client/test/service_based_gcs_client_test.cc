@@ -97,8 +97,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
 
   bool UnsubscribeActor(const ActorID &actor_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(
-        actor_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 

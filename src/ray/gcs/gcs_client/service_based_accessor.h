@@ -83,7 +83,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
                         const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
   Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
                             const StatusCallback &callback) override;
@@ -96,15 +96,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
- protected:
-  ClientID subscribe_id_;
-
  private:
-  ServiceBasedGcsClient *client_impl_;
+  Status AsyncGetAllActorInfo(const MultiItemCallback<rpc::ActorTableData> &callback);
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
-      ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
+  ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;
 };

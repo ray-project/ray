@@ -217,8 +217,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnsubscribe(const ActorID &actor_id,
-                            const gcs::StatusCallback &done) override {
+    Status AsyncUnsubscribe(const ActorID &actor_id) override {
       return Status::NotImplemented("");
     }
 
