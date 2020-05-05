@@ -133,5 +133,10 @@ class AsyncMonitorState:
             names = list(self.names.values())
         return names
 
-    def kill_monitor_loop(self):
+    def kill(self):
+        """Kill the monitor's loop
+
+        This should be called in order to clean an event loop
+        that this monitor is running.
+        """
         self.monitor_loop_future.cancel()

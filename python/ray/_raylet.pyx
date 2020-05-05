@@ -1205,7 +1205,7 @@ cdef class CoreWorker:
             # We should stop the monitor first because otherwise,
             # loop.stop() will continue forever as monitor
             # main loop will not be terminated.
-            self.async_event_loop.monitor_state.kill_monitor_loop()
+            self.async_event_loop.monitor_state.kill()
             self.async_event_loop.stop()
         if self.async_thread is not None:
             self.async_thread.join()
