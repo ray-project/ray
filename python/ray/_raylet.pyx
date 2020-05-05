@@ -131,6 +131,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
         raise RayTimeoutError(message)
+    elif status.IsNotFound():
+        raise KeyError(message)
     else:
         raise RayletError(message)
 
@@ -1074,8 +1076,9 @@ cdef class CoreWorker:
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .GetNamedActorHandle(name, &c_actor_handle))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .GetNamedActorHandle(name, &c_actor_handle))
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):

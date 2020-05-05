@@ -40,19 +40,22 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   const std::string &name = request.name();
   RAY_CHECK(actor_id.IsNil() || name.empty())
       << "Only one of actor_id or name should be provided";
-  RAY_LOG(DEBUG) << "Getting actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id << ", name = " << name;
+  RAY_LOG(ERROR) << "Getting actor info";
+  //<< ", job id = " << actor_id.IsNil() ? "NIL" : actor_id.JobId().Hex()
+  //<< ", actor id = " << actor_id.IsNil() ? "NIL" : actor_id.Hex()
+  //<< ", name = " << name;
 
-  auto on_done = [actor_id, name, reply, send_reply_callback](
+  auto on_done = [reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_actor_table_data()->CopyFrom(*result);
       }
     } else {
-      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
-                     << ", name = " << name;
+      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString();
+      //<< ", job id = " << actor_id.IsNil() ? "NIL" : actor_id.JobId().Hex()
+      //<< ", actor id = " << actor_id.IsNil() ? "NIL" : actor_id.Hex()
+      //<< ", name = " << name;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

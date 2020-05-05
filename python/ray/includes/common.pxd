@@ -88,6 +88,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus UnexpectedSystemExit()
 
+        @staticmethod
+        CRayStatus NotFound()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -101,6 +104,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInterrupted()
         c_bool IsSystemExit()
+        c_bool IsNotFound()
 
         c_string ToString()
         c_string CodeAsString()

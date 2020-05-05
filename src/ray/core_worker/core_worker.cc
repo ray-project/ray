@@ -1360,10 +1360,11 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(!name.empty());
 
-  std::shared_ptr<bool> ready = std::make_shared<bool>(false);
   ActorID actor_id;
-  std::shared_ptr<std::mutex> m;
-  std::shared_ptr<std::condition_variable> cv;
+  std::shared_ptr<bool> ready = std::make_shared<bool>(false);
+  std::shared_ptr<std::mutex> m = std::make_shared<std::mutex>();
+  std::shared_ptr<std::condition_variable> cv =
+      std::make_shared<std::condition_variable>();
   std::unique_lock<std::mutex> lk(*m);
 
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(

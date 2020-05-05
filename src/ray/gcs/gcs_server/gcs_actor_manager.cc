@@ -112,7 +112,10 @@ void GcsActorManager::RegisterActor(
   auto actor = std::make_shared<GcsActor>(request);
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
   if (actor->IsDetached()) {
+    RAY_LOG(ERROR) << "name: " << actor->GetName();
     RAY_CHECK(named_actors_.emplace(actor->GetName(), actor->GetActorID()).second);
+  } else {
+    RAY_LOG(ERROR) << "not detached";
   }
   gcs_actor_scheduler_->Schedule(actor);
 }

@@ -472,11 +472,20 @@ class ActorClass:
                              "Please use Actor._remote(name='some_name') "
                              "to associate the name.")
 
+        if name and not detached:
+            raise ValueError("Only detached actors can be named. "
+                             "Please use Actor._remote(detached=True, "
+                             "name='some_name').")
+
         # Check whether the name is already taken.
+        # TODO(edoakes): this check has a race condition because two drivers
+        # could pass the check and then create the same named actor. We should
+        # instead check this when we create the actor, but that's currently an
+        # async call.
         if name is not None:
             try:
                 ray.util.get_actor(name)
-            except ValueError:  # name is not taken, expected.
+            except KeyError:  # name is not taken, expected.
                 pass
             else:
                 raise ValueError(
