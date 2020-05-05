@@ -15,7 +15,12 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples.models.autoregressive_action_model import \
+    AutoregressiveActionModel, TorchAutoregressiveActionModel
+from ray.rllib.examples.models.autoregressive_action_dist import \
+    BinaryAutoregressiveDistribution, TorchBinaryAutoregressiveDistribution
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
@@ -31,10 +36,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model(
-        "autoregressive_model", AutoregressiveActionsModel)
+        "autoregressive_model", TorchAutoregressiveActionsModel if args.torch
+        else AutoregressiveActionsModel)
     ModelCatalog.register_custom_action_dist(
-        "binary_autoreg_dist", BinaryAutoregressiveDistribution if
-        args.torch else TorchBinaryAutoregressiveDistribution)
+        "binary_autoreg_dist", TorchBinaryAutoregressiveDistribution if
+        args.torch else BinaryAutoregressiveDistribution)
 
     config = {
         "env": CorrelatedActionsEnv,
@@ -44,6 +50,7 @@ if __name__ == "__main__":
             "custom_model": "autoregressive_model",
             "custom_action_dist": "binary_autoreg_dist",
         },
+        "use_pytorch": args.torch,
     }
 
     stop = {

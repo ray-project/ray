@@ -37,6 +37,7 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=0.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
@@ -47,8 +48,9 @@ if __name__ == "__main__":
     ray.init()
 
     stop = {
-        "episode_reward_mean": args.stop_reward,
+        "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
     if args.flat:

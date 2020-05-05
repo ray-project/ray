@@ -1484,10 +1484,19 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_custom_policy",
+    name = "examples/multi_agent_custom_policy_tf",
     tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test"]
+)
+
+py_test(
+    name = "examples/multi_agent_custom_policy_torch",
+    tags = ["examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test", "--torch"]
 )
 
 py_test(
@@ -1568,11 +1577,48 @@ py_test(
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
+    name = "examples/twostep_game_maddpg",
+    main = "examples/twostep_game.py",
     tags = ["examples", "examples_T"],
     size = "large",
     srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=contrib/MADDPG"]
+    args = ["--stop-timesteps=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "examples/twostep_game_pg_tf",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--as-test", "--stop-reward=7", "--run=PG"]
+)
+
+py_test(
+    name = "examples/twostep_game_pg_torch",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7", "--run=PG"]
+)
+
+py_test(
+    name = "examples/twostep_game_qmix",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop-timesteps=2000", "--run=QMIX"]
+)
+
+py_test(
+    name = "examples/twostep_game_apex_qmix",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop-timesteps=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )
 
 py_test(
@@ -1591,28 +1637,4 @@ py_test(
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
     args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
-)
-
-py_test(
-    name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=PG"]
-)
-
-py_test(
-    name = "examples/twostep_game_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/twostep_game_apex_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )

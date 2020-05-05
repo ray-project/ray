@@ -21,7 +21,11 @@ from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=20)
+parser.add_argument("--stop-reward", type=float, default=50)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -59,6 +63,7 @@ if __name__ == "__main__":
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",
+            "use_pytorch": args.torch,
         })
 
     dqn_trainer = DQNTrainer(
@@ -71,6 +76,7 @@ if __name__ == "__main__":
             },
             "gamma": 0.95,
             "n_step": 3,
+            "use_pytorch": args.torch,
         })
 
     # You should see both the printed X and Y approach 200 as this trains:
@@ -78,11 +84,12 @@ if __name__ == "__main__":
     #   policy_reward_mean:
     #     dqn_policy: X
     #     ppo_policy: Y
-    for i in range(args.num_iters):
+    for i in range(args.stop_iters):
         print("== Iteration", i, "==")
 
         # improve the DQN policy
         print("-- DQN --")
+        TODO: when reaching stop-reward -> stop
         print(pretty_print(dqn_trainer.train()))
 
         # improve the PPO policy

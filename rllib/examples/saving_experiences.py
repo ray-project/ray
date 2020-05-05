@@ -11,6 +11,7 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 from ray.rllib.offline.json_writer import JsonWriter
 
+
 if __name__ == "__main__":
     batch_builder = SampleBatchBuilder()  # or MultiAgentSampleBatchBuilder
     writer = JsonWriter(
