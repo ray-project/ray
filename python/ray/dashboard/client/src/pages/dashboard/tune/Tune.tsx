@@ -10,7 +10,6 @@ import {
   WithStyles,
   withStyles,
 } from "@material-ui/core";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { getTuneInfo, setTuneExperiment } from "../../../api";
@@ -139,11 +138,6 @@ class Tune extends React.Component<
     const { loading } = this.state;
     return (
       <div>
-        <Typography className={classes.warning} color="textSecondary">
-          <WarningRoundedIcon className={classes.warningIcon} /> Note: This tab
-          is experimental.
-        </Typography>
-
         {prompt && (
           <Typography className={classes.heading} color="textPrimary">
             You can use this tab to monitor Tune jobs, their statuses,

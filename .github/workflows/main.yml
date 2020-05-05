@@ -39,6 +39,13 @@ jobs:
       with:
         # we need full history to diff against the original for linting etc.
         fetch-depth: 0
+    - name: Configure AWS Credentials
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.GHA_AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2
     - name: Run CI script
       shell: bash -e -o pipefail -l {0}
       env:
@@ -53,6 +60,7 @@ jobs:
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh lint
         . ./ci/travis/ci.sh build
+        . ./ci/travis/ci.sh upload_wheels || true
         . ./ci/travis/ci.sh test_python
         . ./ci/travis/ci.sh test_wheels
     - name: Run Clang Include-What-You-Use

@@ -30,9 +30,10 @@ should_run_job() {
     done
     if [ 0 -eq "${#active_triggers[@]}" ]; then
       echo "Job is not triggered by any of $1; skipping job."
+      sleep 15  # make sure output is flushed
       skip=1
     else
-      echo "Job is triggered by: ${#active_triggers[*]}"
+      echo "Job is triggered by: ${active_triggers[*]}"
     fi
   fi
   return "${skip}"
@@ -77,6 +78,23 @@ need_wheels() {
   esac
   return "${error_code}"
 }
+
+upload_wheels() {
+  local branch="" commit
+  commit="$(git rev-parse --verify HEAD)"
+  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
+  if [ -z "${branch}" ]; then branch="${GITHUB_BASE_REF-}"; fi
+  if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
+  if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
+  local local_dir="python/dist"
+  local remote_dir="${branch}/${commit}"
+  if [ -d "${local_dir}" ]; then
+    if command -V aws; then
+      aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
+    fi
+  fi
+}
+
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
@@ -244,8 +262,9 @@ lint() {
   )
 }
 
-preload() {
-  local job_names="${1-}"
+_preload() {
+  local job_names
+  job_names="$1"
 
   local variable_definitions
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
@@ -292,7 +311,7 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  preload
+  _preload "${1-}"
 
   configure_system
 

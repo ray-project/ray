@@ -48,7 +48,6 @@ class WorkerSet:
         self._env_creator = env_creator
         self._policy = policy
         self._remote_config = trainer_config
-        self._num_workers = num_workers
         self._logdir = logdir
 
         if _setup:
@@ -62,7 +61,7 @@ class WorkerSet:
 
             # Create a number of remote workers
             self._remote_workers = []
-            self.add_workers(self._num_workers)
+            self.add_workers(num_workers)
 
     def local_worker(self):
         """Return the local rollout worker."""
@@ -86,7 +85,6 @@ class WorkerSet:
             num_workers (int): The number of remote Workers to add to this
                 WorkerSet.
         """
-        self._num_workers = num_workers
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
@@ -266,7 +264,7 @@ class WorkerSet:
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            num_workers=self._num_workers,
+            num_workers=config["num_workers"],
             monitor_path=self._logdir if config["monitor"] else None,
             log_dir=self._logdir,
             log_level=config["log_level"],
