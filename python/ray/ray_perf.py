@@ -92,43 +92,43 @@ def timeit(name, fn, multiplier=1):
 def main():
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     ray.init()
-    value = ray.put(0)
-    arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
+    # value = ray.put(0)
+    # arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 
-    def get_small():
-        ray.get(value)
+    # def get_small():
+    #     ray.get(value)
 
-    timeit("single client get calls", get_small)
+    # timeit("single client get calls", get_small)
 
-    def put_small():
-        ray.put(0)
+    # def put_small():
+    #     ray.put(0)
 
-    timeit("single client put calls", put_small)
+    # timeit("single client put calls", put_small)
 
-    def put_large():
-        ray.put(arr)
+    # def put_large():
+    #     ray.put(arr)
 
-    timeit("single client put gigabytes", put_large, 8 * 0.1)
+    # timeit("single client put gigabytes", put_large, 8 * 0.1)
 
-    @ray.remote
-    def do_put_small():
-        for _ in range(100):
-            ray.put(0)
+    # @ray.remote
+    # def do_put_small():
+    #     for _ in range(100):
+    #         ray.put(0)
 
-    def put_multi_small():
-        ray.get([do_put_small.remote() for _ in range(10)])
+    # def put_multi_small():
+    #     ray.get([do_put_small.remote() for _ in range(10)])
 
-    timeit("multi client put calls", put_multi_small, 1000)
+    # timeit("multi client put calls", put_multi_small, 1000)
 
-    @ray.remote
-    def do_put():
-        for _ in range(10):
-            ray.put(np.zeros(10 * 1024 * 1024, dtype=np.int64))
+    # @ray.remote
+    # def do_put():
+    #     for _ in range(10):
+    #         ray.put(np.zeros(10 * 1024 * 1024, dtype=np.int64))
 
-    def put_multi():
-        ray.get([do_put.remote() for _ in range(10)])
+    # def put_multi():
+    #     ray.get([do_put.remote() for _ in range(10)])
 
-    timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
+    # timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
 
     def small_task():
         ray.get(small_value.remote())
@@ -202,6 +202,10 @@ def main():
 
     timeit("n:n actor calls with arg async", actor_multi2_direct_arg,
            n * len(clients))
+
+    # Make actors go out of scope to avoid having too many workers.
+    del actors
+    del clients
 
     a = AsyncActor.remote()
 

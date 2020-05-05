@@ -46,6 +46,9 @@ ctypedef void (*ray_callback_function) \
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
+ctypedef void (*terminate_asyncio_thread_function) \
+    ()
+
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -217,6 +220,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int num_workers
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
+        terminate_asyncio_thread_function terminate_asyncio_thread
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

@@ -107,7 +107,7 @@ class AsyncMonitorState:
         self.names_lock = threading.Lock()
 
         self.sleep_time = 1.0
-        asyncio.ensure_future(self.monitor(), loop=loop)
+        self.monitor_loop_future = asyncio.ensure_future(self.monitor(), loop=loop)
 
     async def monitor(self):
         while True:
@@ -131,3 +131,6 @@ class AsyncMonitorState:
         with self.names_lock:
             names = list(self.names.values())
         return names
+
+    def kill_monitor_loop(self):
+        self.monitor_loop_future.cancel()
