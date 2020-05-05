@@ -137,11 +137,14 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in
         set_state!), but rather useful (e.g. debugging) information.
+
+        Args:
+            sess (Optional[tf.Session]): An optional tf Session object to use.
 
         Returns:
             dict: A description of the Exploration (not necessarily its state).

@@ -71,6 +71,10 @@ class GaussianNoise(Exploration):
         self.last_timestep = get_variable(
             0, framework=self.framework, tf_name="timestep")
 
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
+
     @override(Exploration)
     def get_exploration_action(self,
                                *,
@@ -157,11 +161,13 @@ class GaussianNoise(Exploration):
         return action, logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns the current scale value.
 
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
+        if sess:
+            return sess.run(self._tf_info_op)
         scale = self.scale_schedule(self.last_timestep)
         return {"cur_scale": scale}
