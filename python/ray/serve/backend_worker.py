@@ -197,10 +197,10 @@ class RayServeWorker:
             self.latency_list.append(time.time() - start_timestamp)
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
-                error_message = ("Worker doesn't perserve batch-size. The "
+                error_message = ("Worker doesn't preserve batch size. The "
                                  "input has length {} but the returned list "
                                  "has length {}. Please return a list of "
-                                 "result with length equals to the batch size"
+                                 "results with length equal to the batch size"
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
             return result_list
