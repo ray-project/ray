@@ -196,8 +196,8 @@ class ParallelIterator(Generic[T]):
         `max_concurrency` should be used to achieve a high degree of
         parallelism without the overhead of increasing the number of shards
         (which are actor based). This provides the semantic guarantee that
-        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not necessarily
-        finish first)
+        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not
+        necessarily finish first)
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `async_queue_depth` is `n` and
