@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
-{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
+# Push caller's shell options (quietly)
+{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
-set -eo pipefail && if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi  # some options interfere with Travis's RVM on Mac
+set -eo pipefail
+if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."
@@ -15,7 +17,7 @@ keep_alive() {
   "${WORKSPACE_DIR}"/ci/keep_alive "$@"
 }
 
-# If provided the names of one or more environment variables, returns success if any of them is triggered.
+# If provided the names of one or more environment variables, returns 0 if any of them is triggered.
 # Usage: should_run_job [VAR_NAME]...
 should_run_job() {
   local skip=0
@@ -23,7 +25,8 @@ should_run_job() {
     local envvar active_triggers=()
     for envvar in "$@"; do
       if [ "${!envvar}" = 1 ]; then
-        active_triggers+=("${envvar}=${!envvar}")  # success! we found at least one of the given triggers is occurring
+        # success! we found at least one of the given triggers is occurring
+        active_triggers+=("${envvar}=${!envvar}")
       fi
     done
     if [ 0 -eq "${#active_triggers[@]}" ]; then
@@ -39,7 +42,8 @@ should_run_job() {
 
 # Idempotent environment loading
 reload_env() {
-  # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...), e.g. for CI cross-compatibility.
+  # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
+  # e.g. for CI cross-compatibility.
   # Normal environment variables should be set up at software installation time, not here.
 
   if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
@@ -51,9 +55,12 @@ reload_env() {
   fi
 
   if [ -z "${TRAVIS_BRANCH-}" ] && [ -n "${GITHUB_WORKFLOW-}" ]; then
-    TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"
-    TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"
-    TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"  # Need a hash on GitHub Actions when possible (even though on Travis it's always a name)
+    # Define TRAVIS_BRANCH to make Travis scripts run on GitHub Actions.
+    TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"  # For pull requests, the base branch name
+    TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"  # Remove refs/... prefix
+    # TODO(mehrdadn): Make TRAVIS_BRANCH be a named ref (e.g. 'master') like it's supposed to be.
+    # For now we use a hash because GitHub Actions doesn't clone refs the same way as Travis does.
+    TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"
     export TRAVIS_BRANCH
   fi
 }
@@ -114,7 +121,7 @@ test_wheels() {
 install_npm_project() {
   if [ "${OSTYPE}" = msys ]; then
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
-    { echo "WARNING: Skipping running NPM due to module incompatibilities with Windows"; } 2> /dev/null
+    { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
     npm ci -q
   fi
@@ -122,7 +129,7 @@ install_npm_project() {
 
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
-    { echo "WARNING: Not building dashboard front-end due to NPM package incompatibilities with Windows"; } 2> /dev/null
+    { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
       cd ray/dashboard/client
@@ -155,7 +162,8 @@ install_cython_examples() {
 }
 
 install_go() {
-  eval "$(curl -f -s -L https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=1.14.2 bash)"
+  local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
+  eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
 
   if [ -z "${GOPATH-}" ]; then
     GOPATH="${GOPATH:-${HOME}/go_dir}"
@@ -179,11 +187,19 @@ build_wheels() {
       # For the linux wheel build, we use a shared cache between all
       # wheels, but not between different travis runs, because that
       # caused timeouts in the past. See the "cache: false" line below.
-      local MOUNT_BAZEL_CACHE=(-v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}" -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}" -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}")
+      local MOUNT_BAZEL_CACHE=(
+        -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
+        -e TRAVIS=true
+        -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}"
+        -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}"
+        -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}"
+      )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" \
+        rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -212,7 +228,9 @@ lint_readme() {
 lint_python() {
   # ignore dict vs {} (C408), others are defaults
   command -V python
-  python -m flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+  python -m flake8 --inline-quotes '"' --no-avoid-escape \
+    --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files \
+    --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
   "${ROOT_DIR}"/format.sh --all
 }
 
@@ -288,7 +306,7 @@ _check_job_triggers() {
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
-    if [ -o xtrace ]; then set +x && restore_shell_state="set -x;"; fi  # Suppress & save set -x (it gets noisy here)
+    if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
     {
       expression="$(printf "%q " "${variable_definitions[@]}")"
       printf "%s\n" "${expression}" >> ~/.bashrc
@@ -298,8 +316,8 @@ _check_job_triggers() {
 
   if ! (set +x && should_run_job ${job_names//,/ }); then
     if [ -n "${GITHUB_WORKFLOW-}" ]; then
-      # If this job is to be skipped, emit an 'exit' command into .bashrc to quickly exit all following steps.
-      # This isn't needed for Travis (since everything runs in a single shell), but it is needed for GitHub Actions.
+      # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
+      # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
       cat <<EOF1 >> ~/.bashrc
       cat <<EOF2 1>&2
 Exiting shell as no triggers were active for this job:
@@ -322,11 +340,12 @@ configure_system() {
 }
 
 # Initializes the environment for the current job. Performs the following tasks:
-# - Calls 'exit 0' in this job step and all subsequent steps to quickly exit if provided a list of job names and
-#   none of them has been triggered.
+# - Calls 'exit 0' in this job step and all subsequent steps to quickly exit if provided a list of
+#   job names and none of them has been triggered.
 # - Sets variables to indicate the job names that have been triggered.
 #   Note: Please avoid exporting these variables. Instead, source any callees that need to use them.
-#   This helps reduce implicit coupling of callees to their parents, as they will be unable to run when not sourced, (especially with set -u).
+#   This helps reduce implicit coupling of callees to their parents, as they will be unable to run
+#   when not sourced, (especially with set -u).
 # - Installs dependencies for the current job.
 # - Exports any environment variables necessary to run the build.
 # Usage: init [JOB_NAMES]
@@ -336,7 +355,7 @@ init() {
 
   configure_system
 
-  . "${ROOT_DIR}"/install-dependencies.sh  # This script is sourced to propagate up environment changes
+  . "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
 }
 
 build() {
@@ -371,4 +390,5 @@ _main() {
 
 _main "$@"
 
-{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
+# Pop caller's shell options (quietly)
+{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

@@ -34,13 +34,15 @@ install_toolchains() {
     rm -f -- "${target}"
     (
       # Add Clang/LLVM binaries to somewhere that's in already PATH
-      # (don't change PATH itself, to avoid invalidating Bazel's cache or having to manage environment variables)
+      # (don't change PATH, to avoid affecting Bazel's cache or managing environment variables)
       mkdir -p -- ~/bin
       set +x
       local path
       for path in "${targetdir}\\bin"/*.exe; do
         local name="${path##*/}"
-        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | install /dev/stdin ~/bin/"${name%.*}"
+        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | {
+          install /dev/stdin ~/bin/"${name%.*}"
+        }
       done
     )
   else

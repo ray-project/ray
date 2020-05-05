@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null  # Push caller's shell options (quietly)
+# Push caller's shell options (quietly)
+{ SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
 set -euxo pipefail
 
@@ -9,8 +10,14 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 pkg_install_helper() {
   case "${OSTYPE}" in
-    darwin*) brew install "$@";;
-    linux*) sudo apt-get install -qq -o=Dpkg::Use-Pty=0 "$@" | grep --line-buffered -v "^\(Preparing to unpack\|Unpacking\|Processing triggers for\) ";;
+    darwin*)
+      brew install "$@"
+      ;;
+    linux*)
+      sudo apt-get install -qq -o=Dpkg::Use-Pty=0 "$@" | {
+        grep --line-buffered -v "^\(Preparing to unpack\|Unpacking\|Processing triggers for\) "
+      }
+      ;;
     *) false;;
   esac
 }
@@ -26,7 +33,8 @@ install_base() {
   case "${OSTYPE}" in
     linux*)
       sudo apt-get update -qq
-      pkg_install_helper build-essential curl unzip tmux gdb libunwind-dev python3-pip python3-setuptools
+      pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
+        tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
         pkg_install_helper docker
         if [ -n "${TRAVIS-}" ]; then
@@ -52,7 +60,7 @@ install_miniconda() {
     case "${OSTYPE}" in
       linux*) miniconda_dir="/opt/miniconda";;
       darwin*) miniconda_dir="/usr/local/opt/miniconda";;
-      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Need a path without spaces; prefer the default path
+      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
     esac
 
     local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
@@ -69,14 +77,19 @@ install_miniconda() {
 
     case "${OSTYPE}" in
       msys*)
-        # We set /AddToPath=0 because (1) it doesn't take care of the current shell, and (2) it's consistent with -b in the UNIX installers.
-        MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
+        # We set /AddToPath=0 because
+        # (1) it doesn't take care of the current shell, and
+        # (2) it's consistent with -b in the UNIX installers.
+        MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" \
+          /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
         mkdir -p -- "${miniconda_dir}"
-        # We're forced to pass -b for non-interactive mode, which inhibits PATH modifications as a side effect.
-        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        # We're forced to pass -b for non-interactive mode.
+        # Unfortunately it inhibits PATH modifications as a side effect.
+        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v \
+          '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
         conda="${miniconda_dir}/bin/conda"
         ;;
     esac
@@ -84,9 +97,10 @@ install_miniconda() {
 
   if [ ! -x "${CONDA_PYTHON_EXE-}" ]; then  # If conda isn't activated, activate it
     local restore_shell_state=""
-    if [ -o xtrace ]; then set +x && restore_shell_state="set -x"; fi  # Suppress set -x (it gets noisy here)
+    if [ -o xtrace ]; then set +x && restore_shell_state="set -x"; fi  # Disable set -x (noisy here)
 
-    # TODO(mehrdadn): conda activation is buggy on MSYS2; it adds C:/... to PATH, which gets split on a colon. Is it necessary to work around this?
+    # TODO(mehrdadn): conda activation is buggy on MSYS2; it adds C:/... to PATH,
+    # which gets split on a colon. Is it necessary to work around this?
     eval "$("${conda}" shell."${SHELL##*/}" hook)"  # Activate conda
     conda init "${SHELL##*/}"  # Add to future shells
 
@@ -107,22 +121,30 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
+install_linters() {
+  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0
+}
+
 install_nvm() {
   local NVM_HOME="${HOME}/.nvm"
   if [ "${OSTYPE}" = msys ]; then
-    local version="1.1.7"
+    local ver="1.1.7"
     if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
       mkdir -p -- "${NVM_HOME}"
       export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
       (
         cd "${NVM_HOME}"
-        local target="./nvm-${version}.zip"
-        curl -f -s -L -o "${target}" "https://github.com/coreybutler/nvm-windows/releases/download/${version}/nvm-noinstall.zip"
+        local target="./nvm-${ver}.zip"
+        curl -f -s -L -o "${target}" \
+          "https://github.com/coreybutler/nvm-windows/releases/download/${ver}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
         printf "%s\r\n" "root: $(cygpath -w -- "${NVM_HOME}")" "path: ${NVM_SYMLINK}" > settings.txt
       )
-      printf "%s\n" "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" 'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' > "${NVM_HOME}/nvm.sh"
+      printf "%s\n" \
+        "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
+        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        > "${NVM_HOME}/nvm.sh"
     fi
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
@@ -135,7 +157,7 @@ install_pip() {
     python=python3
   fi
 
-  if "${python}" -m pip --version || "${python}" -m ensurepip; then  # If pip is present, configure it
+  if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
@@ -150,7 +172,7 @@ install_pip() {
 
 install_node() {
   if [ "${OSTYPE}" = msys ]; then
-    { echo "WARNING: Skipping running Node.js due to module incompatibilities with Windows"; } 2> /dev/null
+    { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
   else
     # Install the latest version of Node.js in order to build the dashboard.
     (
@@ -167,7 +189,7 @@ install_dependencies() {
 
   install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Keep Travis's built-in compilers and only use this for GitHub Actions (for now)
+  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Not for Travis (keep built-in compilers there)
     "${ROOT_DIR}"/install-toolchains.sh
   fi
   install_nvm
@@ -178,16 +200,18 @@ install_dependencies() {
 
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
+    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
     case "${OSTYPE}" in
-      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html;;
+      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
       darwin*) pip install torch torchvision;;
-      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html;;
+      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym opencv-python-headless pyyaml \
-      pandas==0.24.2 requests feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
-      uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-      scikit-learn numba Pillow)
+    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym \
+      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
+      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
+      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn numba \
+      Pillow)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
@@ -197,7 +221,7 @@ install_dependencies() {
 
   if [ "${LINT-}" = 1 ]; then
     install_miniconda
-    pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0  # Python linters
+    install_linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
     pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
@@ -209,8 +233,8 @@ install_dependencies() {
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 torch=="${TORCH_VERSION-1.4}" torchvision \
-      atari_py gym[atari] lz4 smart_open
+    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
   fi
 
   # Additional streaming dependencies.
@@ -227,4 +251,5 @@ install_dependencies() {
 
 install_dependencies "$@"
 
-{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null  # Pop caller's shell options (quietly)
+# Pop caller's shell options (quietly)
+{ set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null
