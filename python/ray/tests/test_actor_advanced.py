@@ -658,7 +658,11 @@ def test_detached_actor(ray_start_regular):
         def ping(self):
             return "pong"
 
-    with pytest.raises(Exception, match="Detached actors must be named"):
+    with pytest.raises(
+            ValueError, match="Actor name cannot be an empty string"):
+        DetachedActor._remote(detached=True, name="")
+
+    with pytest.raises(ValueError, match="Detached actors must be named"):
         DetachedActor._remote(detached=True)
 
     with pytest.raises(ValueError, match="Only detached actors can be named"):

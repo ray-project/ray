@@ -477,6 +477,9 @@ class ActorClass:
                              "Please use Actor._remote(detached=True, "
                              "name='some_name').")
 
+        if name == "":
+            raise ValueError("Actor name cannot be an empty string.")
+
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
         # could pass the check and then create the same named actor. We should
@@ -485,7 +488,13 @@ class ActorClass:
         if name is not None:
             try:
                 ray.util.get_actor(name)
-            except KeyError:  # name is not taken, expected.
+            # Name is not taken. This is raised by ray.internal_kv.
+            # TODO(edoakes): remove this check once the internal_kv-based
+            # named actor implementation is removed.
+            except ValueError:
+                pass
+            # Name is not taken. This is raised by GCS service implementation.
+            except KeyError:
                 pass
             else:
                 raise ValueError(
@@ -560,7 +569,7 @@ class ActorClass:
             actor_placement_resources,
             max_concurrency,
             detached,
-            name,
+            name if name is not None else "",
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
