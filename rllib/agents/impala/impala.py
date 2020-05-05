@@ -4,12 +4,12 @@ import logging
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.impala.replay_exec import MixInReplay
-from ray.rllib.agents.impala.tree_agg_exec import \
+from ray.rllib.agents.impala.tree_agg import \
     gather_experiences_tree_aggregation
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
