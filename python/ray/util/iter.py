@@ -185,7 +185,7 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
-    def for_each(self, fn: Callable[[T], U], max_concurrency=2,
+    def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator, at most `max_concurrency`
         at a time.
@@ -674,7 +674,6 @@ class LocalIterator(Generic[T]):
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "LocalIterator[U]":
         if max_concurrency == 1:
-
             def apply_foreach(it):
                 for item in it:
                     if isinstance(item, _NextValueNotReady):
