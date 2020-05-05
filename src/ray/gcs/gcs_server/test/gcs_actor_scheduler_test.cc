@@ -26,7 +26,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, node_info_accessor_, error_info_accessor_);
+        io_service_, node_info_accessor_, error_info_accessor_, gcs_pub_sub_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_, actor_info_accessor_, *gcs_node_manager_,
         /*schedule_failure_handler=*/
@@ -55,6 +55,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
 TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
