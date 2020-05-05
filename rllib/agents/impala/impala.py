@@ -213,7 +213,7 @@ def validate_config(config):
 
 
 # Update worker weights as they finish generating experiences.
-class UpdateWorkerWeights:
+class BroadcastUpdateLearnerWeights:
     def __init__(self, learner_thread, workers, broadcast_interval):
         self.learner_thread = learner_thread
         self.steps_since_broadcast = 0
@@ -276,7 +276,7 @@ def execution_plan(workers, config):
     enqueue_op = train_batches \
         .for_each(Enqueue(learner_thread.inqueue)) \
         .zip_with_source_actor() \
-        .for_each(UpdateWorkerWeights(
+        .for_each(BroadcastUpdateLearnerWeights(
             learner_thread, workers,
             broadcast_interval=config["broadcast_interval"]))
 
