@@ -10,7 +10,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -551,6 +551,7 @@ class ActorClass:
             actor_placement_resources,
             max_concurrency,
             detached,
+            name,
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
@@ -566,7 +567,7 @@ class ActorClass:
             worker.current_session_and_job,
             original_handle=True)
 
-        if name is not None:
+        if name is not None and not gcs_actor_service_enabled():
             ray.util.register_actor(name, actor_handle)
 
         return actor_handle

@@ -37,10 +37,13 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
+  const std::string &name = request.name();
+  RAY_CHECK(actor_id.IsNil() || name.empty())
+      << "Only one of actor_id or name should be provided";
   RAY_LOG(DEBUG) << "Getting actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
+                 << ", actor id = " << actor_id << ", name = " << name;
 
-  auto on_done = [actor_id, reply, send_reply_callback](
+  auto on_done = [actor_id, name, reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
       if (result) {
@@ -48,14 +51,28 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
       }
     } else {
       RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
+                     << ", name = " << name;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
+  // Try to look up the actor ID for the named actor.
+  if (actor_id.IsNil()) {
+    actor_id = gcs_actor_manager_.GetNamedActorID(name);
+  }
+
+  if (actor_id.IsNil()) {
+    // The named actor was not found.
+    std::stringstream stream;
+    stream << "Actor with name '" << name << "' was not found.";
+    on_done(Status::NotFound(stream.str()), boost::none);
+  } else {
+    // Look up the actor_id in the GCS.
+    Status status = gcs_client_.Actors().AsyncGet(actor_id, /*name=*/"", on_done);
+    if (!status.ok()) {
+      on_done(status, boost::none);
+    }
   }
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;

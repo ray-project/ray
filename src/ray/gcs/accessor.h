@@ -41,10 +41,13 @@ class ActorInfoAccessor {
 
   /// Get actor specification from GCS asynchronously.
   ///
-  /// \param actor_id The ID of actor to look up in the GCS.
+  /// \param actor_id The ID of actor to look up in the GCS. If this is specified,
+  /// name must not be specified.
+  /// \param name The name of the detached actor to look up in the GCS. If this is
+  /// specified, actor_id must not be specified.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGet(const ActorID &actor_id,
+  virtual Status AsyncGet(const ActorID &actor_id, const std::string &name,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
   /// Create an actor to GCS asynchronously.

@@ -40,7 +40,7 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached);
+    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached, "");
     return builder.Build();
   }
 

@@ -1,6 +1,7 @@
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray._raylet import gcs_actor_service_enabled
 
 
 def _calculate_key(name):
@@ -26,11 +27,17 @@ def get_actor(name):
     Returns:
         The ActorHandle object corresponding to the name.
     """
-    actor_name = _calculate_key(name)
-    pickled_state = _internal_kv_get(actor_name)
-    if pickled_state is None:
-        raise ValueError("The actor with name={} doesn't exist".format(name))
-    handle = pickle.loads(pickled_state)
+    if gcs_actor_service_enabled():
+        worker = ray.worker.global_worker
+        handle = worker.core_worker.get_named_actor_handle(name)
+    else:
+        actor_name = _calculate_key(name)
+        pickled_state = _internal_kv_get(actor_name)
+        if pickled_state is None:
+            raise ValueError(
+                "The actor with name={} doesn't exist".format(name))
+        handle = pickle.loads(pickled_state)
+
     return handle
 
 

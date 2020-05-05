@@ -112,6 +112,12 @@ include "includes/libcoreworker.pxi"
 logger = logging.getLogger(__name__)
 
 
+def gcs_actor_service_enabled():
+    return (
+        RayConfig.instance().gcs_service_enabled() and
+        RayConfig.instance().gcs_actor_service_enabled())
+
+
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
@@ -892,6 +898,7 @@ cdef class CoreWorker:
                      placement_resources,
                      int32_t max_concurrency,
                      c_bool is_detached,
+                     c_string name,
                      c_bool is_asyncio,
                      c_string extension_data):
         cdef:
@@ -915,7 +922,7 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_reconstructions, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, is_asyncio),
+                        dynamic_worker_options, is_detached, name, is_asyncio),
                     extension_data,
                     &c_actor_id))
 
@@ -1006,23 +1013,11 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes,
-                                              ObjectID
-                                              outer_object_id):
-        cdef:
-            CActorHandle* c_actor_handle
-            CObjectID c_outer_object_id = (outer_object_id.native() if
-                                           outer_object_id else
-                                           CObjectID.Nil())
+    cdef make_actor_handle(self, CActorHandle *c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
-        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
-                      .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
-        check_status(CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
-            c_actor_id, &c_actor_handle))
-        actor_id = ActorID(c_actor_id.Binary())
+        actor_id = ActorID(c_actor_handle.GetActorID().Binary())
         job_id = JobID(c_actor_handle.CreationJobID().Binary())
         language = Language.from_native(c_actor_handle.ActorLanguage())
         actor_creation_function_descriptor = \
@@ -1056,6 +1051,32 @@ cdef class CoreWorker:
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+                                              ObjectID
+                                              outer_object_id):
+        cdef:
+            CActorHandle* c_actor_handle
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
+        c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
+                      .DeserializeAndRegisterActorHandle(
+                          bytes, c_outer_object_id))
+        check_status(CCoreWorkerProcess.GetCoreWorker().GetActorHandle(
+            c_actor_id, &c_actor_handle))
+        return self.make_actor_handle(c_actor_handle)
+
+    def get_named_actor_handle(self, const c_string &name):
+        cdef:
+            CActorHandle* c_actor_handle
+
+        worker = ray.worker.global_worker
+        worker.check_connected()
+        manager = worker.function_actor_manager
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .GetNamedActorHandle(name, &c_actor_handle))
+        return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:

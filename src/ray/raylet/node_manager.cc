@@ -2204,7 +2204,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                 HandleActorStateTransition(actor_id, ActorRegistration(*data));
               }
             };
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, lookup_callback));
+        RAY_CHECK_OK(
+            gcs_client_->Actors().AsyncGet(actor_id, /*name=*/"", lookup_callback));
         actor_creation_dummy_object = spec.ActorCreationDummyObjectId();
       } else {
         actor_creation_dummy_object = actor_entry->second.GetActorCreationDependency();

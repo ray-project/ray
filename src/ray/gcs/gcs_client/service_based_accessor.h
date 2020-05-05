@@ -58,7 +58,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
 
-  Status AsyncGet(const ActorID &actor_id,
+  Status AsyncGet(const ActorID &actor_id, const std::string &name,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
   Status AsyncCreateActor(const TaskSpecification &task_spec,

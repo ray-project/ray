@@ -49,8 +49,11 @@ service JobInfoGcsService {
 }
 
 message GetActorInfoRequest {
-  // ID of this actor.
+  // ID of this actor. If actor_id is set, name will not be set.
   bytes actor_id = 1;
+  // Name of the actor. This is only used for detached actors. If name is set,
+  // actor_id will not be set.
+  string name = 2;
 }
 
 message GetActorInfoReply {

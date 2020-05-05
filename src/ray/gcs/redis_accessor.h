@@ -39,7 +39,7 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
 
-  Status AsyncGet(const ActorID &actor_id,
+  Status AsyncGet(const ActorID &actor_id, const std::string &name,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
   Status AsyncCreateActor(const TaskSpecification &task_spec,
@@ -111,7 +111,7 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
 
   virtual ~RedisActorInfoAccessor() {}
 
-  Status AsyncGet(const ActorID &actor_id,
+  Status AsyncGet(const ActorID &actor_id, const std::string &name,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,

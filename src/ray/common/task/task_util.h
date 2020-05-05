@@ -103,7 +103,8 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id, uint64_t max_reconstructions = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
-      int max_concurrency = 1, bool is_detached = false, bool is_asyncio = false) {
+      int max_concurrency = 1, bool is_detached = false, std::string name = "",
+      bool is_asyncio = false, const std::string &extension_data = "") {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -112,8 +113,10 @@ class TaskSpecBuilder {
       actor_creation_spec->add_dynamic_worker_options(option);
     }
     actor_creation_spec->set_max_concurrency(max_concurrency);
-    actor_creation_spec->set_is_asyncio(is_asyncio);
     actor_creation_spec->set_is_detached(is_detached);
+    actor_creation_spec->set_name(name);
+    actor_creation_spec->set_is_asyncio(is_asyncio);
+    actor_creation_spec->set_extension_data(extension_data);
     return *this;
   }
 

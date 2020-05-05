@@ -43,6 +43,24 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serial
   return inner;
 }
 
+ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
+    const ray::gcs::ActorTableData &actor_table_data) {
+  ray::rpc::ActorHandle inner;
+  inner.set_actor_id(actor_table_data.actor_id());
+  // XXX: is this right?
+  inner.set_owner_id(actor_table_data.parent_id());
+  inner.mutable_owner_address()->CopyFrom(actor_table_data.owner_address());
+  inner.set_creation_job_id(actor_table_data.job_id());
+  inner.set_actor_language(actor_table_data.task_spec().language());
+  inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
+      actor_table_data.task_spec().function_descriptor());
+  // XXX: what to do about this? can't have collisions.
+  inner.set_actor_cursor(ObjectID::Nil().Binary());
+  inner.set_extension_data(
+      actor_table_data.task_spec().actor_creation_task_spec().extension_data());
+  return inner;
+}
+
 }  // namespace
 
 namespace ray {
@@ -59,6 +77,9 @@ ActorHandle::ActorHandle(
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
+
+ActorHandle::ActorHandle(const gcs::ActorTableData &actor_table_data)
+    : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);

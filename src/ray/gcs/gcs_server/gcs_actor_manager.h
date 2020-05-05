@@ -56,6 +56,7 @@ class GcsActor {
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
+    actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(
         request.task_spec().caller_address());
 
@@ -83,6 +84,10 @@ class GcsActor {
 
   /// Get the id of this actor.
   ActorID GetActorID() const;
+  /// Returns whether or not this is a detached actor.
+  bool IsDetached() const;
+  /// Get the name of this actor (only set if it's a detached actor).
+  std::string GetName() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
@@ -119,6 +124,11 @@ class GcsActorManager {
   /// its state is `ALIVE`.
   void RegisterActor(const rpc::CreateActorRequest &request,
                      RegisterActorCallback callback);
+
+  /// Get the actor ID for the named actor. Returns nil if the actor was not found.
+  /// \param name The name of the detached actor to look up.
+  /// \returns ActorID The ID of the actor. Nil if the actor was not found.
+  ActorID GetNamedActorID(const std::string &name);
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -172,6 +182,8 @@ class GcsActorManager {
   /// All registered actors (pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
+  /// Maps detached actor names to their actor ID for lookups by name.
+  absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID

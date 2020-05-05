@@ -54,6 +54,14 @@ ActorID GcsActor::GetActorID() const {
   return ActorID::FromBinary(actor_table_data_.actor_id());
 }
 
+bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
+
+std::string GcsActor::GetName() const {
+  RAY_CHECK(actor_table_data_.is_detached())
+      << "Actor names are only valid for detached actors.";
+  return actor_table_data_.name();
+}
+
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
   return TaskSpecification(task_spec);
@@ -103,7 +111,21 @@ void GcsActorManager::RegisterActor(
 
   auto actor = std::make_shared<GcsActor>(request);
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
+  if (actor->IsDetached()) {
+    RAY_CHECK(named_actors_.emplace(actor->GetName(), actor->GetActorID()).second);
+  }
   gcs_actor_scheduler_->Schedule(actor);
+}
+
+ActorID GcsActorManager::GetNamedActorID(const std::string &name) {
+  ActorID actor_id;
+  auto it = named_actors_.find(name);
+  if (it == named_actors_.end()) {
+    actor_id = ActorID::Nil();
+  } else {
+    actor_id = it->second;
+  }
+  return actor_id;
 }
 
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
