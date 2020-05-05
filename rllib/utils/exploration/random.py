@@ -58,11 +58,23 @@ class Random(Exploration):
                                                      explore)
 
     def get_tf_exploration_action_op(self, action_dist, explore):
+        def scan_fn(accum, iter):
+            r = tf.cast(tf.py_func(
+                self.action_space.sample, [], self.dtype_sample),
+                dtype=self.dtype)
+            r.set_shape(self.action_space.shape)
+            return r
+
         def true_fn():
-            action = tf.py_function(self.action_space.sample, [],
-                                    self.dtype_sample)
-            # Will be unnecessary, once we support batch/time-aware Spaces.
-            return tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
+            batch_size = 1
+            req = force_tuple(
+                action_dist.required_model_output_shape(
+                    self.action_space, self.model.model_config))
+            # Add a batch dimension?
+            if len(action_dist.inputs.shape) == len(req) + 1:
+                batch_size = tf.shape(action_dist.inputs)[0]
+            actions = tf.scan(scan_fn, tf.range(batch_size))
+            return actions
 
         def false_fn():
             return tf.cast(
@@ -81,15 +93,16 @@ class Random(Exploration):
 
     def get_torch_exploration_action(self, action_dist, explore):
         if explore:
-            # Unsqueeze will be unnecessary, once we support batch/time-aware
-            # Spaces.
-            a = self.action_space.sample()
             req = force_tuple(
                 action_dist.required_model_output_shape(
                     self.action_space, self.model.model_config))
-            # Add a batch dimension.
+            # Add a batch dimension?
             if len(action_dist.inputs.shape) == len(req) + 1:
-                a = np.expand_dims(a, 0)
+                batch_size = action_dist.inputs.shape[0]
+                a = np.stack([self.action_space.sample() for _ in range(batch_size)])
+            else:
+                a = self.action_space.sample()
+            # Convert action to torch tensor.
             action = torch.from_numpy(a).to(self.device)
         else:
             action = action_dist.deterministic_sample()
