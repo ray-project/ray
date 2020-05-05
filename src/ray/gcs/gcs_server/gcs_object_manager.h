@@ -49,7 +49,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
- private:
+ protected:
   /// Add a location of objects.
   ///
   /// \param node_id The object location that will be added.
@@ -84,6 +84,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
+ private:
   typedef absl::flat_hash_set<ClientID> LocationSet;
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
