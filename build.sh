@@ -133,7 +133,7 @@ git clone https://github.com/suquark/pickle5-backport
 pushd pickle5-backport
   git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
   CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
-  unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+  unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
 popd
 popd
 

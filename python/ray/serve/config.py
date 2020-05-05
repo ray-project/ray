@@ -96,21 +96,21 @@ class ReplicaConfig:
                              "actor_init_args is not allowed.")
         else:
             num_cpus = self.ray_actor_options.get("num_cpus", 0)
-            if not (isinstance(num_cpus, int) or isinstance(num_cpus, float)):
+            if not isinstance(num_cpus, (int, float)):
                 raise TypeError(
                     "num_cpus in ray_actor_options must be an int or a float.")
             elif num_cpus < 0:
                 raise ValueError("num_cpus in ray_actor_options must be >= 0.")
 
             num_gpus = self.ray_actor_options.get("num_gpus", 0)
-            if not (isinstance(num_gpus, int) or isinstance(num_gpus, float)):
+            if not isinstance(num_gpus, (int, float)):
                 raise TypeError(
                     "num_gpus in ray_actor_options must be an int or a float.")
             elif num_gpus < 0:
                 raise ValueError("num_gpus in ray_actor_options must be >= 0.")
 
             memory = self.ray_actor_options.get("memory", 0)
-            if not (isinstance(memory, int) or isinstance(memory, float)):
+            if not isinstance(memory, (int, float)):
                 raise TypeError(
                     "memory in ray_actor_options must be an int or a float.")
             elif memory < 0:
@@ -118,8 +118,7 @@ class ReplicaConfig:
 
             object_store_memory = self.ray_actor_options.get(
                 "object_store_memory", 0)
-            if not (isinstance(object_store_memory, int)
-                    or isinstance(object_store_memory, float)):
+            if not isinstance(object_store_memory, (int, float)):
                 raise TypeError(
                     "object_store_memory in ray_actor_options must be "
                     "an int or a float.")

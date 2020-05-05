@@ -253,10 +253,12 @@ class ModelSupportedSpaces(unittest.TestCase):
             })
 
     def test_ddpg_multiagent(self):
-        check_support_multiagent("DDPG", {
-            "timesteps_per_iteration": 1,
-            "use_state_preprocessor": True,
-        })
+        check_support_multiagent(
+            "DDPG", {
+                "timesteps_per_iteration": 1,
+                "use_state_preprocessor": True,
+                "learning_starts": 500,
+            })
 
     def test_dqn_multiagent(self):
         check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
