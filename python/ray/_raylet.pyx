@@ -1019,6 +1019,7 @@ cdef class CoreWorker:
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
+
         actor_id = ActorID(c_actor_handle.GetActorID().Binary())
         job_id = JobID(c_actor_handle.CreationJobID().Binary())
         language = Language.from_native(c_actor_handle.ActorLanguage())
@@ -1073,9 +1074,6 @@ cdef class CoreWorker:
         cdef:
             CActorHandle* c_actor_handle
 
-        worker = ray.worker.global_worker
-        worker.check_connected()
-        manager = worker.function_actor_manager
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .GetNamedActorHandle(name, &c_actor_handle))

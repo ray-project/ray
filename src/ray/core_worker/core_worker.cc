@@ -1358,6 +1358,7 @@ Status CoreWorker::GetActorHandle(const ActorID &actor_id,
 Status CoreWorker::GetNamedActorHandle(const std::string &name,
                                        ActorHandle **actor_handle) {
   RAY_CHECK(RayConfig::instance().gcs_service_enabled());
+  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
   // This call needs to be blocking because we can't return until the actor

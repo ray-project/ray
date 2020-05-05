@@ -145,6 +145,7 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);

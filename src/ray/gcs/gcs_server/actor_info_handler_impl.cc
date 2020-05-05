@@ -37,7 +37,7 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(ERROR) << "Getting actor info"
+  RAY_LOG(DEBUG) << "Getting actor info"
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   auto on_done = [actor_id, reply, send_reply_callback](
@@ -67,7 +67,7 @@ void DefaultActorInfoHandler::HandleGetNamedActorInfo(
     const rpc::GetNamedActorInfoRequest &request, rpc::GetNamedActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
-  RAY_LOG(ERROR) << "Getting actor info"
+  RAY_LOG(DEBUG) << "Getting actor info"
                  << ", name = " << name;
 
   auto on_done = [name, reply, send_reply_callback](
