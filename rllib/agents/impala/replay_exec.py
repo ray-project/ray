@@ -1,8 +1,15 @@
 import random
 
 
-# Mix in replay to a stream of experiences.
 class MixInReplay:
+    """This operator adds replay to a stream of experiences.
+
+    It takes input batches, and returns a list of batches that include replayed
+    data as well. The number of replayed batches is determined by the
+    configured replay proportion. The max age of a batch is determined by the
+    number of replay slots.
+    """
+
     def __init__(self, num_slots, replay_proportion):
         if replay_proportion > 0 and num_slots == 0:
             raise ValueError(
