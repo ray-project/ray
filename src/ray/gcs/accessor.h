@@ -241,6 +241,15 @@ class TaskInfoAccessor {
   virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                                    const StatusCallback &callback) = 0;
 
+  /// Get task lease information from GCS asynchronously.
+  ///
+  /// \param task_id The ID of the task to look up in GCS.
+  /// \param callback Callback that is called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) = 0;
+
   /// Subscribe asynchronously to the event that the given task lease is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.

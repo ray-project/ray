@@ -405,6 +405,24 @@ Status RedisTaskInfoAccessor::AsyncAddTaskLease(
   return task_lease_table.Add(task_id.JobId(), task_id, data_ptr, on_done);
 }
 
+Status RedisTaskInfoAccessor::AsyncGetTaskLease(
+    const TaskID &task_id, const OptionalItemCallback<TaskLeaseData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client, const TaskID &task_id,
+                               const TaskLeaseData &data) {
+    boost::optional<TaskLeaseData> result(data);
+    callback(Status::OK(), result);
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
+    boost::optional<TaskLeaseData> result;
+    callback(Status::Invalid("Task not exist."), result);
+  };
+
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Lookup(task_id.JobId(), task_id, on_success, on_failure);
+}
+
 Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
     const TaskID &task_id,
     const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,

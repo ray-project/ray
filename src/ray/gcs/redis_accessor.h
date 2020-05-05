@@ -200,6 +200,9 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
 
+  Status AsyncGetTaskLease(const TaskID &task_id,
+                           const OptionalItemCallback<TaskLeaseData> &callback) override;
+
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
