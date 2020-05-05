@@ -1,13 +1,18 @@
 import argparse
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop", type=int, default=200)
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--use-prev-action-reward", action="store_true")
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--use-prev-action-reward", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=int, default=200)
+
 
 if __name__ == "__main__":
     import ray
@@ -30,9 +35,15 @@ if __name__ == "__main__":
         },
     }
 
-    tune.run(
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run(
         args.run,
-        stop={"episode_reward_mean": args.stop},
+        stop=stop,
         config=dict(
             configs[args.run], **{
                 "env": StatelessCartPole,
@@ -43,3 +54,7 @@ if __name__ == "__main__":
                 "use_pytorch": args.torch,
             }),
     )
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+    ray.shutdown()

@@ -19,8 +19,12 @@ from ray.rllib.models import ModelCatalog
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
-parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--torch", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=int, default=200)
 
 
 if __name__ == "__main__":
@@ -31,15 +35,25 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_action_dist(
         "binary_autoreg_dist", BinaryAutoregressiveDistribution if
         args.torch else TorchBinaryAutoregressiveDistribution)
-    tune.run(
-        args.run,
-        stop={"episode_reward_mean": args.stop},
-        config={
-            "env": CorrelatedActionsEnv,
-            "gamma": 0.5,
-            "num_gpus": 0,
-            "model": {
-                "custom_model": "autoregressive_model",
-                "custom_action_dist": "binary_autoreg_dist",
-            },
-        })
+
+    config = {
+        "env": CorrelatedActionsEnv,
+        "gamma": 0.5,
+        "num_gpus": 0,
+        "model": {
+            "custom_model": "autoregressive_model",
+            "custom_action_dist": "binary_autoreg_dist",
+        },
+    }
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run(args.run, stop=stop, config=config)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+    ray.shutdown()

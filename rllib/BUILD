@@ -1228,11 +1228,21 @@ py_test(
 
 
 py_test(
-    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist_tf",
+    main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--stop=150", "--num-cpus=4"]
+    args = ["--as-test", "--stop=100", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/autoregressive_action_dist_torch",
+    main = "examples/autoregressive_action_dist.py",
+    tags = ["examples", "examples_A"],
+    size = "large",
+    srcs = ["examples/autoregressive_action_dist.py"],
+    args = ["--as-test", "--torch", "--stop=100", "--num-cpus=4"]
 )
 
 py_test(
@@ -1263,7 +1273,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/batch_norm_model_ddpg_tf", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_ddpg_tf",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
@@ -1271,27 +1282,48 @@ py_test(
 )
 
 py_test(
-    name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_impala_tf",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=40", "--num-cpus=4"]
+    args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_impala_torch",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
+    args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo_with_prev_a_and_r", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_ppo_tf",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "small",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=40", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/cartpole_lstm_ppo_torch",
+    main = "examples/cartpole_lstm.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
+    main = "examples/cartpole_lstm.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
