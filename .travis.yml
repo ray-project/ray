@@ -2,6 +2,9 @@ language: generic
 # Use Ubuntu 16.04
 dist: xenial
 
+before_install:
+  - unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
+
 matrix:
   include:
     - os: linux
@@ -10,9 +13,9 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
 
     - os: osx
@@ -22,9 +25,9 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
 
     - os: linux
@@ -33,9 +36,9 @@ matrix:
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./java/test.sh
@@ -47,9 +50,9 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         # Streaming cpp test.
@@ -65,9 +68,9 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
@@ -82,9 +85,9 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...
@@ -93,12 +96,13 @@ matrix:
       env:
         - LINT=1
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init
       install:
+        - . ./ci/travis/ci.sh init
+      before_script:
+        - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
-        - . ./ci/travis/ci.sh lint
+        - true  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build Linux wheels.
     - os: linux
@@ -107,9 +111,9 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
@@ -123,9 +127,9 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
@@ -140,9 +144,9 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
@@ -158,9 +162,9 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
@@ -175,9 +179,9 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
@@ -193,9 +197,9 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - travis_wait 60 bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
@@ -213,9 +217,9 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples_A,examples_B rllib/...
@@ -233,9 +237,9 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I rllib/...
@@ -250,9 +254,9 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       install:
+        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
@@ -262,9 +266,9 @@ matrix:
       env:
         - TESTSUITE=cpp_worker
         - PYTHON=3.6
-      before_install:
-        - . ./ci/travis/ci.sh init
       install:
+        - . ./ci/travis/ci.sh init
+      before_script:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_cpp
