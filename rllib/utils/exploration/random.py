@@ -77,7 +77,8 @@ class Random(Exploration):
                         maxval=component.nvec,
                         dtype=component.dtype)
                 elif isinstance(component, Box):
-                    if component.bounded_above and component.bounded_below:
+                    if component.bounded_above.all() and \
+                            component.bounded_below.all():
                         return tf.random.uniform(
                             shape=(batch_size, ) + component.shape,
                             minval=component.low,
