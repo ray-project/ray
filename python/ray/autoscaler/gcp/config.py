@@ -236,9 +236,13 @@ def _configure_key_pair(config):
 
             _create_project_ssh_key_pair(project, public_key, ssh_user)
 
-            with open(private_key_path, "w") as f:
+            with open(
+                    os.open(
+                        private_key_path,
+                        os.O_WRONLY | os.O_CREAT,
+                        0o600,
+                    ), "w") as f:
                 f.write(private_key)
-            os.chmod(private_key_path, 0o600)
 
             with open(public_key_path, "w") as f:
                 f.write(public_key)

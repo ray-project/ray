@@ -160,9 +160,13 @@ def _configure_key_pair(config):
             logger.info("_configure_key_pair: "
                         "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
-            with open(key_path, "w") as f:
+            with open(
+                    os.open(
+                        key_path,
+                        os.O_WRONLY | os.O_CREAT,
+                        0o600,
+                    ), "w") as f:
                 f.write(key.key_material)
-            os.chmod(key_path, 0o600)
             break
 
     if not key:
