@@ -674,6 +674,7 @@ class LocalIterator(Generic[T]):
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "LocalIterator[U]":
         if max_concurrency == 1:
+
             def apply_foreach(it):
                 for item in it:
                     if isinstance(item, _NextValueNotReady):
