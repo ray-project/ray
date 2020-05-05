@@ -102,6 +102,10 @@ class ActorInfoGcsServiceHandler {
                                   GetActorInfoReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetNamedActorInfo(const GetNamedActorInfoRequest &request,
+                                       GetNamedActorInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
                                        RegisterActorInfoReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;

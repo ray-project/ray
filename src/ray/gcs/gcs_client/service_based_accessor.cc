@@ -88,14 +88,10 @@ Status ServiceBasedActorInfoAccessor::GetAll(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
-    const ActorID &actor_id, const std::string &name,
-    const OptionalItemCallback<rpc::ActorTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor info, actor id = " << actor_id << ", name = " << name;
-  RAY_CHECK(actor_id.IsNil() || name.empty())
-      << "Only one of actor_id or name may be specified.";
+    const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting actor info, actor id = " << actor_id;
   rpc::GetActorInfoRequest request;
   request.set_actor_id(actor_id.Binary());
-  request.set_name(name);
   client_impl_->GetGcsRpcClient().GetActorInfo(
       request,
       [actor_id, callback](const Status &status, const rpc::GetActorInfoReply &reply) {
@@ -107,6 +103,26 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncGetNamed(
+    const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
+  rpc::GetNamedActorInfoRequest request;
+  request.set_name(name);
+  client_impl_->GetGcsRpcClient().GetNamedActorInfo(
+      request,
+      [name, callback](const Status &status, const rpc::GetNamedActorInfoReply &reply) {
+        if (reply.has_actor_table_data()) {
+          rpc::ActorTableData actor_table_data(reply.actor_table_data());
+          callback(status, actor_table_data);
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
+                       << ", name = " << name;
       });
   return Status::OK();
 }

@@ -1367,10 +1367,9 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
       std::make_shared<std::condition_variable>();
   std::unique_lock<std::mutex> lk(*m);
 
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
-      ActorID::Nil(), name,
-      [this, &actor_id, name, ready, m, cv](
-          Status status, const boost::optional<gcs::ActorTableData> &result) {
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetNamed(
+      name, [this, &actor_id, name, ready, m, cv](
+                Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           actor_id = ActorID::Nil();

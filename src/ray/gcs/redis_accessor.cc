@@ -50,11 +50,8 @@ Status RedisLogBasedActorInfoAccessor::GetAll(
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncGet(
-    const ActorID &actor_id, const std::string &name,
-    const OptionalItemCallback<ActorTableData> &callback) {
+    const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
-  RAY_CHECK(name.empty())
-      << "Looking up detached actors with redis accessor not supported.";
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
                             const std::vector<ActorTableData> &data) {
     boost::optional<ActorTableData> result;
@@ -238,11 +235,8 @@ Status RedisActorInfoAccessor::Get(const ActorID &actor_id,
 }
 
 Status RedisActorInfoAccessor::AsyncGet(
-    const ActorID &actor_id, const std::string &name,
-    const OptionalItemCallback<ActorTableData> &callback) {
+    const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
-  RAY_CHECK(name.empty())
-      << "Looking up actors by name not supported for redis accessor.";
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
                             const ActorTableData &data) { callback(Status::OK(), data); };
 

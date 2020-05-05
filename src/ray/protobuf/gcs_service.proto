@@ -62,6 +62,17 @@ message GetActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
+message GetNamedActorInfoRequest {
+  // Name of the actor.
+  string name = 2;
+}
+
+message GetNamedActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.
+  ActorTableData actor_table_data = 2;
+}
+
 message RegisterActorInfoRequest {
   // Data of actor.
   ActorTableData actor_table_data = 1;
@@ -113,8 +124,10 @@ message GetActorCheckpointIDReply {
 service ActorInfoGcsService {
   // Create actor via gcs service
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
-  // Get actor data from GCS Service.
+  // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+  // Get actor data from GCS Service by name.
+  rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
   // Register an actor to GCS Service.
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.
