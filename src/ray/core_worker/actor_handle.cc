@@ -47,15 +47,14 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
     const ray::gcs::ActorTableData &actor_table_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
-  // XXX: is this right?
   inner.set_owner_id(actor_table_data.parent_id());
   inner.mutable_owner_address()->CopyFrom(actor_table_data.owner_address());
   inner.set_creation_job_id(actor_table_data.job_id());
   inner.set_actor_language(actor_table_data.task_spec().language());
   inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
       actor_table_data.task_spec().function_descriptor());
-  // XXX: what to do about this? can't have collisions.
-  inner.set_actor_cursor(ObjectID::Nil().Binary());
+  ray::TaskSpecification task_spec(actor_table_data.task_spec());
+  inner.set_actor_cursor(task_spec.ReturnId(0, ray::TaskTransportType::DIRECT).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
   return inner;

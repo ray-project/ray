@@ -1360,18 +1360,23 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   RAY_CHECK(RayConfig::instance().gcs_service_enabled());
   RAY_CHECK(!name.empty());
 
+  // This call needs to be blocking because we can't return until the actor
+  // handle is created, which requires the response from the RPC. This is
+  // implemented using a condition variable that's captured in the RPC
+  // callback. There should be no risk of deadlock because we don't hold any
+  // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
   std::shared_ptr<bool> ready = std::make_shared<bool>(false);
   std::shared_ptr<std::mutex> m = std::make_shared<std::mutex>();
   std::shared_ptr<std::condition_variable> cv =
       std::make_shared<std::condition_variable>();
   std::unique_lock<std::mutex> lk(*m);
-
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetNamed(
       name, [this, &actor_id, name, ready, m, cv](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
+          // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         } else {
           RAY_CHECK(result);
@@ -1380,6 +1385,7 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
           AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false);
         }
 
+        // Notify the main thread that the RPC has finished.
         {
           std::unique_lock<std::mutex> lk(*m);
           *ready = true;
@@ -1387,7 +1393,12 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
         cv->notify_one();
       }));
 
-  cv->wait(lk, [ready] { return *ready; });
+  // Block until the RPC completes. Set a timeout to avoid hangs if the
+  // GCS service crashes.
+  cv->wait_for(lk, std::chrono::seconds(5), [ready] { return *ready; });
+  if (!*ready) {
+    return Status::TimedOut("Timed out trying to get named actor.");
+  }
 
   Status status;
   if (actor_id.IsNil()) {
