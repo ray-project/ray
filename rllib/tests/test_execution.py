@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import time
 import gym
@@ -11,7 +12,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
-    ConcatBatches
+    ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
@@ -130,6 +131,15 @@ def test_concat_batches(ray_start_regular_shared):
     assert next(b).count == 1000
     timers = b.shared_metrics.get().timers
     assert "sample" in timers
+
+
+def test_standardize(ray_start_regular_shared):
+    workers = make_workers(0)
+    a = ParallelRollouts(workers, mode="async")
+    b = a.for_each(StandardizeFields(["t"]))
+    batch = next(b)
+    assert abs(np.mean(batch["t"])) < 0.001, batch
+    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
 
 
 def test_async_grads(ray_start_regular_shared):

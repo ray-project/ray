@@ -66,7 +66,7 @@ class BoostingModel:
 # __doc_deploy_begin__
 serve.init()
 serve.create_endpoint("iris_classifier", "/regressor")
-serve.create_backend(BoostingModel, "lr:v1")
+serve.create_backend("lr:v1", BoostingModel)
 serve.set_traffic("iris_classifier", {"lr:v1": 1})
 # __doc_deploy_end__
 

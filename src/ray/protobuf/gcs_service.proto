@@ -289,6 +289,15 @@ message AddTaskLeaseReply {
   GcsStatus status = 1;
 }
 
+message GetTaskLeaseRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskLeaseReply {
+  GcsStatus status = 1;
+  TaskLeaseData task_lease_data = 2;
+}
+
 message AttemptTaskReconstructionRequest {
   TaskReconstructionData task_reconstruction = 1;
 }
@@ -307,6 +316,8 @@ service TaskInfoGcsService {
   rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
   // Add a task lease to GCS Service.
   rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
+  // Get task lease information from GCS Service.
+  rpc GetTaskLease(GetTaskLeaseRequest) returns (GetTaskLeaseReply);
   // Attempt task reconstruction to GCS Service.
   rpc AttemptTaskReconstruction(AttemptTaskReconstructionRequest)
       returns (AttemptTaskReconstructionReply);

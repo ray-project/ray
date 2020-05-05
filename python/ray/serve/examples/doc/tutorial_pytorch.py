@@ -46,7 +46,7 @@ class ImageModel:
 # __doc_deploy_begin__
 serve.init()
 serve.create_endpoint("predictor", "/image_predict", methods=["POST"])
-serve.create_backend(ImageModel, "resnet18:v0")
+serve.create_backend("resnet18:v0", ImageModel)
 serve.set_traffic("predictor", {"resnet18:v0": 1})
 # __doc_deploy_end__
 

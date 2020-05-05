@@ -88,16 +88,6 @@ class Router:
 
     The traffic policy is used to assign requests to workers.
 
-    Behavior:
-        >>> # psuedo-code
-        >>> router = Router()
-        >>> router.enqueue_request(
-            "service-name", request_args, request_kwargs, request_context)
-        # nothing happens, request is queued.
-        >>> router.add_new_worker("backend-1", worker_handle)
-        >>> router.link("service-name", "backend-1")
-        # the request is assigned to the worker
-
     Traffic policy splits the traffic among different replicas
     probabilistically:
 
@@ -114,18 +104,18 @@ class Router:
     async def __init__(self):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
-        #   service_queue.
-        # - The service_queue is dequed during flush operation, which moves
+        #   endpoint_queue.
+        # - The endpoint_queue is dequeued during flush operation, which moves
         #   the queries to backend buffer_queue. Here we match a request
-        #   for a service to a backend given some policy.
+        #   for an endpoint to a backend given some policy.
         # - The worker_queue is used to collect idle actor handle. These
         #   handles are dequed during the second stage of flush operation,
         #   which assign queries in buffer_queue to actor handle.
 
         # -- Queues -- #
 
-        # service_name -> request queue
-        self.service_queues: DefaultDict[asyncio.Queue[Query]] = defaultdict(
+        # endpoint_name -> request queue
+        self.endpoint_queues: DefaultDict[asyncio.Queue[Query]] = defaultdict(
             asyncio.Queue)
         # backend_name -> worker request queue
         self.worker_queues: DefaultDict[asyncio.Queue[
@@ -135,7 +125,7 @@ class Router:
 
         # -- Metadata -- #
 
-        # service_name -> traffic_policy
+        # endpoint_name -> traffic_policy
         self.traffic = defaultdict(dict)
         # backend_name -> backend_config
         self.backend_info = dict()
@@ -173,8 +163,8 @@ class Router:
 
         backend_configs = retry_actor_failures(
             master_actor.get_backend_configs)
-        for backend, backend_config_dict in backend_configs.items():
-            await self.set_backend_config(backend, backend_config_dict)
+        for backend, backend_config in backend_configs.items():
+            await self.set_backend_config(backend, backend_config)
 
     def is_ready(self):
         return True
@@ -190,8 +180,8 @@ class Router:
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
-        service = request_meta.service
-        logger.debug("Received a request for service {}".format(service))
+        endpoint = request_meta.endpoint
+        logger.debug("Received a request for endpoint {}".format(endpoint))
 
         # check if the slo specified is directly the
         # wall clock time
@@ -207,7 +197,7 @@ class Router:
             request_slo_ms,
             call_method=request_meta.call_method,
             async_future=asyncio.get_event_loop().create_future())
-        await self.service_queues[service].put(query)
+        await self.endpoint_queues[endpoint].put(query)
         await self.flush()
 
         # Note: a future change can be to directly return the ObjectID from
@@ -254,20 +244,38 @@ class Router:
             # on it.
             worker_handle.__ray_terminate__.remote()
 
-    async def link(self, service, backend):
-        logger.debug("Link %s with %s", service, backend)
-        await self.set_traffic(service, {backend: 1.0})
-
-    async def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
+    async def set_traffic(self, endpoint, traffic_dict):
+        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
-        self.traffic[service] = traffic_dict
+        self.traffic[endpoint] = traffic_dict
         await self.flush()
 
-    async def set_backend_config(self, backend, config_dict):
+    async def remove_endpoint(self, endpoint):
+        logger.debug("Removing endpoint {}".format(endpoint))
+        async with self.flush_lock:
+            await self._flush_endpoint_queues()
+            await self._flush_buffer_queues()
+            if endpoint in self.endpoint_queues:
+                del self.endpoint_queues[endpoint]
+            if endpoint in self.traffic:
+                del self.traffic[endpoint]
+
+    async def set_backend_config(self, backend, config):
         logger.debug("Setting backend config for "
-                     "backend {} to {}".format(backend, config_dict))
-        self.backend_info[backend] = config_dict
+                     "backend {} to {}.".format(backend, config))
+        self.backend_info[backend] = config
+
+    async def remove_backend(self, backend):
+        logger.debug("Removing backend {}".format(backend))
+        async with self.flush_lock:
+            await self._flush_endpoint_queues()
+            await self._flush_buffer_queues()
+            if backend in self.backend_info:
+                del self.backend_info[backend]
+            if backend in self.worker_queues:
+                del self.worker_queues[backend]
+            if backend in self.buffer_queues:
+                del self.buffer_queues[backend]
 
     async def flush(self):
         """In the default case, flush calls ._flush.
@@ -276,11 +284,11 @@ class Router:
         method invocation.
         """
         async with self.flush_lock:
-            await self._flush_service_queues()
+            await self._flush_endpoint_queues()
             await self._flush_buffer_queues()
 
-    def _get_available_backends(self, service):
-        backends_in_policy = set(self.traffic[service].keys())
+    def _get_available_backends(self, endpoint):
+        backends_in_policy = set(self.traffic[endpoint].keys())
         available_workers = {
             backend
             for backend, queues in self.worker_queues.items()
@@ -288,25 +296,25 @@ class Router:
         }
         return list(backends_in_policy.intersection(available_workers))
 
-    async def _flush_service_queues(self):
-        """Selects the backend and puts the service queue query to the buffer
+    async def _flush_endpoint_queues(self):
+        """Selects the backend and puts the endpoint queue query to the buffer
         Expected Implementation:
             The implementer is expected to access and manipulate
-            self.service_queues        : dict[str,Deque]
+            self.endpoint_queues        : dict[str,Deque]
             self.buffer_queues : dict[str,sortedlist]
         For registering the implemented policies register at policy.py
         Expected Behavior:
-            the Deque of all services in self.service_queues linked with
+            the Deque of all endpoints in self.endpoint_queues linked with
             atleast one backend must be empty irrespective of whatever
             backend policy is implemented.
         """
         raise NotImplementedError(
             "This method should be implemented by child class.")
 
-    # flushes the buffer queue and assigns work to workers
+    # Flushes the buffer queue and assigns work to workers.
     async def _flush_buffer_queues(self):
-        for service in self.traffic.keys():
-            ready_backends = self._get_available_backends(service)
+        for endpoint in self.traffic:
+            ready_backends = self._get_available_backends(endpoint)
             for backend in ready_backends:
                 # no work available
                 if len(self.buffer_queues[backend]) == 0:
@@ -322,8 +330,7 @@ class Router:
 
                 max_batch_size = None
                 if backend in self.backend_info:
-                    max_batch_size = self.backend_info[backend][
-                        "max_batch_size"]
+                    max_batch_size = self.backend_info[backend].max_batch_size
 
                 await self._assign_query_to_worker(
                     backend, buffer_queue, worker_queue, max_batch_size)

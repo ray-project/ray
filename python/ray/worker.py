@@ -435,10 +435,6 @@ def get_gpu_ids():
     """
 
     # TODO(ilr) Handle inserting resources in local mode
-    if _mode() == LOCAL_MODE:
-        logger.info("ray.get_gpu_ids() currently does not work in LOCAL "
-                    "MODE.")
-
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
@@ -1683,7 +1679,7 @@ def kill(actor):
 
 
 def cancel(object_id, force=False):
-    """Cancels a locally-submitted task according to the following conditions.
+    """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
@@ -1702,8 +1698,7 @@ def cancel(object_id, force=False):
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
     Raises:
-        ValueError: This is also raised for actor tasks, already completed
-            tasks, and non-locally submitted tasks.
+        TypeError: This is also raised for actor tasks.
     """
     worker = ray.worker.global_worker
     worker.check_connected()

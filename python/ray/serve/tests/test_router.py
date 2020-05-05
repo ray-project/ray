@@ -42,7 +42,7 @@ def task_runner_mock_actor():
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueueActor.remote()
-    q.link.remote("svc", "backend-single-prod")
+    q.set_traffic.remote("svc", {"backend-single-prod": 1.0})
     q.add_new_worker.remote("backend-single-prod", "replica-1",
                             task_runner_mock_actor)
 
@@ -58,7 +58,7 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
 async def test_slo(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueueActor.remote()
-    await q.link.remote("svc", "backend-slo")
+    await q.set_traffic.remote("svc", {"backend-slo": 1.0})
 
     all_request_sent = []
     for i in range(10):
