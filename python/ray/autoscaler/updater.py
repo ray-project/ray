@@ -224,7 +224,7 @@ class SSHCommandRunner:
         #   persistent sessions later on.
         try:
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
-        except Exception as e:
+        except OSError as e:
             logger.warning(e)
 
     def run(self,
