@@ -360,5 +360,19 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
+std::shared_ptr<ray::rpc::NodeResourceChange> GcsNodeManager::CreateNodeResourceChange(
+    const ClientID &node_id, const gcs::NodeInfoAccessor::ResourceMap &resource,
+    bool is_add) {
+  rpc::ResourceMap resource_map;
+  for (auto &it : resource) {
+    (*resource_map.mutable_items())[it.first] = *(it.second);
+  }
+  auto node_resource_change = std::make_shared<ray::rpc::NodeResourceChange>();
+  node_resource_change->set_is_add(is_add);
+  node_resource_change->set_node_id(node_id.Binary());
+  node_resource_change->mutable_data()->CopyFrom(resource_map);
+  return node_resource_change;
+}
+
 }  // namespace gcs
 }  // namespace ray

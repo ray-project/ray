@@ -188,6 +188,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
+  /// Helper function to produce node resource change.
+  ///
+  /// \param node_id The node ID that whose resource is added or removed.
+  /// \param resource The resource of specified node which is added or removed.
+  /// \param is_add Whether the resource is added to the node.
+  /// \return The node resource change created by this method.
+  std::shared_ptr<ray::rpc::NodeResourceChange> CreateNodeResourceChange(
+      const ClientID &node_id, const gcs::NodeInfoAccessor::ResourceMap &resource,
+      bool is_add);
+
   /// Node info accessor.
   gcs::NodeInfoAccessor &node_info_accessor_;
   /// Error info accessor.
