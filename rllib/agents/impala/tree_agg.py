@@ -3,8 +3,8 @@ import os
 from typing import List
 
 import ray
-from ray.rllib.agents.impala.replay_ops import MixInReplay
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, SampleBatchType
+from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
 from ray.util.iter import LocalIterator, ParallelIterator, \
