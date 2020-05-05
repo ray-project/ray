@@ -64,8 +64,6 @@ struct CoreWorkerOptions {
       const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  using TerminateAsyncioThreadFunction = std::function<void()>;
-
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
   /// Application language of this worker (i.e., PYTHON or JAVA).
@@ -117,7 +115,7 @@ struct CoreWorkerOptions {
   /// The number of workers to be started in the current process.
   int num_workers;
   /// The function to destroy event loop of asyncio threads.
-  TerminateAsyncioThreadFunction terminate_asyncio_thread;
+  std::function<void()> terminate_asyncio_thread;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
