@@ -71,6 +71,10 @@ class GaussianNoise(Exploration):
         self.last_timestep = get_variable(
             0, framework=self.framework, tf_name="timestep")
 
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
+
     @override(Exploration)
     def get_exploration_action(self,
                                *,
@@ -143,10 +147,9 @@ class GaussianNoise(Exploration):
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
                     mean=torch.zeros(det_actions.size()), std=self.stddev)
-                action = torch.clamp(
-                    det_actions + gaussian_sample,
-                    self.action_space.low * torch.ones_like(det_actions),
-                    self.action_space.high * torch.ones_like(det_actions))
+                action = torch.clamp(det_actions + gaussian_sample,
+                                     self.action_space.low.item(0),
+                                     self.action_space.high.item(0))
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()
@@ -158,11 +161,13 @@ class GaussianNoise(Exploration):
         return action, logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns the current scale value.
 
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
+        if sess:
+            return sess.run(self._tf_info_op)
         scale = self.scale_schedule(self.last_timestep)
         return {"cur_scale": scale}

@@ -199,7 +199,7 @@ requires = [
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
-    "redis >= 3.3.2",
+    "redis >= 3.3.2, < 3.5.0",
 ]
 
 setup(

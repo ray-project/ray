@@ -97,6 +97,21 @@ inline std::shared_ptr<ray::rpc::WorkerFailureData> CreateWorkerFailureData(
   return worker_failure_info_ptr;
 }
 
+/// Helper function to produce object location change.
+///
+/// \param node_id The node ID that this object appeared on or was evicted by.
+/// \param is_add Whether the object is appeared on the node.
+/// \return The object location change created by this method.
+inline std::shared_ptr<ray::rpc::ObjectLocationChange> CreateObjectLocationChange(
+    const ClientID &node_id, bool is_add) {
+  ray::rpc::ObjectTableData object_table_data;
+  object_table_data.set_manager(node_id.Binary());
+  auto object_location_change = std::make_shared<ray::rpc::ObjectLocationChange>();
+  object_location_change->set_is_add(is_add);
+  object_location_change->mutable_data()->CopyFrom(object_table_data);
+  return object_location_change;
+}
+
 }  // namespace gcs
 
 }  // namespace ray

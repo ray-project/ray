@@ -195,18 +195,20 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
+
+  Status AsyncGetTaskLease(const TaskID &task_id,
+                           const OptionalItemCallback<TaskLeaseData> &callback) override;
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
@@ -254,8 +256,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

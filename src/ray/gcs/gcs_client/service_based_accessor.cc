@@ -569,10 +569,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()),
-      task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
@@ -601,8 +598,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
   client_impl_->GetGcsRpcClient().GetTask(
       request, [task_id, callback](const Status &status, const rpc::GetTaskReply &reply) {
         if (reply.has_task_data()) {
-          TaskTableData task_table_data(reply.task_data());
-          callback(status, task_table_data);
+          callback(status, reply.task_data());
         } else {
           callback(status, boost::none);
         }
@@ -636,16 +632,38 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto status =
-      task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
+    TaskTableData task_data;
+    task_data.ParseFromString(data);
+    subscribe(task_id, task_data);
+  };
+  auto on_done = [this, task_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [task_id, subscribe, done](
+                          const Status &status,
+                          const boost::optional<rpc::TaskTableData> &result) {
+        if (result) {
+          subscribe(task_id, *result);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGet(task_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
 }
 
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                                      const StatusCallback &done) {
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
-  auto status = task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -670,6 +688,25 @@ Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
   return Status::OK();
 }
 
+Status ServiceBasedTaskInfoAccessor::AsyncGetTaskLease(
+    const TaskID &task_id, const OptionalItemCallback<rpc::TaskLeaseData> &callback) {
+  RAY_LOG(DEBUG) << "Getting task lease, task id = " << task_id;
+  rpc::GetTaskLeaseRequest request;
+  request.set_task_id(task_id.Binary());
+  client_impl_->GetGcsRpcClient().GetTaskLease(
+      request,
+      [task_id, callback](const Status &status, const rpc::GetTaskLeaseReply &reply) {
+        if (reply.has_task_lease_data()) {
+          callback(status, reply.task_lease_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting task lease, status = " << status
+                       << ", task id = " << task_id;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
     const TaskID &task_id,
     const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
@@ -677,16 +714,37 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto status =
-      task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
+    TaskLeaseData task_lease_data;
+    task_lease_data.ParseFromString(data);
+    subscribe(task_id, task_lease_data);
+  };
+  auto on_done = [this, task_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [task_id, subscribe, done](
+                          const Status &status,
+                          const boost::optional<rpc::TaskLeaseData> &result) {
+        subscribe(task_id, result);
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
 
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
-    const TaskID &task_id, const StatusCallback &done) {
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
-  auto status = task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status =
+      client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }
@@ -715,9 +773,7 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 
 ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      object_sub_executor_(client_impl->GetRedisGcsClient().object_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
     const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
@@ -749,7 +805,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   request.set_node_id(node_id.Binary());
 
   auto operation = [this, request, object_id, node_id,
-                    callback](SequencerDoneCallback done_callback) {
+                    callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
         request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::AddObjectLocationReply &reply) {
@@ -776,7 +832,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
   request.set_node_id(node_id.Binary());
 
   auto operation = [this, request, object_id, node_id,
-                    callback](SequencerDoneCallback done_callback) {
+                    callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().RemoveObjectLocation(
         request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::RemoveObjectLocationReply &reply) {
@@ -800,16 +856,46 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto status =
-      object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  auto on_subscribe = [object_id, subscribe](const std::string &id,
+                                             const std::string &data) {
+    rpc::ObjectLocationChange object_location_change;
+    object_location_change.ParseFromString(data);
+    std::vector<rpc::ObjectTableData> object_data_vector;
+    object_data_vector.emplace_back(object_location_change.data());
+    auto change_mode = object_location_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
+                                                       : rpc::GcsChangeMode::REMOVE;
+    gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
+    subscribe(object_id, notification);
+  };
+  auto on_done = [this, object_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [object_id, subscribe, done](
+                          const Status &status,
+                          const std::vector<rpc::ObjectTableData> &result) {
+        if (status.ok()) {
+          gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                     result);
+          subscribe(object_id, notification);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
+  auto status = client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
-    const ObjectID &object_id, const StatusCallback &done) {
+    const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
-  auto status = object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+  auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
 }

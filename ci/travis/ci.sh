@@ -30,9 +30,10 @@ should_run_job() {
     done
     if [ 0 -eq "${#active_triggers[@]}" ]; then
       echo "Job is not triggered by any of $1; skipping job."
+      sleep 15  # make sure output is flushed
       skip=1
     else
-      echo "Job is triggered by: ${#active_triggers[*]}"
+      echo "Job is triggered by: ${active_triggers[*]}"
     fi
   fi
   return "${skip}"
@@ -261,8 +262,9 @@ lint() {
   )
 }
 
-preload() {
-  local job_names="${1-}"
+_preload() {
+  local job_names
+  job_names="$1"
 
   local variable_definitions
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
@@ -309,7 +311,7 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  preload
+  _preload "${1-}"
 
   configure_system
 

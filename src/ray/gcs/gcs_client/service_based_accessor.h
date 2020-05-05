@@ -212,18 +212,21 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) override;
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
@@ -231,16 +234,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
-
-  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
-      TaskLeaseSubscriptionExecutor;
-  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor
@@ -267,17 +260,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
       const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                     const StatusCallback &done) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
-      ObjectSubscriptionExecutor;
-  ObjectSubscriptionExecutor object_sub_executor_;
 
   Sequencer<ObjectID> sequencer_;
 };
