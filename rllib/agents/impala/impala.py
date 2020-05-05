@@ -1,16 +1,15 @@
 import copy
 import logging
-import os
-import random
-from typing import List
 
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
+from ray.rllib.agents.impala.replay_exec import MixInReplay
+from ray.rllib.agents.impala.tree_agg_exec import \
+    gather_experiences_tree_aggregation
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    STEPS_SAMPLED_COUNTER, SampleBatchType
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -18,12 +17,10 @@ from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
-from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
-from ray.util.iter import LocalIterator, ParallelIterator, \
-    ParallelIteratorWorker, from_actors
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -215,40 +212,6 @@ def validate_config(config):
                 "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
 
 
-# Mix in replay to a stream of experiences.
-class MixInReplay:
-    def __init__(self, num_slots, replay_proportion):
-        if replay_proportion > 0 and num_slots == 0:
-            raise ValueError(
-                "You must set num_slots > 0 if replay_proportion > 0.")
-        self.num_slots = num_slots
-        self.replay_proportion = replay_proportion
-        self.replay_batches = []
-        self.replay_index = 0
-
-    def __call__(self, sample_batch):
-        output_batches = [sample_batch]
-        if self.num_slots <= 0:
-            return output_batches  # Replay is disabled.
-
-        # Put in replay buffer if enabled.
-        if len(self.replay_batches) < self.num_slots:
-            self.replay_batches.append(sample_batch)
-        else:
-            self.replay_batches[self.replay_index] = sample_batch
-            self.replay_index += 1
-            self.replay_index %= self.num_slots
-
-        # Replay with some probability.
-        f = self.replay_proportion
-        while random.random() < f:
-            f -= 1
-            replay_batch = random.choice(self.replay_batches)
-            output_batches.append(replay_batch)
-
-        return output_batches
-
-
 # Update worker weights as they finish generating experiences.
 class UpdateWorkerWeights:
     def __init__(self, learner_thread, workers, broadcast_interval):
@@ -296,80 +259,6 @@ def gather_experiences_directly(workers, config):
             ConcatBatches(min_batch_size=config["train_batch_size"]))
 
     return train_batches
-
-
-@ray.remote(num_cpus=0)
-class Aggregator(ParallelIteratorWorker):
-    def __init__(self, config: dict,
-                 rollout_group: "ParallelIterator[SampleBatchType]"):
-        self.weights = None
-
-        def generator():
-            it = rollout_group.gather_async(async_queue_depth=config[
-                "max_sample_requests_in_flight_per_worker"])
-
-            # Update the rollout worker with our latest policy weights.
-            def update_worker(item):
-                worker, batch = item
-                if self.weights:
-                    worker.set_weights.remote(self.weights)
-                return batch
-
-            # Augment with replay and concat to desired train batch size.
-            it = it.zip_with_source_actor() \
-                .for_each(update_worker) \
-                .for_each(lambda batch: batch.decompress_if_needed()) \
-                .for_each(MixInReplay(
-                    num_slots=config["replay_buffer_num_slots"],
-                    replay_proportion=config["replay_proportion"])) \
-                .flatten() \
-                .combine(
-                    ConcatBatches(
-                        min_batch_size=config["train_batch_size"]))
-
-            for train_batch in it:
-                yield train_batch
-
-        super().__init__(generator, repeat=False)
-
-    def get_host(self):
-        return os.uname()[1]
-
-    def set_weights(self, weights):
-        self.weights = weights
-
-
-def gather_experiences_tree_aggregation(workers, config):
-    rollouts = ParallelRollouts(workers, mode="raw")
-
-    # Divide up the workers between aggregators.
-    worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
-    i = 0
-    for w in range(len(workers.remote_workers())):
-        worker_assignments[i].append(w)
-        i += 1
-        i %= len(worker_assignments)
-    logger.info("Worker assignments: {}".format(worker_assignments))
-
-    # Create parallel iterators that represent each aggregation group.
-    rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
-        rollouts.select_shards(assigned) for assigned in worker_assignments
-    ]
-
-    # This spawns |num_aggregation_workers| intermediate actors that aggregate
-    # experiences in parallel. We force colocation on the same node to maximize
-    # data bandwidth between them and the driver.
-    train_batches = from_actors([
-        create_colocated(Aggregator, [config, g], 1)[0] for g in rollout_groups
-    ])
-
-    # TODO(ekl) properly account for replay.
-    def record_steps_sampled(batch):
-        metrics = LocalIterator.get_metrics()
-        metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
-        return batch
-
-    return train_batches.gather_async().for_each(record_steps_sampled)
 
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
