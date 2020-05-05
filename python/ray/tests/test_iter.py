@@ -292,7 +292,7 @@ def test_gather_async(ray_start_regular_shared):
 
 def test_gather_async_queue(ray_start_regular_shared):
     it = from_range(100)
-    it = it.gather_async(async_queue_depth=4)
+    it = it.gather_async(num_async=4)
     assert sorted(it) == list(range(100))
 
 
