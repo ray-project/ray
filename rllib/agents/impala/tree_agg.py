@@ -3,7 +3,8 @@ import os
 from typing import List
 
 import ray
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, SampleBatchType
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    SampleBatchType, _get_global_vars
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
@@ -35,7 +36,7 @@ class Aggregator(ParallelIteratorWorker):
             def update_worker(item):
                 worker, batch = item
                 if self.weights:
-                    worker.set_weights.remote(self.weights)
+                    worker.set_weights.remote(self.weights, _get_global_vars())
                 return batch
 
             # Augment with replay and concat to desired train batch size.

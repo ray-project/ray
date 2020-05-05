@@ -8,7 +8,7 @@ from ray.rllib.agents.impala.tree_agg import \
     gather_experiences_tree_aggregation
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, _get_global_vars
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -232,7 +232,7 @@ class BroadcastUpdateLearnerWeights:
             # Update metrics.
             metrics = LocalIterator.get_metrics()
             metrics.counters["num_weight_broadcasts"] += 1
-        actor.set_weights.remote(self.weights)
+        actor.set_weights.remote(self.weights, _get_global_vars())
 
 
 def record_steps_trained(count):
