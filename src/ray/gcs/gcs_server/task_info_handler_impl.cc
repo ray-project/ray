@@ -100,9 +100,15 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
                  << ", task id = " << task_id << ", node id = " << node_id;
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->CopyFrom(request.task_lease_data());
-  auto on_done = [task_id, node_id, request, reply, send_reply_callback](Status status) {
+  auto on_done = [this, task_id, node_id, task_lease_data, request, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
+                     << ", task id = " << task_id << ", node id = " << node_id;
+    } else {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Hex(),
+                                         task_lease_data->SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -112,8 +118,29 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
-                 << ", task id = " << task_id << ", node id = " << node_id;
+}
+
+void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &request,
+                                                GetTaskLeaseReply *reply,
+                                                SendReplyCallback send_reply_callback) {
+  TaskID task_id = TaskID::FromBinary(request.task_id());
+  RAY_LOG(DEBUG) << "Getting task lease, job id = " << task_id.JobId()
+                 << ", task id = " << task_id;
+  auto on_done = [task_id, request, reply, send_reply_callback](
+                     const Status &status, const boost::optional<TaskLeaseData> &result) {
+    if (status.ok()) {
+      RAY_DCHECK(result);
+      reply->mutable_task_lease_data()->CopyFrom(*result);
+    }
+    RAY_LOG(DEBUG) << "Finished getting task lease, job id = " << task_id.JobId()
+                   << ", task id = " << task_id << ", status = " << status.ToString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  Status status = gcs_client_.Tasks().AsyncGetTaskLease(task_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
 }
 
 void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(

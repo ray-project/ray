@@ -144,6 +144,18 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return Status::OK();
   }
 
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskLeaseData> &callback) override {
+    auto iter = task_lease_table_.find(task_id);
+    if (iter != task_lease_table_.end()) {
+      callback(Status::OK(), *iter->second);
+    } else {
+      callback(Status::OK(), boost::none);
+    }
+    return Status::OK();
+  }
+
   Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &task_data,
       const gcs::StatusCallback &done) override {
