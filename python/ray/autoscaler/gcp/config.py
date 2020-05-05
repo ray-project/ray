@@ -240,7 +240,11 @@ def _configure_key_pair(config):
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
             # os.open behavior to include the mode we want.
-            with open(private_key_path, "w", opener=partial(os.open, mode=0o600)) as f:
+            with open(
+                    private_key_path,
+                    "w",
+                    opener=partial(os.open, mode=0o600),
+            ) as f:
                 f.write(private_key)
 
             with open(public_key_path, "w") as f:
