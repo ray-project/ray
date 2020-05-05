@@ -92,6 +92,7 @@ def timeit(name, fn, multiplier=1):
 def main():
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     ray.init()
+
     # value = ray.put(0)
     # arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 
@@ -202,10 +203,6 @@ def main():
 
     timeit("n:n actor calls with arg async", actor_multi2_direct_arg,
            n * len(clients))
-
-    # Make actors go out of scope to avoid having too many workers.
-    del actors
-    del clients
 
     a = AsyncActor.remote()
 
