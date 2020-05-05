@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import logging
 import time
@@ -236,12 +237,10 @@ def _configure_key_pair(config):
 
             _create_project_ssh_key_pair(project, public_key, ssh_user)
 
-            with open(
-                    os.open(
-                        private_key_path,
-                        os.O_WRONLY | os.O_CREAT,
-                        0o600,
-                    ), "w") as f:
+            # We need to make sure to _create_ the file with the right
+            # permissions. In order to do that we need to change the default
+            # os.open behavior to include the mode we want.
+            with open(private_key_path, "w", opener=partial(os.open, mode=0o600)) as f:
                 f.write(private_key)
 
             with open(public_key_path, "w") as f:
