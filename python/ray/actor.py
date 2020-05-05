@@ -488,13 +488,7 @@ class ActorClass:
         if name is not None:
             try:
                 ray.util.get_actor(name)
-            # Name is not taken. This is raised by ray.internal_kv.
-            # TODO(edoakes): remove this check once the internal_kv-based
-            # named actor implementation is removed.
-            except ValueError:
-                pass
-            # Name is not taken. This is raised by GCS service implementation.
-            except KeyError:
+            except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(

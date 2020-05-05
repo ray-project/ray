@@ -132,7 +132,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise RayTimeoutError(message)
     elif status.IsNotFound():
-        raise KeyError(message)
+        raise ValueError(message)
     else:
         raise RayletError(message)
 

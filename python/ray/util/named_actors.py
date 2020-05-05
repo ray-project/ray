@@ -34,8 +34,7 @@ def get_actor(name):
         actor_name = _calculate_key(name)
         pickled_state = _internal_kv_get(actor_name)
         if pickled_state is None:
-            raise ValueError(
-                "The actor with name={} doesn't exist".format(name))
+            raise KeyError("The actor with name={} doesn't exist".format(name))
         handle = pickle.loads(pickled_state)
 
     return handle
