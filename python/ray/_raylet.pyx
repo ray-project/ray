@@ -637,7 +637,7 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 cdef void terminate_asyncio_thread() nogil:
     with gil:
         core_worker = ray.worker.global_worker.core_worker
-        core_worker.destory_event_loop_if_exists()
+        core_worker.destroy_event_loop_if_exists()
 
 
 cdef class CoreWorker:
@@ -1200,7 +1200,7 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         return future.result()
 
-    def destory_event_loop_if_exists(self):
+    def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
             # We should stop the monitor first because otherwise,
             # loop.stop() will continue forever as monitor
