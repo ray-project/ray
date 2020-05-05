@@ -193,11 +193,11 @@ class ParallelIterator(Generic[T]):
         If `max_concurrency` == 1 then `fn` will be executed serially by the
         shards
 
-        `max_concurrency` should be used to achieve a high degree of parallelism
-        without the overhead of increasing the number of shards (which are
-        actor based). This provides the semantic guarantee that `fn(x_i)` will
-        _begin_ executing before `fn(x_{i+1})` (but not necessarily finish
-        first)
+        `max_concurrency` should be used to achieve a high degree of
+        parallelism without the overhead of increasing the number of shards
+        (which are actor based). This provides the semantic guarantee that
+        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not necessarily
+        finish first)
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `async_queue_depth` is `n` and
@@ -245,7 +245,6 @@ class ParallelIterator(Generic[T]):
                                     ".filter()")
 
     def batch(self, n: int) -> "ParallelIterator[List[T]]":
-
         """Remotely batch together items in this iterator.
 
         Args:
@@ -702,7 +701,8 @@ class LocalIterator(Generic[T]):
                         yield item
                     else:
                         finished, remaining = ray.wait(cur, timeout=0)
-                        if max_concurrency and len(remaining) >= max_concurrency:
+                        if max_concurrency and len(
+                                remaining) >= max_concurrency:
                             ray.wait(cur, num_returns=(len(finished) + 1))
                         cur.append(remote_fn(item))
 
