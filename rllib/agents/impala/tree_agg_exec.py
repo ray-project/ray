@@ -15,6 +15,14 @@ logger = logging.getLogger(__name__)
 
 @ray.remote(num_cpus=0)
 class Aggregator(ParallelIteratorWorker):
+    """An aggregation worker used by gather_experiences_tree_aggregation().
+
+    Each of these actors is a shard of a parallel iterator that consumes
+    batches from RolloutWorker actors, and emits batches of size
+    train_batch_size. This allows expensive decompression / concatenation
+    work to be offloaded to these actors instead of run in the learner.
+    """
+
     def __init__(self, config: dict,
                  rollout_group: "ParallelIterator[SampleBatchType]"):
         self.weights = None
@@ -55,6 +63,8 @@ class Aggregator(ParallelIteratorWorker):
 
 
 def gather_experiences_tree_aggregation(workers, config):
+    """Tree aggregation version of gather_experiences_directly()."""
+
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Divide up the workers between aggregators.
