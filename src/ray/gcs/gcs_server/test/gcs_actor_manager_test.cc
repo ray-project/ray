@@ -136,8 +136,8 @@ TEST_F(GcsActorManagerTest, TestBasicNodeFailure) {
 
 TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(
-      job_id, /*max_restarts=*/1, /*detached=*/false);
+  auto create_actor_request =
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {

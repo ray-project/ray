@@ -17,20 +17,19 @@
 
 #include <memory>
 #include <utility>
-#include "gmock/gmock.h"
 
+#include "gmock/gmock.h"
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
 #include "src/ray/common/test_util.h"
-#include "src/ray/util/asio_util.h"
-
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/util/asio_util.h"
 
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_restarts, bool detached,
+  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
+                                                bool detached,
                                                 const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
