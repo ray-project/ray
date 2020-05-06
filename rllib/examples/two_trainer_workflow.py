@@ -101,8 +101,8 @@ if __name__ == "__main__":
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
-    # You can also have multiple policies per trainer, but here we just
-    # show one each for PPO and DQN.
+    # Note that since the trainer below does not include a default policy or
+    # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (PPOTFPolicy, obs_space, act_space, PPO_CONFIG),
         "dqn_policy": (DQNTFPolicy, obs_space, act_space, DQN_CONFIG),
@@ -121,6 +121,7 @@ if __name__ == "__main__":
 
     tune.run(
         MyTrainer,
+        stop={"training_iteration": args.num_iters},
         config={
             "rollout_fragment_length": 50,
             "num_workers": 0,
