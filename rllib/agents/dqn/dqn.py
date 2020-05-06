@@ -317,7 +317,7 @@ def execution_plan(workers, config):
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
-        multiagent_sync_replay=config["multiagent_sync_replay"],
+        multiagent_sync_replay=config.get("multiagent_sync_replay"),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
