@@ -15,33 +15,35 @@ Working configurations are given below.
 """
 
 import argparse
-from gym.spaces import Box
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn.distributional_q_tf_model import \
-    DistributionalQTFModel
+from ray.tune.registry import register_env
 from ray.rllib.examples.env.parametric_actions_cartpole import \
     ParametricActionsCartPole
+from ray.rllib.examples.models.parametric_actions_model import \
+    ParametricActionsModel, TorchParametricActionsModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.tune.registry import register_env
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--run", type=str, default="PPO")
-
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-reward", type=float, default=150.0)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
+    ModelCatalog.register_custom_model(
+        "pa_model",
+        TorchParametricActionsModel if args.torch else ParametricActionsModel)
+
     if args.run == "DQN":
         cfg = {
             # TODO(ekl) we need to set these to prevent the masked values
@@ -53,16 +55,25 @@ if __name__ == "__main__":
         }
     else:
         cfg = {}
-    tune.run(
-        args.run,
-        stop={
-            "episode_reward_mean": args.stop,
+
+    config = dict({
+        "env": "pa_cartpole",
+        "model": {
+            "custom_model": "pa_model",
         },
-        config=dict({
-            "env": "pa_cartpole",
-            "model": {
-                "custom_model": "pa_model",
-            },
-            "num_workers": 0,
-        }, **cfg),
-    )
+        "num_workers": 0,
+        "use_pytorch": args.torch,
+    }, **cfg)
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run(args.run, stop=stop, config=config)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

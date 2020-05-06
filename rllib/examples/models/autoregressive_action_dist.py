@@ -109,9 +109,8 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
     def logp(self, actions):
         a1, a2 = actions[:, 0], actions[:, 1]
         a1_vec = torch.unsqueeze(a1.float(), 1)
-        a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
-        return (
-                TorchCategorical(a1_logits).logp(a1) +
+        a1_logits, a2_logits = self.model.action_module(self.inputs, a1_vec)
+        return (TorchCategorical(a1_logits).logp(a1) +
                 TorchCategorical(a2_logits).logp(a2))
 
     def sampled_action_logp(self):
@@ -132,14 +131,14 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
 
     def _a1_distribution(self):
         BATCH = self.inputs.shape[0]
-        a1_logits, _ = self.model.action_model(
-            [self.inputs, torch.zeros((BATCH, 1))])
+        a1_logits, _ = self.model.action_module(self.inputs,
+                                                torch.zeros((BATCH, 1)))
         a1_dist = TorchCategorical(a1_logits)
         return a1_dist
 
     def _a2_distribution(self, a1):
         a1_vec = torch.unsqueeze(a1.float(), 1)
-        _, a2_logits = self.model.action_model([self.inputs, a1_vec])
+        _, a2_logits = self.model.action_module(self.inputs, a1_vec)
         a2_dist = TorchCategorical(a2_logits)
         return a2_dist
 

@@ -169,13 +169,13 @@ class ModelCatalog:
                 lambda s: ModelCatalog.get_action_dist(
                     s, config, framework=framework), flat_action_space)
             child_dists = [e[0] for e in child_dists_and_in_lens]
-            input_lens = [e[1] for e in child_dists_and_in_lens]
+            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
             return partial(
                 (TorchMultiActionDistribution
                  if framework == "torch" else MultiActionDistribution),
                 action_space=action_space,
                 child_distributions=child_dists,
-                input_lens=input_lens), sum(input_lens)
+                input_lens=input_lens), int(sum(input_lens))
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":

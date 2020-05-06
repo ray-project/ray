@@ -14,7 +14,7 @@ from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
 from ray.rllib.models import ModelCatalog
 
 parser = argparse.ArgumentParser()
-# parser.add_argument("--torch", action="store_true")
+parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
@@ -22,7 +22,9 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
-    ModelCatalog.register_custom_model("fast_model", FastModel)
+
+    ModelCatalog.register_custom_model(
+        "fast_model", TorchFastModel if args.torch else FastModel)
 
     config = {
         "env": FastImageEnv,
@@ -40,7 +42,7 @@ if __name__ == "__main__":
         "train_batch_size": sample_from(
             lambda spec: 1000 * max(1, spec.config.num_gpus)),
         "_fake_sampler": True,
-        # "use_pytorch": args.torch,
+        "use_pytorch": args.torch,
     }
 
     stop = {
@@ -48,4 +50,6 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run("IMPALA", config=config, stop=stop)
+    tune.run("IMPALA", config=config, stop=stop)
+
+    ray.shutdown()

@@ -58,4 +58,3 @@ class EagerModel(TFModelV2):
             print("Eagerly printing the feature layer mean value",
                   tf.reduce_mean(feature_layer))
         return feature_layer
-

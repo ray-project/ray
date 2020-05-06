@@ -10,7 +10,8 @@ class RandomPolicy(Policy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.exploration = self._create_exploration()
+        #self.exploration = self._create_exploration()
+        #^^Should not be necessary anymore
 
     @override(Policy)
     def compute_actions(self,
@@ -27,18 +28,6 @@ class RandomPolicy(Policy):
     def learn_on_batch(self, samples):
         """No learning."""
         return {}
-
-    #@override(Policy)
-    #def compute_actions(self,
-    #                    obs_batch,
-    #                    state_batches=None,
-    #                    prev_action_batch=None,
-    #                    prev_reward_batch=None,
-    #                    episodes=None,
-    #                    explore=None,
-    #                    timestep=None,
-    #                    **kwargs):
-    #    return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
 
     @override(Policy)
     def compute_log_likelihoods(self,

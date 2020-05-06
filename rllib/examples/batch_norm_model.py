@@ -46,4 +46,5 @@ if __name__ == "__main__":
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
+
     ray.shutdown()

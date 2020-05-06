@@ -19,6 +19,7 @@ class SharedWeightsModel1(TFModelV2):
     variables for the 'fc1' layer in a global scope called 'shared'
     (outside of the Policy's normal variable scope).
     """
+
     def __init__(self, observation_space, action_space, num_outputs,
                  model_config, name):
         super().__init__(observation_space, action_space, num_outputs,
@@ -93,6 +94,7 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
     The shared (single) layer is simply defined outside of the two Models,
     then used by both Models in their forward pass.
     """
+
     def __init__(self, observation_space, action_space, num_outputs,
                  model_config, name):
         TorchModelV2.__init__(self, observation_space, action_space,
@@ -100,18 +102,22 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         # Non-shared initial layer.
-        self.first_layer = SlimFC(int(np.product(observation_space.shape)),
-                                  32, activation_fn=nn.ReLU)
+        self.first_layer = SlimFC(
+            int(np.product(observation_space.shape)),
+            32,
+            activation_fn=nn.ReLU)
 
         # Non-shared final layer.
         self.last_layer = SlimFC(32, self.num_outputs, activation_fn=nn.ReLU)
+        self.vf = SlimFC(32, 1, activation_fn=None)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         out = self.first_layer(input_dict["obs"])
         out = TORCH_GLOBAL_SHARED_LAYER(out)
-        out = self._value_out = self.last_layer(out)
-        return out, []
+        model_out = self.last_layer(out)
+        self._value_out = self.vf(out)
+        return model_out, []
 
     @override(ModelV2)
     def value_function(self):

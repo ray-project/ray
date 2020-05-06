@@ -27,7 +27,6 @@ parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-reward", type=float, default=7.0)
 parser.add_argument("--stop-timesteps", type=int, default=50000)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
 

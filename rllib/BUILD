@@ -1233,7 +1233,7 @@ py_test(
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--stop=100", "--num-cpus=4"]
+    args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
 )
 
 py_test(
@@ -1242,34 +1242,34 @@ py_test(
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--torch", "--stop=100", "--num-cpus=4"]
+    args = ["--as-test", "--torch", "--stop-reward=150", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=100"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=80"]
 )
 
 py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--stop-reward=100"]
+    args = ["--as-test", "--run=DQN", "--stop-reward=80"]
 )
 
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--torch", "--stop-reward=100"]
+    args = ["--as-test", "--run=DQN", "--torch", "--stop-reward=80"]
 )
 
 py_test(
@@ -1343,20 +1343,57 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_eval", main = "examples/custom_eval.py",
+    name = "examples/custom_env_tf",
+    main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "small",
+    srcs = ["examples/custom_env.py"],
+    args = ["--as-test"]
+)
+
+py_test(
+    name = "examples/custom_env_torch",
+    main = "examples/custom_env.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_env.py"],
+    args = ["--as-test", "--torch"]
+)
+
+py_test(
+    name = "examples/custom_eval_tf",
+    main = "examples/custom_eval.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
     srcs = ["examples/custom_eval.py"],
     args = ["--custom-eval", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/custom_fast_model",
+    name = "examples/custom_eval_torch",
+    main = "examples/custom_eval.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--torch", "--custom-eval", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_fast_model_tf",
     main = "examples/custom_fast_model.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1"]
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_fast_model_torch",
+    main = "examples/custom_fast_model.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_fast_model.py"],
+    args = ["--torch", "--stop-iters=2"]
 )
 
 py_test(
@@ -1384,20 +1421,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_rnn_model_repeat_after_me", main = "examples/custom_keras_rnn_model.py",
+    name = "examples/custom_rnn_model_repeat_after_me_tf",
+    main = "examples/custom_rnn_model.py",
     tags = ["examples", "examples_C"],
-    size = "large",
-    srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/custom_keras_rnn_model_repeat_initial",
-    main = "examples/custom_keras_rnn_model.py",
+    name = "examples/custom_rnn_model_repeat_initial_obs_tf",
+    main = "examples/custom_rnn_model.py",
     tags = ["examples", "examples_C"],
-    size = "large",
-    srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_after_me_torch",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_initial_obs_torch",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -1476,71 +1532,113 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_cartpole",
+    name = "examples/multi_agent_cartpole_tf",
     tags = ["examples", "examples_M"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--num-iters=2", "--num-cpus=4"]
+    args = ["--as-test", "--stop-reward=70.0", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/multi_agent_cartpole_torch",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_cartpole.py"],
+    args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/multi_agent_custom_policy_tf",
     tags = ["examples", "examples_M"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
-    args = ["--as-test"]
+    args = ["--as-test", "--stop-reward=80"]
 )
 
 py_test(
     name = "examples/multi_agent_custom_policy_torch",
     tags = ["examples", "examples_M"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
-    args = ["--as-test", "--torch"]
+    args = ["--as-test", "--torch", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/multi_agent_two_trainers",
+    name = "examples/multi_agent_two_trainers_tf",
     tags = ["examples", "examples_M"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--num-iters=2"]
+    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/nested_action_spaces_ppo",
+    name = "examples/multi_agent_two_trainers_torch",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_two_trainers.py"],
+    args = ["--as-test", "--torch", "--stop-reward=70"]
+)
+
+py_test(
+    name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_two_trainers.py"],
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
+)
+
+py_test(
+    name = "examples/nested_action_spaces_ppo_tf",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--stop=-500", "--run=PPO"]
+    args = ["--as-test", "--stop-rewards=-600", "--run=PPO"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_pg",
-    main = "examples/parametric_actions_cartpole.py",
-    tags = ["examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=PG", "--stop=50"]
+    name = "examples/nested_action_spaces_ppo_torch",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "small",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--as-test", "--torch", "--stop-rewards=-600", "--run=PPO"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_ppo",
+    name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=PPO", "--stop=50"]
+    args = ["--as-test", "--stop-reward=60.0", "--run=PG"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_dqn",
+    name = "examples/parametric_actions_cartpole_dqn_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=DQN", "--stop=50"]
+    args = ["--as-test", "--stop-reward=60.0", "--run=DQN"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_pg_torch",
+    main = "examples/parametric_actions_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "small",
+    srcs = ["examples/parametric_actions_cartpole.py"],
+    args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_dqn_torch",
+    main = "examples/parametric_actions_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "small",
+    srcs = ["examples/parametric_actions_cartpole.py"],
+    args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=DQN"]
 )
 
 py_test(
@@ -1568,12 +1666,21 @@ sh_test(
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent",
+    name = "examples/rock_paper_scissors_multiagent_tf",
     main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
-    size = "large",
+    size = "small",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
-    args = ["--stop=200"],
+    args = ["--as-test"],
+)
+
+py_test(
+    name = "examples/rock_paper_scissors_multiagent_torch",
+    main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "small",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--as-test", "--torch"],
 )
 
 py_test(

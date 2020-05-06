@@ -87,7 +87,7 @@ class AutoregressiveActionModel(TFModelV2):
 
 
 class TorchAutoregressiveActionModel(TorchModelV2, nn.Module):
-    """Implements the `.action_model` branch required above."""
+    """PyTorch version of the AutoregressiveActionModel above."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
@@ -99,16 +99,9 @@ class TorchAutoregressiveActionModel(TorchModelV2, nn.Module):
             raise ValueError(
                 "This model only supports the [2, 2] action space")
 
-        # Inputs
-        #obs_input = tf.keras.layers.Input(
-        #    shape=obs_space.shape, name="obs_input")
-        #a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
-        #ctx_input = tf.keras.layers.Input(
-        #    shape=(num_outputs, ), name="ctx_input")
-
         # Output of the model (normally 'logits', but for an autoregressive
         # dist this is more like a context/feature layer encoding the obs)
-        self.context = SlimFC(
+        self.context_layer = SlimFC(
             in_size=obs_space.shape[0],
             out_size=num_outputs,
             initializer=normc_init_torch(1.0),
@@ -128,44 +121,37 @@ class TorchAutoregressiveActionModel(TorchModelV2, nn.Module):
             in_size=num_outputs,
             out_size=2,
             activation_fn=None,
-            initializer=normc_init_torch(0.01)
-        )
+            initializer=normc_init_torch(0.01))
 
         class _ActionModel(nn.Module):
             def __init__(self):
-                nn.Module.__init__()
+                nn.Module.__init__(self)
                 self.a2_hidden = SlimFC(
                     in_size=1,
                     out_size=16,
                     activation_fn=nn.Tanh,
-                    initializer=normc_init_torch(1.0)
-                )  #(a2_context)
+                    initializer=normc_init_torch(1.0))
                 self.a2_logits = SlimFC(
                     in_size=16,
                     out_size=2,
                     activation_fn=None,
-                    initializer=normc_init_torch(0.01)
-                )  # (a2_hidden)
+                    initializer=normc_init_torch(0.01))
 
-            def forward(self, input_dict, state, seq_lens):
-                a1_logits = self.a1_logits(input_dict["ctx_input"])
-                a2_logits = self.a2_logits(
-                    self.a2_hidden(input_dict["a1_input"]))
-                return (a1_logits, a2_logits), state
+            def forward(self_, ctx_input, a1_input):
+                a1_logits = self.a1_logits(ctx_input)
+                a2_logits = self_.a2_logits(self_.a2_hidden(a1_input))
+                return a1_logits, a2_logits
 
         # P(a2 | a1)
         # --note: typically you'd want to implement P(a2 | a1, obs) as follows:
         # a2_context = tf.keras.layers.Concatenate(axis=1)(
         #     [ctx_input, a1_input])
-        #a2_context = a1_input
-
-        self.action_model = _ActionModel()
+        self.action_module = _ActionModel()
 
     def forward(self, input_dict, state, seq_lens):
-        context = self.context(input_dict["obs"])
+        context = self.context_layer(input_dict["obs"])
         self._value_out = self.value_branch(context)
         return context, state
 
     def value_function(self):
         return torch.reshape(self._value_out, [-1])
-

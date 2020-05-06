@@ -35,6 +35,7 @@ parser.add_argument(
         "../tests/data/cartpole_small"))
 
 
+# TODO(sven): Move to ModelV2
 class CustomLossModel(Model):
     """Custom model that adds an imitation loss on top of the policy loss."""
 
@@ -91,6 +92,7 @@ if __name__ == "__main__":
         args.input_files = str(input_dir)
 
     ModelCatalog.register_custom_model("custom_loss", CustomLossModel)
+
     tune.run(
         "PG",
         stop={

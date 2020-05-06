@@ -33,7 +33,6 @@ from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
 parser.add_argument("--torch", action="store_true")

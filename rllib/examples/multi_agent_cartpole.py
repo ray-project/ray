@@ -33,11 +33,12 @@ parser.add_argument("--stop-reward", type=int, default=150)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
     ray.init(num_cpus=args.num_cpus or None)
 
     # Register the models to use.
@@ -78,8 +79,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "multiagent": {
             "policies": policies,
-            "policy_mapping_fn": (
-                lambda agent_id: random.choice(policy_ids)),
+            "policy_mapping_fn": (lambda agent_id: random.choice(policy_ids)),
         },
         "use_pytorch": args.torch,
     }
@@ -88,10 +88,6 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
-    #from ray.rllib.agents.ppo import PPOTrainer
-    #config["num_workers"] = 0
-    #trainer = PPOTrainer(config=config)
-    #trainer.train()
 
     results = tune.run("PPO", stop=stop, config=config)
 

@@ -169,3 +169,5 @@ if __name__ == "__main__":
             },
             "use_pytorch": args.torch,
         })
+
+    ray.shutdown()

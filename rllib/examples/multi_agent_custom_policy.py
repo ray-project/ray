@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=20)
-parser.add_argument("--stop-reward", type=float, default=50)
+parser.add_argument("--stop-reward", type=float, default=150)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 
@@ -55,7 +55,8 @@ if __name__ == "__main__":
             "env": "multi_agent_cartpole",
             "multiagent": {
                 "policies": {
-                    "pg_policy": (None, obs_space, act_space, {}),
+                    "pg_policy": (None, obs_space, act_space,
+                                  {"use_pytorch": args.torch}),
                     "random": (RandomPolicy, obs_space, act_space, {}),
                 },
                 "policy_mapping_fn": (
