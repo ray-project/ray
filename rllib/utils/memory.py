@@ -1,8 +1,4 @@
 import numpy as np
-import time
-import os
-
-import ray
 
 
 def aligned_array(size, dtype, align=64):
