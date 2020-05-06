@@ -193,7 +193,8 @@ CCPPO = PPOTFPolicy.with_updates(
         CentralizedValueMixin
     ])
 
-CCTrainer = PPOTrainer.with_updates(name="CCPPOTrainer", default_policy=CCPPO)
+CCTrainer = PPOTrainer.with_updates(
+    name="CCPPOTrainer", default_policy=CCPPO, get_policy_class=None)
 
 if __name__ == "__main__":
     args = parser.parse_args()
