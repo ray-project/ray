@@ -27,7 +27,7 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sgd import do_minibatch_sgd
