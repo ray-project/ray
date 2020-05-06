@@ -2,6 +2,12 @@ name: CI
 
 on: [push, pull_request]
 
+env:
+  # Git GITHUB_... variables are useful for translating Travis environment variables
+  GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  GITHUB_PULL_REQUEST: ${{ github.event.number }}
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -18,7 +24,6 @@ jobs:
           - name: macos
             os: macos-10.15
     env:
-      GITHUB_PULL_REQUEST: ${{ github.event.number }}
       PYTHON: 3.6
       TRAVIS_BUILD_DIR: ${{ github.workspace }}
       TRAVIS_COMMIT: ${{ github.sha }}
