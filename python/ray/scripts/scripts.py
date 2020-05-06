@@ -948,7 +948,7 @@ def timeline(address):
     type=str,
     help="Override the address to connect to.")
 def stat(address):
-    """Get the current metrics protobuf from a Ray cluster."""
+    """Get the current metrics protobuf from a Ray cluster (developer tool)."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
