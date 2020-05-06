@@ -6,7 +6,6 @@ from typing import List
 
 import ray
 from ray.util.iter import LocalIterator
-from ray.rllib.evaluation.policy import PolicyID
 from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import SampleBatchType, \
@@ -15,6 +14,7 @@ from ray.rllib.execution.common import SampleBatchType, \
     LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
     NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.policy.policy import PolicyID
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils import try_import_tf
@@ -58,10 +58,11 @@ class TrainOneStep:
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
-                info = do_minibatch_sgd(batch, self.policies,
-                                        self.workers.local_worker(),
-                                        self.num_sgd_iter,
-                                        self.sgd_minibatch_size, [])
+                w = self.workers.local_worker()
+                info = do_minibatch_sgd(
+                    batch, {p: w.get_policy(p)
+                            for p in self.policies}, w, self.num_sgd_iter,
+                    self.sgd_minibatch_size, [])
                 # TODO(ekl) shouldn't be returning learner stats directly here
                 metrics.info[LEARNER_INFO] = info
             else:
@@ -134,7 +135,8 @@ class TrainTFMultiGPU:
         self.optimizers = {}
         with self.workers.local_worker().tf_sess.graph.as_default():
             with self.workers.local_worker().tf_sess.as_default():
-                for policy_id, policy in self.policies.items():
+                for policy_id in self.policies:
+                    policy = self.workers.local_worker().get_policy(policy_id)
                     with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [

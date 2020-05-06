@@ -27,27 +27,45 @@ from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.tune.registry import register_env
+from ray.util.iter import LocalIterator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=20)
 
 
-def execution_plan(workers, config):
+def training_workflow(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
         buffer_size=50000,
-        replay_batch_size=200)
+        replay_batch_size=32)
+
+    def add_ppo_metrics(batch):
+        print("PPO policy learning on samples from",
+              batch.policy_batches.keys(), "env steps", batch.count,
+              "agent steps", batch.total())
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["steps_trained_PPO"] += batch.count
+        return batch
+
+    def add_dqn_metrics(batch):
+        print("DQN policy learning on samples from",
+              batch.policy_batches.keys(), "env steps", batch.count,
+              "agent steps", batch.total())
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["steps_trained_DQN"] += batch.count
+        return batch
 
     # Generate common experiences.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
     r1, r2 = rollouts.duplicate(n=2)
 
     # DQN sub-flow.
-    dqn_store_op = r1.for_each(SelectExperiences("dqn_policy")) \
+    dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])) \
         .for_each(
             StoreToReplayBuffer(local_buffer=local_replay_buffer))
     dqn_replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(add_dqn_metrics) \
         .for_each(TrainOneStep(workers, policies=["dqn_policy"])) \
         .for_each(UpdateTargetNetwork(
             workers, target_update_freq=500, policies=["dqn_policy"]))
@@ -55,8 +73,9 @@ def execution_plan(workers, config):
         [dqn_store_op, dqn_replay_op], mode="round_robin", output_indexes=[1])
 
     # PPO sub-flow.
-    ppo_train_op = r2.for_each(SelectExperiences("ppo_policy")) \
-        .combine(ConcatBatches(min_batch_size=4000)) \
+    ppo_train_op = r2.for_each(SelectExperiences(["ppo_policy"])) \
+        .combine(ConcatBatches(min_batch_size=200)) \
+        .for_each(add_ppo_metrics) \
         .for_each(StandardizeFields(["advantages"])) \
         .for_each(TrainOneStep(
             workers,
@@ -98,11 +117,13 @@ if __name__ == "__main__":
     MyTrainer = build_trainer(
         name="PPO_DQN_MultiAgent",
         default_policy=None,
-        execution_plan=execution_plan)
+        execution_plan=training_workflow)
 
     tune.run(
         MyTrainer,
         config={
+            "rollout_fragment_length": 50,
+            "num_workers": 0,
             "env": "multi_agent_cartpole",
             "multiagent": {
                 "policies": policies,
