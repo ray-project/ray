@@ -2,7 +2,7 @@ import numpy as np
 import timeit
 import unittest
 
-from ray.rllib.optimizers.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 
 
 class TestSegmentTree(unittest.TestCase):

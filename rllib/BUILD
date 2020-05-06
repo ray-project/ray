@@ -941,30 +941,23 @@ py_test(
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
-# rllib/optimizers/
+# rllib/execution/
 #
 # Tag: optimizers
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_optimizers",
-    tags = ["optimizers"],
-    size = "large",
-    srcs = ["optimizers/tests/test_optimizers.py"]
-)
-
-py_test(
     name = "test_segment_tree",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_segment_tree.py"]
+    srcs = ["execution/tests/test_segment_tree.py"]
 )
 
 py_test(
     name = "test_prioritized_replay_buffer",
     tags = ["optimizers"],
     size = "small",
-    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
 # --------------------------------------------------------------------

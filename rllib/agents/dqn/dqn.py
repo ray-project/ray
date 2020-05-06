@@ -4,10 +4,10 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
+from ray.rllib.execution.replay_buffer import ReplayBuffer, LocalReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay

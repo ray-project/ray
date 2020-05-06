@@ -4,17 +4,16 @@ import logging
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.impala.tree_agg import \
-    gather_experiences_tree_aggregation
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.learner_thread import LearnerThread
+from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
+from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, _get_global_vars
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers.aso_learner import LearnerThread
-from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources

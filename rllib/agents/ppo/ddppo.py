@@ -21,7 +21,6 @@ import ray
 from ray.util.iter import LocalIterator
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.agents.trainer import with_base_config
-from ray.rllib.optimizers import TorchDistributedDataParallelOptimizer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -85,16 +84,6 @@ def validate_config(config):
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
     ppo.validate_config(config)
-
-
-def make_distributed_allreduce_optimizer(workers, config):
-    return TorchDistributedDataParallelOptimizer(
-        workers,
-        expected_batch_size=config["rollout_fragment_length"] *
-        config["num_envs_per_worker"],
-        num_sgd_iter=config["num_sgd_iter"],
-        sgd_minibatch_size=config["sgd_minibatch_size"],
-        standardize_fields=["advantages"])
 
 
 def execution_plan(workers, config):
@@ -189,6 +178,5 @@ def execution_plan(workers, config):
 DDPPOTrainer = ppo.PPOTrainer.with_updates(
     name="DDPPO",
     default_config=DEFAULT_CONFIG,
-    make_policy_optimizer=make_distributed_allreduce_optimizer,
     execution_plan=execution_plan,
     validate_config=validate_config)

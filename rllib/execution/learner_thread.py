@@ -1,19 +1,15 @@
-"""Helper class for AsyncSamplesOptimizer."""
-
 import threading
 
 from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.optimizers.aso_minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
 
 class LearnerThread(threading.Thread):
     """Background thread that updates the local model from sample trajectories.
-
-    This is for use with AsyncSamplesOptimizer.
 
     The learner thread communicates with the main thread through Queues. This
     is needed since Ray operations can only be run on the main thread. In

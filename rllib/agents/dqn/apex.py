@@ -3,16 +3,16 @@ import copy
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, _get_global_vars
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
+from ray.rllib.execution.replay_buffer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
-from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
 from ray.util.iter import LocalIterator
 
 # yapf: disable
