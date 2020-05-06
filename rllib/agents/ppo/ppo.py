@@ -150,6 +150,25 @@ def get_policy_class(config):
         return PPOTFPolicy
 
 
+class UpdateKL:
+    """Callback to update the KL based on optimization info."""
+
+    def __init__(self, workers):
+        self.workers = workers
+
+    def __call__(self, fetches):
+        def update(pi, pi_id):
+            if pi_id in fetches:
+                pi.update_kl(fetches[pi_id]["kl"])
+            elif "kl" in fetches:
+                # TODO(ekl) this is a hack, we shouldn't need this case
+                pi.update_kl(fetches["kl"])
+            else:
+                logger.warning("No data for {}, not updating kl".format(pi_id))
+
+        self.workers.local_worker().foreach_trainable_policy(update)
+
+
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -179,20 +198,8 @@ def execution_plan(workers, config):
                 shuffle_sequences=config["shuffle_sequences"],
                 _fake_gpus=config["_fake_gpus"]))
 
-    # Callback to update the KL based on optimization info.
-    def update_kl(item):
-        _, fetches = item
-
-        def update(pi, pi_id):
-            if pi_id in fetches:
-                pi.update_kl(fetches[pi_id]["kl"])
-            else:
-                logger.warning("No data for {}, not updating kl".format(pi_id))
-
-        workers.local_worker().foreach_trainable_policy(update)
-
     # Update KL after each round of training.
-    train_op = train_op.for_each(update_kl)
+    train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
 
     return StandardMetricsReporting(train_op, workers, config) \
         .for_each(lambda result: warn_about_bad_reward_scales(config, result))

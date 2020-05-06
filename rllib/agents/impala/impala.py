@@ -1,4 +1,3 @@
-import copy
 import logging
 
 import ray
@@ -88,6 +87,10 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+
+    # Callback for APPO to use to update KL, target network periodically.
+    # The input to the callback is the learner fetches dict.
+    "after_train_step": None,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -193,11 +196,13 @@ class BroadcastUpdateLearnerWeights:
         actor.set_weights.remote(self.weights, _get_global_vars())
 
 
-def record_steps_trained(count):
+def record_steps_trained(item):
+    count, fetches = item
     metrics = LocalIterator.get_metrics()
     # Manually update the steps trained counter since the learner thread
     # is executing outside the pipeline.
     metrics.counters[STEPS_TRAINED_COUNTER] += count
+    return item
 
 
 def gather_experiences_directly(workers, config):
@@ -247,26 +252,14 @@ def execution_plan(workers, config):
     merged_op = Concurrently(
         [enqueue_op, dequeue_op], mode="async", output_indexes=[1])
 
-    def add_learner_metrics(result):
-        def timer_to_ms(timer):
-            return round(1000 * timer.mean, 3)
-
-        result["info"].update({
-            "learner_queue": learner_thread.learner_queue_size.stats(),
-            "learner": copy.deepcopy(learner_thread.stats),
-            "timing_breakdown": {
-                "learner_grad_time_ms": timer_to_ms(learner_thread.grad_timer),
-                "learner_load_time_ms": timer_to_ms(learner_thread.load_timer),
-                "learner_load_wait_time_ms": timer_to_ms(
-                    learner_thread.load_wait_timer),
-                "learner_dequeue_time_ms": timer_to_ms(
-                    learner_thread.queue_timer),
-            }
-        })
-        return result
+    # Callback for APPO to use to update KL, target network periodically.
+    # The input to the callback is the learner fetches dict.
+    if config["after_train_step"]:
+        merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            config["after_train_step"](workers, config))
 
     return StandardMetricsReporting(merged_op, workers, config) \
-        .for_each(add_learner_metrics)
+        .for_each(learner_thread.add_learner_metrics)
 
 
 ImpalaTrainer = build_trainer(
