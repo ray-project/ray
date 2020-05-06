@@ -3,23 +3,20 @@ import logging
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
 from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
-from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
-    import SyncBatchesReplayOptimizer
 from ray.rllib.execution.replay_ops import MixInReplay, \
     WaitUntilTimestepsElapsed
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 tf = try_import_tf()
 torch, nn = try_import_torch()

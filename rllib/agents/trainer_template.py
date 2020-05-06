@@ -1,12 +1,9 @@
 import logging
-import os
-import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 
@@ -96,9 +93,8 @@ def build_trainer(name,
                 before_init(self)
 
             # Creating all workers (excluding evaluation workers).
-            self.workers = self._make_workers(env_creator, self._policy,
-                                              config,
-                                              self.config["num_workers"])
+            self.workers = self._make_workers(
+                env_creator, self._policy, config, self.config["num_workers"])
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
 

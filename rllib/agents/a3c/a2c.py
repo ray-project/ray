@@ -2,7 +2,6 @@ import math
 
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
-from ray.rllib.optimizers import SyncSamplesOptimizer, MicrobatchOptimizer
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches

@@ -15,8 +15,7 @@ class TestA2C(unittest.TestCase):
 
     def test_a2c_exec_impl(ray_start_regular):
         trainer = A2CTrainer(
-            env="CartPole-v0",
-            config={
+            env="CartPole-v0", config={
                 "min_iter_time_s": 0,
             })
         assert isinstance(trainer.train(), dict)

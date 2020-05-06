@@ -29,8 +29,5 @@ TS_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-
 LinTSTrainer = build_trainer(
-    name="LinTS",
-    default_config=TS_CONFIG,
-    default_policy=BanditPolicy)
+    name="LinTS", default_config=TS_CONFIG, default_policy=BanditPolicy)

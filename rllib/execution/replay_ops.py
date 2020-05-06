@@ -4,7 +4,7 @@ import random
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
-from ray.rllib.execution.common import SampleBatchType
+from ray.rllib.execution.common import SampleBatchType, STEPS_SAMPLED_COUNTER
 
 
 class StoreToReplayBuffer:

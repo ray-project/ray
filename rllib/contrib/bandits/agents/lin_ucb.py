@@ -29,8 +29,5 @@ UCB_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-
 LinUCBTrainer = build_trainer(
-    name="LinUCB",
-    default_config=UCB_CONFIG,
-    default_policy=BanditPolicy)
+    name="LinUCB", default_config=UCB_CONFIG, default_policy=BanditPolicy)

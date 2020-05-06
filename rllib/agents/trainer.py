@@ -13,7 +13,6 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf

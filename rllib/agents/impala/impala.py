@@ -13,8 +13,6 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
 from ray.rllib.optimizers.aso_multi_gpu_learner import TFMultiGPULearner
 from ray.rllib.utils.annotations import override
