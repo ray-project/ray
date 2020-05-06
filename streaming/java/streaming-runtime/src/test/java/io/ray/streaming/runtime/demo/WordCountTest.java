@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.demo;
 
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
@@ -17,15 +18,25 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class WordCountTest extends BaseUnitTest implements Serializable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(WordCountTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(WordCountTest.class);
 
   // TODO(zhenxuanpan): this test only works in single-process mode, because we put
   //   results in this in-memory map.
   static Map<String, Integer> wordCount = new ConcurrentHashMap<>();
+
+  private Object rayAsyncContext;
+
+  @BeforeClass
+  public void setUp() {
+    super.setUp();
+    Ray.init();
+    rayAsyncContext = Ray.getAsyncContext();
+  }
 
   @Test
   public void testWordCount() {
@@ -58,7 +69,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
       try {
         Thread.sleep(100);
       } catch (InterruptedException e) {
-        LOGGER.warn("Got an exception while sleeping.", e);
+        LOG.warn("Got an exception while sleeping.", e);
       }
     }
     Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));

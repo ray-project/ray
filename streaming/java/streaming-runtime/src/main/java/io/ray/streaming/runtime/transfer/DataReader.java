@@ -2,8 +2,9 @@ package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActor;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
+import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
-import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
@@ -23,9 +24,14 @@ public class DataReader {
   private long nativeReaderPtr;
   private Queue<DataMessage> buf = new LinkedList<>();
 
+  /**
+   * @param inputChannels input channels ids
+   * @param fromActors    upstream input actors
+   * @param workerConfig  configuration
+   */
   public DataReader(List<String> inputChannels,
                     Map<String, BaseActor> fromActors,
-                    Map<String, String> conf) {
+                    StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =
@@ -38,15 +44,14 @@ public class DataReader {
       seqIds[i] = 0;
       msgIds[i] = 0;
     }
-    long timerInterval = Long.parseLong(
-        conf.getOrDefault(Config.TIMER_INTERVAL_MS, "-1"));
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    long timerInterval = workerConfig.transferConfig.readerTimerIntervalMs();
+    TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
-    boolean isRecreate = Boolean.parseBoolean(
-        conf.getOrDefault(Config.IS_RECREATE, "false"));
+    boolean isRecreate = workerConfig.transferConfig.readerIsRecreate();
+
     this.nativeReaderPtr = createDataReaderNative(
         initialParameters,
         inputChannelsBytes,
@@ -54,7 +59,7 @@ public class DataReader {
         msgIds,
         timerInterval,
         isRecreate,
-        ChannelUtils.toNativeConf(conf),
+        ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
     LOGGER.info("create DataReader succeed");

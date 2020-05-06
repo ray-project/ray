@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
+import io.ray.api.BaseActor;
 import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
@@ -35,6 +36,7 @@ public class ExecutionVertex implements Serializable {
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
+  private final long buildTime;
 
   /**
    * Resources used by ExecutionVertex.
@@ -42,14 +44,24 @@ public class ExecutionVertex implements Serializable {
   private final Map<String, Double> resources;
 
   /**
+   * Parallelism of current vertex's operator.
+   */
+  private int parallelism;
+
+  /**
    * Ordered sub index for execution vertex in a execution job vertex.
    * Might be changed in dynamic scheduling.
    */
   private int vertexIndex;
-
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private ContainerID containerId;
-  private RayActor<JobWorker> workerActor;
+  private BaseActor workerActor;
+
+  /**
+   * Op config + job config.
+   */
+  private Map<String, String> workerConfig;
+
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
@@ -64,8 +76,17 @@ public class ExecutionVertex implements Serializable {
     this.streamOperator = executionJobVertex.getStreamOperator();
     this.vertexType = executionJobVertex.getVertexType();
     this.language = executionJobVertex.getLanguage();
+    this.buildTime = executionJobVertex.getBuildTime();
+    this.parallelism = executionJobVertex.getParallelism();
     this.vertexIndex = index;
     this.resources = generateResources(resourceConfig);
+    this.workerConfig = genWorkerConfig(executionJobVertex.getJobConfig());
+  }
+
+  private Map<String, String> genWorkerConfig(Map<String, String> jobConfig) {
+    Map<String, String> workerConfig = new HashMap<>();
+    workerConfig.putAll(jobConfig);
+    return workerConfig;
   }
 
   public int getId() {
@@ -90,6 +111,10 @@ public class ExecutionVertex implements Serializable {
 
   public Language getLanguage() {
     return language;
+  }
+
+  public int getParallelism() {
+    return parallelism;
   }
 
   public int getVertexIndex() {
@@ -124,7 +149,7 @@ public class ExecutionVertex implements Serializable {
     return state == ExecutionVertexState.TO_DEL;
   }
 
-  public RayActor<JobWorker> getWorkerActor() {
+  public BaseActor getWorkerActor() {
     return workerActor;
   }
 
@@ -156,6 +181,14 @@ public class ExecutionVertex implements Serializable {
 
   public Map<String, Double> getResources() {
     return resources;
+  }
+
+  public Map<String, String> getWorkerConfig() {
+    return workerConfig;
+  }
+
+  public long getBuildTime() {
+    return buildTime;
   }
 
   public ContainerID getContainerId() {

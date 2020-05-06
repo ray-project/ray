@@ -4,6 +4,7 @@ import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
 import io.ray.streaming.runtime.transfer.DataMessage;
@@ -52,7 +53,7 @@ class ReaderWorker extends Worker {
 
   private String name = null;
   private List<String> inputQueueList = null;
-  Map<String, BaseActor> fromActors = new HashMap<>();
+  Map<String, BaseActor> inputActors = new HashMap<>();
   private DataReader dataReader = null;
   private long handler = 0;
   private RayActor<WriterWorker> peerActor = null;
@@ -87,7 +88,7 @@ class ReaderWorker extends Worker {
     LOGGER.info("java.library.path = {}", System.getProperty("java.library.path"));
 
     for (String queue : this.inputQueueList) {
-      fromActors.put(queue, this.peerActor);
+      inputActors.put(queue, this.peerActor);
       LOGGER.info("ReaderWorker actorId: {}", this.peerActor.getId());
     }
 
@@ -99,7 +100,8 @@ class ReaderWorker extends Worker {
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
-    dataReader = new DataReader(inputQueueList, fromActors, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
 
     // Should not GetBundle in RayCall thread
     Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -171,7 +173,7 @@ class WriterWorker extends Worker {
 
   private String name = null;
   private List<String> outputQueueList = null;
-  Map<String, BaseActor> toActors = new HashMap<>();
+  Map<String, BaseActor> outputActors = new HashMap<>();
   DataWriter dataWriter = null;
   RayActor<ReaderWorker> peerActor = null;
   int msgCount = 0;
@@ -203,7 +205,7 @@ class WriterWorker extends Worker {
     LOGGER.info("WriterWorker init:");
 
     for (String queue : this.outputQueueList) {
-      toActors.put(queue, this.peerActor);
+      outputActors.put(queue, this.peerActor);
       LOGGER.info("WriterWorker actorId: {}", this.peerActor.getId());
     }
 
@@ -225,7 +227,8 @@ class WriterWorker extends Worker {
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
-    dataWriter = new DataWriter(this.outputQueueList, this.toActors, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
       public void run() {

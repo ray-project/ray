@@ -2,6 +2,8 @@ package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActor;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
+import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
 import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
@@ -30,26 +32,25 @@ public class DataWriter {
   /**
    * @param outputChannels output channels ids
    * @param toActors       downstream output actors
-   * @param conf           configuration
+   * @param workerConfig   configuration
    */
   public DataWriter(List<String> outputChannels,
                     Map<String, BaseActor> toActors,
-                    Map<String, String> conf) {
+                    StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
-    long channelSize = Long.parseLong(
-        conf.getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT));
+    long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
       msgIds[i] = 0;
     }
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
@@ -57,10 +58,10 @@ public class DataWriter {
         outputChannelsBytes,
         msgIds,
         channelSize,
-        ChannelUtils.toNativeConf(conf),
+        ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.info("create DataWriter succeed");
+    LOGGER.info("create DataWriter succeeded.");
   }
 
   /**

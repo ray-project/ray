@@ -1,111 +1,120 @@
 package io.ray.streaming.runtime.worker;
 
-import io.ray.streaming.runtime.core.graph.ExecutionGraph;
-import io.ray.streaming.runtime.core.graph.ExecutionNode;
-import io.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
-import io.ray.streaming.runtime.core.graph.ExecutionTask;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
+import io.ray.streaming.runtime.config.types.TransferChannelType;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.processor.OneInputProcessor;
 import io.ray.streaming.runtime.core.processor.ProcessBuilder;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
 import io.ray.streaming.runtime.core.processor.StreamProcessor;
+import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.util.EnvUtil;
-import io.ray.streaming.runtime.worker.context.WorkerContext;
+import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
-import io.ray.streaming.util.Config;
-
 import java.io.Serializable;
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The stream job worker, it is a ray actor.
+ * The streaming worker implementation class, it is ray actor. JobWorker is created by
+ * {@link JobMaster} through ray api, and JobMaster communicates
+ * with JobWorker through Ray.call().
+ *
+ * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
+ * between workers.
  */
 public class JobWorker implements Serializable {
-  private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
+
+  private static final Logger LOG = LoggerFactory.getLogger(JobWorker.class);
 
   static {
     EnvUtil.loadNativeLibraries();
   }
 
-  private int taskId;
-  private Map<String, String> config;
-  private WorkerContext workerContext;
-  private ExecutionNode executionNode;
-  private ExecutionTask executionTask;
-  private ExecutionGraph executionGraph;
-  private StreamProcessor streamProcessor;
-  private NodeType nodeType;
+  private JobWorkerContext workerContext;
+  private ExecutionVertex executionVertex;
+  private StreamingWorkerConfig workerConfig;
+
   private StreamTask task;
   private TransferHandler transferHandler;
 
-  public Boolean init(WorkerContext workerContext) {
-    this.workerContext = workerContext;
-    this.taskId = workerContext.getTaskId();
-    this.config = workerContext.getConfig();
-    this.executionGraph = this.workerContext.getExecutionGraph();
-    this.executionTask = executionGraph.getExecutionTaskByTaskId(taskId);
-    this.executionNode = executionGraph.getExecutionNodeByTaskId(taskId);
+  public JobWorker() {
+    LOG.info("Creating job worker succeeded.");
+  }
 
-    this.nodeType = executionNode.getNodeType();
-    this.streamProcessor = ProcessBuilder
-      .buildProcessor(executionNode.getStreamOperator());
-    LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
+  /**
+   * Initialize JobWorker and data communication pipeline.
+   */
+  public Boolean init(JobWorkerContext workerContext) {
+    LOG.info("Initiating job worker: {}. Worker context is: {}. ",
+        workerContext.getWorkerName(), workerContext);
 
-    String channelType = (String) this.config.getOrDefault(
-        Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
-    if (channelType.equals(Config.NATIVE_CHANNEL)) {
-      transferHandler = new TransferHandler();
+    try {
+      this.workerContext = workerContext;
+      this.executionVertex = workerContext.getExecutionVertex();
+      this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
+
+      //Init transfer
+      TransferChannelType channelType = workerConfig.transferConfig.channelType();
+      if (TransferChannelType.NATIVE_CHANNEL == channelType) {
+        transferHandler = new TransferHandler();
+      }
+    } catch (Exception e) {
+      LOG.error("Failed to initiate job worker.", e);
+      return false;
     }
-    task = createStreamTask();
-    task.start();
     return true;
   }
 
-  private StreamTask createStreamTask() {
-    if (streamProcessor instanceof OneInputProcessor) {
-      return new OneInputStreamTask(taskId, streamProcessor, this);
-    } else if (streamProcessor instanceof SourceProcessor) {
-      return new SourceStreamTask(taskId, streamProcessor, this);
-    } else {
-      throw new RuntimeException("Unsupported type: " + streamProcessor);
+  /**
+   * Start worker's stream tasks.
+   *
+   * @return result
+   */
+  public Boolean start() {
+    try {
+      task.start();
+    } catch (Exception e) {
+      LOG.error("Start worker [{}] occur error.", executionVertex.getVertexName(), e);
+      return false;
     }
+    return true;
+  }
+
+  /**
+   * Create tasks based on the processor corresponding of the operator.
+   */
+  private StreamTask createStreamTask() {
+    StreamTask task;
+    StreamProcessor streamProcessor = ProcessBuilder
+        .buildProcessor(executionVertex.getStreamOperator());
+    if (streamProcessor instanceof SourceProcessor) {
+      task = new SourceStreamTask(getTaskId(), streamProcessor, this);
+    } else if (streamProcessor instanceof OneInputProcessor) {
+      task = new OneInputStreamTask(getTaskId(), streamProcessor, this);
+    } else {
+      throw new RuntimeException("Unsupported processor type:" + streamProcessor);
+    }
+    return task;
   }
 
   public int getTaskId() {
-    return taskId;
+    return executionVertex.getId();
   }
 
-  public Map<String, String> getConfig() {
-    return config;
+  public StreamingWorkerConfig getWorkerConfig() {
+    return workerConfig;
   }
 
-  public WorkerContext getWorkerContext() {
+  public JobWorkerContext getWorkerContext() {
     return workerContext;
   }
 
-  public NodeType getNodeType() {
-    return nodeType;
-  }
-
-  public ExecutionNode getExecutionNode() {
-    return executionNode;
-  }
-
-  public ExecutionTask getExecutionTask() {
-    return executionTask;
-  }
-
-  public ExecutionGraph getExecutionGraph() {
-    return executionGraph;
-  }
-
-  public StreamProcessor getStreamProcessor() {
-    return streamProcessor;
+  public ExecutionVertex getExecutionVertex() {
+    return executionVertex;
   }
 
   public StreamTask getTask() {

@@ -4,7 +4,7 @@ import com.google.common.base.Preconditions;
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
-import io.ray.streaming.schedule.JobScheduler;
+import io.ray.streaming.client.JobClient;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,12 +54,12 @@ public class StreamingContext implements Serializable {
     this.jobGraph = jobGraphBuilder.build();
     jobGraph.printJobGraph();
 
-    ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
-    Iterator<JobScheduler> iterator = serviceLoader.iterator();
+    ServiceLoader<JobClient> serviceLoader = ServiceLoader.load(JobClient.class);
+    Iterator<JobClient> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
-        "No JobScheduler implementation has been provided.");
-    JobScheduler jobSchedule = iterator.next();
-    jobSchedule.schedule(jobGraph, jobConfig);
+        "No JobClient implementation has been provided.");
+    JobClient jobClient = iterator.next();
+    jobClient.submit(jobGraph, jobConfig);
   }
 
   public int generateId() {

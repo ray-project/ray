@@ -36,8 +36,12 @@ public class JobWorkerContext implements Serializable {
     this.executionVertex = executionVertex;
   }
 
-  public ActorId getWorkerId() {
+  public ActorId getWorkerActorId() {
     return workerId;
+  }
+
+  public String getWorkerName() {
+    return executionVertex.getVertexName();
   }
 
   public RayActor<JobMaster> getMaster() {
@@ -52,7 +56,6 @@ public class JobWorkerContext implements Serializable {
   public String toString() {
     return MoreObjects.toStringHelper(this)
       .add("workerId", workerId)
-      .add("master", master)
       .toString();
   }
 

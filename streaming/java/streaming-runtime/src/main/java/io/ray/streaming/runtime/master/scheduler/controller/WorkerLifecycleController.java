@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
+import io.ray.api.BaseActor;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
@@ -51,9 +52,13 @@ public class WorkerLifecycleController {
         .createActorCreationOptions();
 
     RayActor<JobWorker> actor = null;
-    // TODO (datayjz): ray create actor
+    if (Language.JAVA == language) {
+      actor = Ray.createActor(JobWorker::new, options);
+    } else {
+      // actor = Ray.createActor("ray.streaming.runtime.worker", "JobWorker", options);
+    }
 
-      if (null == actor) {
+    if (null == actor) {
       LOG.error("Create worker actor failed.");
       return false;
     }
@@ -139,7 +144,7 @@ public class WorkerLifecycleController {
   }
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
-    RayActor rayActor = executionVertex.getWorkerActor();
+    BaseActor rayActor = executionVertex.getWorkerActor();
     LOG.info("Begin destroying worker[vertex={}, actor={}].",
         executionVertex.getVertexName(), rayActor.getId());
 
