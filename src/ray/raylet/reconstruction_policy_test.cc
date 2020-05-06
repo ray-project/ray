@@ -128,8 +128,7 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return ray::Status::OK();
   }
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const gcs::StatusCallback &done) override {
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
@@ -141,6 +140,18 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     if (subscribed_tasks_.count(task_id) == 1) {
       boost::optional<TaskLeaseData> result(*task_lease_data);
       subscribe_callback_(task_id, result);
+    }
+    return Status::OK();
+  }
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskLeaseData> &callback) override {
+    auto iter = task_lease_table_.find(task_id);
+    if (iter != task_lease_table_.end()) {
+      callback(Status::OK(), *iter->second);
+    } else {
+      callback(Status::OK(), boost::none);
     }
     return Status::OK();
   }

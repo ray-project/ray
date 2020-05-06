@@ -414,3 +414,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_cancel",
+    size = "medium",
+    srcs = ["test_cancel.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

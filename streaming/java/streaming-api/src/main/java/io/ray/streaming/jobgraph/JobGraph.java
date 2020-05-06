@@ -1,5 +1,6 @@
 package io.ray.streaming.jobgraph;
 
+import io.ray.streaming.api.Language;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,6 +96,16 @@ public class JobGraph implements Serializable {
     for (JobEdge jobEdge : jobEdgeList) {
       LOG.info(jobEdge.toString());
     }
+  }
+
+  public boolean isCrossLanguageGraph() {
+    Language language = jobVertexList.get(0).getLanguage();
+    for (JobVertex jobVertex : jobVertexList) {
+      if (jobVertex.getLanguage() != language) {
+        return true;
+      }
+    }
+    return false;
   }
 
 }

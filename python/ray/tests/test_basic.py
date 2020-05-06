@@ -1869,6 +1869,32 @@ def test_duplicate_args(ray_start_regular):
             arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
+def test_internal_config_when_connecting(ray_start_cluster):
+    config = json.dumps({
+        "object_pinning_enabled": 0,
+        "initial_reconstruction_timeout_milliseconds": 200
+    })
+    cluster = ray.cluster_utils.Cluster()
+    cluster.add_node(
+        _internal_config=config, object_store_memory=100 * 1024 * 1024)
+    cluster.wait_for_nodes()
+
+    # Specifying _internal_config when connecting to a cluster is disallowed.
+    with pytest.raises(ValueError):
+        ray.init(address=cluster.address, _internal_config=config)
+
+    # Check that the config was picked up (object pinning is disabled).
+    ray.init(address=cluster.address)
+    oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+
+    for _ in range(5):
+        ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+
+    # This would not raise an exception if object pinning was enabled.
+    with pytest.raises(ray.exceptions.UnreconstructableError):
+        ray.get(oid)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

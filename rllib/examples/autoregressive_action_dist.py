@@ -10,19 +10,17 @@ pattern, and a custom action distribution class that leverages that model.
 This examples shows both.
 """
 
-import gym
 from gym.spaces import Discrete, Tuple
 import argparse
-import random
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
@@ -30,34 +28,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
 parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--num-cpus", type=int, default=0)
-
-
-class CorrelatedActionsEnv(gym.Env):
-    """Simple env in which the policy has to emit a tuple of equal actions.
-
-    The best score would be ~200 reward."""
-
-    def __init__(self, _):
-        self.observation_space = Discrete(2)
-        self.action_space = Tuple([Discrete(2), Discrete(2)])
-
-    def reset(self):
-        self.t = 0
-        self.last = random.choice([0, 1])
-        return self.last
-
-    def step(self, action):
-        self.t += 1
-        a1, a2 = action
-        reward = 0
-        if a1 == self.last:
-            reward += 5
-        # encourage correlation between a1 and a2
-        if a1 == a2:
-            reward += 5
-        done = self.t > 20
-        self.last = random.choice([0, 1])
-        return self.last, reward, done, {}
 
 
 class BinaryAutoregressiveOutput(ActionDistribution):
@@ -78,7 +48,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        return TupleActions([a1, a2])
+        return (a1, a2)
 
     def sample(self):
         # first, sample a1
@@ -91,7 +61,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
 
         # return the action tuple
-        return TupleActions([a1, a2])
+        return (a1, a2)
 
     def logp(self, actions):
         a1, a2 = actions[:, 0], actions[:, 1]

@@ -1,16 +1,21 @@
 package io.ray.streaming.runtime.python;
 
+import com.google.common.base.Preconditions;
+import com.google.common.primitives.Primitives;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonPartition;
 import io.ray.streaming.python.stream.PythonStreamSource;
+import io.ray.streaming.runtime.serialization.MsgPackSerializer;
 import io.ray.streaming.runtime.util.ReflectionUtils;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.msgpack.core.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +73,7 @@ public class PythonGateway {
     Preconditions.checkNotNull(streamingContext);
     try {
       PythonStreamSource pythonStreamSource = PythonStreamSource.from(
-          streamingContext, PythonFunction.fromFunction(pySourceFunc));
+          streamingContext, new PythonFunction(pySourceFunc));
       referenceMap.put(getReferenceId(pythonStreamSource), pythonStreamSource);
       return serializer.serialize(getReferenceId(pythonStreamSource));
     } catch (Exception e) {
@@ -84,7 +89,7 @@ public class PythonGateway {
   }
 
   public byte[] createPyFunc(byte[] pyFunc) {
-    PythonFunction function = PythonFunction.fromFunction(pyFunc);
+    PythonFunction function = new PythonFunction(pyFunc);
     referenceMap.put(getReferenceId(function), function);
     return serializer.serialize(getReferenceId(function));
   }
@@ -98,15 +103,21 @@ public class PythonGateway {
   public byte[] callFunction(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
-      params = processReferenceParameters(params);
+      params = processParameters(params);
       LOG.info("callFunction params {}", params);
       String className = (String) params.get(0);
       String funcName = (String) params.get(1);
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
-      Method method = ReflectionUtils.findMethod(clz, funcName);
+      Class[] paramsTypes = params.subList(2, params.size()).stream()
+          .map(Object::getClass).toArray(Class[]::new);
+      Method method = findMethod(clz, funcName, paramsTypes);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
-      referenceMap.put(getReferenceId(result), result);
-      return serializer.serialize(getReferenceId(result));
+      if (returnReference(result)) {
+        referenceMap.put(getReferenceId(result), result);
+        return serializer.serialize(getReferenceId(result));
+      } else {
+        return serializer.serialize(result);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -115,30 +126,77 @@ public class PythonGateway {
   public byte[] callMethod(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
-      params = processReferenceParameters(params);
+      params = processParameters(params);
       LOG.info("callMethod params {}", params);
       Object obj = params.get(0);
       String methodName = (String) params.get(1);
-      Method method = ReflectionUtils.findMethod(obj.getClass(), methodName);
+      Class<?> clz = obj.getClass();
+      Class[] paramsTypes = params.subList(2, params.size()).stream()
+          .map(Object::getClass).toArray(Class[]::new);
+      Method method = findMethod(clz, methodName, paramsTypes);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
-      referenceMap.put(getReferenceId(result), result);
-      return serializer.serialize(getReferenceId(result));
+      if (returnReference(result)) {
+        referenceMap.put(getReferenceId(result), result);
+        return serializer.serialize(getReferenceId(result));
+      } else {
+        return serializer.serialize(result);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
   }
 
-  private List<Object> processReferenceParameters(List<Object> params) {
-    return params.stream().map(this::processReferenceParameter)
+  private static Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
+    List<Method> methods = ReflectionUtils.findMethods(cls, methodName);
+    if (methods.size() == 1) {
+      return methods.get(0);
+    }
+    // Convert all params types to primitive types if it's boxed type
+    Class[] unwrappedTypes = Arrays.stream(paramsTypes)
+        .map((Function<Class, Class>) Primitives::unwrap)
+        .toArray(Class[]::new);
+    Optional<Method> any = methods.stream()
+        .filter(m -> Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+            Arrays.equals(m.getParameterTypes(), unwrappedTypes))
+        .findAny();
+    Preconditions.checkArgument(any.isPresent(),
+        String.format("Method %s with type %s doesn't exist on class %s",
+            methodName, Arrays.toString(paramsTypes), cls));
+    return any.get();
+  }
+
+  private static boolean returnReference(Object value) {
+    return !(value instanceof Number) && !(value instanceof String) && !(value instanceof byte[]);
+  }
+
+  public byte[] newInstance(byte[] classNameBytes) {
+    String className = (String) serializer.deserialize(classNameBytes);
+    try {
+      Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
+      Object instance = clz.newInstance();
+      referenceMap.put(getReferenceId(instance), instance);
+      return serializer.serialize(getReferenceId(instance));
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+      throw new IllegalArgumentException(
+          String.format("Create instance for class %s failed", className), e);
+    }
+  }
+
+  private List<Object> processParameters(List<Object> params) {
+    return params.stream().map(this::processParameter)
         .collect(Collectors.toList());
   }
 
-  private Object processReferenceParameter(Object o) {
+  private Object processParameter(Object o) {
     if (o instanceof String) {
       Object value = referenceMap.get(o);
       if (value != null) {
         return value;
       }
+    }
+    // Since python can't represent byte/short, we convert all Byte/Short to Integer
+    if (o instanceof Byte || o instanceof Short) {
+      return ((Number) o).intValue();
     }
     return o;
   }

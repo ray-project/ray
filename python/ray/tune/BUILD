@@ -182,7 +182,7 @@ py_test(
 
 py_test(
     name = "test_tune_server",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

@@ -1,3 +1,5 @@
+.. _actor-guide:
+
 Using Actors
 ============
 

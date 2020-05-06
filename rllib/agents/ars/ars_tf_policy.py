@@ -7,7 +7,7 @@ import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.es.es_tf_policy import make_session
-from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
+from ray.rllib.evaluation.sampler import unbatch_actions
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
@@ -36,15 +36,18 @@ class ARSTFPolicy:
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             self.action_space, config["model"], dist_type="deterministic")
 
-        model = ModelCatalog.get_model({
-            SampleBatch.CUR_OBS: self.inputs
-        }, self.observation_space, self.action_space, dist_dim,
-                                       config["model"])
-        dist = dist_class(model.outputs, model)
+        self.model = ModelCatalog.get_model_v2(
+            obs_space=self.preprocessor.observation_space,
+            action_space=self.action_space,
+            num_outputs=dist_dim,
+            model_config=config["model"])
+        dist_inputs, _ = self.model({SampleBatch.CUR_OBS: self.inputs})
+        dist = dist_class(dist_inputs, self.model)
+
         self.sampler = dist.sample()
 
         self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-            model.outputs, self.sess)
+            dist_inputs, self.sess)
 
         self.num_params = sum(
             np.prod(variable.shape.as_list())
@@ -56,7 +59,7 @@ class ARSTFPolicy:
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
-        action = _unbatch_tuple_actions(action)
+        action = unbatch_actions(action)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action

@@ -42,7 +42,6 @@ if __name__ == "__main__":
     known_rewards = [-189, -1144]
     algo = SkOptSearch(
         optimizer, ["width", "height"],
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         points_to_evaluate=previously_run_params,
@@ -58,7 +57,6 @@ if __name__ == "__main__":
 
     algo = SkOptSearch(
         optimizer, ["width", "height"],
-        max_concurrent=4,
         metric="mean_loss",
         mode="min",
         points_to_evaluate=previously_run_params)

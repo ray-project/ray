@@ -3,180 +3,26 @@ import random
 import unittest
 
 import ray
+from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
+    BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
-from ray.rllib.tests.test_rollout_worker import (MockEnv, MockEnv2, MockPolicy)
+from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.tune.registry import register_env
 
 
 def one_hot(i, n):
     out = [0.0] * n
     out[i] = 1.0
     return out
-
-
-class BasicMultiAgent(MultiAgentEnv):
-    """Env of N independent agents, each of which exits after 25 steps."""
-
-    def __init__(self, num):
-        self.agents = [MockEnv(25) for _ in range(num)]
-        self.dones = set()
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-        self.resetted = False
-
-    def reset(self):
-        self.resetted = True
-        self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
-
-    def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
-        for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-            if done[i]:
-                self.dones.add(i)
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
-
-
-class EarlyDoneMultiAgent(MultiAgentEnv):
-    """Env for testing when the env terminates (after agent 0 does)."""
-
-    def __init__(self):
-        self.agents = [MockEnv(3), MockEnv(5)]
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        self.observation_space = gym.spaces.Discrete(10)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
-            self.last_done[i] = False
-            self.last_info[i] = {}
-        obs_dict = {self.i: self.last_obs[self.i]}
-        self.i = (self.i + 1) % len(self.agents)
-        return obs_dict
-
-    def step(self, action_dict):
-        assert len(self.dones) != len(self.agents)
-        for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
-        obs = {self.i: self.last_obs[self.i]}
-        rew = {self.i: self.last_rew[self.i]}
-        done = {self.i: self.last_done[self.i]}
-        info = {self.i: self.last_info[self.i]}
-        if done[self.i]:
-            rew[self.i] = 0
-            self.dones.add(self.i)
-        self.i = (self.i + 1) % len(self.agents)
-        done["__all__"] = len(self.dones) == len(self.agents) - 1
-        return obs, rew, done, info
-
-
-class RoundRobinMultiAgent(MultiAgentEnv):
-    """Env of N independent agents, each of which exits after 5 steps.
-
-    On each step() of the env, only one agent takes an action."""
-
-    def __init__(self, num, increment_obs=False):
-        if increment_obs:
-            # Observations are 0, 1, 2, 3... etc. as time advances
-            self.agents = [MockEnv2(5) for _ in range(num)]
-        else:
-            # Observations are all zeros
-            self.agents = [MockEnv(5) for _ in range(num)]
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        self.num = num
-        self.observation_space = gym.spaces.Discrete(10)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
-            self.last_done[i] = False
-            self.last_info[i] = {}
-        obs_dict = {self.i: self.last_obs[self.i]}
-        self.i = (self.i + 1) % self.num
-        return obs_dict
-
-    def step(self, action_dict):
-        assert len(self.dones) != len(self.agents)
-        for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
-        obs = {self.i: self.last_obs[self.i]}
-        rew = {self.i: self.last_rew[self.i]}
-        done = {self.i: self.last_done[self.i]}
-        info = {self.i: self.last_info[self.i]}
-        if done[self.i]:
-            rew[self.i] = 0
-            self.dones.add(self.i)
-        self.i = (self.i + 1) % self.num
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
-
-
-def make_multiagent(env_name):
-    class MultiEnv(MultiAgentEnv):
-        def __init__(self, num):
-            self.agents = [gym.make(env_name) for _ in range(num)]
-            self.dones = set()
-            self.observation_space = self.agents[0].observation_space
-            self.action_space = self.agents[0].action_space
-
-        def reset(self):
-            self.dones = set()
-            return {i: a.reset() for i, a in enumerate(self.agents)}
-
-        def step(self, action_dict):
-            obs, rew, done, info = {}, {}, {}, {}
-            for i, action in action_dict.items():
-                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-                if done[i]:
-                    self.dones.add(i)
-            done["__all__"] = len(self.dones) == len(self.agents)
-            return obs, rew, done, info
-
-    return MultiEnv
-
-
-MultiCartpole = make_multiagent("CartPole-v0")
-MultiMountainCar = make_multiagent("MountainCarContinuous-v0")
 
 
 class TestMultiAgentEnv(unittest.TestCase):
@@ -512,7 +358,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = single_env.observation_space
         act_space = single_env.action_space
         ev = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(2),
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
             policy={
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
@@ -524,10 +370,11 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"].count, 10)
         self.assertEqual(batch.policy_batches["p1"].count, 25)
 
-    def test_train_multi_cartpole_single_policy(self):
+    def test_train_multi_agent_cartpole_single_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
-        pg = PGTrainer(env="multi_cartpole", config={"num_workers": 0})
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": n}))
+        pg = PGTrainer(env="multi_agent_cartpole", config={"num_workers": 0})
         for i in range(100):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
@@ -536,9 +383,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def test_train_multi_cartpole_multi_policy(self):
+    def test_train_multi_agent_cartpole_multi_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": n}))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():
@@ -551,7 +399,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             return (None, obs_space, act_space, config)
 
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "multiagent": {
@@ -596,7 +444,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
             }
         worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": n}),
             policy=policies,
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
             rollout_fragment_length=50)
@@ -607,7 +455,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
             remote_workers = [
                 RolloutWorker.as_remote().remote(
-                    env_creator=lambda _: MultiCartpole(n),
+                    env_creator=lambda _: MultiAgentCartPole(
+                        {"num_agents": n}),
                     policy=policies,
                     policy_mapping_fn=policy_mapper,
                     rollout_fragment_length=50)
@@ -645,7 +494,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_replay_optimizer(self):
         self._test_with_optimizer(SyncReplayOptimizer)
 
-    def test_train_multi_cartpole_many_policies(self):
+    def test_train_multi_agent_cartpole_many_policies(self):
         n = 20
         env = gym.make("CartPole-v0")
         act_space = env.action_space
@@ -656,7 +505,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                                            {})
         policy_ids = list(policies.keys())
         worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": n}),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             rollout_fragment_length=100)

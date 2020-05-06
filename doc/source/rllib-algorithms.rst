@@ -15,10 +15,10 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
-`APEX-DDPG`_        tf         No                      **Yes**            **Yes**
+`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf         **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
@@ -94,7 +94,7 @@ SpaceInvaders  646                               ~300
 
 Importance Weighted Actor-Learner Architecture (IMPALA)
 -------------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1802.01561>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/impala/impala.py>`__
 In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
@@ -143,7 +143,7 @@ SpaceInvaders  843                              ~300
 
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
-|tensorflow|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py>`__
 We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.

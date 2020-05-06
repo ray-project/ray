@@ -206,7 +206,7 @@ COMMON_CONFIG = {
     "custom_eval_function": None,
     # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
     # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": False,
+    "use_exec_api": True,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -258,7 +258,7 @@ COMMON_CONFIG = {
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
+    "timesteps_per_iteration": 0,
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -345,6 +345,10 @@ COMMON_CONFIG = {
         "policy_mapping_fn": None,
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
+        # Optional function that can be used to enhance the local agent
+        # observations to include more state.
+        # See rllib/evaluation/observation_function.py for more info.
+        "observation_fn": None,
     },
 }
 # __sphinx_doc_end__
@@ -417,7 +421,7 @@ class Trainer(Trainable):
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 "True" if config.get("eager_tracing") else "False"))
 
-        if tf and not tf.executing_eagerly():
+        if tf and not tf.executing_eagerly() and not config.get("use_pytorch"):
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
                         "TensorFlow eager execution")
 

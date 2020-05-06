@@ -154,6 +154,8 @@ class RayletClient : public PinObjectsInterface,
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param internal_config This will be populated with internal config parameters
+  /// provided by the raylet.
   /// \param ip_address The IP address of the worker.
   /// \param port The port that the worker will listen on for gRPC requests, if
   /// any.
@@ -161,7 +163,9 @@ class RayletClient : public PinObjectsInterface,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               ClientID *raylet_id, const std::string &ip_address, int port = -1);
+               ClientID *raylet_id,
+               std::unordered_map<std::string, std::string> *internal_config,
+               const std::string &ip_address, int port = -1);
 
   /// Connect to the raylet via grpc only.
   ///

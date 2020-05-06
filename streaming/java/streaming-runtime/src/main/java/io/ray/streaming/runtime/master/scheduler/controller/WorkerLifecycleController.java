@@ -53,7 +53,7 @@ public class WorkerLifecycleController {
     RayActor<JobWorker> actor = null;
     // TODO (datayjz): ray create actor
 
-      if (null == actor) {
+    if (null == actor) {
       LOG.error("Create worker actor failed.");
       return false;
     }

@@ -973,12 +973,6 @@ def test_fill_object_store_lru_fallback(shutdown_only):
         ray.get(oid)
         oids.append(oid)
 
-    # NOTE: Needed to unset the config set by the lru_evict flag, for Travis.
-    ray._raylet.set_internal_config({
-        "object_pinning_enabled": 1,
-        "object_store_full_max_retries": 5,
-    })
-
 
 @pytest.mark.parametrize(
     "ray_start_cluster", [{

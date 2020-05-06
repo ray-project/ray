@@ -17,6 +17,8 @@ import logging
 import os
 import pickle
 import sys
+import _thread
+import setproctitle
 
 from libc.stdint cimport (
     int32_t,
@@ -90,6 +92,7 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     RayTimeoutError,
+    RayCancellationError
 )
 from ray.utils import decode
 import gc
@@ -107,19 +110,6 @@ include "includes/libcoreworker.pxi"
 
 
 logger = logging.getLogger(__name__)
-
-
-def set_internal_config(dict options):
-    cdef:
-        unordered_map[c_string, c_string] c_options
-
-    if options is None:
-        return
-
-    for key, value in options.items():
-        c_options[str(key).encode("ascii")] = str(value).encode("ascii")
-
-    RayConfig.instance().initialize(c_options)
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -453,13 +443,23 @@ cdef execute_task(
                     class_name, repr(args), repr(kwargs))
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
             # Execute the task.
-            with ray.worker._changeproctitle(title, next_title):
-                with core_worker.profile_event(b"task:execute"):
-                    task_exception = True
-                    outputs = function_executor(*args, **kwargs)
+            with core_worker.profile_event(b"task:execute"):
+                task_exception = True
+                try:
+                    with ray.worker._changeproctitle(title, next_title):
+                        outputs = function_executor(*args, **kwargs)
                     task_exception = False
-                    if c_return_ids.size() == 1:
-                        outputs = (outputs,)
+                except KeyboardInterrupt as e:
+                    raise RayCancellationError(
+                            core_worker.get_current_task_id())
+                if c_return_ids.size() == 1:
+                    outputs = (outputs,)
+            # Check for a cancellation that was called when the function
+            # was exiting and was raised after the except block.
+            if not check_signals().ok():
+                task_exception = True
+                raise RayCancellationError(
+                            core_worker.get_current_task_id())
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -551,6 +551,14 @@ cdef void async_plasma_callback(CObjectID object_id,
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
+cdef c_bool kill_main_task() nogil:
+    with gil:
+        if setproctitle.getproctitle() != "ray::IDLE":
+            _thread.interrupt_main()
+            return True
+        return False
+
+
 cdef CRayStatus check_signals() nogil:
     with gil:
         try:
@@ -626,6 +634,12 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
+cdef void terminate_asyncio_thread() nogil:
+    with gil:
+        core_worker = ray.worker.global_worker.core_worker
+        core_worker.destroy_event_loop_if_exists()
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
@@ -658,6 +672,8 @@ cdef class CoreWorker:
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
         options.num_workers = 1
+        options.kill_main = kill_main_task
+        options.terminate_asyncio_thread = terminate_asyncio_thread
 
         CCoreWorkerProcess.Initialize(options)
 
@@ -953,6 +969,17 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_reconstruction))
 
+    def cancel_task(self, ObjectID object_id, c_bool force_kill):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+            CRayStatus status = CRayStatus.OK()
+
+        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
+                                            c_object_id, force_kill)
+
+        if not status.ok():
+            raise TypeError(status.message().decode())
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
@@ -1142,8 +1169,8 @@ cdef class CoreWorker:
             asyncio.set_event_loop(self.async_event_loop)
             # Initialize the async plasma connection.
             # Delayed import due to async_api depends on _raylet.
-            from ray.experimental.async_api import _async_init
-            self.async_event_loop.run_until_complete(_async_init())
+            from ray.experimental.async_api import init as plasma_async_init
+            plasma_async_init()
 
             # Create and attach the monitor object
             monitor_state = AsyncMonitorState(self.async_event_loop)
@@ -1151,7 +1178,8 @@ cdef class CoreWorker:
 
         if self.async_thread is None:
             self.async_thread = threading.Thread(
-                target=lambda: self.async_event_loop.run_forever()
+                target=lambda: self.async_event_loop.run_forever(),
+                name="AsyncIO Thread"
             )
             # Making the thread a daemon causes it to exit
             # when the main thread exits.
@@ -1172,8 +1200,12 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         return future.result()
 
-    def destory_event_loop_if_exists(self):
+    def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
+            # We should stop the monitor first because otherwise,
+            # loop.stop() will continue forever as monitor
+            # main loop will not be terminated.
+            self.async_event_loop.monitor_state.kill()
             self.async_event_loop.stop()
         if self.async_thread is not None:
             self.async_thread.join()

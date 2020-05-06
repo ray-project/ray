@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.worker;
 
+import io.ray.api.Ray;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
 import io.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
@@ -14,11 +15,8 @@ import io.ray.streaming.runtime.worker.context.WorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
-import io.ray.streaming.util.Config;
-
 import java.io.Serializable;
 import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +25,8 @@ import org.slf4j.LoggerFactory;
  */
 public class JobWorker implements Serializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
+  // special flag to indicate this actor not ready
+  private static final byte[] NOT_READY_FLAG = new byte[4];
 
   static {
     EnvUtil.loadNativeLibraries();
@@ -53,12 +53,11 @@ public class JobWorker implements Serializable {
 
     this.nodeType = executionNode.getNodeType();
     this.streamProcessor = ProcessBuilder
-      .buildProcessor(executionNode.getStreamOperator());
-    LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
+        .buildProcessor(executionNode.getStreamOperator());
+    LOGGER.info("Initializing StreamWorker, pid {}, taskId: {}, operator: {}.",
+        EnvUtil.getJvmPid(), taskId, streamProcessor);
 
-    String channelType = (String) this.config.getOrDefault(
-        Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
-    if (channelType.equals(Config.NATIVE_CHANNEL)) {
+    if (!Ray.getRuntimeContext().isSingleProcess()) {
       transferHandler = new TransferHandler();
     }
     task = createStreamTask();
@@ -124,6 +123,9 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
+    if (transferHandler == null) {
+      return NOT_READY_FLAG;
+    }
     return transferHandler.onReaderMessageSync(buffer);
   }
 
@@ -139,6 +141,9 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
+    if (transferHandler == null) {
+      return NOT_READY_FLAG;
+    }
     return transferHandler.onWriterMessageSync(buffer);
   }
 }
