@@ -43,6 +43,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
             }
           }));
+      return;
     }
 
     bool keep_executing = true;
