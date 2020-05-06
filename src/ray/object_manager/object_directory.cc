@@ -29,19 +29,22 @@ using ray::rpc::ObjectTableData;
 /// Process a notification of the object table entries and store the result in
 /// node_ids. This assumes that node_ids already contains the result of the
 /// object table entries up to but not including this notification.
-void UpdateObjectLocations(bool is_added,
+bool UpdateObjectLocations(bool is_added,
                            const std::vector<ObjectTableData> &location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<ClientID> *node_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
+  bool isUpdated = false;
   for (const auto &object_table_data : location_updates) {
     ClientID node_id = ClientID::FromBinary(object_table_data.manager());
-    if (is_added) {
+    if (is_added && 0 == node_ids->count(node_id)) {
       node_ids->insert(node_id);
-    } else {
+      isUpdated = true;
+    } else if (!is_added && 1 == node_ids->count(node_id)) {
       node_ids->erase(node_id);
+      isUpdated = true;
     }
   }
   // Filter out the removed clients from the object locations.
@@ -52,6 +55,8 @@ void UpdateObjectLocations(bool is_added,
       it++;
     }
   }
+
+  return isUpdated;
 }
 
 }  // namespace
@@ -141,9 +146,11 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           it->second.subscribed = true;
 
           // Update entries for this object.
-          UpdateObjectLocations(object_notification.IsAdded(),
-                                object_notification.GetData(), gcs_client_,
-                                &it->second.current_object_locations);
+          if (!UpdateObjectLocations(object_notification.IsAdded(),
+                                     object_notification.GetData(), gcs_client_,
+                                     &it->second.current_object_locations)) {
+            return;
+          }
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
           // looping over the callbacks.
           auto callbacks = it->second.callbacks;
@@ -186,8 +193,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    status =
-        gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id, /*done*/ nullptr);
+    status = gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id);
     listeners_.erase(entry);
   }
   return status;

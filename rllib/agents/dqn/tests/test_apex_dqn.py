@@ -1,20 +1,19 @@
-import numpy as np
 import pytest
 import unittest
 
 import ray
 import ray.rllib.agents.dqn.apex as apex
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
-class TestApex(unittest.TestCase):
+class TestApexDQN(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
 
-    def test_apex_compilation_and_per_worker_epsilon_values(self):
+    def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
@@ -30,13 +29,19 @@ class TestApex(unittest.TestCase):
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
                 lambda p, _: p.get_exploration_info())
-            eps = [i["cur_epsilon"] for i in infos]
-            assert np.allclose(eps, [0.0, 0.4, 0.016190862, 0.00065536])
+            expected = [0.4, 0.016190862, 0.00065536]
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
             #            for i in range(1):
             #                results = trainer.train()
             #                print(results)
+
+            # Test again per-worker epsilon distribution
+            # (should not have changed).
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
 

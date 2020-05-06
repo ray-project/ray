@@ -217,6 +217,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int num_workers
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
+        (void() nogil) terminate_asyncio_thread
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod
