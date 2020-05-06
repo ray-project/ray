@@ -61,11 +61,11 @@ class TrainOneStep:
                                         self.workers.local_worker(),
                                         self.num_sgd_iter,
                                         self.sgd_minibatch_size, [])
-                # TODO(ekl) shouldn't be returning learner stats directly here
                 metrics.info[LEARNER_INFO] = info
             else:
-                info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = get_learner_stats(info)
+                info = get_learner_stats(
+                    self.workers.local_worker().learn_on_batch(batch))
+                metrics.info[LEARNER_INFO] = info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if self.workers.remote_workers():

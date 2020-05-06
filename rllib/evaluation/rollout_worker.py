@@ -706,8 +706,10 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
-            info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
-                samples)
+            info_out = {
+                DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
+                .learn_on_batch(samples)
+            }
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out

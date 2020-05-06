@@ -18,13 +18,14 @@ def get_learner_stats(grad_info):
     """Return optimization stats reported from the policy.
 
     Example:
-        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> grad_info = worker.learn_on_batch(samples)
+        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
         >>> print(get_stats(grad_info))
         {"vf_loss": ..., "policy_loss": ...}
     """
 
-    if LEARNER_STATS_KEY in grad_info:
-        return grad_info[LEARNER_STATS_KEY]
+    assert LEARNER_STATS_KEY not in grad_info, (
+        "learner stats should be nested under policy id", grad_info)
 
     multiagent_stats = {}
     for k, v in grad_info.items():

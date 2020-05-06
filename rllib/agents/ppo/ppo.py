@@ -158,11 +158,11 @@ class UpdateKL:
 
     def __call__(self, fetches):
         def update(pi, pi_id):
+            assert "kl" not in fetches, (
+                "kl should be nested under policy id key", fetches)
             if pi_id in fetches:
+                assert "kl" in fetches[pi_id], (fetches, pi_id)
                 pi.update_kl(fetches[pi_id]["kl"])
-            elif "kl" in fetches:
-                # TODO(ekl) this is a hack, we shouldn't need this case
-                pi.update_kl(fetches["kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
