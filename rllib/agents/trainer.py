@@ -17,7 +17,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -423,9 +422,6 @@ class Trainer(Trainable):
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
                         "TensorFlow eager execution")
 
-        # Vars to synchronize to workers on each train call
-        self.global_vars = {"timestep": 0}
-
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
@@ -752,9 +748,6 @@ class Trainer(Trainable):
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
@@ -762,8 +755,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         if state or full_fetch:
             return result
@@ -959,7 +951,7 @@ class Trainer(Trainable):
         for i, obj_id in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray_get_and_free(obj_id)
+                ray.get(obj_id)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
