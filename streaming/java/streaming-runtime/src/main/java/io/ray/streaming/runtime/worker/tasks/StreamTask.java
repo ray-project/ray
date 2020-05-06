@@ -69,8 +69,8 @@ public abstract class StreamTask implements Runnable {
       });
 
       DataWriter writer = new DataWriter(channelIDs, outputActors, jobWorker.getWorkerConfig());
-      collectors.add(new OutputCollector(channelIDs, writer,
-        executionVertex.getOutputEdges().get(0).getPartition()));
+      collectors.add(new OutputCollector(writer, channelIDs, outputActors.values(),
+          executionVertex.getOutputEdges().get(0).getPartition()));
     }
 
     // consumer

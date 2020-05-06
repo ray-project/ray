@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
 import com.google.common.base.MoreObjects;
-import io.ray.runtime.serializer.Serializer;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.serialization.CrossLangSerializer;
 import io.ray.streaming.runtime.serialization.JavaSerializer;

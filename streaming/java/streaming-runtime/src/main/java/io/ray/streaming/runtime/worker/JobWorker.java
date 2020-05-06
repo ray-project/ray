@@ -60,6 +60,8 @@ public class JobWorker implements Serializable {
       this.executionVertex = workerContext.getExecutionVertex();
       this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
 
+      LOG.info("Test here");
+
       //Init transfer
       TransferChannelType channelType = workerConfig.transferConfig.channelType();
       if (TransferChannelType.NATIVE_CHANNEL == channelType) {

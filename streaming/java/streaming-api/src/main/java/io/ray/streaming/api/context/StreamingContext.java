@@ -6,6 +6,7 @@ import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
 import io.ray.streaming.client.JobClient;
+import io.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;

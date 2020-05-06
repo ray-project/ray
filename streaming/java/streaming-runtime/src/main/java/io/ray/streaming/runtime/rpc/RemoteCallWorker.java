@@ -27,7 +27,7 @@ public class RemoteCallWorker {
    * @return init result
    */
   public static RayObject<Boolean> initWorker(BaseActor actor, JobWorkerContext ctx) {
-    LOG.info("Call worker to init, actor: {}, context: {}.", actor.getId(), ctx);
+    LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), ctx);
     RayObject<Boolean> result = null;
 
     // python
@@ -38,7 +38,7 @@ public class RemoteCallWorker {
       result = ((RayActor<JobWorker>) actor).call(JobWorker::init, ctx);
     }
 
-    LOG.info("Finished calling worker to init.");
+    LOG.info("Finished calling worker to initiate.");
     return result;
   }
 
