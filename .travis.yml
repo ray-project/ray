@@ -52,12 +52,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
-<<<<<<< HEAD
         - RAY_USE_RANDOM_PORTS=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
-=======
->>>>>>> master
       install:
         - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
@@ -93,12 +88,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
-<<<<<<< HEAD
         - RAY_USE_RANDOM_PORTS=1
-      before_install:
-        - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
-=======
->>>>>>> master
       install:
         - . ./ci/travis/ci.sh init RAY_CI_ONLY_RLLIB_AFFECTED
       before_script:
