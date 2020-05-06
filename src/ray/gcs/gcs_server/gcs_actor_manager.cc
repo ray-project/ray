@@ -215,7 +215,7 @@ void GcsActorManager::ReconstructActor(std::shared_ptr<GcsActor> actor,
     remaining_restarts = -1;
   } else {
     int64_t remaining = max_restarts - num_restarts;
-    remaining_restarts = std::max(remaining, (int64_t)0);
+    remaining_restarts = std::max(remaining, static_cast<int64>(0));
   }
   RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
                    << worker_id << " at node " << node_id
