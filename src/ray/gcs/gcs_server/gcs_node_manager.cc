@@ -100,18 +100,25 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
-                               gcs::ErrorInfoAccessor &error_info_accessor)
+                               gcs::ErrorInfoAccessor &error_info_accessor,
+                               std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(
-          io_service, node_info_accessor, [this](const ClientID &node_id) {
+          io_service, node_info_accessor,
+          [this](const ClientID &node_id) {
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
               node->set_state(rpc::GcsNodeInfo::DEAD);
               RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
-              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
+              auto on_done = [this, node_id, node](const Status &status) {
+                RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                                   node->SerializeAsString(), nullptr));
+              };
+              RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
               // TODO(Shanly): Remove node resources from resource table.
             }
-          })) {
+          })),
+      gcs_pub_sub_(gcs_pub_sub) {
   // TODO(Shanly): Load node info list from storage synchronously.
   // TODO(Shanly): Load cluster resources from storage synchronously.
 }
@@ -122,9 +129,12 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id;
   AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
+  auto on_done = [this, node_id, request, reply,
+                  send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id;
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                       request.node_info().SerializeAsString(), nullptr));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(node_info_accessor_.AsyncRegister(request.node_info(), on_done));
@@ -135,14 +145,17 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
                                           rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
-  auto on_done = [node_id, request, reply, send_reply_callback](Status status) {
-    RAY_CHECK_OK(status);
-    RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
+
+    auto on_done = [this, node_id, node, reply, send_reply_callback](Status status) {
+      RAY_CHECK_OK(status);
+      RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                         node->SerializeAsString(), nullptr));
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    };
     RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, on_done));
     // TODO(Shanly): Remove node resources from resource table.
   }

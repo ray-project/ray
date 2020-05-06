@@ -17,10 +17,8 @@ from ray.rllib.utils.sgd import standardized
 logger = logging.getLogger(__name__)
 
 
-def ParallelRollouts(workers: WorkerSet,
-                     *,
-                     mode="bulk_sync",
-                     async_queue_depth=1) -> LocalIterator[SampleBatch]:
+def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
+                     num_async=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -36,7 +34,7 @@ def ParallelRollouts(workers: WorkerSet,
             - In 'raw' mode, the ParallelIterator object is returned directly
               and the caller is responsible for implementing gather and
               updating the timesteps counter.
-        async_queue_depth (int): In async mode, the max number of async
+        num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -83,7 +81,7 @@ def ParallelRollouts(workers: WorkerSet,
             .for_each(report_timesteps)
     elif mode == "async":
         return rollouts.gather_async(
-            async_queue_depth=async_queue_depth).for_each(report_timesteps)
+            num_async=num_async).for_each(report_timesteps)
     elif mode == "raw":
         return rollouts
     else:

@@ -15,7 +15,6 @@ install_toolchains() {
         osversion="${osversion}32"
       fi
       url="${urlbase}/${LLVM_VERSION}/LLVM-${LLVM_VERSION}-${osversion}.exe"
-      targetdir="${PROGRAMFILES}\LLVM"
       ;;
     linux-gnu)
       osversion="${OSTYPE}-$(sed -n -e '/^PRETTY_NAME/ { s/^[^=]*="\(.*\)"/\1/g; s/ /-/; s/\([0-9]*\.[0-9]*\)\.[0-9]*/\1/; s/ .*//; p }' /etc/os-release | tr '[:upper:]' '[:lower:]')"
@@ -27,25 +26,16 @@ install_toolchains() {
   if [ -z "${url}" ]; then
     url="${urlbase}/${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-${HOSTTYPE}-${osversion}.tar.xz"
   fi
-  curl -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
+  curl -f -s -L -R "${url}" | if [ "${OSTYPE}" = "msys" ]; then
     local target="./${url##*/}"
     install /dev/stdin "${target}"
+    mkdir -p -- "${targetdir}"
     7z x -bsp0 -bso0 "${target}" -o"${targetdir}"
+    MSYS2_ARG_CONV_EXCL="*" Reg Add "HKLM\SOFTWARE\LLVM\LLVM" /ve /t REG_SZ /f /reg:32 \
+      /d "$(cygpath -w -- "${targetdir}")" > /dev/null
     rm -f -- "${target}"
-    (
-      # Add Clang/LLVM binaries to somewhere that's in already PATH
-      # (don't change PATH itself, to avoid invalidating Bazel's cache or having to manage environment variables)
-      mkdir -p -- ~/bin
-      set +x
-      local path
-      for path in "${targetdir}\\bin"/*.exe; do
-        local name="${path##*/}"
-        printf "%s\n" "#!/usr/bin/env bash" "exec \"${path}\" \"\$@\"" | install /dev/stdin ~/bin/"${name%.*}"
-      done
-    )
   else
     sudo tar -x -J --strip-components=1 -C "${targetdir}"
-    command -V clang 1>&2
   fi
   "${targetdir}"/bin/clang --version 1>&2
 }
