@@ -131,13 +131,11 @@ class PolicyClient:
         })
 
     @PublicAPI
-    def log_returns(
-            self,
-            episode_id,
-            reward,
-            info=None,
-            multiagent_done_dict=None,
-    ):
+    def log_returns(self,
+                    episode_id,
+                    reward,
+                    info=None,
+                    multiagent_done_dict=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
