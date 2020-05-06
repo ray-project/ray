@@ -26,11 +26,16 @@ void DefaultActorInfoHandler::HandleCreateActor(
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
-  gcs_actor_manager_.RegisterActor(request, [reply, send_reply_callback, actor_id](
-                                                std::shared_ptr<gcs::GcsActor> actor) {
-    RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  });
+  Status status = gcs_actor_manager_.RegisterActor(
+      request,
+      [reply, send_reply_callback, actor_id](std::shared_ptr<gcs::GcsActor> actor) {
+        RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to create actor: " << status.ToString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
 }
 
 void DefaultActorInfoHandler::HandleGetActorInfo(

@@ -114,6 +114,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
+      /*name=*/"",
       /*is_asyncio=*/false};
   return actor_creation_options;
 }
