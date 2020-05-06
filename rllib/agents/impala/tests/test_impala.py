@@ -31,6 +31,7 @@ class TestIMPALA(unittest.TestCase):
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
+                trainer.stop()
 
                 # Test w/ LSTM.
                 print("w/o LSTM")
@@ -38,6 +39,7 @@ class TestIMPALA(unittest.TestCase):
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
+                trainer.stop()
 
 
 if __name__ == "__main__":

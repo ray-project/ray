@@ -27,6 +27,7 @@ class TestDDPPO(unittest.TestCase):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+            trainer.stop()
 
 
 if __name__ == "__main__":
