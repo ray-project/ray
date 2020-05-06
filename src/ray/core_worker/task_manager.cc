@@ -272,11 +272,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
-    if (num_retries_left == -1) {
-      release_lineage = false;
-    } else if (num_retries_left == 0) {
+    if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
+    } else if (num_retries_left == -1) {
+      release_lineage = false;
     } else {
       RAY_CHECK(num_retries_left > 0);
       it->second.num_retries_left--;

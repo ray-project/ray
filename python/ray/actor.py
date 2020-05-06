@@ -887,8 +887,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     infinite_restart = max_restarts == -1
     if not infinite_restart:
         if max_restarts < 0:
-            raise ValueError("max_restarts must be either -1"
-                             " or in the range [0, inf].")
+            raise ValueError("max_restarts must be an integer >= -1 "
+                             "-1 indicates infinite restarts")
         else:
             # Make sure we don't pass too big of an int to C++, causing
             # an overflow.

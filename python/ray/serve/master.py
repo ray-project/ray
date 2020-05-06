@@ -407,6 +407,7 @@ class ServeMaster:
                 del self.workers[backend_tag][replica_tag]
                 if len(self.workers[backend_tag]) == 0:
                     del self.workers[backend_tag]
+
                 self.replicas_to_stop[backend_tag].append(replica_tag)
 
     def get_all_worker_handles(self):

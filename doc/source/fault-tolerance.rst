@@ -45,16 +45,14 @@ You can experiment with this behavior by running the following code.
 Actors
 ------
 
-If an actor process crashes unexpectedly, Ray will attempt to reconstruct the
-actor process. The desired functionality can be specified with
-the ``max_restarts`` keyword, which by default is ``0``. A
-``max_restarts`` set to -1 indicates to retry indefinitely on failure.
-After the specified number of restarts, subsequent actor methods will
-raise exceptions.
-
+Ray will automatically restart actors that crash unexpectedly.
+This behavior is controlled using ``max_restarts``,
+which sets the maximum number of times that an actor will be restarted.
+If 0, the actor won't be restarted. If -1, it will be restarted infinitely.
 When an actor is restarted, its state will be recreated by rerunning its
 constructor.
-
+After the specified number of restarts, subsequent actor methods will
+raise a ``RayActorError``.
 You can experiment with this behavior by running the following code.
 
 .. code-block:: python
