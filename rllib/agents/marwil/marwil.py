@@ -1,7 +1,10 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.optimizers import SyncBatchReplayOptimizer
+from ray.rllib.execution.replay_ops import MixInReplay
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -37,15 +40,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["replay_buffer_size"],
-        train_batch_size=config["train_batch_size"],
-    )
-
-
 def get_policy_class(config):
     if config.get("use_pytorch") is True:
         from ray.rllib.agents.marwil.marwil_torch_policy import \
@@ -55,9 +49,21 @@ def get_policy_class(config):
         return MARWILTFPolicy
 
 
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    train_op = rollouts \
+        .for_each(MixInReplay(config["replay_buffer_size"])) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers))
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=make_optimizer)
+    execution_plan=execution_plan)

@@ -76,58 +76,12 @@ DEFAULT_CONFIG = with_common_config({
     "_fake_gpus": False,
     # Use PyTorch as framework?
     "use_pytorch": False,
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def choose_policy_optimizer(workers, config):
-    if config["simple_optimizer"]:
-        return SyncSamplesOptimizer(
-            workers,
-            num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"],
-            sgd_minibatch_size=config["sgd_minibatch_size"],
-            standardize_fields=["advantages"])
-
-    return LocalMultiGPUOptimizer(
-        workers,
-        sgd_batch_size=config["sgd_minibatch_size"],
-        num_sgd_iter=config["num_sgd_iter"],
-        num_gpus=config["num_gpus"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        num_envs_per_worker=config["num_envs_per_worker"],
-        train_batch_size=config["train_batch_size"],
-        standardize_fields=["advantages"],
-        shuffle_sequences=config["shuffle_sequences"],
-        _fake_gpus=config["_fake_gpus"])
-
-
-def update_kl(trainer, fetches):
-    # Single-agent.
-    if "kl" in fetches:
-        trainer.workers.local_worker().for_policy(
-            lambda pi: pi.update_kl(fetches["kl"]))
-
-    # Multi-agent.
-    else:
-
-        def update(pi, pi_id):
-            if pi_id in fetches:
-                pi.update_kl(fetches[pi_id]["kl"])
-            else:
-                logger.info("No data for {}, not updating kl".format(pi_id))
-
-        trainer.workers.local_worker().foreach_trainable_policy(update)
-
-
-def warn_about_bad_reward_scales(trainer, result):
-    return _warn_about_bad_reward_scales(trainer.config, result)
-
-
-def _warn_about_bad_reward_scales(config, result):
+def warn_about_bad_reward_scales(config, result):
     if result["policy_reward_mean"]:
         return result  # Punt on handling multiagent case.
 
@@ -197,7 +151,6 @@ def get_policy_class(config):
         return PPOTFPolicy
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -243,7 +196,7 @@ def execution_plan(workers, config):
     train_op = train_op.for_each(update_kl)
 
     return StandardMetricsReporting(train_op, workers, config) \
-        .for_each(lambda result: _warn_about_bad_reward_scales(config, result))
+        .for_each(lambda result: warn_about_bad_reward_scales(config, result))
 
 
 PPOTrainer = build_trainer(
@@ -251,8 +204,5 @@ PPOTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=choose_policy_optimizer,
     execution_plan=execution_plan,
-    validate_config=validate_config,
-    after_optimizer_step=update_kl,
-    after_train_result=warn_about_bad_reward_scales)
+    validate_config=validate_config)

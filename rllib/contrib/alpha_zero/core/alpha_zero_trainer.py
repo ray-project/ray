@@ -15,6 +15,11 @@ from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
 from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
 from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
     import SyncBatchesReplayOptimizer
+from ray.rllib.execution.replay_ops import MixInReplay, \
+    WaitUntilTimestepsElapsed
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 tf = try_import_tf()
 torch, nn = try_import_torch()
@@ -111,21 +116,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def choose_policy_optimizer(workers, config):
-    if config["simple_optimizer"]:
-        return SyncSamplesOptimizer(
-            workers,
-            num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"])
-    else:
-        return SyncBatchesReplayOptimizer(
-            workers,
-            num_gradient_descents=config["num_sgd_iter"],
-            learning_starts=config["learning_starts"],
-            train_batch_size=config["train_batch_size"],
-            buffer_size=config["buffer_size"])
-
-
 def alpha_zero_loss(policy, model, dist_class, train_batch):
     # get inputs unflattened inputs
     input_dict = restore_original_dimensions(train_batch["obs"],
@@ -172,8 +162,29 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
                          _env_creator)
 
 
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    if config["simple_optimizer"]:
+        train_op = rollouts \
+            .combine(ConcatBatches(
+                min_batch_size=config["train_batch_size"])) \
+            .for_each(TrainOneStep(
+                workers, num_sgd_iter=config["num_sgd_iter"]))
+    else:
+        train_op = rollouts \
+            .for_each(MixInReplay(config["buffer_size"])) \
+            .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
+            .combine(
+                ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            .for_each(TrainOneStep(
+                workers, num_sgd_iter=config["num_sgd_iter"]))
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 AlphaZeroTrainer = build_trainer(
     name="AlphaZero",
     default_config=DEFAULT_CONFIG,
     default_policy=AlphaZeroPolicyWrapperClass,
-    make_policy_optimizer=choose_policy_optimizer)
+    execution_plan=execution_plan)

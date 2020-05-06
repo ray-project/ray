@@ -93,6 +93,18 @@ def Replay(*,
     return LocalIterator(gen_replay, SharedMetrics())
 
 
+class WaitUntilTimestepsElapsed:
+    """Callable that returns True once a given number of timesteps are hit."""
+
+    def __init__(self, target_num_timesteps):
+        self.target_num_timesteps = target_num_timesteps
+
+    def __call__(self, item):
+        metrics = LocalIterator.get_metrics()
+        ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        return ts > self.target_num_timesteps
+
+
 class MixInReplay:
     """This operator adds replay to a stream of experiences.
 

@@ -108,11 +108,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def set_global_timestep(trainer):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    trainer.train_start_timestep = global_timestep
-
-
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     samples = {}
 
@@ -146,31 +141,6 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-def make_optimizer(workers, config):
-    return SyncReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        before_learn_on_batch=before_learn_on_batch,
-        synchronize_sampling=True,
-        prioritized_replay=False)
-
-
-def add_trainer_metrics(trainer, result):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    result.update(
-        timesteps_this_iter=global_timestep - trainer.train_start_timestep,
-        info=dict({
-            "num_target_updates": trainer.state["num_target_updates"],
-        }, **trainer.optimizer.stats()))
-
-
-def collect_metrics(trainer):
-    result = trainer.collect_metrics()
-    return result
-
-
 def add_maddpg_postprocessing(config):
     """Add the before learn on batch hook.
 
@@ -192,11 +162,4 @@ MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="MADDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=MADDPGTFPolicy,
-    validate_config=add_maddpg_postprocessing,
-    get_policy_class=None,
-    before_init=None,
-    before_train_step=set_global_timestep,
-    make_policy_optimizer=make_optimizer,
-    after_train_result=add_trainer_metrics,
-    collect_metrics_fn=collect_metrics,
-    before_evaluate_fn=None)
+    validate_config=add_maddpg_postprocessing)

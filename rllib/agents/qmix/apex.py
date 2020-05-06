@@ -1,6 +1,6 @@
 """Experimental: scalable Ape-X variant of QMIX"""
 
-from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
+from ray.rllib.agents.dqn.apex import apex_execution_plan
 from ray.rllib.agents.qmix.qmix import QMixTrainer, \
     DEFAULT_CONFIG as QMIX_CONFIG
 from ray.rllib.utils import merge_dicts
@@ -32,4 +32,4 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
 ApexQMixTrainer = QMixTrainer.with_updates(
     name="APEX_QMIX",
     default_config=APEX_QMIX_DEFAULT_CONFIG,
-    **APEX_TRAINER_PROPERTIES)
+    execution_plan=apex_execution_plan)

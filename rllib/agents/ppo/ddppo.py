@@ -97,7 +97,6 @@ def make_distributed_allreduce_optimizer(workers, config):
         standardize_fields=["advantages"])
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="raw")
 

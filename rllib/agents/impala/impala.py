@@ -96,45 +96,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def defer_make_workers(trainer, env_creator, policy, config):
-    # Defer worker creation to after the optimizer has been created.
-    return trainer._make_workers(env_creator, policy, config, 0)
-
-
-def make_aggregators_and_optimizer(workers, config):
-    if config["num_aggregation_workers"] > 0:
-        # Create co-located aggregator actors first for placement pref
-        aggregators = TreeAggregator.precreate_aggregators(
-            config["num_aggregation_workers"])
-    else:
-        aggregators = None
-    workers.add_workers(config["num_workers"])
-
-    optimizer = AsyncSamplesOptimizer(
-        workers,
-        lr=config["lr"],
-        num_gpus=config["num_gpus"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        train_batch_size=config["train_batch_size"],
-        replay_buffer_num_slots=config["replay_buffer_num_slots"],
-        replay_proportion=config["replay_proportion"],
-        num_data_loader_buffers=config["num_data_loader_buffers"],
-        max_sample_requests_in_flight_per_worker=config[
-            "max_sample_requests_in_flight_per_worker"],
-        broadcast_interval=config["broadcast_interval"],
-        num_sgd_iter=config["num_sgd_iter"],
-        minibatch_buffer_size=config["minibatch_buffer_size"],
-        num_aggregation_workers=config["num_aggregation_workers"],
-        learner_queue_size=config["learner_queue_size"],
-        learner_queue_timeout=config["learner_queue_timeout"],
-        **config["optimizer"])
-
-    if aggregators:
-        # Assign the pre-created aggregators to the optimizer
-        optimizer.aggregator.init(aggregators)
-    return optimizer
-
-
 class OverrideDefaultResourceRequest:
     @classmethod
     @override(Trainable)
@@ -261,7 +222,6 @@ def gather_experiences_directly(workers, config):
     return train_batches
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     if config["num_aggregation_workers"] > 0:
         train_batches = gather_experiences_tree_aggregation(workers, config)
@@ -318,7 +278,5 @@ ImpalaTrainer = build_trainer(
     default_policy=VTraceTFPolicy,
     validate_config=validate_config,
     get_policy_class=get_policy_class,
-    make_workers=defer_make_workers,
-    make_policy_optimizer=make_aggregators_and_optimizer,
     execution_plan=execution_plan,
     mixins=[OverrideDefaultResourceRequest])

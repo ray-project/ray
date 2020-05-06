@@ -91,15 +91,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_sync_batch_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"])
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -119,5 +110,4 @@ QMixTrainer = GenericOffPolicyTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=QMixTorchPolicy,
     get_policy_class=None,
-    make_policy_optimizer=make_sync_batch_optimizer,
     execution_plan=execution_plan)

@@ -87,7 +87,6 @@ def get_policy_class(config):
         return SimpleQTFPolicy
 
 
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,

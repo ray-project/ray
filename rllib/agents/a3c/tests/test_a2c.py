@@ -18,7 +18,6 @@ class TestA2C(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_exec_api": True
             })
         assert isinstance(trainer.train(), dict)
 
@@ -28,7 +27,6 @@ class TestA2C(unittest.TestCase):
             config={
                 "min_iter_time_s": 0,
                 "microbatch_size": 10,
-                "use_exec_api": True,
             })
         assert isinstance(trainer.train(), dict)
 

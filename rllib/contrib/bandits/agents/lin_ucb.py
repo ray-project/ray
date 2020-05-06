@@ -30,16 +30,7 @@ UCB_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_stats(trainer):
-    env_metrics = trainer.collect_metrics()
-    stats = trainer.optimizer.stats()
-    # Uncomment if regret at each time step is needed
-    # stats.update({"all_regrets": trainer.get_policy().regrets})
-    return dict(env_metrics, **stats)
-
-
 LinUCBTrainer = build_trainer(
     name="LinUCB",
     default_config=UCB_CONFIG,
-    default_policy=BanditPolicy,
-    collect_metrics_fn=get_stats)
+    default_policy=BanditPolicy)

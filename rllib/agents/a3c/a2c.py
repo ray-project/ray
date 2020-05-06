@@ -27,18 +27,6 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-def choose_policy_optimizer(workers, config):
-    if config["microbatch_size"]:
-        return MicrobatchOptimizer(
-            workers,
-            train_batch_size=config["train_batch_size"],
-            microbatch_size=config["microbatch_size"])
-    else:
-        return SyncSamplesOptimizer(
-            workers, train_batch_size=config["train_batch_size"])
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -71,6 +59,5 @@ A2CTrainer = build_trainer(
     default_config=A2C_DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     execution_plan=execution_plan)

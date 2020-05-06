@@ -20,7 +20,6 @@ class TestDistributedExecution(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_exec_api": True
             })
         result = trainer.train()
         assert isinstance(result, dict)
@@ -40,7 +39,6 @@ class TestDistributedExecution(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_exec_api": True
             })
         res1 = trainer.train()
         checkpoint = trainer.save()

@@ -206,9 +206,6 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
-    # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
-    # be enabled by setting RLLIB_EXEC_API=1.
-    "use_exec_api": True,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -622,8 +619,6 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
-        if hasattr(self, "optimizer") and self.optimizer:
-            self.optimizer.stop()
 
     @override(Trainable)
     def _save(self, checkpoint_dir):
@@ -1003,16 +998,6 @@ class Trainer(Trainable):
             workers.reset(healthy_workers)
             self.train_exec_impl = self.execution_plan(workers, self.config)
 
-    def _has_policy_optimizer(self):
-        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
-
-        Returns:
-            bool: True if this Trainer holds a PolicyOptimizer object in
-                property `self.optimizer`.
-        """
-        return hasattr(self, "optimizer") and isinstance(
-            self.optimizer, PolicyOptimizer)
-
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
         ExportFormat.validate(export_formats)
@@ -1056,8 +1041,6 @@ class Trainer(Trainable):
         state = {}
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
-        if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
-            state["optimizer"] = self.optimizer.save()
         return state
 
     def __setstate__(self, state):
@@ -1066,8 +1049,6 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        if "optimizer" in state:
-            self.optimizer.restore(state["optimizer"])
 
     def _register_if_needed(self, env_object):
         if isinstance(env_object, str):
