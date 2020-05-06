@@ -1,11 +1,8 @@
-"""Example of using two different training methods at once in multi-agent.
+"""Example of using a custom training workflow.
 
 Here we create a number of CartPole agents, some of which are trained with
-DQN, and some of which are trained with PPO. We periodically sync weights
-between the two trainers (note that no such syncing is needed when using just
-a single training method).
-
-For a simpler example, see also: multiagent_cartpole.py
+DQN, and some of which are trained with PPO. Both are executed concurrently
+via a custom training workflow.
 """
 
 import argparse
@@ -33,7 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=20)
 
 
-def training_workflow(workers, config):
+def custom_training_workflow(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
@@ -117,7 +114,7 @@ if __name__ == "__main__":
     MyTrainer = build_trainer(
         name="PPO_DQN_MultiAgent",
         default_policy=None,
-        execution_plan=training_workflow)
+        execution_plan=custom_training_workflow)
 
     tune.run(
         MyTrainer,
