@@ -215,6 +215,7 @@ ray::Status NodeManager::RegisterGcs() {
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
   auto on_done = [this](Status status) {
+    RAY_CHECK_OK(status);
     // Subscribe to resource changes.
     const auto &resources_changed =
         [this](const ClientID &id,
@@ -235,7 +236,7 @@ ray::Status NodeManager::RegisterGcs() {
             ResourceDeleted(id, resource_names);
           }
         };
-    RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
         /*subscribe_callback=*/resources_changed,
         /*done_callback=*/nullptr));
   };
