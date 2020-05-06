@@ -182,7 +182,7 @@ def get_address_info_from_redis_helper(redis_address,
 
     relevant_client = None
     for client_info in client_table:
-        if not client_info['Alive']:
+        if not client_info["Alive"]:
             continue
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
