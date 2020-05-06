@@ -191,17 +191,18 @@ class RayServeWorker:
             serve_context.batch_size = batch_size
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
-
+            
+            self.request_counter.add(batch_size)
             result_list = await call_method(*arg_list, **kwargs_list)
 
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
-                raise RayServeException("__call__ function "
-                                        "doesn't preserve batch-size. "
-                                        "Please return a list of result "
-                                        "with length equals to the batch "
-                                        "size.")
-            self.request_counter.add(batch_size)
+                error_message = ("Worker doesn't preserve batch size. The "
+                                 "input has length {} but the returned list "
+                                 "has length {}. Please return a list of "
+                                 "results with length equal to the batch size"
+                                 ".".format(batch_size, len(result_list)))
+               raise RayServeException(error_message)
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)

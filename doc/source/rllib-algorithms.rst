@@ -15,7 +15,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
-`APEX-DDPG`_        tf         No                      **Yes**            **Yes**
+`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
 `IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_

@@ -170,7 +170,12 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
+  void HandleNotification(const GcsNodeInfo &node_info);
+
   ServiceBasedGcsClient *client_impl_;
+
+  using NodeChangeCallback =
+      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
@@ -188,6 +193,14 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ClientID local_node_id_;
 
   Sequencer<ClientID> sequencer_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
+
+  /// A cache for information about all nodes.
+  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<ClientID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -212,18 +225,21 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const TaskID &task_id) override;
 
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) override;
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
       const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                   const StatusCallback &done) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
 
   Status AttemptTaskReconstruction(
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
@@ -231,16 +247,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   ServiceBasedGcsClient *client_impl_;
-
-  ClientID subscribe_id_;
-
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
-
-  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
-      TaskLeaseSubscriptionExecutor;
-  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor

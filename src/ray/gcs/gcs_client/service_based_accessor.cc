@@ -399,33 +399,53 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node change.";
   RAY_CHECK(subscribe != nullptr);
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  auto status = client_table.SubscribeToNodeChange(subscribe, done);
+  RAY_CHECK(node_change_callback_ == nullptr);
+  node_change_callback_ = subscribe;
+
+  auto on_subscribe = [this](const std::string &id, const std::string &data) {
+    GcsNodeInfo node_info;
+    node_info.ParseFromString(data);
+    HandleNotification(node_info);
+  };
+
+  auto on_done = [this, subscribe, done](const Status &status) {
+    // Get nodes from GCS Service.
+    auto callback = [this, subscribe, done](
+                        const Status &status,
+                        const std::vector<GcsNodeInfo> &node_info_list) {
+      for (auto &node_info : node_info_list) {
+        HandleNotification(node_info);
+      }
+      if (done) {
+        done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+  };
+
+  auto status =
+      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const ClientID &node_id) const {
-  GcsNodeInfo node_info;
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  bool found = client_table.GetClient(node_id, &node_info);
-  boost::optional<GcsNodeInfo> optional_node;
-  if (found) {
-    optional_node = std::move(node_info);
+  RAY_CHECK(!node_id.IsNil());
+  auto entry = node_cache_.find(node_id);
+  if (entry != node_cache_.end()) {
+    return entry->second;
   }
-  return optional_node;
+  return boost::none;
 }
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.GetAllClients();
+  return node_cache_;
 }
 
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.IsRemoved(node_id);
+  return removed_nodes_.count(node_id) == 1;
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
@@ -567,12 +587,48 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
   return status;
 }
 
+void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
+  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
+  auto entry = node_cache_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the node
+    // was alive and is now dead or resources have been updated.
+    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+    // Once a node with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the node was deleted, check
+    // that this new notification is not an insertion.
+    if (!was_alive) {
+      RAY_CHECK(!is_alive)
+          << "Notification for addition of a node that was already removed:" << node_id;
+    }
+  }
+
+  // Add the notification to our cache.
+  RAY_LOG(INFO) << "Received notification for node id = " << node_id
+                << ", IsAlive = " << is_alive;
+  node_cache_[node_id] = node_info;
+
+  // If the notification is new, call registered callback.
+  if (is_notif_new) {
+    if (is_alive) {
+      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
+    } else {
+      removed_nodes_.insert(node_id);
+    }
+    GcsNodeInfo &cache_data = node_cache_[node_id];
+    node_change_callback_(node_id, cache_data);
+  }
+}
+
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      subscribe_id_(ClientID::FromRandom()),
-      task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()),
-      task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedTaskInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
@@ -601,8 +657,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
   client_impl_->GetGcsRpcClient().GetTask(
       request, [task_id, callback](const Status &status, const rpc::GetTaskReply &reply) {
         if (reply.has_task_data()) {
-          TaskTableData task_table_data(reply.task_data());
-          callback(status, task_table_data);
+          callback(status, reply.task_data());
         } else {
           callback(status, boost::none);
         }
@@ -636,16 +691,38 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
-  auto status =
-      task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
+    TaskTableData task_data;
+    task_data.ParseFromString(data);
+    subscribe(task_id, task_data);
+  };
+  auto on_done = [this, task_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [task_id, subscribe, done](
+                          const Status &status,
+                          const boost::optional<rpc::TaskTableData> &result) {
+        if (result) {
+          subscribe(task_id, *result);
+        }
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGet(task_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
   return status;
 }
 
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                                      const StatusCallback &done) {
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id;
-  auto status = task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id;
   return status;
 }
@@ -670,6 +747,25 @@ Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
   return Status::OK();
 }
 
+Status ServiceBasedTaskInfoAccessor::AsyncGetTaskLease(
+    const TaskID &task_id, const OptionalItemCallback<rpc::TaskLeaseData> &callback) {
+  RAY_LOG(DEBUG) << "Getting task lease, task id = " << task_id;
+  rpc::GetTaskLeaseRequest request;
+  request.set_task_id(task_id.Binary());
+  client_impl_->GetGcsRpcClient().GetTaskLease(
+      request,
+      [task_id, callback](const Status &status, const rpc::GetTaskLeaseReply &reply) {
+        if (reply.has_task_lease_data()) {
+          callback(status, reply.task_lease_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting task lease, status = " << status
+                       << ", task id = " << task_id;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
     const TaskID &task_id,
     const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
@@ -677,16 +773,37 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe task lease, task id = " << task_id;
-  auto status =
-      task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+  auto on_subscribe = [task_id, subscribe](const std::string &id,
+                                           const std::string &data) {
+    TaskLeaseData task_lease_data;
+    task_lease_data.ParseFromString(data);
+    subscribe(task_id, task_lease_data);
+  };
+  auto on_done = [this, task_id, subscribe, done](const Status &status) {
+    if (status.ok()) {
+      auto callback = [task_id, subscribe, done](
+                          const Status &status,
+                          const boost::optional<rpc::TaskLeaseData> &result) {
+        subscribe(task_id, result);
+        if (done) {
+          done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGetTaskLease(task_id, callback));
+    } else if (done) {
+      done(status);
+    }
+  };
+  auto status = client_impl_->GetGcsPubSub().Subscribe(TASK_LEASE_CHANNEL, task_id.Hex(),
+                                                       on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
   return status;
 }
 
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
-    const TaskID &task_id, const StatusCallback &done) {
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Unsubscribing task lease, task id = " << task_id;
-  auto status = task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+  auto status =
+      client_impl_->GetGcsPubSub().Unsubscribe(TASK_LEASE_CHANNEL, task_id.Hex());
   RAY_LOG(DEBUG) << "Finished unsubscribing task lease, task id = " << task_id;
   return status;
 }

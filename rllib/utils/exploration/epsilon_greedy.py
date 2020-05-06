@@ -55,6 +55,10 @@ class EpsilonGreedy(Exploration):
         self.last_timestep = get_variable(
             0, framework=framework, tf_name="timestep")
 
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
+
     @override(Exploration)
     def get_exploration_action(self,
                                *,
@@ -150,6 +154,8 @@ class EpsilonGreedy(Exploration):
             return exploit_action, action_logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
+        if sess:
+            return sess.run(self._tf_info_op)
         eps = self.epsilon_schedule(self.last_timestep)
         return {"cur_epsilon": eps}

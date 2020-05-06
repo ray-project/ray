@@ -514,17 +514,16 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from client id " << node_id;
+  if (1 == cluster_resource_map_.count(node_id)) {
+    RAY_LOG(DEBUG) << "Received notification of a new node that already exists: "
+                   << node_id;
+    return;
+  }
+
   if (node_id == self_node_id_) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
     cluster_resource_map_[node_id] = initial_config_.resource_config;
-    return;
-  }
-
-  auto entry = remote_node_manager_clients_.find(node_id);
-  if (entry != remote_node_manager_clients_.end()) {
-    RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
-                   << node_id;
     return;
   }
 
@@ -565,15 +564,16 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // not be necessary.
 
   // Remove the client from the resource map.
-  cluster_resource_map_.erase(node_id);
+  if (0 == cluster_resource_map_.erase(node_id)) {
+    RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
+                   << ".";
+    return;
+  }
 
   // Remove the node manager client.
   const auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry != remote_node_manager_clients_.end()) {
     remote_node_manager_clients_.erase(client_entry);
-  } else {
-    RAY_LOG(WARNING) << "Received NodeRemoved callback for an unknown client " << node_id
-                     << ".";
   }
 
   // For any live actors that were on the dead node, broadcast a notification
@@ -1704,8 +1704,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
             leased_workers_[worker->WorkerId()] = worker;
-// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
-#define ZERO_CAPACITY 1.0e-5
             std::shared_ptr<TaskResourceInstances> allocated_resources;
             if (task_spec.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();
@@ -1719,7 +1717,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                   // instances has available capacity.
               for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
                    inst_idx++) {
-                if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
+                if (predefined_resources[res_idx][inst_idx] > 0.) {
                   if (first) {
                     resource = reply->add_resource_mapping();
                     resource->set_name(
@@ -1728,7 +1726,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+                  rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
                 }
               }
             }
@@ -1737,7 +1735,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
               bool first = true;  // Set resource name only if at least one of its
                                   // instances has available capacity.
               for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-                if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+                if (it->second[inst_idx] > 0.) {
                   if (first) {
                     resource = reply->add_resource_mapping();
                     resource->set_name(
@@ -1746,7 +1744,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   }
                   auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
-                  rid->set_quantity(it->second[inst_idx]);
+                  rid->set_quantity(it->second[inst_idx].Double());
                 }
               }
             }
@@ -2252,7 +2250,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     }
     std::vector<double> cpu_instances;
     if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
       std::vector<double> borrowed_cpu_instances =
@@ -2281,7 +2279,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     }
     std::vector<double> cpu_instances;
     if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
@@ -2557,7 +2555,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   Task task;
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
-    // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
+    // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
       new_resource_scheduler_->SubtractCPUResourceInstances(
           worker.GetBorrowedCPUInstances());

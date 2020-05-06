@@ -104,23 +104,12 @@ class GcsActorManager {
  public:
   /// Create a GcsActorManager
   ///
-  /// \param io_context The main event loop.
+  /// \param scheduler Used to schedule actor creation tasks.
   /// \param actor_info_accessor Used to flush actor data to storage.
-  /// \param gcs_node_manager The actor manager needs to listen to the node change events
-  /// inside gcs_node_manager.
-  /// \param lease_client_factory Factory to create remote lease client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
-  /// \param client_factory Factory to create remote core worker client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
-  explicit GcsActorManager(boost::asio::io_context &io_context,
-                           gcs::ActorInfoAccessor &actor_info_accessor,
-                           gcs::GcsNodeManager &gcs_node_manager,
-                           LeaseClientFactoryFn lease_client_factory = nullptr,
-                           rpc::ClientFactoryFn client_factory = nullptr);
+  GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+                  gcs::ActorInfoAccessor &actor_info_accessor);
 
-  virtual ~GcsActorManager() = default;
+  ~GcsActorManager() = default;
 
   /// Register actor asynchronously.
   ///
@@ -130,6 +119,11 @@ class GcsActorManager {
   /// its state is `ALIVE`.
   void RegisterActor(const rpc::CreateActorRequest &request,
                      RegisterActorCallback callback);
+
+  /// Schedule actors in the `pending_actors_` queue.
+  /// This method should be called when new nodes are registered or resources
+  /// change.
+  void SchedulePendingActors();
 
   /// Reconstruct all actors associated with the specified node id, including actors which
   /// are scheduled or have been created on this node. Triggered when the given node goes
@@ -149,43 +143,45 @@ class GcsActorManager {
   void ReconstructActorOnWorker(const ClientID &node_id, const WorkerID &worker_id,
                                 bool need_reschedule = true);
 
- protected:
-  /// Schedule actors in the `pending_actors_` queue.
-  /// This method is triggered when new nodes are registered or resources change.
-  void SchedulePendingActors();
+  /// Handle actor creation task failure. This should be called when scheduling
+  /// an actor creation task is infeasible.
+  ///
+  /// \param actor The actor whose creation task is infeasible.
+  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor);
 
+  /// Handle actor creation task success. This should be called when the actor
+  /// creation task has been scheduled successfully.
+  ///
+  /// \param actor The actor that has been created.
+  void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
+
+ private:
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  void ReconstructActor(std::shared_ptr<GcsActor> actor, bool need_reschedule = true);
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
-  /// This method is a callback of gcs_actor_scheduler when actor is created successfully.
-  /// It will update the state of actor as well as the worker_to_created_actor_ and
-  /// node_to_created_actors_ and flush the actor data to the storage.
-  void OnActorCreateSuccess(std::shared_ptr<GcsActor> actor);
-
- protected:
   /// Callbacks of actor registration requests that are not yet flushed.
   /// This map is used to filter duplicated messages from a Driver/Worker caused by some
   /// network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
   /// All registered actors (pending actors are also included).
+  /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
-  /// Map contains the relationship of worker and created actor.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
-  /// Map contains the relationship of node and created actors.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
-      node_to_created_actors_;
-  /// The access info accessor.
-  gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// Map contains the relationship of node and created actors. Each node ID
+  /// maps to a map from worker ID to the actor created on that worker.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
+
   /// The scheduler to schedule all registered actors.
-  std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  /// Actor table. Used to update actor information upon creation, deletion, etc.
+  gcs::ActorInfoAccessor &actor_info_accessor_;
 };
 
 }  // namespace gcs
