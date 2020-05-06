@@ -49,7 +49,8 @@ def execution_plan(workers, config):
             StoreToReplayBuffer(local_buffer=local_replay_buffer))
     dqn_replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(TrainOneStep(workers, policies=["dqn_policy"])) \
-        .for_each(UpdateTargetNetwork(workers, target_update_freq=500, policies=["dqn_policy"]))
+        .for_each(UpdateTargetNetwork(
+            workers, target_update_freq=500, policies=["dqn_policy"]))
     dqn_train_op = Concurrently(
         [dqn_store_op, dqn_replay_op], mode="round_robin", output_indexes=[1])
 
