@@ -148,7 +148,6 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-        self.exploration_info = self.exploration.get_info()
         self._timestep = timestep if timestep is not None else \
             tf.placeholder(tf.int32, (), name="timestep")
 
@@ -346,7 +345,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_exploration_info(self):
-        return self._sess.run(self.exploration_info)
+        return self.exploration.get_info(sess=self.get_session())
 
     @override(Policy)
     def get_weights(self):

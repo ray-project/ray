@@ -116,7 +116,7 @@ and checking that they are restarted by Kubernetes:
 .. code-block:: shell
 
   # Delete a worker pod.
-  $ kubectl -n ray delete ray-worker-5c49b7cc57-c6xs8
+  $ kubectl -n ray delete pod ray-worker-5c49b7cc57-c6xs8
   pod "ray-worker-5c49b7cc57-c6xs8" deleted
 
   # Check that a new worker pod was started (this may take a few seconds).
@@ -128,7 +128,7 @@ and checking that they are restarted by Kubernetes:
   ray-worker-5c49b7cc57-ypq8x   1/1     Running   0          0s
 
   # Delete the head pod.
-  $ kubectl -n ray delete ray-head-5455bb66c9-6bxvz
+  $ kubectl -n ray delete pod ray-head-5455bb66c9-6bxvz
   pod "ray-head-5455bb66c9-6bxvz" deleted
 
   # Check that a new head pod was started and the worker pods were restarted.

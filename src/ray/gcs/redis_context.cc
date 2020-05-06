@@ -91,6 +91,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     redisReply *message_type = redis_reply->element[0];
     if (strcmp(message_type->str, "subscribe") == 0 ||
         strcmp(message_type->str, "psubscribe") == 0) {
+      is_subscribe_callback_ = true;
       // If the message is for the initial subscription call, return the empty
       // string as a response to signify that subscription was successful.
     } else if (strcmp(message_type->str, "punsubscribe") == 0) {
