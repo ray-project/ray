@@ -76,7 +76,7 @@ def cli(logging_level, logging_format):
     default=8265,
     help="The local port to forward to the dashboard")
 def dashboard(cluster_config_file, cluster_name, port):
-    """Setup cluster port-forwarding for the Ray dashboard."""
+    """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
     remote_port = 8265
@@ -284,7 +284,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
-    """Start Ray processes manually on the local node."""
+    """Start Ray processes manually on the local machine."""
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -467,7 +467,7 @@ def start(node_ip_address, redis_address, address, redis_port,
     is_flag=True,
     help="If set, ray prints out more information about processes to kill.")
 def stop(force, verbose):
-    """Stop Ray processes manually on the local node."""
+    """Stop Ray processes manually on the local machine."""
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -914,7 +914,7 @@ done
 
 @cli.command()
 def microbenchmark():
-    """Run a local Ray microbenchmark on the current node."""
+    """Run a local Ray microbenchmark on the current machine."""
     from ray.ray_perf import main
     main()
 
