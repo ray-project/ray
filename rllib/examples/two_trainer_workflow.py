@@ -38,14 +38,14 @@ def training_workflow(workers, config):
         num_shards=1,
         learning_starts=1000,
         buffer_size=50000,
-        replay_batch_size=32)
+        replay_batch_size=64)
 
     def add_ppo_metrics(batch):
         print("PPO policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
         metrics = LocalIterator.get_metrics()
-        metrics.counters["steps_trained_PPO"] += batch.count
+        metrics.counters["agent_steps_trained_PPO"] += batch.total()
         return batch
 
     def add_dqn_metrics(batch):
@@ -53,7 +53,7 @@ def training_workflow(workers, config):
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
         metrics = LocalIterator.get_metrics()
-        metrics.counters["steps_trained_DQN"] += batch.count
+        metrics.counters["agent_steps_trained_DQN"] += batch.total()
         return batch
 
     # Generate common experiences.
