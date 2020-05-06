@@ -114,7 +114,7 @@ struct CoreWorkerOptions {
   bool is_local_mode;
   /// The number of workers to be started in the current process.
   int num_workers;
-  /// The function to destroy event loop of asyncio threads.
+  /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
 };
 
