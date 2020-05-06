@@ -30,12 +30,24 @@ def execution_plan(workers, config):
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-    # Combine experiences batches until we hit `train_batch_size` in size.
-    # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
+    r1, r2 = rollouts.duplicate()
+
+    t1 = r1.for_each(SelectExperiences("car")) \
+        .combine(ConcatBatches(1000)) \
         .for_each(TrainOneStep(workers))
+
+    t2 = r2.for_each(SelectExperiences("traffic_light")) \
+        .combine(ConcatBatches(200)) \
+        .for_each(TrainOneStep(workers))
+
+    train_op = Concurrently([t1, t2], mode="async")
+
+#    # Combine experiences batches until we hit `train_batch_size` in size.
+#    # Then, train the policy on those experiences and update the workers.
+#    train_op = rollouts \
+#        .combine(ConcatBatches(
+#            min_batch_size=config["train_batch_size"])) \
+#        .for_each(TrainOneStep(workers))
 
     # Add on the standard episode reward, etc. metrics reporting. This returns
     # a LocalIterator[metrics_dict] representing metrics for each train step.

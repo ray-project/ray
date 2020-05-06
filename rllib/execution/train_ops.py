@@ -42,11 +42,11 @@ class TrainOneStep:
 
     def __init__(self,
                  workers: WorkerSet,
+                 policies: List[PolicyID] = frozenset([]),
                  num_sgd_iter: int = 1,
                  sgd_minibatch_size: int = 0):
         self.workers = workers
-        self.policies = dict(self.workers.local_worker()
-                             .foreach_trainable_policy(lambda p, i: (i, p)))
+        self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
 
@@ -70,7 +70,7 @@ class TrainOneStep:
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = ray.put(self.workers.local_worker().get_weights())
+                weights = ray.put(self.workers.local_worker().get_weights(self.policies))
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
@@ -96,6 +96,7 @@ class TrainTFMultiGPU:
 
     def __init__(self,
                  workers: WorkerSet,
+                 policies: List[PolicyID] = frozenset([]),
                  sgd_minibatch_size: int,
                  num_sgd_iter: int,
                  num_gpus: int,
@@ -105,8 +106,7 @@ class TrainTFMultiGPU:
                  shuffle_sequences: bool,
                  _fake_gpus: bool = False):
         self.workers = workers
-        self.policies = dict(self.workers.local_worker()
-                             .foreach_trainable_policy(lambda p, i: (i, p)))
+        self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
@@ -213,7 +213,7 @@ class TrainTFMultiGPU:
         metrics.info[LEARNER_INFO] = fetches
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = ray.put(self.workers.local_worker().get_weights())
+                weights = ray.put(self.workers.local_worker().get_weights(self.policies))
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
@@ -259,7 +259,7 @@ class ApplyGradients:
     Updates the STEPS_TRAINED_COUNTER counter in the local iterator context.
     """
 
-    def __init__(self, workers, update_all=True):
+    def __init__(self, workers, policies: List[PolicyID] = frozenset([]), update_all=True):
         """Creates an ApplyGradients instance.
 
         Arguments:
@@ -269,6 +269,7 @@ class ApplyGradients:
                 currently processing (i.e., A3C style).
         """
         self.workers = workers
+        self.policies = policies or workers.local_worker().policies_to_train
         self.update_all = update_all
 
     def __call__(self, item):
@@ -292,7 +293,7 @@ class ApplyGradients:
             if self.workers.remote_workers():
                 with metrics.timers[WORKER_UPDATE_TIMER]:
                     weights = ray.put(
-                        self.workers.local_worker().get_weights())
+                        self.workers.local_worker().get_weights(self.policies))
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights, _get_global_vars())
         else:
@@ -302,7 +303,7 @@ class ApplyGradients:
                     "update_all=False, `current_actor` must be set "
                     "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = self.workers.local_worker().get_weights()
+                weights = self.workers.local_worker().get_weights(self.policies)
                 metrics.current_actor.set_weights.remote(
                     weights, _get_global_vars())
 
@@ -352,9 +353,10 @@ class UpdateTargetNetwork:
     track when we should update the target next.
     """
 
-    def __init__(self, workers, target_update_freq, by_steps_trained=False):
+    def __init__(self, workers, target_update_freq, by_steps_trained=False, policies=frozenset([])):
         self.workers = workers
         self.target_update_freq = target_update_freq
+        self.policies = (policies or workers.local_worker().policies_to_train)
         if by_steps_trained:
             self.metric = STEPS_TRAINED_COUNTER
         else:
@@ -365,7 +367,8 @@ class UpdateTargetNetwork:
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
+            to_update = self.policies
             self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.update_target())
+                lambda p, p_id: p_id in to_update and p.update_target())
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
