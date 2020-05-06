@@ -18,12 +18,6 @@ public class ChannelUtils {
       builder.setJobName(workerConfig.commonConfig.jobName());
     }
 
-    // job id
-    String jobId = workerConfig.commonConfig.jobId();
-    if (!StringUtils.isEmpty(jobId)) {
-      builder.setTaskJobId(jobId);
-    }
-
     // worker name
     String workerName = workerConfig.workerInternalConfig.workerName();
     if (!StringUtils.isEmpty(workerName)) {

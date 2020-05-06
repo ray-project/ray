@@ -46,8 +46,7 @@ def test_svm_single_node(shutdown_only):
     }
 
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(
-        model, param_space, cv=3, n_iter=50, verbose=10)
+    search = RandomizedSearchCV(model, param_space, cv=3, n_iter=2, verbose=10)
     register_ray()
     with joblib.parallel_backend("ray"):
         search.fit(digits.data, digits.target)
@@ -64,8 +63,7 @@ def test_svm_multiple_nodes(ray_start_cluster_2_nodes):
     }
 
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(
-        model, param_space, cv=5, n_iter=100, verbose=10)
+    search = RandomizedSearchCV(model, param_space, cv=5, n_iter=2, verbose=10)
     register_ray()
     with joblib.parallel_backend("ray"):
         search.fit(digits.data, digits.target)
@@ -123,7 +121,7 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
     # Create train-test split.
     print("Creating train-test split...")
-    n_train = 6000
+    n_train = 100
     X_train = X[:n_train]
     y_train = y[:n_train]
     register_ray()

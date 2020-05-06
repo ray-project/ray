@@ -72,8 +72,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 128,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 600)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 600)
         ppo.stop()
 
         # Check we collect at least the specified amount of samples
@@ -84,8 +84,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 1000)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 1200)
         ppo.stop()
 
         # Check in vectorized mode
@@ -97,8 +97,8 @@ class PPOCollectTest(unittest.TestCase):
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
-        ppo.train()
-        self.assertEqual(ppo.optimizer.num_steps_sampled, 1200)
+        result = ppo.train()
+        self.assertEqual(result["info"]["num_steps_sampled"], 1200)
         ppo.stop()
 
 

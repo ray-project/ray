@@ -7,6 +7,7 @@ collection and policy optimization.
 
 import argparse
 import gym
+import numpy as np
 
 import ray
 from ray import tune
@@ -43,7 +44,8 @@ class CustomPolicy(TestPolicy):
                         episodes=None,
                         **kwargs):
         # return random actions
-        return [self.action_space.sample() for _ in obs_batch], [], {}
+        return np.array([self.action_space.sample()
+                         for _ in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         # implement your learning code here

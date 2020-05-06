@@ -89,9 +89,9 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+   -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+   -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 

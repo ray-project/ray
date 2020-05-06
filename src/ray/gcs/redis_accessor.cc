@@ -389,9 +389,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
   return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                               const StatusCallback &done) {
-  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AsyncAddTaskLease(
@@ -406,6 +405,24 @@ Status RedisTaskInfoAccessor::AsyncAddTaskLease(
   return task_lease_table.Add(task_id.JobId(), task_id, data_ptr, on_done);
 }
 
+Status RedisTaskInfoAccessor::AsyncGetTaskLease(
+    const TaskID &task_id, const OptionalItemCallback<TaskLeaseData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client, const TaskID &task_id,
+                               const TaskLeaseData &data) {
+    boost::optional<TaskLeaseData> result(data);
+    callback(Status::OK(), result);
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
+    boost::optional<TaskLeaseData> result;
+    callback(Status::Invalid("Task not exist."), result);
+  };
+
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Lookup(task_id.JobId(), task_id, on_success, on_failure);
+}
+
 Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
     const TaskID &task_id,
     const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
@@ -414,9 +431,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
   return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                                        const StatusCallback &done) {
-  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AttemptTaskReconstruction(
@@ -502,9 +518,8 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
   return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
 }
 
-Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                                            const StatusCallback &done) {
-  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, nullptr);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)

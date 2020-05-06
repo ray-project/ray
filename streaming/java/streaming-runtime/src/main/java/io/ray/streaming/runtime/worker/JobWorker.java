@@ -30,6 +30,9 @@ public class JobWorker implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobWorker.class);
 
+  // special flag to indicate this actor not ready
+  private static final byte[] NOT_READY_FLAG = new byte[4];
+
   static {
     EnvUtil.loadNativeLibraries();
   }
@@ -133,6 +136,9 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
+    if (transferHandler == null) {
+      return NOT_READY_FLAG;
+    }
     return transferHandler.onReaderMessageSync(buffer);
   }
 
@@ -148,6 +154,9 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
+    if (transferHandler == null) {
+      return NOT_READY_FLAG;
+    }
     return transferHandler.onWriterMessageSync(buffer);
   }
 }

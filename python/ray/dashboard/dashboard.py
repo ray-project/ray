@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 import traceback
@@ -41,8 +42,8 @@ from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 
 try:
-    from ray.tune.result import DEFAULT_RESULTS_DIR
     from ray.tune import Analysis
+    from tensorboard import program
 except ImportError:
     Analysis = None
 
@@ -124,7 +125,7 @@ class DashboardController(BaseDashboardController):
         self.raylet_stats = RayletStats(
             redis_address, redis_password=redis_password)
         if Analysis is not None:
-            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
+            self.tune_stats = TuneCollector(2.0)
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -234,8 +235,17 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             D = self.tune_stats.get_availability()
         else:
-            D = {"available": False}
+            D = {"available": False, "trials_available": False}
         return D
+
+    def set_tune_experiment(self, experiment):
+        if Analysis is not None:
+            return self.tune_stats.set_experiment(experiment)
+        return "Tune Not Enabled", None
+
+    def enable_tune_tensorboard(self):
+        if Analysis is not None:
+            self.tune_stats.enable_tensorboard()
 
     def launch_profiling(self, node_id, pid, duration):
         profiling_id = self.raylet_stats.launch_profiling(
@@ -310,6 +320,18 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
     async def tune_availability(self, req) -> aiohttp.web.Response:
         result = self.dashboard_controller.tune_availability()
         return await json_response(self.is_dev, result=result)
+
+    async def set_tune_experiment(self, req) -> aiohttp.web.Response:
+        data = await req.json()
+        error, result = self.dashboard_controller.set_tune_experiment(
+            data["experiment"])
+        if error:
+            return await json_response(self.is_dev, error=error)
+        return await json_response(self.is_dev, result=result)
+
+    async def enable_tune_tensorboard(self, req) -> aiohttp.web.Response:
+        self.dashboard_controller.enable_tune_tensorboard()
+        return await json_response(self.is_dev, result={})
 
     async def launch_profiling(self, req) -> aiohttp.web.Response:
         node_id = req.query.get("node_id")
@@ -528,6 +550,10 @@ class Dashboard:
             logs="/api/logs",
             errors="/api/errors")
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
+        self.app.router.add_post("/api/set_tune_experiment",
+                                 route_handler.set_tune_experiment)
+        self.app.router.add_post("/api/enable_tune_tensorboard",
+                                 route_handler.enable_tune_tensorboard)
 
     def _setup_metrics_export(self):
         exporter = Exporter(self.dashboard_id, self.metrics_export_address,
@@ -954,28 +980,52 @@ class TuneCollector(threading.Thread):
                         data from logs
     """
 
-    def __init__(self, logdir, reload_interval):
-        self._logdir = logdir
+    def __init__(self, reload_interval):
+        self._logdir = None
         self._trial_records = {}
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
-        self._available = False
-        self._tensor_board_started = False
+        self._trials_available = False
+        self._tensor_board_dir = ""
+        self._enable_tensor_board = False
         self._errors = {}
 
-        os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 
     def get_stats(self):
         with self._data_lock:
+            tensor_board_info = {
+                "tensorboard_current": self._logdir == self._tensor_board_dir,
+                "tensorboard_enabled": self._tensor_board_dir != ""
+            }
             return {
                 "trial_records": copy.deepcopy(self._trial_records),
-                "errors": copy.deepcopy(self._errors)
+                "errors": copy.deepcopy(self._errors),
+                "tensorboard": tensor_board_info
             }
+
+    def set_experiment(self, experiment):
+        with self._data_lock:
+            if os.path.isdir(os.path.expanduser(experiment)):
+                self._logdir = os.path.expanduser(experiment)
+                return None, {"experiment": self._logdir}
+            else:
+                return "Not a Valid Directory", None
+
+    def enable_tensorboard(self):
+        with self._data_lock:
+            if not self._tensor_board_dir:
+                tb = program.TensorBoard()
+                tb.configure(argv=[None, "--logdir", str(self._logdir)])
+                tb.launch()
+                self._tensor_board_dir = self._logdir
 
     def get_availability(self):
         with self._data_lock:
-            return {"available": self._available}
+            return {
+                "available": True,
+                "trials_available": self._trials_available
+            }
 
     def run(self):
         while True:
@@ -983,21 +1033,19 @@ class TuneCollector(threading.Thread):
                 self.collect()
             time.sleep(self._reload_interval)
 
-    def collect_errors(self, job_name, df):
-        sub_dirs = os.listdir(os.path.join(self._logdir, job_name))
+    def collect_errors(self, df):
+        sub_dirs = os.listdir(self._logdir)
         trial_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, job_name, d)),
-            sub_dirs)
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
         for trial in trial_names:
-            error_path = os.path.join(self._logdir, job_name, trial,
-                                      "error.txt")
+            error_path = os.path.join(self._logdir, trial, "error.txt")
             if os.path.isfile(error_path):
-                self._available = True
+                self._trials_available = True
                 with open(error_path) as f:
                     text = f.read()
                     self._errors[str(trial)] = {
                         "text": text,
-                        "job_id": job_name,
+                        "job_id": os.path.basename(self._logdir),
                         "trial_id": "No Trial ID"
                     }
                     other_data = df[df["logdir"].str.contains(trial)]
@@ -1015,53 +1063,43 @@ class TuneCollector(threading.Thread):
         Tune logs so that users can see this information in the front-end
         client
         """
-
-        sub_dirs = os.listdir(self._logdir)
-        job_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
-
         self._trial_records = {}
+        self._errors = {}
+        if not self._logdir:
+            return
 
         # search through all the sub_directories in log directory
-        for job_name in job_names:
-            analysis = Analysis(str(os.path.join(self._logdir, job_name)))
-            df = analysis.dataframe()
+        analysis = Analysis(str(self._logdir))
+        df = analysis.dataframe()
 
-            if len(df) == 0 or "trial_id" not in df.columns:
-                continue
+        if len(df) == 0 or "trial_id" not in df.columns:
+            return
 
-            # # start TensorBoard server if not started yet
-            # if not self._tensor_board_started:
-            #     tb = program.TensorBoard()
-            #     tb.configure(argv=[None, "--logdir", self._logdir])
-            #     tb.launch()
-            #     self._tensor_board_started = True
+        self._trials_available = True
 
-            self._available = True
+        # make sure that data will convert to JSON without error
+        df["trial_id_key"] = df["trial_id"].astype(str)
+        df = df.fillna(0)
 
-            # make sure that data will convert to JSON without error
-            df["trial_id_key"] = df["trial_id"].astype(str)
-            df = df.fillna(0)
+        trial_ids = df["trial_id"]
+        for i, value in df["trial_id"].iteritems():
+            if type(value) != str and type(value) != int:
+                trial_ids[i] = int(value)
 
-            trial_ids = df["trial_id"]
-            for i, value in df["trial_id"].iteritems():
-                if type(value) != str and type(value) != int:
-                    trial_ids[i] = int(value)
+        df["trial_id"] = trial_ids
 
-            df["trial_id"] = trial_ids
+        # convert df to python dict
+        df = df.set_index("trial_id_key")
+        trial_data = df.to_dict(orient="index")
 
-            # convert df to python dict
-            df = df.set_index("trial_id_key")
-            trial_data = df.to_dict(orient="index")
+        # clean data and update class attribute
+        if len(trial_data) > 0:
+            trial_data = self.clean_trials(trial_data)
+            self._trial_records.update(trial_data)
 
-            # clean data and update class attribute
-            if len(trial_data) > 0:
-                trial_data = self.clean_trials(trial_data, job_name)
-                self._trial_records.update(trial_data)
+        self.collect_errors(df)
 
-            self.collect_errors(job_name, df)
-
-    def clean_trials(self, trial_details, job_name):
+    def clean_trials(self, trial_details):
         first_trial = trial_details[list(trial_details.keys())[0]]
         config_keys = []
         float_keys = []
@@ -1116,7 +1154,7 @@ class TuneCollector(threading.Thread):
                 details["status"] = "RUNNING"
             details.pop("done")
 
-            details["job_id"] = job_name
+            details["job_id"] = os.path.basename(self._logdir)
             details["error"] = "No Error"
 
         return trial_details
@@ -1187,7 +1225,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(socket.gethostname(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:

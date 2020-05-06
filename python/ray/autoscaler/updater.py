@@ -223,16 +223,9 @@ class SSHCommandRunner:
         #   the ControlPath directory exists, allowing SSH to maintain
         #   persistent sessions later on.
         try:
-            self.process_runner.check_call(
-                ["mkdir", "-p", self.ssh_control_path])
-        except subprocess.CalledProcessError as e:
+            os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
+        except OSError as e:
             logger.warning(e)
-
-        try:
-            self.process_runner.check_call(
-                ["chmod", "0700", self.ssh_control_path])
-        except subprocess.CalledProcessError as e:
-            logger.warning(self.log_prefix + str(e))
 
     def run(self,
             cmd,

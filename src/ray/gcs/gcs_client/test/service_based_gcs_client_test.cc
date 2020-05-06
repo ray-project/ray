@@ -293,11 +293,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTask(const TaskID &task_id) {
+  void UnsubscribeTask(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -340,11 +338,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeTaskLease(const TaskID &task_id) {
+  void UnsubscribeTaskLease(const TaskID &task_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(
-        task_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
   bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
@@ -373,11 +369,9 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeToLocations(const ObjectID &object_id) {
+  void UnsubscribeToLocations(const ObjectID &object_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(
-        object_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
   }
 
   bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
@@ -630,8 +624,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   };
   ASSERT_TRUE(SubscribeToResources(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Update resources of node in GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   gcs::NodeInfoAccessor::ResourceMap resource_map;
   std::string key = "CPU";
   auto resource = std::make_shared<rpc::ResourceTableData>();
@@ -656,8 +654,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
       };
   ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
 
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
   // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -682,7 +684,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
 
   // Cancel subscription to a task.
-  ASSERT_TRUE(UnsubscribeTask(task_id));
+  UnsubscribeTask(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -711,7 +713,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   WaitPendingDone(task_lease_count, 2);
 
   // Cancel subscription to a task lease.
-  ASSERT_TRUE(UnsubscribeTaskLease(task_id));
+  UnsubscribeTaskLease(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -762,7 +764,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ASSERT_TRUE(GetLocations(object_id).empty());
 
   // Cancel subscription to any update of an object's location.
-  ASSERT_TRUE(UnsubscribeToLocations(object_id));
+  UnsubscribeToLocations(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));

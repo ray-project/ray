@@ -689,6 +689,32 @@ def test_lease_request_leak(shutdown_only):
     assert len(ray.objects()) == 0, ray.objects()
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
+def test_ray_address_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+    # In this test we use zero CPUs to distinguish between starting a local
+    # ray cluster and connecting to an existing one.
+
+    # Make sure we connect to an existing cluster if
+    # RAY_ADDRESS is set.
+    os.environ["RAY_ADDRESS"] = address
+    ray.init()
+    assert "CPU" not in ray.state.cluster_resources()
+    del os.environ["RAY_ADDRESS"]
+    ray.shutdown()
+
+    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    ray.init()
+    assert "CPU" in ray.state.cluster_resources()
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -83,5 +83,3 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint32_t maximum_gcs_deletion_batch_size() const
 
         int64_t max_direct_call_object_size() const
-
-        void initialize(const unordered_map[c_string, c_string] &config_map)

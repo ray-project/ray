@@ -5,8 +5,6 @@ import logging
 from ray.util.multiprocessing.pool import Pool
 import ray
 
-RAY_ADDRESS_ENV = "RAY_ADDRESS"
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,15 +32,13 @@ class RayBackend(MultiprocessingBackend):
         if n_jobs == -1:
             if not ray.is_initialized():
                 import os
-                if RAY_ADDRESS_ENV in os.environ:
-                    ray_address = os.environ[RAY_ADDRESS_ENV]
+                if "RAY_ADDRESS" in os.environ:
                     logger.info(
                         "Connecting to ray cluster at address='{}'".format(
-                            ray_address))
-                    ray.init(address=ray_address)
+                            os.environ["RAY_ADDRESS"]))
                 else:
                     logger.info("Starting local ray cluster")
-                    ray.init()
+                ray.init()
             ray_cpus = int(ray.state.cluster_resources()["CPU"])
             n_jobs = ray_cpus
 

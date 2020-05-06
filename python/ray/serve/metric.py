@@ -24,9 +24,6 @@ class MetricMonitor:
         self.gc_window_seconds = gc_window_seconds
         self.latest_gc_time = time.time()
 
-    def is_ready(self):
-        return True
-
     def add_target(self, target_handle):
         hex_id = target_handle._actor_id.hex()
         self.actor_handles[hex_id] = target_handle
@@ -153,5 +150,8 @@ class MetricMonitor:
 @ray.remote(num_cpus=0)
 def start_metric_monitor_loop(monitor_handle, duration_s=5):
     while True:
-        ray.get(monitor_handle.scrape.remote())
         time.sleep(duration_s)
+        try:
+            ray.get(monitor_handle.scrape.remote())
+        except ray.exceptions.RayActorError:
+            pass

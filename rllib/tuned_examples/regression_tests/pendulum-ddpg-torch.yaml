@@ -2,7 +2,7 @@ pendulum-ddpg-torch:
     env: Pendulum-v0
     run: DDPG
     stop:
-        episode_reward_mean: -900
+        episode_reward_mean: -700
         timesteps_total: 100000
     config:
         use_pytorch: true

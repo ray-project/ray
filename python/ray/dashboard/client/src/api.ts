@@ -22,6 +22,27 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
+const post = async <T>(path: string, params: { [key: string]: any }) => {
+  const requestOptions = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  };
+
+  const url = new URL(path, base);
+
+  const response = await fetch(url.toString(), requestOptions);
+  const json = await response.json();
+
+  const { result, error } = json;
+
+  if (error !== null) {
+    throw Error(error);
+  }
+
+  return result as T;
+};
+
 export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
@@ -234,13 +255,30 @@ export type TuneError = {
 export type TuneJobResponse = {
   trial_records: { [key: string]: TuneTrial };
   errors: { [key: string]: TuneError };
+  tensorboard: {
+    tensorboard_current: boolean;
+    tensorboard_enabled: boolean;
+  };
 };
 
 export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
 
 export type TuneAvailabilityResponse = {
   available: boolean;
+  trials_available: boolean;
 };
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});
+
+export type TuneSetExperimentReponse = {
+  experiment: string;
+};
+
+export const setTuneExperiment = (experiment: string) =>
+  post<TuneSetExperimentReponse>("/api/set_tune_experiment", {
+    experiment: experiment,
+  });
+
+export const enableTuneTensorBoard = () =>
+  post<{}>("/api/enable_tune_tensorboard", {});

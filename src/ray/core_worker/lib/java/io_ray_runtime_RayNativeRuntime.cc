@@ -122,6 +122,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       nullptr,                                       // check_signals
       nullptr,                                       // gc_collect
       nullptr,                                       // get_lang_stack
+      nullptr,                                       // kill_main
       false,                                         // ref_counting_enabled
       false,                                         // is_local_mode
       static_cast<int>(numWorkersPerProcess),        // num_workers
