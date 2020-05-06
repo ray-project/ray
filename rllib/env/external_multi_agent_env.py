@@ -108,8 +108,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
     def log_returns(self,
                     episode_id,
                     reward_dict,
-                    done_dict=None,
-                    info_dict=None):
+                    info_dict=None,
+                    multiagent_done_dict=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -119,8 +119,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
         Arguments:
             episode_id (str): Episode id returned from start_episode().
             reward_dict (dict): Reward from the environment agents.
-            done_dict (dict): Optional done dict for the environment agents.
             info_dict (dict): Optional info dict.
+            multiagent_done_dict (dict): Optional done dict for agents.
         """
 
         episode = self._get(episode_id)
@@ -133,8 +133,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
             else:
                 episode.cur_reward_dict[agent] = rew
 
-        if done_dict:
-            for agent, done in done_dict.items():
+        if multiagent_done_dict:
+            for agent, done in multiagent_done_dict.items():
                 if agent in episode.cur_done_dict:
                     episode.cur_done_dict[agent] = done
                 else:

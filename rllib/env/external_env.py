@@ -133,7 +133,7 @@ class ExternalEnv(threading.Thread):
         episode.log_action(observation, action)
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, done=None, info=None):
+    def log_returns(self, episode_id, reward, info=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -149,9 +149,6 @@ class ExternalEnv(threading.Thread):
 
         episode = self._get(episode_id)
         episode.cur_reward += reward
-
-        if done:
-            episode.cur_done = done
 
         if info:
             episode.cur_info = info or {}

@@ -131,7 +131,13 @@ class PolicyClient:
         })
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, done=None, info=None):
+    def log_returns(
+            self,
+            episode_id,
+            reward,
+            info=None,
+            multiagent_done_dict=None,
+    ):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -141,19 +147,24 @@ class PolicyClient:
         Arguments:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
-            done (bool or dict): Agent done information.
+            info (dict): Extra info dict.
+            multiagent_done_dict (dict): Multi-agent done information.
         """
 
         if self.local:
             self._update_local_policy()
-            return self.env.log_returns(episode_id, reward, done, info)
+            if multiagent_done_dict:
+                return self.env.log_returns(episode_id, reward, info,
+                                            multiagent_done_dict)
+            else:
+                return self.env.log_returns(episode_id, reward, info)
 
         self._send({
             "command": PolicyClient.LOG_RETURNS,
             "reward": reward,
             "info": info,
             "episode_id": episode_id,
-            "done": done,
+            "done": multiagent_done_dict,
         })
 
     @PublicAPI
