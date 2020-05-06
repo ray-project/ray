@@ -15,7 +15,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer, \
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.util.iter import LocalIterator, from_range

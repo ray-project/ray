@@ -13,7 +13,7 @@ from ray.rllib.execution.common import SampleBatchType, \
     APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
     LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
     NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type
-from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils import try_import_tf

@@ -8,7 +8,7 @@ from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
-from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils import try_import_tf

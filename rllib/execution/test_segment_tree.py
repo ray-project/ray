@@ -102,26 +102,26 @@ class TestSegmentTree(unittest.TestCase):
         New tree:
         0.049599366000000256s
         results = timeit.timeit("tree.sum(5, 60000)",
-            setup="from ray.rllib.optimizers.segment_tree import
+            setup="from ray.rllib.execution.segment_tree import
             SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
             number=10000)
 
         Old tree:
         0.13390400999999974s
         results = timeit.timeit("tree.sum(5, 60000)",
-            setup="from ray.rllib.optimizers.tests.old_segment_tree import
+            setup="from ray.rllib.execution.tests.old_segment_tree import
             OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
             number=10000)
         """
         capacity = 2**20
         new = timeit.timeit(
             "tree.sum(5, 60000)",
-            setup="from ray.rllib.optimizers.segment_tree import "
+            setup="from ray.rllib.execution.segment_tree import "
             "SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
             number=10000)
         old = timeit.timeit(
             "tree.sum(5, 60000)",
-            setup="from ray.rllib.optimizers.tests.old_segment_tree import "
+            setup="from ray.rllib.execution.tests.old_segment_tree import "
             "OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
             number=10000)
         self.assertGreater(old, new)
