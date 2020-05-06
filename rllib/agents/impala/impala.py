@@ -246,7 +246,7 @@ def gather_experiences_directly(workers, config):
     rollouts = ParallelRollouts(
         workers,
         mode="async",
-        async_queue_depth=config["max_sample_requests_in_flight_per_worker"])
+        num_async=config["max_sample_requests_in_flight_per_worker"])
 
     # Augment with replay and concat to desired train batch size.
     train_batches = rollouts \
