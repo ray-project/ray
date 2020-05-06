@@ -145,12 +145,15 @@ def execution_plan(workers, config):
     # the weights of the worker that generated the batch.
     rollouts = ParallelRollouts(workers, mode="async", num_async=2)
     store_op = rollouts \
-        .for_each(StoreToReplayBuffer(actors=replay_actors)) \
-        .zip_with_source_actor() \
-        .for_each(UpdateWorkerWeights(
-            learner_thread, workers,
-            max_weight_sync_delay=config["optimizer"]["max_weight_sync_delay"])
-        )
+        .for_each(StoreToReplayBuffer(actors=replay_actors))
+    # Only need to update workers if there are remote workers.
+    if workers.remote_workers():
+        store_op = store_op.zip_with_source_actor() \
+            .for_each(UpdateWorkerWeights(
+                learner_thread, workers,
+                max_weight_sync_delay=(
+                    config["optimizer"]["max_weight_sync_delay"])
+            ))
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.

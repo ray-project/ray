@@ -274,11 +274,13 @@ def execution_plan(workers, config):
 
     # This sub-flow sends experiences to the learner.
     enqueue_op = train_batches \
-        .for_each(Enqueue(learner_thread.inqueue)) \
-        .zip_with_source_actor() \
-        .for_each(BroadcastUpdateLearnerWeights(
-            learner_thread, workers,
-            broadcast_interval=config["broadcast_interval"]))
+        .for_each(Enqueue(learner_thread.inqueue))
+    # Only need to update workers if there are remote workers.
+    if workers.remote_workers():
+        enqueue_op = enqueue_op.zip_with_source_actor() \
+            .for_each(BroadcastUpdateLearnerWeights(
+                learner_thread, workers,
+                broadcast_interval=config["broadcast_interval"]))
 
     # This sub-flow updates the steps trained counter based on learner output.
     dequeue_op = Dequeue(
