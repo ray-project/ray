@@ -22,11 +22,13 @@ namespace gcs {
 
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(const ClientID &)> on_node_death_callback)
     : node_info_accessor_(node_info_accessor),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      detect_timer_(io_service) {
+      detect_timer_(io_service),
+      gcs_pub_sub_(std::move(gcs_pub_sub)) {
   Tick();
 }
 
@@ -77,7 +79,12 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
     for (const auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
-    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, nullptr));
+
+    auto done = [this, batch](Status status) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(),
+                                         batch->SerializeAsString(), nullptr));
+    };
+    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, done));
     heartbeat_buffer_.clear();
   }
 }
@@ -105,7 +112,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(
-          io_service, node_info_accessor,
+          io_service, node_info_accessor, gcs_pub_sub,
           [this](const ClientID &node_id) {
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
               node->set_state(rpc::GcsNodeInfo::DEAD);
