@@ -308,8 +308,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeToResources(
-        const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
-            &subscribe,
+        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }

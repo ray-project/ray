@@ -218,20 +218,19 @@ ray::Status NodeManager::RegisterGcs() {
     RAY_CHECK_OK(status);
     // Subscribe to resource changes.
     const auto &resources_changed =
-        [this](const ClientID &id,
-               const gcs::ResourceChangeNotification &resource_notification) {
-          if (resource_notification.IsAdded()) {
+        [this](const rpc::NodeResourceChange &resource_notification) {
+          auto id = ClientID::FromBinary(resource_notification.node_id());
+          if (0 == resource_notification.deleted_resources_size()) {
             ResourceSet resource_set;
-            for (auto &entry : resource_notification.GetData()) {
+            for (auto &entry : resource_notification.updated_resources()) {
               resource_set.AddOrUpdateResource(entry.first,
-                                               entry.second->resource_capacity());
+                                               entry.second.resource_capacity());
             }
             ResourceCreateUpdated(id, resource_set);
           } else {
-            RAY_CHECK(resource_notification.IsRemoved());
             std::vector<std::string> resource_names;
-            for (auto &entry : resource_notification.GetData()) {
-              resource_names.push_back(entry.first);
+            for (auto &entry : resource_notification.deleted_resources()) {
+              resource_names.push_back(entry);
             }
             ResourceDeleted(id, resource_names);
           }

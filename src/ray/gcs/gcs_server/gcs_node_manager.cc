@@ -231,10 +231,13 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     auto on_done = [this, node_id, to_be_updated_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-      auto node_resource_change =
-          CreateNodeResourceChange(node_id, *to_be_updated_resources, true);
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_node_id(node_id.Binary());
+      for (auto &it : *to_be_updated_resources) {
+        (*node_resource_change.mutable_updated_resources())[it.first] = *(it.second);
+      }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change->SerializeAsString(),
+                                         node_resource_change.SerializeAsString(),
                                          nullptr));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -258,21 +261,19 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
-    auto to_be_deleted_resources = std::make_shared<gcs::NodeInfoAccessor::ResourceMap>();
     for (auto &resource_name : resource_names) {
-      auto resource = iter->second.find(resource_name);
-      if (resource != iter->second.end()) {
-        (*to_be_deleted_resources)[resource_name] = std::move(resource->second);
-        iter->second.erase(resource);
-      }
+      iter->second.erase(resource_name);
     }
-    auto on_done = [this, node_id, to_be_deleted_resources, reply,
+    auto on_done = [this, node_id, resource_names, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-      auto node_resource_change =
-          CreateNodeResourceChange(node_id, *to_be_deleted_resources, false);
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_node_id(node_id.Binary());
+      for (const auto &resource_name : resource_names) {
+        node_resource_change.add_deleted_resources(resource_name);
+      }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change->SerializeAsString(),
+                                         node_resource_change.SerializeAsString(),
                                          nullptr));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -342,20 +343,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     }
   }
   return removed_node;
-}
-
-std::shared_ptr<ray::rpc::NodeResourceChange> GcsNodeManager::CreateNodeResourceChange(
-    const ClientID &node_id, const gcs::NodeInfoAccessor::ResourceMap &resource,
-    bool is_add) {
-  rpc::ResourceMap resource_map;
-  for (auto &it : resource) {
-    (*resource_map.mutable_items())[it.first] = *(it.second);
-  }
-  auto node_resource_change = std::make_shared<ray::rpc::NodeResourceChange>();
-  node_resource_change->set_is_add(is_add);
-  node_resource_change->set_node_id(node_id.Binary());
-  node_resource_change->mutable_data()->CopyFrom(resource_map);
-  return node_resource_change;
 }
 
 }  // namespace gcs

@@ -282,8 +282,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
@@ -522,22 +521,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
-    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
 
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::NodeResourceChange node_resource_change;
     node_resource_change.ParseFromString(data);
-    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resource_map;
-    for (auto &item : node_resource_change.data().items()) {
-      resource_map[item.first] = std::make_shared<rpc::ResourceTableData>(item.second);
-    }
-    auto change_mode = node_resource_change.is_add() ? rpc::GcsChangeMode::APPEND_OR_ADD
-                                                     : rpc::GcsChangeMode::REMOVE;
-    gcs::ResourceChangeNotification notification(change_mode, resource_map);
-    subscribe(ClientID::FromBinary(node_resource_change.node_id()), notification);
+    subscribe(node_resource_change);
   };
 
   auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,

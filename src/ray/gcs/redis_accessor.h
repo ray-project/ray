@@ -319,9 +319,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
 
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;

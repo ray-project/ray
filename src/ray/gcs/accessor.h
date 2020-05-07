@@ -463,7 +463,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const ItemCallback<rpc::NodeResourceChange> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report heartbeat of a node to GCS asynchronously.
