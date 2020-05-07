@@ -22,12 +22,13 @@ namespace gcs {
 
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
-    std::function<void(const ClientID &)> on_node_death_callback,
-    std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+    std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
+    std::function<void(const ClientID &)> on_node_death_callback)
     : node_info_accessor_(node_info_accessor),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      detect_timer_(io_service) {
+      detect_timer_(io_service),
+      gcs_pub_sub_(gcs_pub_sub) {
   Tick();
 }
 
