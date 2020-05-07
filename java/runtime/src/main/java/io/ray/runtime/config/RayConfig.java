@@ -136,7 +136,7 @@ public class RayConfig {
     if (isDriver) {
       if (!resources.containsKey("CPU")) {
         int numCpu = Runtime.getRuntime().availableProcessors();
-        LOGGER.warn("No CPU resource is set in configuration, "
+        LOGGER.debug("No CPU resource is set in configuration, "
             + "setting it to the number of CPU cores: {}", numCpu);
         resources.put("CPU", numCpu * 1.0);
       }
