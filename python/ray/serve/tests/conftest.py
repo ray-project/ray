@@ -10,13 +10,13 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 
 
 @pytest.fixture(scope="session")
-def _serve_instance():
+def _shared_serve_instance():
     serve.init(blocking=True, ray_init_kwargs={"num_cpus": 36})
     yield
 
 
 @pytest.fixture
-def serve_instance(_serve_instance):
+def serve_instance(_shared_serve_instance):
     yield
     master = serve.api._get_master_actor()
     # Clear all state between tests to avoid naming collisions.
