@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Based on work by Ross Wightman as part of the timm package
 # (see LICENSE_THIRDPARTY)
 #
@@ -45,7 +47,25 @@ from ray.util.sgd.utils import NUM_SAMPLES
 import ray.util.sgd.torch.examples.image_models.util as util
 from ray.util.sgd.torch.examples.image_models.args import parse_args
 
+def accuracy(output, target, topk=(1,)):
+    """
+    Computes the accuracy over the k top predictions for the specified values of k
+    """
+    maxk = max(topk)
+    batch_size = target.size(0)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+    return [
+        correct[:k].view(-1).float().sum(0) * 100. / batch_size
+        for k in topk
+    ]
+
 # todo: none of the custom checkpointing actually works. at all
+# but actually we should be saving most of the state properly
 class ImagenetOperator(TrainingOperator):
     def setup(self, config):
         args = self.config["args"]
@@ -97,11 +117,17 @@ class ImagenetOperator(TrainingOperator):
                 resume=args.resume)
 
         if args.sync_bn:
+            # todo:
+            # self._models[0] is a hack
+            # it forces us to track model state manually since we can't
+            # inform the runner about our new model
+            #
+            # under the hood, self.model uses self._models[0]
             try:
                 if has_apex:
-                    self.mymodel = convert_syncbn_model(self.model)
+                    self._models[0] = convert_syncbn_model(self.model)
                 else:
-                    self.mymodel = (
+                    self._models[0] = (
                         nn.SyncBatchNorm.convert_sync_batchnorm(self.model))
                 logging.info(
                     "Converted model to use Synchronized BatchNorm. "
@@ -115,19 +141,20 @@ class ImagenetOperator(TrainingOperator):
                     "Install Apex or Torch >= 1.1")
 
             if has_apex:
-                self.mymodel = DDP(self.model, delay_allreduce=True)
+                self._models[0] = DDP(self.model, delay_allreduce=True)
             else:
                 logging.info(
                     "Using torch DistributedDataParallel. "
                     "Install NVIDIA Apex for Apex DDP.")
 
                 # can use device str in Torch >= 1.1
-                self.mymodel = DDP(self.model, device_ids=[0])
+                self._models[0] = DDP(self.model, device_ids=[0])
             # NOTE: EMA model does not need to be wrapped by DDP
 
         real_start_epoch = 0
         if args.start_epoch is not None:
             real_start_epoch = args.start_epoch
+        if self.scheduler is not None and real_start_epoch > 0:
             self.scheduler.step(real_start_epoch)
 
         logging.info("Scheduled epochs: {}".format(real_start_epoch))
@@ -300,6 +327,8 @@ class ImagenetOperator(TrainingOperator):
             self.optimizer.sync_lookahead()
 
         if args.dist_bn in ('broadcast', 'reduce'):
+            # todo: logging like this might be breaking with the
+            # epoch-wise TQDM
             logging.info("Distributing BatchNorm running means and vars")
             distribute_bn(
                 self.model,
@@ -347,7 +376,7 @@ class ImagenetOperator(TrainingOperator):
         return {
             "val_loss": reduced_loss,
             "val_accuracy": prec1,
-            "val_accurcay5": prec5,
+            "val_accuracy5": prec5,
             NUM_SAMPLES: input.size(0)
         }
 
@@ -362,7 +391,7 @@ class ImagenetOperator(TrainingOperator):
         log_suffix = info.get("log_suffix", "")
 
         args = self.config["args"]
-        loader = self.eval_loader
+        loader = self.validation_loader
 
         batch_time_m = AverageMeter()
         losses_m = AverageMeter()
@@ -426,20 +455,38 @@ class ImagenetOperator(TrainingOperator):
                             batch_time=batch_time_m, loss=losses_m,
                             top1=prec1_m, top5=prec5_m))
 
-        if info["step_lr"]:
-            self.scheduler.step(
-                info["epoch_idx"] + 1,
-                eval_metrics[args.eval_metric])
-            self.pending_scheduler_val_steps -= 1
-
-        return OrderedDict([
+        metrics = OrderedDict([
             ("loss", losses_m.avg),
             ("prec1", prec1_m.avg),
             ("prec5", prec5_m.avg)])
 
+        self.scheduler.step(
+            info["epoch_idx"] + 1,
+            metrics[args.eval_metric])
+        self.pending_scheduler_val_steps -= 1
+
+        return metrics
+
     def state_dict(self):
+        res = dict(
+            model=self.model.state_dict())
+
+        if self.model_ema is not None:
+            res["model_ema"] = self.model_ema.state_dict()
+
+        return res
 
     def load_state_dict(self, state_dict):
+        self.model.load_state_dict(state_dict["model"])
+        if self.model_ema is not None:
+            if "model_ema" in state_dict:
+                self.model_ema.load_state_dict(state_dict["model_ema"])
+            else:
+                raise ValueError(
+                    "Found an EMA instance but no model_ema in state_dict.")
+        elif "model_ema" in state_dict:
+            raise ValueError(
+                "Found model_ema in state_dict but no EMA instance.")
 
 def model_creator(config):
     args = config["args"]
@@ -621,8 +668,9 @@ def main():
     #     with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
     #         f.write(args_text)
 
-    pbar = trange(args.epochs, unit="epoch")
-    for i in pbar:
+    for i in range(args.epochs):
+    # pbar = trange(args.epochs, unit="epoch")
+    # for i in pbar:
         info = dict(
             epoch_idx=i,
             num_epochs=args.epochs)
@@ -633,9 +681,7 @@ def main():
             info=info)
         eval_metrics = trainer.validate(
             num_steps=2 if args.smoke_test else None,
-            info=dict(
-                step_lr=True
-            ).update(info))
+            info=info)
 
         # update_summary(
         #     epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
@@ -648,7 +694,7 @@ def main():
         #         model, optimizer, args,
         #         epoch=epoch, model_ema=model_ema, metric=save_metric, use_amp=use_amp)
 
-        pbar.set_postfix(dict(acc=eval_metrics["val_accuracy"]))
+        # pbar.set_postfix(dict(acc=eval_metrics["prec1"]))
 
     # if best_metric is not None:
     #         logging.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))

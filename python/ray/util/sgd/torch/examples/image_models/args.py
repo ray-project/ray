@@ -511,4 +511,8 @@ def parse_args():
         assert args.num_aug_splits > 1 or args.resplit
         assert not args.sync_bn
 
+        assert args.ray_num_workers > 1, (
+            "Training on a singler worker is unsupported "
+            "since we try to reduce things anyway and fail.") # todo:
+
     return args, args_text
