@@ -50,6 +50,8 @@ class ImagenetOperator(TrainingOperator):
     def setup(self, config):
         args = self.config["args"]
 
+        self.pending_scheduler_val_steps = 0
+
         # batch_sampler = BatchSampler(
         #     DistributedSampler(self.train_loader.dataset),
         #     self.train_loader.batch_size,
@@ -175,6 +177,13 @@ class ImagenetOperator(TrainingOperator):
         return {"train_loss": loss, NUM_SAMPLES: input.size(0)}
 
     def train_epoch(self, iterator, info):
+        if self.pending_scheduler_val_steps != 0:
+            raise ValueError(
+                "Scheduler has not done enough validation (epoch) steps. "
+                "This might be because you are calling train without "
+                "calling validate, which is not supported by timm as "
+                "it relies on validation metrics for LR scheduling.")
+
         loader = self.train_loader
 
         args = self.config["args"]
@@ -230,7 +239,7 @@ class ImagenetOperator(TrainingOperator):
                 lr = sum(lrl) / len(lrl)
 
                 reduced_loss = reduce_tensor(
-                    metrics["train_loss"].data, self.world_size)
+                    metrics["train_loss"].data, sgd_utils.world_size())
                 losses_m.update(reduced_loss.item(), metrics[NUM_SAMPLES])
 
                 total_samples = (
@@ -292,9 +301,145 @@ class ImagenetOperator(TrainingOperator):
 
         if args.dist_bn in ('broadcast', 'reduce'):
             logging.info("Distributing BatchNorm running means and vars")
-            distribute_bn(model, self.world_size, args.dist_bn == "reduce")
+            distribute_bn(
+                self.model,
+                sgd_utils.world_size(),
+                args.dist_bn == "reduce")
 
-        return OrderedDict([('loss', losses_m.avg)])
+        self.pending_scheduler_val_steps += 1
+
+        return OrderedDict([("loss", losses_m.avg)])
+
+    def validate_batch(self, batch, batch_info):
+        args = self.config["args"]
+        input, target = batch
+
+        if not args.prefetcher:
+            # prefetcher already does this for us if enabled
+            if self.use_gpu:
+                input, target = input.cuda(), target.cuda()
+
+        with self.timers.record("eval_fwd"):
+            if batch_info["using_ema"]:
+                output = self.model_ema(input)
+            else:
+                output = self.model(input)
+
+            if isinstance(output, (tuple, list)):
+                output = output[0]
+
+        # augmentation reduction
+        reduce_factor = args.tta
+        if reduce_factor > 1:
+            output = output.unfold(0, reduce_factor, reduce_factor).mean(dim=2)
+            target = target[0:target.size(0):reduce_factor]
+
+        loss = self.val_criterion(output, target)
+        prec1, prec5 = accuracy(output, target, topk=(1, 5))
+
+        reduced_loss = reduce_tensor(loss.data, sgd_utils.world_size())
+        prec1 = reduce_tensor(prec1, sgd_utils.world_size())
+        prec5 = reduce_tensor(prec5, sgd_utils.world_size())
+
+        if self.use_gpu:
+            torch.cuda.synchronize()
+
+        return {
+            "val_loss": reduced_loss,
+            "val_accuracy": prec1,
+            "val_accurcay5": prec5,
+            NUM_SAMPLES: input.size(0)
+        }
+
+    def validate(self, val_iterator, info):
+        if self.pending_scheduler_val_steps != 1:
+            raise ValueError(
+                "Scheduler has done too many train steps. "
+                "This might be because you are calling train without "
+                "calling validate, which is not supported by timm as "
+                "it relies on validation metrics for LR scheduling.")
+
+        log_suffix = info.get("log_suffix", "")
+
+        args = self.config["args"]
+        loader = self.eval_loader
+
+        batch_time_m = AverageMeter()
+        losses_m = AverageMeter()
+        prec1_m = AverageMeter()
+        prec5_m = AverageMeter()
+
+        using_ema = False
+        # I am not sure if we HAVE to run a validation step on the original
+        # model and THEN override it with the metrics from the EMA
+        # or if we can just run one validation step with the EMA.
+        #
+        # Assuming the latter here.
+        if self.model_ema is not None and not args.model_ema_force_cpu:
+            if args.dist_bn in ('broadcast', 'reduce'):
+                distribute_bn(
+                    self.model_ema,
+                    sgd_utils.world_size(),
+                    args.dist_bn == 'reduce')
+
+            using_ema = True
+
+        if using_ema:
+            self.model_ema.eval()
+        else:
+            self.model.eval()
+
+        end = time.time()
+        last_idx = len(loader) - 1
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(val_iterator):
+                last_batch = batch_idx == last_idx
+
+                batch_info = dict(
+                    batch_idx=batch_idx,
+                    using_ema=using_ema)
+                batch_info.update(info)
+                metrics = self.validate_batch(batch, batch_info)
+
+                losses_m.update(
+                    metrics["val_loss"].item(),
+                    metrics[NUM_SAMPLES])
+                prec1_m.update(
+                    metrics["val_accuracy"].item(),
+                    metrics[NUM_SAMPLES])
+                prec5_m.update(
+                    metrics["val_accuracy5"].item(),
+                    metrics[NUM_SAMPLES])
+
+                batch_time_m.update(time.time() - end)
+                end = time.time()
+
+                if last_batch or batch_idx % args.log_interval == 0:
+                    log_name = "Test" + log_suffix
+                    logging.info(
+                        "{0}: [{1:>4d}/{2}]  "
+                        "Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  "
+                        "Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  "
+                        "Prec@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  "
+                        "Prec@5: {top5.val:>7.4f} ({top5.avg:>7.4f})".format(
+                            log_name, batch_idx, last_idx,
+                            batch_time=batch_time_m, loss=losses_m,
+                            top1=prec1_m, top5=prec5_m))
+
+        if info["step_lr"]:
+            self.scheduler.step(
+                info["epoch_idx"] + 1,
+                eval_metrics[args.eval_metric])
+            self.pending_scheduler_val_steps -= 1
+
+        return OrderedDict([
+            ("loss", losses_m.avg),
+            ("prec1", prec1_m.avg),
+            ("prec5", prec5_m.avg)])
+
+    def state_dict(self):
+
+    def load_state_dict(self, state_dict):
 
 def model_creator(config):
     args = config["args"]
@@ -430,6 +575,7 @@ def scheduler_creator(optimizer, config):
     args = config["args"]
     return create_scheduler(args, optimizer)
 
+import platform
 def main():
     setup_default_logging()
 
@@ -458,21 +604,58 @@ def main():
     if args.smoke_test:
         args.epochs = 1
 
+    # best_metric = None
+    # best_epoch = None
+    # saver = None
+    # output_dir = ''
+    # if args.local_rank == 0:
+    #     output_base = args.output if args.output else './output'
+    #     exp_name = '-'.join([
+    #         datetime.now().strftime("%Y%m%d-%H%M%S"),
+    #         args.model,
+    #         str(data_config['input_size'][-1])
+    #     ])
+    #     output_dir = get_outdir(output_base, 'train', exp_name)
+    #     decreasing = True if eval_metric == 'loss' else False
+    #     saver = CheckpointSaver(checkpoint_dir=output_dir, decreasing=decreasing)
+    #     with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
+    #         f.write(args_text)
+
     pbar = trange(args.epochs, unit="epoch")
     for i in pbar:
-        info = {}
-        info["epoch_idx"] = i
-        info["num_epochs"] = args.epochs
+        info = dict(
+            epoch_idx=i,
+            num_epochs=args.epochs)
 
         trainer.train(
             num_steps=2 if args.smoke_test else None,
             reduce_results=False,
             info=info)
+        eval_metrics = trainer.validate(
+            num_steps=2 if args.smoke_test else None,
+            info=dict(
+                step_lr=True
+            ).update(info))
 
-        val_stats = trainer.validate(num_steps=2 if args.smoke_test else None)
-        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
+        # update_summary(
+        #     epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
+        #     write_header=best_metric is None)
 
-    trainer.shutdown()
+        # if saver is not None:
+        #     # save proper checkpoint with eval metric
+        #     save_metric = eval_metrics[eval_metric]
+        #     best_metric, best_epoch = saver.save_checkpoint(
+        #         model, optimizer, args,
+        #         epoch=epoch, model_ema=model_ema, metric=save_metric, use_amp=use_amp)
+
+        pbar.set_postfix(dict(acc=eval_metrics["val_accuracy"]))
+
+    # if best_metric is not None:
+    #         logging.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
+
+    if platform.system() != "Darwin":
+        # this hangs on Mac OS :shrug:
+        trainer.shutdown()
 
 
 if __name__ == "__main__":
