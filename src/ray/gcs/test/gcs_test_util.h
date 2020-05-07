@@ -55,7 +55,7 @@ struct Mocker {
       owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     }
     auto actor_creation_task_spec =
-        GenActorCreationTask(job_id, max_reconstructions, detached, owner_address);
+        GenActorCreationTask(job_id, max_restarts, detached, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
