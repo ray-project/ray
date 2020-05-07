@@ -185,13 +185,15 @@ install_node() {
   fi
 }
 
+install_toolchains() {
+  "${ROOT_DIR}"/install-toolchains.sh
+}
+
 install_dependencies() {
 
   install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Not for Travis (keep built-in compilers there)
-    "${ROOT_DIR}"/install-toolchains.sh
-  fi
+  install_toolchains
   install_nvm
   install_pip
 
