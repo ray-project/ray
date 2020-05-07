@@ -1008,6 +1008,7 @@ def add_command_alias(command, name, hidden):
     new_command.hidden = hidden
     cli.add_command(new_command, name=name)
 
+
 cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
