@@ -1,5 +1,3 @@
-import gym
-
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
@@ -89,9 +87,7 @@ class BaseEnv:
                 "(i.e. vectorization is enabled).")
 
         if not isinstance(env, BaseEnv):
-            env_to_check = unwrap_gym_env(env)
-            # MultiAgentEnv.
-            if isinstance(env_to_check, MultiAgentEnv):
+            if isinstance(env, MultiAgentEnv):
                 if remote_envs:
                     env = RemoteVectorEnv(
                         make_env,
@@ -103,21 +99,18 @@ class BaseEnv:
                         make_env=make_env,
                         existing_envs=[env],
                         num_envs=num_envs)
-            # ExternalMultiAgentEnv.
-            elif isinstance(env_to_check, ExternalMultiAgentEnv):
+            elif isinstance(env, ExternalMultiAgentEnv):
                 if num_envs != 1:
                     raise ValueError(
                         "ExternalMultiAgentEnv does not currently support "
                         "num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env, multiagent=True)
-            # ExternalEnvEnv.
-            elif isinstance(env_to_check, ExternalEnv):
+            elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
                         "ExternalEnv does not currently support num_envs > 1.")
                 env = _ExternalEnvToBaseEnv(env)
-            # VectorEnv.
-            elif isinstance(env_to_check, VectorEnv):
+            elif isinstance(env, VectorEnv):
                 env = _VectorEnvToBaseEnv(env)
             else:
                 if remote_envs:
@@ -366,7 +359,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
-            assert isinstance(unwrap_gym_env(env), MultiAgentEnv)
+            assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
 
     @override(BaseEnv)
@@ -417,7 +410,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
 
 class _MultiAgentEnvState:
     def __init__(self, env):
-        assert isinstance(unwrap_gym_env(env), MultiAgentEnv)
+        assert isinstance(env, MultiAgentEnv)
         self.env = env
         self.initialized = False
 
@@ -452,23 +445,3 @@ class _MultiAgentEnvState:
         self.last_infos = {agent_id: {} for agent_id in self.last_obs.keys()}
         self.last_dones["__all__"] = False
         return self.last_obs
-
-
-def unwrap_gym_env(env):
-    """Unwraps a gym.Wrapper Env and returns the completely unwrapped core Env.
-
-    Works on arbitrarily (often) wrapped Envs, e.g.:
-    env = gym.ActionWrapper(gym.RewardWrapper([my_core_env]))
-    unwrap_gym(env) -> [my_core_env]
-
-    Args:
-        env (gym.Env): The gym environment to unwrap.
-
-    Returns:
-        gym.Env: The innermost Env (that's not a gym.Wrapper).
-    """
-    # Unwrap gym.Wrappers to actually get the wrapped type.
-    core_env = env
-    while isinstance(core_env, gym.Wrapper):
-        core_env = core_env.env
-    return core_env
