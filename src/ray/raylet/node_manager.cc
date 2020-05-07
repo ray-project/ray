@@ -440,16 +440,11 @@ void NodeManager::WarnResourceDeadlock() {
     return;
   }
 
-  // suppress duplicates warning messages
-  if (resource_deadlock_warned_) {
-    return;
-  }
-
   // The node is full of actors and no progress has been made for some time.
   // If there are any pending tasks, build a warning.
   std::ostringstream error_message;
   ray::Task exemplar;
-  bool should_warn = false;
+  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
 
@@ -461,14 +456,23 @@ void NodeManager::WarnResourceDeadlock() {
     } else {
       pending_tasks += 1;
     }
-    if (!should_warn) {
+    if (!any_pending) {
       exemplar = task;
-      should_warn = true;
+      any_pending = true;
     }
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
-  if (should_warn) {
+  if (any_pending) {
+    // Actor references may be caught in cycles, preventing them from being deleted.
+    // Trigger global GC to hopefully free up resource slots.
+    TriggerGlobalGC();
+
+    // Suppress duplicates warning messages.
+    if (resource_deadlock_warned_) {
+      return;
+    }
+
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
@@ -3683,6 +3687,10 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
+  TriggerGlobalGC();
+}
+
+void NodeManager::TriggerGlobalGC() {
   RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
