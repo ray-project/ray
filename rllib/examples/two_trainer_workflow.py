@@ -46,7 +46,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
         metrics.counters["agent_steps_trained_PPO"] += batch.total()
         return batch
 
-    def add_dqn_metrics(batch):
+    def add_dqn_metrics(batch: SampleBatchType):
         print("DQN policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
