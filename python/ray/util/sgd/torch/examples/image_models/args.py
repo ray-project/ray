@@ -453,6 +453,11 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Only run one step for testing. [default=False]")
+parser.add_argument(
+    "--wandb",
+    action="store_true",
+    default=False,
+    help="Log to the ray-sgd-imagenet WandB project. [default=False]")
 
 
 def parse_args():

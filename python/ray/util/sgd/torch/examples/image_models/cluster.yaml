@@ -75,6 +75,7 @@ setup_commands:
     - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
     # Install timm and get data
+    - pip install wandb
     - pip install timm
     - ls data || (curl https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz -O && tar zxvf imagenette2.tgz && mv imagenette2 data)
 

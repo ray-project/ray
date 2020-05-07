@@ -67,6 +67,14 @@ def accuracy(output, target, topk=(1,)):
 # todo: none of the custom checkpointing actually works. at all
 # but actually we should be saving most of the state properly
 class ImagenetOperator(TrainingOperator):
+    def wandb_log(self, *log_args, **log_kwargs):
+        args = self.config["args"]
+
+        if args.wandb and sgd_utils.world_rank() == 0:
+            import wandb
+            wandb.log(
+                step=self.global_step, *log_args, **log_kwargs)
+
     def setup(self, config):
         args = self.config["args"]
 
@@ -115,6 +123,10 @@ class ImagenetOperator(TrainingOperator):
                 decay=args.model_ema_decay,
                 device='cpu' if args.model_ema_force_cpu else '',
                 resume=args.resume)
+
+        if args.wandb and sgd_utils.world_rank() == 0:
+            import wandb
+            wandb.watch(self.model)
 
         if args.sync_bn:
             # todo:
@@ -258,20 +270,35 @@ class ImagenetOperator(TrainingOperator):
 
             batch_time_m.update(time.time() - end)
 
-            if last_batch or batch_idx % args.log_interval == 0:
-                lrl = [
-                    param_group["lr"]
-                    for param_group in self.optimizer.param_groups
-                ]
-                lr = sum(lrl) / len(lrl)
+            # Logging
+            lrl = [
+                param_group["lr"]
+                for param_group in self.optimizer.param_groups
+            ]
+            lr = sum(lrl) / len(lrl)
 
-                reduced_loss = reduce_tensor(
+            reduced_loss = reduce_tensor(
                     metrics["train_loss"].data, sgd_utils.world_size())
-                losses_m.update(reduced_loss.item(), metrics[NUM_SAMPLES])
+            losses_m.update(reduced_loss.item(), metrics[NUM_SAMPLES])
 
-                total_samples = (
-                    metrics[NUM_SAMPLES] * args.ray_num_workers)
+            total_samples = (metrics[NUM_SAMPLES] * args.ray_num_workers)
 
+            self.wandb_log({
+                # "Epoch #": info["epoch_idx"],
+                # "Batch #": batch_idx,
+                "Loss": losses_m.val,
+                "Average Loss": losses_m.avg,
+                # "Total Batches": len(loader),
+                # "Batch %": 100. * batch_idx / last_idx,
+                "Batch Time": batch_time_m.val,
+                "Sample Rate": total_samples / batch_time_m.val,
+                "Average Batch Time": batch_time_m.avg,
+                "Average Sample Rate": total_samples / batch_time_m.avg,
+                "Learning Rate": lr,
+                "Data Time": data_time_m.val,
+                "Average Data Time": data_time_m.avg
+            })
+            if last_batch or batch_idx % args.log_interval == 0:
                 _progress_bar.write(
                     "Train: {} [{:>4d}/{} ({:>3.0f}%)]  "
                     "Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  "
@@ -290,21 +317,21 @@ class ImagenetOperator(TrainingOperator):
                         lr=lr,
                         data_time=data_time_m))
 
-                    # todo: calculate output_dir
-                    # if args.save_images and output_dir:
-                    #     torchvision.utils.save_image(
-                    #         input,
-                    #         os.path.join(
-                    #             output_dir,
-                    #             "train-batch-%d.jpg" % batch_idx),
-                    #         padding=0,
-                    #         normalize=True)
+                # todo: calculate output_dir
+                # if args.save_images and output_dir:
+                #     torchvision.utils.save_image(
+                #         input,
+                #         os.path.join(
+                #             output_dir,
+                #             "train-batch-%d.jpg" % batch_idx),
+                #         padding=0,
+                #         normalize=True)
 
             if self.use_tqdm:
                 _progress_bar.n = batch_idx + 1
                 postfix = {}
                 if "train_loss" in metrics:
-                    postfix.update(loss=metrics["train_loss"])
+                    postfix.update(loss=metrics["train_loss"].item())
                 _progress_bar.set_postfix(postfix)
 
             # todo: we must do this globally
@@ -313,6 +340,8 @@ class ImagenetOperator(TrainingOperator):
             #     saver.save_recovery(
             #         model, optimizer, args, epoch,
             #         model_ema=model_ema, use_amp=use_amp, batch_idx=batch_idx)
+
+            # Finish up batch
 
             if self.scheduler is not None:
                 self.scheduler.step_update(
@@ -381,29 +410,11 @@ class ImagenetOperator(TrainingOperator):
         }
 
     def validate(self, val_iterator, info):
-        if self.pending_scheduler_val_steps != 1:
-            raise ValueError(
-                "Scheduler has done too many train steps. "
-                "This might be because you are calling train without "
-                "calling validate, which is not supported by timm as "
-                "it relies on validation metrics for LR scheduling.")
-
-        log_suffix = info.get("log_suffix", "")
-
         args = self.config["args"]
         loader = self.validation_loader
 
-        batch_time_m = AverageMeter()
-        losses_m = AverageMeter()
-        prec1_m = AverageMeter()
-        prec5_m = AverageMeter()
-
-        using_ema = False
-        # I am not sure if we HAVE to run a validation step on the original
-        # model and THEN override it with the metrics from the EMA
-        # or if we can just run one validation step with the EMA.
-        #
-        # Assuming the latter here.
+        using_ema = info["use_ema"]
+        could_use_ema = self.model_ema is not None
         if self.model_ema is not None and not args.model_ema_force_cpu:
             if args.dist_bn in ('broadcast', 'reduce'):
                 distribute_bn(
@@ -411,7 +422,28 @@ class ImagenetOperator(TrainingOperator):
                     sgd_utils.world_size(),
                     args.dist_bn == 'reduce')
 
-            using_ema = True
+        if using_ema and not could_use_ema:
+            # can't use EMA anyway, so we don't do anything
+            return {}
+
+        if self.pending_scheduler_val_steps == 0:
+            raise ValueError(
+                "Scheduler has not done a train step after a "
+                "validation step yet. "
+                "This might be because you are calling train without "
+                "calling validate, which is not supported by timm as "
+                "it relies on validation metrics for LR scheduling.")
+        if self.pending_scheduler_val_steps > 1:
+            raise ValueError(
+                "Scheduler has done too many train steps. "
+                "This might be because you are calling train without "
+                "calling validate, which is not supported by timm as "
+                "it relies on validation metrics for LR scheduling.")
+
+        batch_time_m = AverageMeter()
+        losses_m = AverageMeter()
+        prec1_m = AverageMeter()
+        prec5_m = AverageMeter()
 
         if using_ema:
             self.model_ema.eval()
@@ -444,7 +476,10 @@ class ImagenetOperator(TrainingOperator):
                 end = time.time()
 
                 if last_batch or batch_idx % args.log_interval == 0:
-                    log_name = "Test" + log_suffix
+                    log_name = "Test"
+                    if using_ema:
+                        log_name += " (EMA)"
+
                     logging.info(
                         "{0}: [{1:>4d}/{2}]  "
                         "Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  "
@@ -460,13 +495,37 @@ class ImagenetOperator(TrainingOperator):
             ("prec1", prec1_m.avg),
             ("prec5", prec5_m.avg)])
 
-        self.scheduler.step(
-            info["epoch_idx"] + 1,
-            metrics[args.eval_metric])
-        self.pending_scheduler_val_steps -= 1
+        wandb_log_data = {
+            "Batch Time": batch_time_m.val,
+            "Average Batch Time": batch_time_m.avg,
+            "Loss": losses_m.val,
+            "Average Loss": losses_m.avg,
+            "Top-1 Precision": prec1_m.val,
+            "Average Top-1 Precision": prec1_m.avg,
+            "Top-5 Precision": prec1_m.val,
+            "Average Top-5 Precision": prec1_m.avg,
+        }
+        if using_ema:
+            wandb_log_data = {
+                "Validation (EMA) "+k: wandb_log_data[k]
+                for k in wandb_log_data
+            }
+        else:
+            wandb_log_data = {
+                "Validation "+k: wandb_log_data[k]
+                for k in wandb_log_data
+            }
+        self.wandb_log(wandb_log_data)
+
+        if using_ema or not could_use_ema:
+            self.scheduler.step(
+                info["epoch_idx"] + 1,
+                metrics[args.eval_metric])
+            self.pending_scheduler_val_steps -= 1
 
         return metrics
 
+    # todo: handle saving + loading epoch_idx
     def state_dict(self):
         res = dict(
             model=self.model.state_dict())
@@ -628,6 +687,13 @@ def main():
 
     args, args_text = parse_args()
 
+    if args.wandb:
+        import wandb
+        from datetime import datetime
+        wandb.init(
+            project="ray-sgd-imagenet",
+            name=str(datetime.now()))
+
     ray.init(address=args.ray_address, log_to_driver=False)
 
     trainer = TorchTrainer(
@@ -679,9 +745,20 @@ def main():
             num_steps=2 if args.smoke_test else None,
             reduce_results=False,
             info=info)
-        eval_metrics = trainer.validate(
+        # print pure model validation logs
+        trainer.validate(
             num_steps=2 if args.smoke_test else None,
-            info=info)
+            info={
+                "use_ema": False,
+                **info
+            })
+        # this is kinda hacky
+        trainer.validate(
+            num_steps=2 if args.smoke_test else None,
+            info={
+                "use_ema": True,
+                **info
+            })
 
         # update_summary(
         #     epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
