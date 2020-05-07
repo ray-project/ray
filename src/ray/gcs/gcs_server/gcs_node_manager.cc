@@ -213,22 +213,6 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
   RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
 }
 
-void GcsNodeManager::HandleGetAllNodeResources(
-    const rpc::GetAllNodeResourcesRequest &request, rpc::GetAllNodeResourcesReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Getting all node's resources.";
-  for (auto &it : cluster_resources_) {
-    rpc::NodeResources node_resources;
-    node_resources.set_node_id(it.first.Binary());
-    for (auto &resource_map : it.second) {
-      (*node_resources.mutable_resources())[resource_map.first] = *(resource_map.second);
-    }
-    reply->add_resources_list()->CopyFrom(node_resources);
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_LOG(DEBUG) << "Finished getting all node's resources.";
-}
-
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {

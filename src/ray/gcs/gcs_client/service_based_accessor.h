@@ -170,10 +170,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
-  void AsyncGetAllNodeResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-      const StatusCallback &done);
-
   void HandleNotification(const GcsNodeInfo &node_info);
 
   ServiceBasedGcsClient *client_impl_;

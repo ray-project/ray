@@ -540,13 +540,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     subscribe(ClientID::FromBinary(node_resource_change.node_id()), notification);
   };
 
-  auto on_done = [this, subscribe, done](const Status &status) {
-    // Get node resource from GCS Service.
-    AsyncGetAllNodeResources(subscribe, done);
-  };
-
   auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
-                                                          on_subscribe, on_done);
+                                                          on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return status;
 }
@@ -641,32 +636,6 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     GcsNodeInfo &cache_data = node_cache_[node_id];
     node_change_callback_(node_id, cache_data);
   }
-}
-
-void ServiceBasedNodeInfoAccessor::AsyncGetAllNodeResources(
-    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-    const StatusCallback &done) {
-  rpc::GetAllNodeResourcesRequest request;
-  client_impl_->GetGcsRpcClient().GetAllNodeResources(
-      request, [subscribe, done](const Status &status,
-                                 const rpc::GetAllNodeResourcesReply &reply) {
-        std::vector<rpc::NodeResources> node_resources_list =
-            VectorFromProtobuf(reply.resources_list());
-        for (auto &node_resources : node_resources_list) {
-          std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
-              resources_map;
-          for (auto resource : node_resources.resources()) {
-            resources_map[resource.first] =
-                std::make_shared<rpc::ResourceTableData>(resource.second);
-          }
-          ResourceChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                  resources_map);
-          subscribe(ClientID::FromBinary(node_resources.node_id()), notification);
-        }
-        if (done) {
-          done(status);
-        }
-      });
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
