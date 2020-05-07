@@ -21,15 +21,22 @@ public class TestUtils {
     return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
   }
 
+  public static class RaySkipTestException extends SkipException {
+    public RaySkipTestException(String skipMessage) {
+      super(skipMessage);
+      this.reduceStackTrace();
+    }
+  }
+
   public static void skipTestUnderSingleProcess() {
     if (isSingleProcessMode()) {
-      throw new SkipException("This test doesn't work under single-process mode.");
+      throw new RaySkipTestException("This test doesn't work under single-process mode.");
     }
   }
 
   public static void skipTestUnderClusterMode() {
     if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
-      throw new SkipException("This test doesn't work under cluster mode.");
+      throw new RaySkipTestException("This test doesn't work under cluster mode.");
     }
   }
 

@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import io.ray.api.Ray;
+import io.ray.api.TestUtils;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
@@ -17,7 +18,6 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
@@ -54,7 +54,7 @@ public abstract class BaseMultiLanguageTest {
     if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
       LOGGER.info("Skip Multi-language tests because environment variable "
           + "ENABLE_MULTI_LANGUAGE_TESTS isn't set");
-      throw new SkipException("Skip test.");
+      throw new TestUtils.RaySkipTestException("Skip test.");
     }
   }
 
