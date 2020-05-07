@@ -102,6 +102,7 @@ matrix:
         - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
+        - cd java && mvn checkstyle:check
         - true  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build Linux wheels.

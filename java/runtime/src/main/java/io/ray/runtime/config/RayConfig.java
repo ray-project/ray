@@ -359,10 +359,10 @@ public class RayConfig {
     Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config");
     if (Strings.isNullOrEmpty(configPath)) {
-      LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
+      LOGGER.debug("Loading config from \"ray.conf\" file in classpath.");
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {
-      LOGGER.info("Loading config from " + configPath + ".");
+      LOGGER.debug("Loading config from " + configPath + ".");
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
