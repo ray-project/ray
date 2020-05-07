@@ -10,11 +10,12 @@ import io.ray.streaming.runtime.core.processor.StreamProcessor;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.util.EnvUtil;
-import io.ray.streaming.runtime.worker.context.JobWorkerContext;
+import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
 import java.io.Serializable;
+import java.util.HashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +38,7 @@ public class JobWorker implements Serializable {
     EnvUtil.loadNativeLibraries();
   }
 
-  private JobWorkerContext workerContext;
+  private JavaJobWorkerContext workerContext;
   private ExecutionVertex executionVertex;
   private StreamingWorkerConfig workerConfig;
 
@@ -51,7 +52,7 @@ public class JobWorker implements Serializable {
   /**
    * Initialize JobWorker and data communication pipeline.
    */
-  public Boolean init(JobWorkerContext workerContext) {
+  public Boolean init(JavaJobWorkerContext workerContext) {
     LOG.info("Initiating job worker: {}. Worker context is: {}. ",
         workerContext.getWorkerName(), workerContext);
 
@@ -60,13 +61,14 @@ public class JobWorker implements Serializable {
       this.executionVertex = workerContext.getExecutionVertex();
       this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
 
-      LOG.info("Test here");
-
       //Init transfer
       TransferChannelType channelType = workerConfig.transferConfig.channelType();
       if (TransferChannelType.NATIVE_CHANNEL == channelType) {
         transferHandler = new TransferHandler();
       }
+
+      // create stream task
+      task = createStreamTask();
     } catch (Exception e) {
       LOG.error("Failed to initiate job worker.", e);
       return false;
@@ -114,7 +116,7 @@ public class JobWorker implements Serializable {
     return workerConfig;
   }
 
-  public JobWorkerContext getWorkerContext() {
+  public JavaJobWorkerContext getWorkerContext() {
     return workerContext;
   }
 

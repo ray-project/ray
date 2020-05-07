@@ -1,62 +1,18 @@
 package io.ray.streaming.runtime.worker.context;
 
-import com.google.common.base.MoreObjects;
-import io.ray.api.RayActor;
-import io.ray.api.id.ActorId;
-import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import io.ray.streaming.runtime.master.JobMaster;
 import java.io.Serializable;
 
 /**
- * Job worker context.
+ * Abstract class for job worker context.
+ * Only support java and python job worker context for now.
  */
-public class JobWorkerContext implements Serializable {
+public abstract class JobWorkerContext implements Serializable {
 
   /**
-   * Worker actor's id.
+   * Get worker context in bytes array.
+   *
+   * @return bytes
    */
-  private ActorId workerId;
-
-  /**
-   * JobMaster actor.
-   */
-  private RayActor<JobMaster> master;
-
-  /**
-   * Worker's vertex info.
-   */
-  private ExecutionVertex executionVertex;
-
-  public JobWorkerContext(
-      ActorId workerId,
-      RayActor<JobMaster> master,
-      ExecutionVertex executionVertex) {
-    this.workerId = workerId;
-    this.master = master;
-    this.executionVertex = executionVertex;
-  }
-
-  public ActorId getWorkerActorId() {
-    return workerId;
-  }
-
-  public String getWorkerName() {
-    return executionVertex.getVertexName();
-  }
-
-  public RayActor<JobMaster> getMaster() {
-    return master;
-  }
-
-  public ExecutionVertex getExecutionVertex() {
-    return executionVertex;
-  }
-
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this)
-      .add("workerId", workerId)
-      .toString();
-  }
+  public abstract byte[] getContextBytes();
 
 }

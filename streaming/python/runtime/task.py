@@ -35,18 +35,20 @@ class StreamTask(ABC):
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
-        execution_graph = self.worker.execution_graph
-        execution_node = self.worker.execution_node
+        sub_graph = self.worker.sub_graph
+        build_time = sub_graph.get_build_time()
+
         # writers
         collectors = []
-        for edge in execution_node.output_edges:
-            output_actors_map = {}
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
-                edge.target_node_id)
-            for target_task_id, target_actor in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(self.task_id, target_task_id,
-                                                execution_graph.build_time())
-                output_actors_map[channel_name] = target_actor
+        output_actors_map = {}
+        for edge in sub_graph.output_edges:
+            target_task_id = edge.target_vertex_id
+            target_actor = sub_graph.get_target_actor_by_vertex_id(
+                target_task_id)
+            channel_name = ChannelID.gen_id(
+                self.task_id, target_task_id, build_time)
+            output_actors_map[channel_name] = target_actor
+
             if len(output_actors_map) > 0:
                 channel_ids = list(output_actors_map.keys())
                 target_actors = list(output_actors_map.values())
@@ -61,13 +63,14 @@ class StreamTask(ABC):
 
         # readers
         input_actor_map = {}
-        for edge in execution_node.input_edges:
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
-                edge.src_node_id)
-            for src_task_id, src_actor in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(src_task_id, self.task_id,
-                                                execution_graph.build_time())
-                input_actor_map[channel_name] = src_actor
+        for edge in sub_graph.input_edges:
+            source_task_id = edge.source_vertex_id
+            source_actor = sub_graph.get_source_actor_by_vertex_id(
+                edge.source_vertex_id)
+            channel_name = ChannelID.gen_id(
+                source_task_id, self.task_id, build_time)
+            input_actor_map[channel_name] = source_actor
+
         if len(input_actor_map) > 0:
             channel_ids = list(input_actor_map.keys())
             from_actors = list(input_actor_map.values())
@@ -85,7 +88,7 @@ class StreamTask(ABC):
 
         runtime_context = RuntimeContextImpl(
             self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index, execution_node.parallelism)
+            self.worker.execution_task.task_index, sub_graph.get_parallelism())
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 

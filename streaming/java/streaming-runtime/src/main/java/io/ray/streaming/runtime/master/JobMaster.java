@@ -30,7 +30,7 @@ public class JobMaster {
   private GraphManager graphManager;
   private StreamingMasterConfig conf;
 
-  private RayActor jobMasterActor;
+  private RayActor<JobMaster> jobMasterActor;
 
   public JobMaster(Map<String, String> confMap) {
     LOG.info("Creating job master with conf: {}.", confMap);
@@ -101,7 +101,7 @@ public class JobMaster {
     return true;
   }
 
-  public RayActor getJobMasterActor() {
+  public RayActor<JobMaster> getJobMasterActor() {
     return jobMasterActor;
   }
 

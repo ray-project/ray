@@ -42,12 +42,12 @@ public class WorkerLifecycleController {
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
     LOG.info("Start to create worker actor for vertex: {} with resource: {}.",
-        executionVertex.getVertexName(), executionVertex.getResources());
+        executionVertex.getVertexName(), executionVertex.getResource());
 
     Language language = executionVertex.getLanguage();
 
     ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setResources(executionVertex.getResources())
+        .setResources(executionVertex.getResource())
         .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTION)
         .createActorCreationOptions();
 

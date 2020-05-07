@@ -141,15 +141,15 @@ public class Container implements Serializable {
     executionVertexIds.add(vertex.getId());
     vertex.setContainerIfNotExist(this.getId());
     // Binding dynamic resource
-    vertex.getResources().put(getName(), 1.0);
-    decreaseResource(vertex.getResources());
+    vertex.getResource().put(getName(), 1.0);
+    decreaseResource(vertex.getResource());
   }
 
   public void releaseActor(ExecutionVertex vertex) {
     LOG.info("Release actor, vertex: {}, container: {}.", vertex, vertex.getContainerId());
     if (executionVertexIds.contains(vertex.getId())) {
       executionVertexIds.removeIf(id -> id == vertex.getId());
-      reclaimResource(vertex.getResources());
+      reclaimResource(vertex.getResource());
     } else {
       throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
           this, vertex.getJobVertexName()));

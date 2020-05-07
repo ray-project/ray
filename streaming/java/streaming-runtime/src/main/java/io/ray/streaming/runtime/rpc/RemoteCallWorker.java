@@ -1,13 +1,15 @@
 package io.ray.streaming.runtime.rpc;
 
 import io.ray.api.BaseActor;
-import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.RayPyActor;
+import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
+import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
+import io.ray.streaming.runtime.worker.context.PythonJobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,19 +25,20 @@ public class RemoteCallWorker {
    * Call JobWorker actor to init.
    *
    * @param actor target JobWorker actor
-   * @param ctx JobWorker's context
+   * @param context JobWorker's context
    * @return init result
    */
-  public static RayObject<Boolean> initWorker(BaseActor actor, JobWorkerContext ctx) {
-    LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), ctx);
-    RayObject<Boolean> result = null;
+  public static RayObject<Boolean> initWorker(BaseActor actor, JobWorkerContext context) {
+    LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), context);
+    RayObject<Boolean> result;
 
     // python
     if (actor instanceof RayPyActor) {
-      //result = Ray.callPy((RayPyActor) actor, "init", );
+      result = ((RayPyActor) actor).call(
+          new PyActorMethod("init", Object.class), context.getContextBytes());
     } else {
       // java
-      result = ((RayActor<JobWorker>) actor).call(JobWorker::init, ctx);
+      result = ((RayActor<JobWorker>) actor).call(JobWorker::init, (JavaJobWorkerContext) context);
     }
 
     LOG.info("Finished calling worker to initiate.");

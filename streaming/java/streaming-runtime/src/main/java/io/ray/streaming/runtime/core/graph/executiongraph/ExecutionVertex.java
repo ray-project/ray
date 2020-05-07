@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Physical vertex, correspond to {@link ExecutionJobVertex}.
@@ -39,9 +40,9 @@ public class ExecutionVertex implements Serializable {
   private final long buildTime;
 
   /**
-   * Resources used by ExecutionVertex.
+   * Resource used by ExecutionVertex.
    */
-  private final Map<String, Double> resources;
+  private final Map<String, Double> resource;
 
   /**
    * Parallelism of current vertex's operator.
@@ -79,7 +80,7 @@ public class ExecutionVertex implements Serializable {
     this.buildTime = executionJobVertex.getBuildTime();
     this.parallelism = executionJobVertex.getParallelism();
     this.vertexIndex = index;
-    this.resources = generateResources(resourceConfig);
+    this.resource = generateResources(resourceConfig);
     this.workerConfig = genWorkerConfig(executionJobVertex.getJobConfig());
   }
 
@@ -179,8 +180,20 @@ public class ExecutionVertex implements Serializable {
     this.outputEdges = outputEdges;
   }
 
-  public Map<String, Double> getResources() {
-    return resources;
+  public List<ExecutionVertex> getInputVertices() {
+     return inputEdges.stream()
+        .map(ExecutionEdge::getSourceVertex)
+        .collect(Collectors.toList());
+  }
+
+  public List<ExecutionVertex> getOutputVertices() {
+    return outputEdges.stream()
+        .map(ExecutionEdge::getTargetVertex)
+        .collect(Collectors.toList());
+  }
+
+  public Map<String, Double> getResource() {
+    return resource;
   }
 
   public Map<String, String> getWorkerConfig() {
@@ -234,7 +247,7 @@ public class ExecutionVertex implements Serializable {
     return MoreObjects.toStringHelper(this)
         .add("id", id)
         .add("name", getVertexName())
-        .add("resources", resources)
+        .add("resources", resource)
         .add("state", state)
         .add("containerId", containerId)
         .add("workerActor", workerActor)
