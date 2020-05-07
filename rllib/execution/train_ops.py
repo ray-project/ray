@@ -174,7 +174,7 @@ class TrainTFMultiGPU:
                 if policy_id not in self.policies:
                     continue
 
-                policy = self.policies[policy_id]
+                policy = self.workers.local_worker().get_policy(policy_id)
                 policy._debug_vars()
                 tuples = policy._get_loss_inputs_dict(
                     batch, shuffle=self.shuffle_sequences)
