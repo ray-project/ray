@@ -111,8 +111,9 @@ def test_worker_stats(shutdown_only):
         ]
         for process in processes:
             # TODO(ekl) why does travis/mi end up in the process list
-            assert ("python" in process or "ray" in process
-                    or "travis" in process)
+            assert ("python" in process or "conda" in process
+                    or "travis" in process or "runner" in process
+                    or "ray" in process)
         break
 
     # Test kill_actor.

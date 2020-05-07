@@ -642,6 +642,12 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
+cdef void terminate_asyncio_thread() nogil:
+    with gil:
+        core_worker = ray.worker.global_worker.core_worker
+        core_worker.destroy_event_loop_if_exists()
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
@@ -675,6 +681,7 @@ cdef class CoreWorker:
         options.is_local_mode = local_mode
         options.num_workers = 1
         options.kill_main = kill_main_task
+        options.terminate_asyncio_thread = terminate_asyncio_thread
 
         CCoreWorkerProcess.Initialize(options)
 
@@ -1193,7 +1200,8 @@ cdef class CoreWorker:
 
         if self.async_thread is None:
             self.async_thread = threading.Thread(
-                target=lambda: self.async_event_loop.run_forever()
+                target=lambda: self.async_event_loop.run_forever(),
+                name="AsyncIO Thread"
             )
             # Making the thread a daemon causes it to exit
             # when the main thread exits.
@@ -1214,8 +1222,12 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         return future.result()
 
-    def destory_event_loop_if_exists(self):
+    def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
+            # We should stop the monitor first because otherwise,
+            # loop.stop() will continue forever as monitor
+            # main loop will not be terminated.
+            self.async_event_loop.monitor_state.kill()
             self.async_event_loop.stop()
         if self.async_thread is not None:
             self.async_thread.join()
