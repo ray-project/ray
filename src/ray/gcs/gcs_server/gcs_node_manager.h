@@ -132,7 +132,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param node_info_accessor The node info accessor.
     explicit NodeFailureDetector(
         boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
-        std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
+        std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
 
     /// Register node to this detector.
