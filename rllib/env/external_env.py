@@ -144,7 +144,6 @@ class ExternalEnv(threading.Thread):
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Optional info dict.
-            done (bool): Indicates if episode is done.
         """
 
         episode = self._get(episode_id)
