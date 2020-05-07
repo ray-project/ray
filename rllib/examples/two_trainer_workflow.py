@@ -15,6 +15,8 @@ from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.common import SampleBatchType, _get_shared_metrics
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
@@ -24,24 +26,23 @@ from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.tune.registry import register_env
-from ray.util.iter import LocalIterator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=20)
 
 
-def custom_training_workflow(workers, config):
+def custom_training_workflow(workers: WorkerSet, config: dict):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
         buffer_size=50000,
         replay_batch_size=64)
 
-    def add_ppo_metrics(batch):
+    def add_ppo_metrics(batch: SampleBatchType):
         print("PPO policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters["agent_steps_trained_PPO"] += batch.total()
         return batch
 
@@ -49,7 +50,7 @@ def custom_training_workflow(workers, config):
         print("DQN policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters["agent_steps_trained_DQN"] += batch.total()
         return batch
 

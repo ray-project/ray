@@ -3,7 +3,9 @@ import copy
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
+    SampleBatchType, _get_shared_metrics
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
@@ -93,7 +95,7 @@ class UpdateWorkerWeights:
         self.max_weight_sync_delay = max_weight_sync_delay
         self.weights = None
 
-    def __call__(self, item):
+    def __call__(self, item: ("ActorHandle", SampleBatchType)):
         actor, batch = item
         self.steps_since_update[actor] += batch.count
         if self.steps_since_update[actor] >= self.max_weight_sync_delay:
@@ -111,7 +113,7 @@ class UpdateWorkerWeights:
 
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     # TODO(ekl) support batch replay options
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
@@ -130,10 +132,10 @@ def execution_plan(workers, config):
     learner_thread.start()
 
     # Update experience priorities post learning.
-    def update_prio_and_stats(item):
+    def update_prio_and_stats(item: ("ActorHandle", dict, int)):
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
         metrics.counters[STEPS_TRAINED_COUNTER] += count
