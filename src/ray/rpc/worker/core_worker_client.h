@@ -169,6 +169,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status RemoteCancelTask(
+      const RemoteCancelTaskRequest &request,
+      const ClientCallback<RemoteCancelTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ray::Status GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {
@@ -223,6 +229,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
 

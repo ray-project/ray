@@ -114,6 +114,8 @@ struct CoreWorkerOptions {
   bool is_local_mode;
   /// The number of workers to be started in the current process.
   int num_workers;
+  /// The function to destroy asyncio event and loops.
+  std::function<void()> terminate_asyncio_thread;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -711,6 +713,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleCancelTask(const rpc::CancelTaskRequest &request,
                         rpc::CancelTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                              rpc::RemoteCancelTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,

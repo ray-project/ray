@@ -92,6 +92,7 @@ def timeit(name, fn, multiplier=1):
 def main():
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     ray.init()
+
     value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 

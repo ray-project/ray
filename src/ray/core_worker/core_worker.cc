@@ -590,6 +590,13 @@ void CoreWorker::WaitForShutdown() {
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
   }
 }
 
@@ -1222,9 +1229,11 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
   rpc::Address obj_addr;
-  if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr) ||
-      obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    return Status::Invalid("Task is not locally submitted.");
+  if (!reference_counter_->GetOwner(object_id, nullptr, &obj_addr)) {
+    return Status::Invalid("No owner found for object.");
+  }
+  if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
+    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
@@ -1811,6 +1820,14 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   // goes to 0.
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_id,
                                             owner_address, ref_removed_callback);
+}
+
+void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                                        rpc::RemoteCancelTaskReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto status =
+      CancelTask(ObjectID::FromBinary(request.remote_object_id()), request.force_kill());
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
