@@ -220,12 +220,16 @@ install_dependencies() {
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
-    while [ 1 ]
+    local status="0";
+    local errmsg="";
+    for i in {1..3};
     do
-      CC=gcc pip install "${pip_packages[@]}" && break;
-      echo "'pip install ...' failed, will retry after n seconds!";
-      sleep 10;
+      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && exit 1
+    fi
   fi
 
   if [ "${LINT-}" = 1 ]; then
