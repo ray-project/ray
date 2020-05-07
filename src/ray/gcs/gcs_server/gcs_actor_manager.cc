@@ -209,7 +209,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     request.set_intended_actor_id(actor_id.Binary());
     request.set_force_kill(true);
     request.set_no_reconstruction(true);
-    actor_client->KillActor(request, nullptr);
+    RAY_UNUSED(actor_client->KillActor(request, nullptr));
 
     RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
     if (node_it->second.empty()) {
@@ -225,16 +225,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       RAY_CHECK(canceled_actor_id == actor_id);
     } else {
       // The actor was pending scheduling. Remove it from the queue.
-      bool canceled = false;
-      for (auto pending_it = pending_actors_.begin(); pending_it != pending_actors_.end();
-           pending_it++) {
-        if ((*pending_it)->GetActorID() == actor_id) {
-          pending_actors_.erase(pending_it);
-          canceled = true;
-          break;
-        }
-      }
-      RAY_CHECK(canceled);
+      auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
+                                     [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                                       return actor->GetActorID() == actor_id;
+                                     });
+      RAY_CHECK(pending_it != pending_actors_.end());
+      pending_actors_.erase(pending_it);
     }
   }
 

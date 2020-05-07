@@ -1749,7 +1749,8 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     return;
   }
 
-  // Send a response to trigger unpinning the object when it is no longer in scope.
+  // Send a response to trigger cleaning up the actor state once the handle is
+  // no longer in scope.
   auto respond = [send_reply_callback](const ActorID &actor_id) {
     RAY_LOG(DEBUG) << "Replying to HandleWaitForActorOutOfScope for " << actor_id;
     send_reply_callback(Status::OK(), nullptr, nullptr);

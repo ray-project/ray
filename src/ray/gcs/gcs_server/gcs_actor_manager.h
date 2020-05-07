@@ -73,8 +73,11 @@ class GcsActor {
   WorkerID GetWorkerID() const;
   /// Whether this actor is detached.
   bool IsDetached() const;
+  /// Get the actor's owner ID.
   WorkerID GetOwnerID() const;
+  /// Get the node ID of the actor's owner.
   ClientID GetOwnerNodeID() const;
+  /// Get the address of the actor's owner.
   const rpc::Address &GetOwnerAddress() const;
 
   /// Update the `Address` of this actor (see gcs.proto).
