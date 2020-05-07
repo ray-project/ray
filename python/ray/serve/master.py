@@ -415,6 +415,10 @@ class ServeMaster:
         """Fetched by the router on startup."""
         return self.workers
 
+    def get_all_backends(self):
+        """Used for validation by the API client."""
+        return list(self.backends.keys())
+
     def get_all_endpoints(self):
         """Used for validation by the API client."""
         return [endpoint for endpoint, methods in self.routes.values()]
