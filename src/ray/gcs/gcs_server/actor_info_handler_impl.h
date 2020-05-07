@@ -37,7 +37,7 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
 
   void HandleGetActorInfo(const GetActorInfoRequest &request, GetActorInfoReply *reply,
                           SendReplyCallback send_reply_callback) override;
-  
+
   void HandleGetNamedActorInfo(const GetNamedActorInfoRequest &request,
                                GetNamedActorInfoReply *reply,
                                SendReplyCallback send_reply_callback) override;

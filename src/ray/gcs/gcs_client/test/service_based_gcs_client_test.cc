@@ -95,10 +95,8 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnsubscribeActor(const ActorID &actor_id) {
-    std::promise<bool> promise;
+  void UnsubscribeActor(const ActorID &actor_id) {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool SubscribeAllActors(
@@ -496,7 +494,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Cancel subscription to an actor.
-  ASSERT_TRUE(UnsubscribeActor(actor_id));
+  UnsubscribeActor(actor_id);
 
   // Update dynamic states of actor in GCS.
   actor_table_data->set_state(

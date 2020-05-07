@@ -48,17 +48,12 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   auto on_done = [actor_id, reply, send_reply_callback](
                      const Status &status,
                      const boost::optional<ActorTableData> &result) {
-    if (status.ok()) {
-      if (result) {
-        reply->mutable_actor_table_data()->CopyFrom(*result);
-      }
-      RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
-    } else {
-      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+    if (result) {
+      reply->mutable_actor_table_data()->CopyFrom(*result);
     }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+                   << ", actor id = " << actor_id << ", status = " << status;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
 
   // Look up the actor_id in the GCS.
