@@ -181,14 +181,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
-
-  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
-      HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
-
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
 

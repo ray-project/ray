@@ -137,8 +137,7 @@ matrix:
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -155,8 +154,7 @@ matrix:
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS_TF1X=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
         - TORCH_VERSION=1.4
@@ -172,8 +170,7 @@ matrix:
     # RLlib: Learning tests with torch (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS_TORCH=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -190,8 +187,7 @@ matrix:
     # Agent single tests (compilation, loss-funcs, etc..).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -210,8 +206,7 @@ matrix:
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_EXAMPLE_DIR_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -230,8 +225,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_TESTS_DIR_TESTS_A_TO_I=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_I=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -247,8 +241,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8

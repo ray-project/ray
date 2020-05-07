@@ -76,6 +76,7 @@ def cli(logging_level, logging_format):
     default=8265,
     help="The local port to forward to the dashboard")
 def dashboard(cluster_config_file, cluster_name, port):
+    """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
     remote_port = 8265
@@ -283,6 +284,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
+    """Start Ray processes manually on the local machine."""
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -465,6 +467,7 @@ def start(node_ip_address, redis_address, address, redis_port,
     is_flag=True,
     help="If set, ray prints out more information about processes to kill.")
 def stop(force, verbose):
+    """Stop Ray processes manually on the local machine."""
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -592,7 +595,7 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name,
              keep_min_workers):
-    """Tear down the Ray cluster."""
+    """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
 
@@ -638,7 +641,7 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 def monitor(cluster_config_file, lines, cluster_name):
-    """Runs `tail -n [lines] -f /tmp/ray/session_*/logs/monitor*` on head."""
+    """Tails the autoscaler logs of a Ray cluster."""
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
@@ -670,6 +673,7 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Port to forward. Use this multiple times to forward multiple ports.")
 def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
            port_forward):
+    """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
                    port_forward)
@@ -686,6 +690,7 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
     type=str,
     help="Override the configured cluster name.")
 def rsync_down(cluster_config_file, source, target, cluster_name):
+    """Download specific files from a Ray cluster."""
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
@@ -706,6 +711,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     required=False,
     help="Upload to all nodes (workers and head).")
 def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
+    """Upload specific files to a Ray cluster."""
     rsync(
         cluster_config_file,
         source,
@@ -846,6 +852,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
+    """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
                  cluster_name, port_forward)
@@ -860,6 +867,7 @@ def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
     type=str,
     help="Override the configured cluster name.")
 def get_head_ip(cluster_config_file, cluster_name):
+    """Return the head node IP of a Ray cluster."""
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
@@ -872,12 +880,14 @@ def get_head_ip(cluster_config_file, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 def get_worker_ips(cluster_config_file, cluster_name):
+    """Return the list of worker IPs of a Ray cluster."""
     worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
     click.echo("\n".join(worker_ips))
 
 
 @cli.command()
 def stack():
+    """Take a stack dump of all Python workers on the local machine."""
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
@@ -904,13 +914,8 @@ done
 
 @cli.command()
 def microbenchmark():
+    """Run a local Ray microbenchmark on the current machine."""
     from ray.ray_perf import main
-    main()
-
-
-@cli.command()
-def clusterbenchmark():
-    from ray.ray_cluster_perf import main
     main()
 
 
@@ -921,6 +926,7 @@ def clusterbenchmark():
     type=str,
     help="Override the redis address to connect to.")
 def timeline(address):
+    """Take a Chrome tracing timeline for a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
@@ -942,6 +948,7 @@ def timeline(address):
     type=str,
     help="Override the address to connect to.")
 def stat(address):
+    """Get the current metrics protobuf from a Ray cluster (developer tool)."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
@@ -971,6 +978,7 @@ def stat(address):
     type=str,
     help="Override the address to connect to.")
 def memory(address):
+    """Print object references held in a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
@@ -985,6 +993,7 @@ def memory(address):
     type=str,
     help="Override the address to connect to.")
 def globalgc(address):
+    """Trigger Python garbage collection on all cluster workers."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
