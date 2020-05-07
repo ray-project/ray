@@ -228,7 +228,7 @@ install_dependencies() {
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
-      echo "${status}" && exit 1
+      echo "${status}" && return 1
     fi
   fi
 
