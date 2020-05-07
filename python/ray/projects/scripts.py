@@ -177,8 +177,7 @@ class SessionRunner:
             no_restart=False,
             restart_only=False,
             yes=True,
-            override_cluster_name=self.session_name,
-        )
+            override_cluster_name=self.session_name)
 
     def sync_files(self):
         """Synchronize files with the session."""

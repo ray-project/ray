@@ -34,6 +34,16 @@ DEFAULT_AMI = {
     "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
 }
 
+FROM_PORT = 0
+TO_PORT = 1
+IP_PROTOCOL = 2
+
+SSH_CHANNEL = (22, 22, "tcp")
+DEFAULT_INBOUND_CHANNELS = [SSH_CHANNEL]
+
+RESOURCE_CACHE = {}
+
+
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
@@ -236,57 +246,22 @@ def _configure_security_group(config):
             "SecurityGroupIds" in config["worker_nodes"]:
         return config  # have user-defined groups
 
-    group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
-    vpc_id = _get_vpc_id_or_die(config, config["worker_nodes"]["SubnetIds"][0])
-    security_group = _get_security_group(config, vpc_id, group_name)
-
-    if security_group is None:
-        logger.info("_configure_security_group: "
-                    "Creating new security group {}".format(group_name))
-        client = _client("ec2", config)
-        client.create_security_group(
-            Description="Auto-created security group for Ray workers",
-            GroupName=group_name,
-            VpcId=vpc_id)
-        security_group = _get_security_group(config, vpc_id, group_name)
-        assert security_group, "Failed to create security group"
-
-    if not security_group.ip_permissions:
-        IpPermissions = [{
-            "FromPort": -1,
-            "ToPort": -1,
-            "IpProtocol": "-1",
-            "UserIdGroupPairs": [{
-                "GroupId": security_group.id
-            }]
-        }, {
-            "FromPort": 22,
-            "ToPort": 22,
-            "IpProtocol": "TCP",
-            "IpRanges": [{
-                "CidrIp": "0.0.0.0/0"
-            }]
-        }]
-
-        additional_IpPermissions = config["provider"].get(
-            "security_group", {}).get("IpPermissions", [])
-        IpPermissions.extend(additional_IpPermissions)
-
-        security_group.authorize_ingress(IpPermissions=IpPermissions)
+    security_groups = _upsert_security_groups(config)
+    head_sg = security_groups["head"]
+    workers_sg = security_groups["workers"]
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
             "_configure_security_group: "
-            "SecurityGroupIds not specified for head node, using {}".format(
-                security_group.group_name))
-        config["head_node"]["SecurityGroupIds"] = [security_group.id]
+            "SecurityGroupIds not specified for head node, using {} ({})"
+            .format(head_sg.group_name, head_sg.id))
+        config["head_node"]["SecurityGroupIds"] = [head_sg.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        logger.info(
-            "_configure_security_group: "
-            "SecurityGroupIds not specified for workers, using {}".format(
-                security_group.group_name))
-        config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
+        logger.info("_configure_security_group: "
+                    "SecurityGroupIds not specified for workers, using {} ({})"
+                    .format(workers_sg.group_name, workers_sg.id))
+        config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
 
     return config
 
@@ -319,6 +294,39 @@ def _check_ami(config):
                         region=region))
 
 
+def _upsert_security_groups(config):
+    group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
+
+    security_groups = _get_or_create_vpc_security_groups(config, group_name)
+    _upsert_security_group_rules(config, security_groups)
+
+    return security_groups
+
+
+def _get_or_create_vpc_security_groups(conf, group_name):
+    worker_subnet_id = conf["worker_nodes"]["SubnetIds"][0]
+    head_subnet_id = conf["head_node"]["SubnetIds"][0]
+
+    worker_vpc_id = _get_vpc_id_or_die(conf, worker_subnet_id)
+    head_vpc_id = _get_vpc_id_or_die(conf, head_subnet_id) \
+        if head_subnet_id != worker_subnet_id else worker_vpc_id
+
+    vpc_ids = [worker_vpc_id, head_vpc_id] \
+        if head_vpc_id != worker_vpc_id else [worker_vpc_id]
+    all_sgs = _get_security_groups(conf, vpc_ids, [group_name])
+
+    worker_sg = next((_ for _ in all_sgs if _.vpc_id == worker_vpc_id), None)
+    if worker_sg is None:
+        worker_sg = _create_security_group(conf, worker_vpc_id, group_name)
+        all_sgs.append(worker_sg)
+
+    head_sg = next((_ for _ in all_sgs if _.vpc_id == head_vpc_id), None)
+    if head_sg is None:
+        head_sg = _create_security_group(conf, head_vpc_id, group_name)
+
+    return {"head": head_sg, "workers": worker_sg}
+
+
 def _get_vpc_id_or_die(config, subnet_id):
     ec2 = _resource("ec2", config)
     subnet = list(
@@ -332,15 +340,75 @@ def _get_vpc_id_or_die(config, subnet_id):
 
 
 def _get_security_group(config, vpc_id, group_name):
+    security_group = _get_security_groups(config, [vpc_id], [group_name])
+    return None if not security_group else security_group[0]
+
+
+def _get_security_groups(config, vpc_ids, group_names):
     ec2 = _resource("ec2", config)
     existing_groups = list(
         ec2.security_groups.filter(Filters=[{
             "Name": "vpc-id",
-            "Values": [vpc_id]
+            "Values": vpc_ids
         }]))
+    matching_groups = []
     for sg in existing_groups:
-        if sg.group_name == group_name:
-            return sg
+        if sg.group_name in group_names:
+            matching_groups.append(sg)
+    return matching_groups
+
+
+def _create_security_group(config, vpc_id, group_name):
+    client = _client("ec2", config)
+    client.create_security_group(
+        Description="Auto-created security group for Ray workers",
+        GroupName=group_name,
+        VpcId=vpc_id)
+    security_group = _get_security_group(config, vpc_id, group_name)
+    logger.info("_create_security_group: Created new security group {} ({})"
+                .format(security_group.group_name, security_group.id))
+    assert security_group, "Failed to create security group"
+    return security_group
+
+
+def _upsert_security_group_rules(conf, security_groups):
+    head_sg = security_groups["head"]
+    worker_sg = security_groups["workers"]
+
+    sgids = {sg.id for sg in security_groups.values()}
+    _update_inbound_rules(head_sg, sgids, conf)
+    _update_inbound_rules(worker_sg, sgids, conf)
+
+
+def _update_inbound_rules(target_security_group, sgids, config):
+    if not target_security_group.ip_permissions:
+        IpPermissions = [{
+            "FromPort": -1,
+            "ToPort": -1,
+            "IpProtocol": "-1",
+            "UserIdGroupPairs": [
+                {
+                    "GroupId": security_group_id
+                } for security_group_id in sorted(sgids)
+                # sort security group IDs for deterministic IpPermission models
+                # (mainly supports more precise stub-based boto3 unit testing)
+            ]
+        }]
+
+        IpPermissions.extend([{
+            "FromPort": channel[FROM_PORT],
+            "ToPort": channel[TO_PORT],
+            "IpProtocol": channel[IP_PROTOCOL],
+            "IpRanges": [{
+                "CidrIp": "0.0.0.0/0"
+            }]
+        } for channel in DEFAULT_INBOUND_CHANNELS])
+
+        additional_IpPermissions = config["provider"].get(
+            "security_group", {}).get("IpPermissions", [])
+        IpPermissions.extend(additional_IpPermissions)
+
+        target_security_group.authorize_ingress(IpPermissions=IpPermissions)
 
 
 def _get_role(role_name, config):
@@ -380,20 +448,16 @@ def _get_key(key_name, config):
 
 
 def _client(name, config):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    aws_credentials = config["provider"].get("aws_credentials", {})
-    return boto3.client(
-        name,
-        config["provider"]["region"],
-        config=boto_config,
-        **aws_credentials)
+    return _resource(name, config).meta.client
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return boto3.resource(
+    return RESOURCE_CACHE.setdefault(
         name,
-        config["provider"]["region"],
-        config=boto_config,
-        **aws_credentials)
+        boto3.resource(
+            name,
+            config["provider"]["region"],
+            config=boto_config,
+            **aws_credentials))
