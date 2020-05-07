@@ -225,3 +225,33 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 if false is True:
                     assert False, \
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
+
+
+def test_compute_action(trainer):
+    """Tests different combinations of arguments for trainer.compute_action.
+
+    Args:
+        trainer (Trainer): The trainer object to test.
+
+    Throws:
+        ValueError: If anything unexpected happens.
+    """
+    try:
+        pol = trainer.get_policy()
+    except AttributeError:
+        pol = trainer.policy
+
+    obs_space = pol.observation_space
+    action_space = pol.action_space
+    for explore in [True, False]:
+        for full_fetch in [True, False]:
+            extra_fetches = None
+            obs = np.clip(obs_space.sample(), -1.0, 1.0)
+            action = trainer.compute_action(
+                obs, explore=explore, full_fetch=full_fetch)
+            if full_fetch:
+                action, _, extra_fetches = action
+            if not action_space.contains(action):
+                raise ValueError(
+                    "Returned action ({}) of trainer {} not in Env's "
+                    "action_space ({})!".format(action, trainer, action_space))
