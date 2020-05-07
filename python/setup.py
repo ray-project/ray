@@ -188,7 +188,7 @@ def find_version(*filepath):
 
 requires = [
     "aiohttp",
-    "click",
+    "click >= 7.0",
     "colorama",
     "filelock",
     "google",

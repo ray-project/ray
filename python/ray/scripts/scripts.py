@@ -1,4 +1,5 @@
 import click
+import copy
 from datetime import datetime
 import json
 import logging
@@ -523,7 +524,7 @@ def stop(force, verbose):
         subprocess.call([command], shell=True)
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--no-restart",
@@ -569,7 +570,7 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                              no_restart, restart_only, yes, cluster_name)
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--workers-only",
@@ -812,7 +813,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         port_forward=port_forward)
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
@@ -1002,19 +1003,25 @@ def globalgc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+def add_command_alias(command, name, hidden):
+    new_command = copy.deepcopy(command)
+    new_command.hidden = hidden
+    cli.add_command(new_command, name=name)
+
+
 cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
-cli.add_command(create_or_update, name="up")
+add_command_alias(create_or_update, name="up", hidden=False)
 cli.add_command(attach)
-cli.add_command(exec_cmd, name="exec")
-cli.add_command(rsync_down, name="rsync_down")
-cli.add_command(rsync_up, name="rsync_up")
+add_command_alias(exec_cmd, name="exec", hidden=False)
+add_command_alias(rsync_down, name="rsync_down", hidden=True)
+add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(teardown)
-cli.add_command(teardown, name="down")
+add_command_alias(teardown, name="down", hidden=False)
 cli.add_command(kill_random_node)
-cli.add_command(get_head_ip, name="get_head_ip")
+add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
