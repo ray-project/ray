@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker, LocalIterator
+from ray.test_utils import Semaphore
 
 
 def test_metrics(ray_start_regular_shared):
@@ -156,6 +157,44 @@ def test_for_each(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2)
     assert repr(it) == "ParallelIterator[from_range[4, shards=2].for_each()]"
     assert list(it.gather_sync()) == [0, 4, 2, 6]
+
+
+def test_for_each_concur(ray_start_regular_shared):
+    main_wait = Semaphore.remote(value=0)
+    test_wait = Semaphore.remote(value=0)
+
+    def task(x):
+        i, main_wait, test_wait = x
+        ray.get(main_wait.release.remote())
+        ray.get(test_wait.acquire.remote())
+        return i + 10
+
+    @ray.remote(num_cpus=0.1)
+    def to_list(it):
+        return list(it)
+
+    it = from_items(
+        [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
+    it = it.for_each(task, max_concurrency=2, resources={"num_cpus": 0.1})
+
+    for i in range(4):
+        ray.get(main_wait.acquire.remote())
+
+    # There should be exactly 4 tasks executing at this point.
+    assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
+
+    # When we finish one task, exactly one more should start.
+    ray.get(test_wait.release.remote())
+    ray.get(main_wait.acquire.remote())
+    assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
+
+    # Finish everything and make sure the output matches a regular iterator.
+    for i in range(3):
+        ray.get(test_wait.release.remote())
+
+    assert repr(
+        it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
+    assert ray.get(to_list.remote(it.gather_sync())) == list(range(10, 18))
 
 
 def test_combine(ray_start_regular_shared):

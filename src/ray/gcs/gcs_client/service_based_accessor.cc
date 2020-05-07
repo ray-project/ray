@@ -399,33 +399,53 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node change.";
   RAY_CHECK(subscribe != nullptr);
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  auto status = client_table.SubscribeToNodeChange(subscribe, done);
+  RAY_CHECK(node_change_callback_ == nullptr);
+  node_change_callback_ = subscribe;
+
+  auto on_subscribe = [this](const std::string &id, const std::string &data) {
+    GcsNodeInfo node_info;
+    node_info.ParseFromString(data);
+    HandleNotification(node_info);
+  };
+
+  auto on_done = [this, subscribe, done](const Status &status) {
+    // Get nodes from GCS Service.
+    auto callback = [this, subscribe, done](
+                        const Status &status,
+                        const std::vector<GcsNodeInfo> &node_info_list) {
+      for (auto &node_info : node_info_list) {
+        HandleNotification(node_info);
+      }
+      if (done) {
+        done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+  };
+
+  auto status =
+      client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe, on_done);
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
   return status;
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const ClientID &node_id) const {
-  GcsNodeInfo node_info;
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  bool found = client_table.GetClient(node_id, &node_info);
-  boost::optional<GcsNodeInfo> optional_node;
-  if (found) {
-    optional_node = std::move(node_info);
+  RAY_CHECK(!node_id.IsNil());
+  auto entry = node_cache_.find(node_id);
+  if (entry != node_cache_.end()) {
+    return entry->second;
   }
-  return optional_node;
+  return boost::none;
 }
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.GetAllClients();
+  return node_cache_;
 }
 
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
-  ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  return client_table.IsRemoved(node_id);
+  return removed_nodes_.count(node_id) == 1;
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
@@ -565,6 +585,45 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
                                                                 on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
   return status;
+}
+
+void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
+  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
+  auto entry = node_cache_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the node
+    // was alive and is now dead or resources have been updated.
+    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+    // Once a node with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the node was deleted, check
+    // that this new notification is not an insertion.
+    if (!was_alive) {
+      RAY_CHECK(!is_alive)
+          << "Notification for addition of a node that was already removed:" << node_id;
+    }
+  }
+
+  // Add the notification to our cache.
+  RAY_LOG(INFO) << "Received notification for node id = " << node_id
+                << ", IsAlive = " << is_alive;
+  node_cache_[node_id] = node_info;
+
+  // If the notification is new, call registered callback.
+  if (is_notif_new) {
+    if (is_alive) {
+      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
+    } else {
+      removed_nodes_.insert(node_id);
+    }
+    GcsNodeInfo &cache_data = node_cache_[node_id];
+    node_change_callback_(node_id, cache_data);
+  }
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
