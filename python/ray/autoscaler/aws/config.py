@@ -1,4 +1,5 @@
 from distutils.version import StrictVersion
+from functools import partial
 import json
 import os
 import time
@@ -160,9 +161,12 @@ def _configure_key_pair(config):
             logger.info("_configure_key_pair: "
                         "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
-            with open(key_path, "w") as f:
+
+            # We need to make sure to _create_ the file with the right
+            # permissions. In order to do that we need to change the default
+            # os.open behavior to include the mode we want.
+            with open(key_path, "w", opener=partial(os.open, mode=0o600)) as f:
                 f.write(key.key_material)
-            os.chmod(key_path, 0o600)
             break
 
     if not key:

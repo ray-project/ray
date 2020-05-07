@@ -107,7 +107,8 @@ class AsyncMonitorState:
         self.names_lock = threading.Lock()
 
         self.sleep_time = 1.0
-        asyncio.ensure_future(self.monitor(), loop=loop)
+        self.monitor_loop_future = asyncio.ensure_future(
+            self.monitor(), loop=loop)
 
     async def monitor(self):
         while True:
@@ -131,3 +132,11 @@ class AsyncMonitorState:
         with self.names_lock:
             names = list(self.names.values())
         return names
+
+    def kill(self):
+        """Kill the monitor's loop
+
+        This should be called in order to clean an event loop
+        that this monitor is running.
+        """
+        self.monitor_loop_future.cancel()
