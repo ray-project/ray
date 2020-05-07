@@ -1255,21 +1255,30 @@ py_test(
 )
 
 py_test(
-    name = "examples/batch_norm_model_dqn_tf",
+    name = "examples/batch_norm_model_ppo_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "small",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--stop-reward=80"]
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=80"]
+)
+
+py_test(
+    name = "examples/batch_norm_model_dqn_tf",
+    main = "examples/batch_norm_model.py",
+    tags = ["examples", "examples_B"],
+    size = "medium",  # DQN learns much slower with BatchNorm.
+    srcs = ["examples/batch_norm_model.py"],
+    args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
 
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--torch", "--stop-reward=80"]
+    args = ["--as-test", "--torch", "--run=DQN", "--stop-reward=70"]
 )
 
 py_test(
@@ -1382,7 +1391,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--custom-eval", "--num-cpus=4"]
+    args = ["--num-cpus=4"]
 )
 
 py_test(
@@ -1391,7 +1400,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--torch", "--custom-eval", "--num-cpus=4"]
+    args = ["--torch", "--num-cpus=4"]
 )
 
 py_test(

@@ -24,7 +24,7 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
 
     ModelCatalog.register_custom_model(
         "rnn", TorchRNNModel if args.torch else RNNModel)
