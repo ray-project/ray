@@ -40,11 +40,11 @@ void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
 
-  // Init gcs node_manager.
-  InitGcsNodeManager();
-
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
+
+  // Init gcs node_manager.
+  InitGcsNodeManager();
 
   // Init gcs detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
@@ -128,8 +128,9 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, redis_gcs_client_->Nodes(), redis_gcs_client_->Errors());
+  gcs_node_manager_ =
+      std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_->Nodes(),
+                                       redis_gcs_client_->Errors(), gcs_pub_sub_);
 }
 
 void GcsServer::InitGcsActorManager() {

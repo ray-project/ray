@@ -2,7 +2,7 @@
 build --enable_platform_specific_config
 ###############################################################################
 # On       Windows, provide: USE_CLANG_CL=1, CC=clang, BAZEL_LLVM, BAZEL_SH
-# On all platforms, provide: PYTHON2_BIN_PATH, PYTHON3_BIN_PATH
+# On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
 build:linux   --compilation_mode=opt

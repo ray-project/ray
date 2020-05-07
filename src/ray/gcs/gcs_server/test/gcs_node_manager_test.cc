@@ -19,13 +19,17 @@
 #include "gtest/gtest.h"
 
 namespace ray {
-class GcsNodeManagerTest : public ::testing::Test {};
+class GcsNodeManagerTest : public ::testing::Test {
+ protected:
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+};
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
   auto node_info_accessor = GcsServerMocker::MockedNodeInfoAccessor();
   auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
+  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor,
+                                   gcs_pub_sub_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -41,7 +45,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
   auto node_info_accessor = GcsServerMocker::MockedNodeInfoAccessor();
   auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor);
+  gcs::GcsNodeManager node_manager(io_service, node_info_accessor, error_info_accessor,
+                                   gcs_pub_sub_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

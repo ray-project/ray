@@ -14,6 +14,8 @@ import blist
 
 import ray
 import ray.cloudpickle as pickle
+from ray.exceptions import RayTaskError
+from ray.serve.metric import MetricClient
 from ray.serve.utils import logger, retry_actor_failures
 
 
@@ -166,22 +168,30 @@ class Router:
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
+        self.metric_client = MetricClient.connect_from_serve()
+        self.num_router_requests = self.metric_client.new_counter(
+            "num_router_requests",
+            description="Number of requests processed by the router.",
+            label_names=("endpoint", ))
+        self.num_error_endpoint_request = self.metric_client.new_counter(
+            "num_error_endpoint_requests",
+            description=("Number of requests errored when getting result "
+                         "for endpoint."),
+            label_names=("endpoint", ))
+        self.num_error_backend_request = self.metric_client.new_counter(
+            "num_error_backend_requests",
+            description=("Number of requests errored when getting result "
+                         "from backend."),
+            label_names=("backend", ))
+
     def is_ready(self):
         return True
-
-    def get_metrics(self):
-        return {
-            "backend_{}_queue_size".format(backend_name): {
-                "value": len(queue),
-                "type": "counter",
-            }
-            for backend_name, queue in self.buffer_queues.items()
-        }
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         endpoint = request_meta.endpoint
         logger.debug("Received a request for endpoint {}".format(endpoint))
+        self.num_router_requests.labels(endpoint=endpoint).add()
 
         # check if the slo specified is directly the
         # wall clock time
@@ -202,7 +212,11 @@ class Router:
 
         # Note: a future change can be to directly return the ObjectID from
         # replica task submission
-        result = await query.async_future
+        try:
+            result = await query.async_future
+        except RayTaskError as e:
+            self.num_error_endpoint_request.labels(endpoint=endpoint).add()
+            result = e
         return result
 
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
@@ -341,9 +355,13 @@ class Router:
         logger.debug("Sending query to replica:" + backend_replica_tag)
         start = time.time()
         worker = self.replicas[backend_replica_tag]
-        result = await worker.handle_request.remote(req)
+        try:
+            result = await worker.handle_request.remote(req)
+        except RayTaskError as error:
+            self.num_error_backend_request.labels(backend=backend).add()
+            result = error
         await self.mark_worker_idle(backend, backend_replica_tag)
-        logger.debug("Got result in {:.2f}s", time.time() - start)
+        logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
 
     async def _assign_query_to_worker(self,

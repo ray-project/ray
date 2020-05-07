@@ -1,7 +1,0 @@
-diff --git third_party/py/python_configure.bzl third_party/py/python_configure.bzl
---- third_party/py/python_configure.bzl
-+++ third_party/py/python_configure.bzl
-@@ -193,1 +193,1 @@ def _get_python_lib(repository_ctx, python_bin, lib_path_key):
--    cmd = '%s - %s' % (python_bin, print_lib)
-+    cmd = '"%s" - %s' % (python_bin, print_lib)
--- 
