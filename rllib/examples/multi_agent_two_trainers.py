@@ -28,7 +28,6 @@ parser.add_argument("--stop-iters", type=int, default=20)
 parser.add_argument("--stop-reward", type=float, default=50)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
     assert args.torch != args.mixed_torch_tf,\
@@ -48,9 +47,8 @@ if __name__ == "__main__":
     policies = {
         "ppo_policy": (PPOTorchPolicy if args.torch else PPOTFPolicy,
                        obs_space, act_space, {}),
-        "dqn_policy": (DQNTorchPolicy if args.torch or args.mixed_torch_tf
-                       else DQNTFPolicy,
-                       obs_space, act_space, {}),
+        "dqn_policy": (DQNTorchPolicy if args.torch or args.mixed_torch_tf else
+                       DQNTFPolicy, obs_space, act_space, {}),
     }
 
     def policy_mapping_fn(agent_id):
@@ -118,5 +116,5 @@ if __name__ == "__main__":
 
     # Desired reward not reached.
     if args.as_test:
-        raise ValueError(
-            "Desired reward ({}) not reached!".format(args.stop_reward))
+        raise ValueError("Desired reward ({}) not reached!".format(
+            args.stop_reward))

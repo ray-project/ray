@@ -138,8 +138,7 @@ class EpsilonGreedy(Exploration):
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
                 q_values == -float(LARGE_INTEGER),
-                torch.ones_like(q_values) * 0.0,
-                torch.ones_like(q_values))
+                torch.ones_like(q_values) * 0.0, torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
                 torch.multinomial(random_valid_action_logits, 1), axis=1)

@@ -5,10 +5,6 @@ from ray.rllib.agents.ppo.appo import APPOTrainer
 from ray.rllib.agents.ppo.ddppo import DDPPOTrainer
 
 __all__ = [
-    "APPOTrainer",
-    "DDPPOTrainer",
-    "PPOTFPolicy",
-    "PPOTorchPolicy",
-    "PPOTrainer",
-    "DEFAULT_CONFIG"
+    "APPOTrainer", "DDPPOTrainer", "PPOTFPolicy", "PPOTorchPolicy",
+    "PPOTrainer", "DEFAULT_CONFIG"
 ]

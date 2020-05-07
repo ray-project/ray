@@ -26,7 +26,6 @@ torch, _ = try_import_torch()
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--as-test", action="store_true")
-#parser.add_argument("--sheldon-cooper", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=150)
 parser.add_argument("--stop-reward", type=float, default=1000.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
@@ -36,9 +35,6 @@ def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
         "env": RockPaperScissors,
-        #"env_config": {
-        #    "sheldon_cooper": args.sheldon_cooper,
-        #},
         "use_pytorch": args.torch,
     }
 
@@ -66,9 +62,6 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
 
     config = {
         "env": RockPaperScissors,
-        #"env_config": {
-        #    "sheldon_cooper": args.sheldon_cooper,
-        #},
         "gamma": 0.9,
         "num_workers": 0,
         "num_envs_per_worker": 4,
@@ -78,9 +71,8 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
             "policies_to_train": ["learned"],
             "policies": {
                 "always_same": (AlwaysSameHeuristic, Discrete(3), Discrete(3),
-                                {}),  # "sheldon_cooper": args.sheldon_cooper
-                "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3),
-                              {}),  # "sheldon_cooper": args.sheldon_cooper
+                                {}),
+                "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3), {}),
                 "learned": (None, Discrete(3), Discrete(3), {
                     "model": {
                         "use_lstm": use_lstm
@@ -109,8 +101,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     if args.as_test:
         raise ValueError(
             "Desired reward difference ({}) not reached! Only got to {}.".
-                format(args.stop_reward,
-                       env.player1_score - env.player2_score))
+            format(args.stop_reward, env.player1_score - env.player2_score))
 
 
 def run_with_custom_entropy_loss(args, stop):
@@ -124,9 +115,9 @@ def run_with_custom_entropy_loss(args, stop):
         if args.torch:
             # required by PGTorchPolicy's stats fn.
             policy.pi_err = torch.tensor([0.0])
-            return torch.mean(-0.1 * action_dist.entropy() - (
-                action_dist.logp(train_batch["actions"]) *
-                train_batch["advantages"]))
+            return torch.mean(-0.1 * action_dist.entropy() -
+                              (action_dist.logp(train_batch["actions"]) *
+                               train_batch["advantages"]))
         else:
             return (-0.1 * action_dist.entropy() - tf.reduce_mean(
                 action_dist.logp(train_batch["actions"]) *
@@ -139,8 +130,7 @@ def run_with_custom_entropy_loss(args, stop):
     EntropyLossPG = PGTrainer.with_updates(
         name="EntropyPG", get_policy_class=lambda _: EntropyPolicy)
 
-    run_heuristic_vs_learned(
-        args, use_lstm=True, trainer=EntropyLossPG)
+    run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
 
 if __name__ == "__main__":

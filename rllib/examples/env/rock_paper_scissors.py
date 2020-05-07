@@ -29,7 +29,6 @@ class RockPaperScissors(MultiAgentEnv):
     def reset(self):
         self.last_move = (0, 0)
         self.num_moves = 0
-        #self.player1_score = self.player2_score = 0
         return {
             self.player1: self.last_move[1],
             self.player2: self.last_move[0],

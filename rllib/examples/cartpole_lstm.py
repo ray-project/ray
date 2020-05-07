@@ -13,7 +13,6 @@ parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
-
 if __name__ == "__main__":
     import ray
     from ray import tune

@@ -18,7 +18,6 @@ parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()

@@ -95,7 +95,6 @@ class SlimFC(nn.Module):
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
-        #print("SIZES: ", in_size, out_size)
         linear = nn.Linear(in_size, out_size)
         if initializer:
             initializer(linear.weight)

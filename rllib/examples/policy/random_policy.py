@@ -10,8 +10,6 @@ class RandomPolicy(Policy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        #self.exploration = self._create_exploration()
-        #^^Should not be necessary anymore
 
     @override(Policy)
     def compute_actions(self,

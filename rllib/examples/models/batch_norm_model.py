@@ -141,7 +141,7 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
     capture_index = 0
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+                 name, **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)

@@ -13,7 +13,7 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 
-class ParametricActionsModel(DistributionalQTFModel):  #, TFModelV2):
+class ParametricActionsModel(DistributionalQTFModel):
     """Parametric action model that handles the dot product and masking.
 
     This assumes the outputs are logits for a single Categorical action dist.

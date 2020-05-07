@@ -11,7 +11,6 @@ from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
@@ -22,11 +21,10 @@ parser.add_argument("--stop-reward", type=float, default=90)
 parser.add_argument("--stop-iters", type=int, default=100)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     ModelCatalog.register_custom_model(
         "rnn", TorchRNNModel if args.torch else RNNModel)

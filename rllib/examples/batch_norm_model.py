@@ -20,7 +20,6 @@ parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
@@ -42,6 +41,7 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
+
     results = tune.run(args.run, stop=stop, config=config)
 
     if args.as_test:

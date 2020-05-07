@@ -26,7 +26,6 @@ from ray.rllib.examples.models.parametric_actions_model import \
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--torch", action="store_true")
@@ -41,8 +40,8 @@ if __name__ == "__main__":
 
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
     ModelCatalog.register_custom_model(
-        "pa_model",
-        TorchParametricActionsModel if args.torch else ParametricActionsModel)
+        "pa_model", TorchParametricActionsModel
+        if args.torch else ParametricActionsModel)
 
     if args.run == "DQN":
         cfg = {

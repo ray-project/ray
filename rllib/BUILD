@@ -1327,19 +1327,35 @@ py_test(
 )
 
 py_test(
-    name = "examples/centralized_critic",
+    name = "examples/centralized_critic_tf",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/centralized_critic.py"],
-    args = ["--stop=2000"]
+    args = ["--as-test", "--stop-reward=7.2"]
 )
 
 py_test(
-    name = "examples/centralized_critic_2",
+    name = "examples/centralized_critic_torch",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "small",
+    srcs = ["examples/centralized_critic.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7.2"]
+)
+
+py_test(
+    name = "examples/centralized_critic_2_tf",
+    tags = ["examples", "examples_C"],
+    size = "small",
     srcs = ["examples/centralized_critic_2.py"],
-    args = ["--stop=2000"]
+    args = ["--as-test", "--stop-reward=6.0"]
+)
+
+py_test(
+    name = "examples/centralized_critic_2_torch",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/centralized_critic_2.py"],
+    args = ["--as-test", "--torch", "--stop-reward=6.0"]
 )
 
 py_test(
@@ -1530,6 +1546,15 @@ py_test(
     srcs = ["examples/hierarchical_training.py"],
     args = ["--torch", "--stop-reward=0.0"]
 )
+
+# Do not run this test (MobileNetV2 is gigantic and takes forever for 1 iter).
+# py_test(
+#     name = "examples/mobilenet_v2_with_lstm_tf",
+#     main = "examples/mobilenet_v2_with_lstm.py",
+#     tags = ["examples", "examples_M"],
+#     size = "small",
+#     srcs = ["examples/mobilenet_v2_with_lstm.py"]
+# )
 
 py_test(
     name = "examples/multi_agent_cartpole_tf",
