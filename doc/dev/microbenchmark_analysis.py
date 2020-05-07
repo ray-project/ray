@@ -7,7 +7,6 @@ Usage: python microbenchmark_analysis.py
 """
 
 from collections import defaultdict
-from pprint import pprint
 
 FRIST_VERSION = 0
 LAST_VERSION = 5
@@ -22,20 +21,20 @@ version_list = []
 
 
 def get_task_type(line):
-    return line.split('per')[0]
+    return line.split("per")[0]
 
 
 def get_task_performance(line):
-    return float(line.split(' ')[-3])
+    return float(line.split(" ")[-3])
 
 
 def get_task_std(line):
-    return float(line.split(' ')[-1])
+    return float(line.split(" ")[-1])
 
 
 def main():
     for file_name in FILES:
-        version = file_name.split('/')[1]
+        version = file_name.split("/")[1]
         version_list.append(version)
 
         with open(file_name) as file:
@@ -57,8 +56,10 @@ def main():
 
         latest_perf = task_performance_list[-1]
         second_latest_perf = task_performance_list[-2]
-        change_rate = (latest_perf - second_latest_perf) / second_latest_perf * 100
-        print(f"{task_type} performance change rate: {round(change_rate, 2)}%")
+        change_rate = (
+            latest_perf - second_latest_perf) / second_latest_perf * 100
+        print("{} performance change rate: {}%".format(task_type,
+                                                       round(change_rate, 2)))
 
 
 if __name__ == "__main__":
