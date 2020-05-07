@@ -84,7 +84,7 @@ public class RunManager {
       }
       numAttempts++;
     }
-    LOGGER.info("Process {} is now terminated.", name);
+    LOGGER.debug("Process {} is now terminated.", name);
   }
 
   /**
@@ -170,12 +170,12 @@ public class RunManager {
       throw new RuntimeException(message);
     }
     processes.add(Pair.of(name, p));
-    if (LOGGER.isInfoEnabled()) {
+    if (LOGGER.isDebugEnabled()) {
       String message = String.format("%s process started.", name);
       if (rayConfig.redirectOutput) {
         message += String.format(" Logs are redirected to %s and %s.", stdout, stderr);
       }
-      LOGGER.info(message);
+      LOGGER.debug(message);
     }
   }
 
