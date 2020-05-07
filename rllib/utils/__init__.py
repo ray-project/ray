@@ -13,7 +13,8 @@ from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    test_compute_action
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -87,6 +88,7 @@ __all__ = [
     "renamed_function",
     "renamed_agent",
     "renamed_class",
+    "test_compute_action",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
