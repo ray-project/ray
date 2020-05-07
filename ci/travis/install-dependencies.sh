@@ -216,7 +216,16 @@ install_dependencies() {
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
-    CC=gcc pip install "${pip_packages[@]}"
+
+    # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
+    # that break the entire CI job: Simply retry installation in this case
+    # after n seconds.
+    while [ 1 ]
+    do
+      CC=gcc pip install "${pip_packages[@]}" && break;
+      echo "'pip install ...' failed, will retry after n seconds!";
+      sleep 10;
+    done
   fi
 
   if [ "${LINT-}" = 1 ]; then
