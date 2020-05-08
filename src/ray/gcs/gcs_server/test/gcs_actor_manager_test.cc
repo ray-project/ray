@@ -71,13 +71,14 @@ class GcsActorManagerTest : public ::testing::Test {
   GcsActorManagerTest()
       : mock_actor_scheduler_(new MockActorScheduler()),
         worker_client_(new MockWorkerClient()),
-        gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_,
+        gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_
                            [&](const rpc::Address &addr) { return worker_client_; }) {}
 
   GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   gcs::GcsActorManager gcs_actor_manager_;
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
