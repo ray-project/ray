@@ -13,6 +13,7 @@ from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
+from ray.serve.metric import InMemoryExporter
 
 master_actor = None
 
@@ -21,6 +22,9 @@ def _get_master_actor():
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
+    global master_actor
+    if master_actor is None:
+        master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
     return master_actor
 
 
@@ -57,19 +61,17 @@ def accept_batch(f):
     return f
 
 
-def init(
-        blocking=False,
-        start_server=True,
-        http_host=DEFAULT_HTTP_HOST,
-        http_port=DEFAULT_HTTP_PORT,
-        ray_init_kwargs={
-            "object_store_memory": int(1e8),
-            "num_cpus": max(cpu_count(), 8)
-        },
-        gc_window_seconds=3600,
-        queueing_policy=RoutePolicy.Random,
-        policy_kwargs={},
-):
+def init(blocking=False,
+         start_server=True,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
+         queueing_policy=RoutePolicy.Random,
+         policy_kwargs={},
+         metric_exporter=InMemoryExporter):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -88,12 +90,13 @@ def init(
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
             connection. Default to {"object_store_memory": int(1e8)} for
             performance stability reason
-        gc_window_seconds(int): How long will we keep the metric data in
-            memory. Data older than the gc_window will be deleted. The default
-            is 3600 seconds, which is 1 hour.
         queueing_policy(RoutePolicy): Define the queueing policy for selecting
             the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
+        metric_exporter(ExporterInterface): The class aggregates metrics from
+            all RayServe actors and optionally export them to external
+            services. RayServe has two options built in: InMemoryExporter and
+            PrometheusExporter
     """
     global master_actor
     if master_actor is not None:
@@ -126,7 +129,7 @@ def init(
         name=SERVE_MASTER_NAME,
         max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
     ).remote(queueing_policy.value, policy_kwargs, start_server, http_host,
-             http_port, gc_window_seconds)
+             http_port, metric_exporter)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -278,16 +281,27 @@ def get_handle(endpoint_name,
 
 
 @_ensure_connected
-def stat(percentiles=[50, 90, 95],
-         agg_windows_seconds=[10, 60, 300, 600, 3600]):
+def stat():
     """Retrieve metric statistics about ray serve system.
 
-    Args:
-        percentiles(List[int]): The percentiles for aggregation operations.
-            Default is 50th, 90th, 95th percentile.
-        agg_windows_seconds(List[int]): The aggregation windows in seconds.
-            The longest aggregation window must be shorter or equal to the
-            gc_window_seconds.
+    Returns:
+        metric_stats(Any): Metric information returned by the metric exporter.
+            This can vary by exporter. For the default InMemoryExporter, it
+            returns a list of the following format:
+
+            .. code-block::python
+              [
+                  {"info": {
+                      "name": ...,
+                      "type": COUNTER|MEASURE,
+                      "label_key": label_value,
+                      "label_key": label_value,
+                      ...
+                  }, "value": float}
+              ]
+
+            For PrometheusExporter, it returns the metrics in prometheus format
+            in plain text.
     """
-    [monitor] = retry_actor_failures(master_actor.get_metric_monitor)
-    return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
+    [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+    return ray.get(metric_exporter.inspect_metrics.remote())

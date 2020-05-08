@@ -87,9 +87,9 @@ class DQNTorchModel(TorchModelV2):
             advantage_module.add_module("A", nn.Linear(ins, action_space.n))
             value_module.add_module("V", nn.Linear(ins, 1))
         # Non-dueling:
-        # Q-value layer (use Advantage module's outputs as Q-values).
+        # Q-value layer (use main module's outputs as Q-values).
         else:
-            advantage_module.add_module("Q", nn.Linear(ins, action_space.n))
+            pass
 
         self.advantage_module = advantage_module
         self.value_module = value_module

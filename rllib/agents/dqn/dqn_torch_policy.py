@@ -19,7 +19,7 @@ from ray.rllib.utils import try_import_torch
 torch, nn = try_import_torch()
 F = None
 if nn:
-    F = torch.nn.functional
+    F = nn.functional
 
 
 class QLoss:

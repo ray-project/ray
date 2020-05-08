@@ -211,33 +211,38 @@ ray::Status NodeManager::RegisterGcs() {
       NodeRemoved(data);
     }
   };
+
+  // If the node resource message is received first and then the node message is received,
+  // ForwardTask will throw exception, because it can't get node info.
+  auto on_done = [this](Status status) {
+    RAY_CHECK_OK(status);
+    // Subscribe to resource changes.
+    const auto &resources_changed =
+        [this](const ClientID &id,
+               const gcs::ResourceChangeNotification &resource_notification) {
+          if (resource_notification.IsAdded()) {
+            ResourceSet resource_set;
+            for (auto &entry : resource_notification.GetData()) {
+              resource_set.AddOrUpdateResource(entry.first,
+                                               entry.second->resource_capacity());
+            }
+            ResourceCreateUpdated(id, resource_set);
+          } else {
+            RAY_CHECK(resource_notification.IsRemoved());
+            std::vector<std::string> resource_names;
+            for (auto &entry : resource_notification.GetData()) {
+              resource_names.push_back(entry.first);
+            }
+            ResourceDeleted(id, resource_names);
+          }
+        };
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+        /*subscribe_callback=*/resources_changed,
+        /*done_callback=*/nullptr));
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
-
-  // Subscribe to resource changes.
-  const auto &resources_changed =
-      [this](const ClientID &id,
-             const gcs::ResourceChangeNotification &resource_notification) {
-        if (resource_notification.IsAdded()) {
-          ResourceSet resource_set;
-          for (auto &entry : resource_notification.GetData()) {
-            resource_set.AddOrUpdateResource(entry.first,
-                                             entry.second->resource_capacity());
-          }
-          ResourceCreateUpdated(id, resource_set);
-        } else {
-          RAY_CHECK(resource_notification.IsRemoved());
-          std::vector<std::string> resource_names;
-          for (auto &entry : resource_notification.GetData()) {
-            resource_names.push_back(entry.first);
-          }
-          ResourceDeleted(id, resource_names);
-        }
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
-      /*subscribe_callback=*/resources_changed,
-      /*done_callback=*/nullptr));
+      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added =
@@ -435,16 +440,11 @@ void NodeManager::WarnResourceDeadlock() {
     return;
   }
 
-  // suppress duplicates warning messages
-  if (resource_deadlock_warned_) {
-    return;
-  }
-
   // The node is full of actors and no progress has been made for some time.
   // If there are any pending tasks, build a warning.
   std::ostringstream error_message;
   ray::Task exemplar;
-  bool should_warn = false;
+  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
 
@@ -456,14 +456,23 @@ void NodeManager::WarnResourceDeadlock() {
     } else {
       pending_tasks += 1;
     }
-    if (!should_warn) {
+    if (!any_pending) {
       exemplar = task;
-      should_warn = true;
+      any_pending = true;
     }
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
-  if (should_warn) {
+  if (any_pending) {
+    // Actor references may be caught in cycles, preventing them from being deleted.
+    // Trigger global GC to hopefully free up resource slots.
+    TriggerGlobalGC();
+
+    // Suppress duplicates warning messages.
+    if (resource_deadlock_warned_) {
+      return;
+    }
+
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
@@ -514,17 +523,16 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from client id " << node_id;
+  if (1 == cluster_resource_map_.count(node_id)) {
+    RAY_LOG(DEBUG) << "Received notification of a new node that already exists: "
+                   << node_id;
+    return;
+  }
+
   if (node_id == self_node_id_) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
     cluster_resource_map_[node_id] = initial_config_.resource_config;
-    return;
-  }
-
-  auto entry = remote_node_manager_clients_.find(node_id);
-  if (entry != remote_node_manager_clients_.end()) {
-    RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
-                   << node_id;
     return;
   }
 
@@ -565,15 +573,16 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // not be necessary.
 
   // Remove the client from the resource map.
-  cluster_resource_map_.erase(node_id);
+  if (0 == cluster_resource_map_.erase(node_id)) {
+    RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
+                   << ".";
+    return;
+  }
 
   // Remove the node manager client.
   const auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry != remote_node_manager_clients_.end()) {
     remote_node_manager_clients_.erase(client_entry);
-  } else {
-    RAY_LOG(WARNING) << "Received NodeRemoved callback for an unknown client " << node_id
-                     << ".";
   }
 
   // For any live actors that were on the dead node, broadcast a notification
@@ -3678,6 +3687,10 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
+  TriggerGlobalGC();
+}
+
+void NodeManager::TriggerGlobalGC() {
   RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.

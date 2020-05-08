@@ -170,6 +170,9 @@ class GcsRpcClient {
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
 
+  /// Get task lease information from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTaskLease, task_info_grpc_client_, )
+
   /// Attempt task reconstruction to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AttemptTaskReconstruction,
                              task_info_grpc_client_, )

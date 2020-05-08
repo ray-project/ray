@@ -241,6 +241,15 @@ class TaskInfoAccessor {
   virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                                    const StatusCallback &callback) = 0;
 
+  /// Get task lease information from GCS asynchronously.
+  ///
+  /// \param task_id The ID of the task to look up in GCS.
+  /// \param callback Callback that is called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) = 0;
+
   /// Subscribe asynchronously to the event that the given task lease is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.
@@ -383,7 +392,8 @@ class NodeInfoAccessor {
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is
-  /// added or a node is removed.
+  /// added or a node is removed. The callback needs to be idempotent because it will also
+  /// be called for existing nodes.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToNodeChange(
