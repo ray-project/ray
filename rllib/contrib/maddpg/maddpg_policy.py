@@ -48,6 +48,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
         config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
+        self.config = config
         self.global_step = tf.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
