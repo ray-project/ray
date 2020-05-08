@@ -119,7 +119,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
                                                          bool dead) {
   absl::MutexLock lock(&mu_);
   if (!dead) {
-    // We're reconstructing the actor, so erase the client for now. The new client
+    // We're restarting the actor, so erase the client for now. The new client
     // will be inserted once actor reconstruction completes. We don't erase the
     // client when the actor is DEAD, so that all further tasks will be failed.
     rpc_clients_.erase(actor_id);

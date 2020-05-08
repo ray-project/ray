@@ -55,7 +55,7 @@ int64_t GetExpectedTaskCounter(
 struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
-  int reconstructing_actors = 0;
+  int restarting_actors = 0;
   int max_num_handles = 0;
 };
 
@@ -67,7 +67,7 @@ ActorStats GetActorStatisticalData(
     if (pair.second.GetState() == ray::rpc::ActorTableData::ALIVE) {
       item.live_actors += 1;
     } else if (pair.second.GetState() == ray::rpc::ActorTableData::RESTARTING) {
-      item.reconstructing_actors += 1;
+      item.restarting_actors += 1;
     } else {
       item.dead_actors += 1;
     }
@@ -2633,13 +2633,13 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // https://github.com/ray-project/ray/issues/5524, please see the issue
     // description for more information.
     if (actor_entry->second.GetState() != ActorTableData::RESTARTING) {
-      RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
+      RAY_LOG(WARNING) << "Actor not in restarting state, most likely it "
                        << "died before creation handler could run. Actor state is "
                        << actor_entry->second.GetState();
     }
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
-    // We are reconstructing the actor, so increment its num_restarts
+    // We are restarting the actor, so increment its num_restarts
     actor_info_ptr->set_num_restarts(actor_info_ptr->num_restarts() + 1);
   }
 
@@ -3312,7 +3312,7 @@ std::string NodeManager::DebugString() const {
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   result << "\n- num live actors: " << statistical_data.live_actors;
-  result << "\n- num reconstructing actors: " << statistical_data.reconstructing_actors;
+  result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
   result << "\n- max num handles: " << statistical_data.max_num_handles;
 
@@ -3709,8 +3709,8 @@ void NodeManager::RecordMetrics() {
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::ActorStats().Record(statistical_data.live_actors,
                              {{stats::ValueTypeKey, "live_actors"}});
-  stats::ActorStats().Record(statistical_data.reconstructing_actors,
-                             {{stats::ValueTypeKey, "reconstructing_actors"}});
+  stats::ActorStats().Record(statistical_data.restarting_actors,
+                             {{stats::ValueTypeKey, "restarting_actors"}});
   stats::ActorStats().Record(statistical_data.dead_actors,
                              {{stats::ValueTypeKey, "dead_actors"}});
   stats::ActorStats().Record(statistical_data.max_num_handles,

@@ -125,7 +125,7 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
 
   if (!actor_id.IsNil()) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " failed, reconstructing actor " << actor_id;
+                  << " failed, restarting actor " << actor_id;
     // Reconstruct the actor.
     ReconstructActor(actor_id, need_reschedule);
   }
