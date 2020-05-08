@@ -108,7 +108,6 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[OPPONENT_ACTION])
 
     policy.loss_obj = PPOLoss(
-        policy.action_space,
         dist_class,
         model,
         train_batch[Postprocessing.VALUE_TARGETS],
@@ -125,8 +124,7 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
-        use_gae=policy.config["use_gae"],
-        model_config=policy.config["model"])
+        use_gae=policy.config["use_gae"])
 
     return policy.loss_obj.loss
 
@@ -159,7 +157,8 @@ CCPPO = PPOTFPolicy.with_updates(
         CentralizedValueMixin
     ])
 
-CCTrainer = PPOTrainer.with_updates(name="CCPPOTrainer", default_policy=CCPPO)
+CCTrainer = PPOTrainer.with_updates(
+    name="CCPPOTrainer", default_policy=CCPPO, get_policy_class=None)
 
 if __name__ == "__main__":
     args = parser.parse_args()

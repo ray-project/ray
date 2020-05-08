@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, MultiDiscrete, Tuple
+from gym.spaces import Discrete, Box, MultiDiscrete
 import numpy as np
 import tree
 from typing import Union
@@ -9,6 +9,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
+from ray.rllib.utils.space_utils import get_base_struct_from_space
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -35,13 +36,8 @@ class Random(Exploration):
             framework=framework,
             **kwargs)
 
-        # Determine py_func types, depending on our action-space.
-        if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
-                (isinstance(self.action_space, Tuple) and
-                 isinstance(self.action_space[0], (Discrete, MultiDiscrete))):
-            self.dtype_sample, self.dtype = (tf.int64, tf.int32)
-        else:
-            self.dtype_sample, self.dtype = (tf.float64, tf.float32)
+        self.action_space_struct = get_base_struct_from_space(
+            self.action_space)
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -59,14 +55,46 @@ class Random(Exploration):
 
     def get_tf_exploration_action_op(self, action_dist, explore):
         def true_fn():
-            action = tf.py_function(self.action_space.sample, [],
-                                    self.dtype_sample)
-            # Will be unnecessary, once we support batch/time-aware Spaces.
-            return tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
+            batch_size = 1
+            req = force_tuple(
+                action_dist.required_model_output_shape(
+                    self.action_space, self.model.model_config))
+            # Add a batch dimension?
+            if len(action_dist.inputs.shape) == len(req) + 1:
+                batch_size = tf.shape(action_dist.inputs)[0]
+
+            # Function to produce random samples from primitive space
+            # components: (Multi)Discrete or Box.
+            def random_component(component):
+                if isinstance(component, Discrete):
+                    return tf.random.uniform(
+                        shape=(batch_size, ) + component.shape,
+                        maxval=component.n,
+                        dtype=component.dtype)
+                elif isinstance(component, MultiDiscrete):
+                    return tf.random.uniform(
+                        shape=(batch_size, ) + component.shape,
+                        maxval=component.nvec,
+                        dtype=component.dtype)
+                elif isinstance(component, Box):
+                    if component.bounded_above.all() and \
+                            component.bounded_below.all():
+                        return tf.random.uniform(
+                            shape=(batch_size, ) + component.shape,
+                            minval=component.low,
+                            maxval=component.high,
+                            dtype=component.dtype)
+                    else:
+                        return tf.random.normal(
+                            shape=(batch_size, ) + component.shape,
+                            dtype=component.dtype)
+
+            actions = tree.map_structure(random_component,
+                                         self.action_space_struct)
+            return actions
 
         def false_fn():
-            return tf.cast(
-                action_dist.deterministic_sample(), dtype=self.dtype)
+            return action_dist.deterministic_sample()
 
         action = tf.cond(
             pred=tf.constant(explore, dtype=tf.bool)
@@ -81,15 +109,17 @@ class Random(Exploration):
 
     def get_torch_exploration_action(self, action_dist, explore):
         if explore:
-            # Unsqueeze will be unnecessary, once we support batch/time-aware
-            # Spaces.
-            a = self.action_space.sample()
             req = force_tuple(
                 action_dist.required_model_output_shape(
                     self.action_space, self.model.model_config))
-            # Add a batch dimension.
+            # Add a batch dimension?
             if len(action_dist.inputs.shape) == len(req) + 1:
-                a = np.expand_dims(a, 0)
+                batch_size = action_dist.inputs.shape[0]
+                a = np.stack(
+                    [self.action_space.sample() for _ in range(batch_size)])
+            else:
+                a = self.action_space.sample()
+            # Convert action to torch tensor.
             action = torch.from_numpy(a).to(self.device)
         else:
             action = action_dist.deterministic_sample()
