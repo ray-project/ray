@@ -83,11 +83,13 @@ upload_wheels() {
   if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
   if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
   local local_dir="python/dist"
-  local remote_dir="${branch}/${commit}"
   if [ -d "${local_dir}" ]; then
-    if command -V aws; then
-      aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
-    fi
+    local remote_dir
+    for remote_dir in latest "${branch}/${commit}"; do
+      if command -V aws; then
+        aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
+      fi
+    done
   fi
 }
 
