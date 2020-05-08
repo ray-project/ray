@@ -129,7 +129,7 @@ class GcsActorManager {
   /// down.
   ///
   /// \param node_id The specified node id.
-  void ReconstructActorsOnNode(const ClientID &node_id);
+  void RestartActorsOnNode(const ClientID &node_id);
 
   /// Reconstruct actor associated with the specified node_id and worker_id.
   /// The actor may be pending or already created.

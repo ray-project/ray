@@ -173,7 +173,7 @@ void GcsServer::InitGcsActorManager() {
                                                 std::shared_ptr<rpc::GcsNodeInfo> node) {
     // All of the related actors should be reconstructed when a node is removed from the
     // GCS.
-    gcs_actor_manager_->ReconstructActorsOnNode(ClientID::FromBinary(node->node_id()));
+    gcs_actor_manager_->RestartActorsOnNode(ClientID::FromBinary(node->node_id()));
   });
   RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {

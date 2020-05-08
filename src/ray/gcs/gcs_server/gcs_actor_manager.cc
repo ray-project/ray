@@ -131,7 +131,7 @@ void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,
   }
 }
 
-void GcsActorManager::ReconstructActorsOnNode(const ClientID &node_id) {
+void GcsActorManager::RestartActorsOnNode(const ClientID &node_id) {
   // Cancel the scheduling of all related actors.
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   for (auto &actor_id : scheduling_actor_ids) {
