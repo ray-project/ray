@@ -119,7 +119,7 @@ py_test(
 py_test(
     name = "test_ars",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ars/tests/test_ars.py"]
 )
 
@@ -149,7 +149,7 @@ py_test(
 py_test(
     name = "test_es",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/es/tests/test_es.py"]
 )
 

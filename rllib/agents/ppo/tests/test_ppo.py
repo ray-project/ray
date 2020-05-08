@@ -39,7 +39,7 @@ class TestPPO(unittest.TestCase):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
-            check_compute_action(trainer)
+            check_compute_action(trainer, include_prev_action_reward=True)
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""

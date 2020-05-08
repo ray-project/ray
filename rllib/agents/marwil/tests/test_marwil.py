@@ -28,7 +28,7 @@ class TestMARWIL(unittest.TestCase):
             trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
-            check_compute_action(trainer)
+            check_compute_action(trainer, include_prev_action_reward=True)
 
 
 if __name__ == "__main__":

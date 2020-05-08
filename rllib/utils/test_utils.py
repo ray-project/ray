@@ -245,11 +245,13 @@ def check_learning_achieved(tune_results, min_reward):
     print("ok")
 
 
-def check_compute_action(trainer):
+def check_compute_action(trainer, include_prev_action_reward=False):
     """Tests different combinations of arguments for trainer.compute_action.
 
     Args:
         trainer (Trainer): The trainer object to test.
+        include_prev_action_reward (bool): Whether to include the prev-action
+            and -reward in the `compute_action` call.
 
     Throws:
         ValueError: If anything unexpected happens.
@@ -264,8 +266,15 @@ def check_compute_action(trainer):
     for explore in [True, False]:
         for full_fetch in [True, False]:
             obs = np.clip(obs_space.sample(), -1.0, 1.0)
+            action_in = action_space.sample() \
+                if include_prev_action_reward else None
+            reward_in = 1.0 if include_prev_action_reward else None
             action = trainer.compute_action(
-                obs, explore=explore, full_fetch=full_fetch)
+                obs,
+                prev_action=action_in,
+                prev_reward=reward_in,
+                explore=explore,
+                full_fetch=full_fetch)
             if full_fetch:
                 action, _, _ = action
             if not action_space.contains(action):
