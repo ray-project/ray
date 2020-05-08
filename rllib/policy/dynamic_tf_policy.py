@@ -156,11 +156,15 @@ class DynamicTFPolicy(TFPolicy):
             self.model = make_model(self, obs_space, action_space, config)
         else:
             self.model = ModelCatalog.get_model_v2(
-                obs_space,
-                action_space,
-                logit_dim,
-                self.config["model"],
+                obs_space=obs_space,
+                action_space=action_space,
+                num_outputs=logit_dim,
+                model_config=self.config["model"],
                 framework="tf")
+            # NOTE: Adding below line will break existing custom models
+            # that do not expect extra options in **kwargs but rather in
+            # model_config["custom_options"].
+            # **self.config["model"].get("custom_options", {}))
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration()
