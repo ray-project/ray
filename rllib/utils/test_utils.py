@@ -227,6 +227,24 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
+def check_learning_achieved(tune_results, min_reward):
+    """Throws an error if `min_reward` is not reached within tune_results.
+
+    Checks the last iteration found in tune_results for its
+    "episode_reward_mean" value and compares it to `min_reward`.
+
+    Args:
+        tune_results: The tune.run returned results object.
+        min_reward (float): The min reward that must be reached.
+
+    Throws:
+        ValueError: If `min_reward` not reached.
+    """
+    if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
+        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
+    print("ok")
+
+
 def check_compute_action(trainer):
     """Tests different combinations of arguments for trainer.compute_action.
 
@@ -245,12 +263,11 @@ def check_compute_action(trainer):
     action_space = pol.action_space
     for explore in [True, False]:
         for full_fetch in [True, False]:
-            extra_fetches = None
             obs = np.clip(obs_space.sample(), -1.0, 1.0)
             action = trainer.compute_action(
                 obs, explore=explore, full_fetch=full_fetch)
             if full_fetch:
-                action, _, extra_fetches = action
+                action, _, _ = action
             if not action_space.contains(action):
                 raise ValueError(
                     "Returned action ({}) of trainer {} not in Env's "

@@ -39,8 +39,11 @@ class Exploration:
         self.framework = check_framework(framework)
         # The device on which the Model has been placed.
         # This Exploration will be on the same device.
-        self.device = None if not isinstance(self.model, nn.Module) else \
-            next(self.model.parameters()).device
+        self.device = None
+        if isinstance(self.model, nn.Module):
+            params = list(self.model.parameters())
+            if params:
+                self.device = params[0].device
 
     @DeveloperAPI
     def before_compute_actions(self,
