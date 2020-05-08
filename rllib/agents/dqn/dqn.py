@@ -84,6 +84,11 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # In multi-agent mode, whether to replay experiences from the same time
+    # step for all policies. This is required for MADDPG.
+    "multiagent_sync_replay": False,
+    # Callback to run before learning on a multi-agent batch of experiences.
+    "before_learn_on_batch": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -312,6 +317,7 @@ def execution_plan(workers, config):
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
+        multiagent_sync_replay=config.get("multiagent_sync_replay"),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
@@ -341,7 +347,9 @@ def execution_plan(workers, config):
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
     replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
         .for_each(TrainOneStep(workers)) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(

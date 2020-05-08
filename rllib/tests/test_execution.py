@@ -50,7 +50,7 @@ def test_concurrently(ray_start_regular_shared):
     a = iter_list([1, 2, 3])
     b = iter_list([4, 5, 6])
     c = Concurrently([a, b], mode="async")
-    assert c.take(6) == [1, 2, 3, 4, 5, 6]
+    assert c.take(6) == [1, 4, 2, 5, 3, 6]
 
 
 def test_concurrently_output(ray_start_regular_shared):
