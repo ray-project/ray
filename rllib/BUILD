@@ -1247,7 +1247,7 @@ py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "small",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
 )
@@ -1256,7 +1256,7 @@ py_test(
     name = "examples/autoregressive_action_dist_torch",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "small",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--torch", "--stop-reward=150", "--num-cpus=4"]
 )
@@ -1265,7 +1265,7 @@ py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=80"]
 )
@@ -1274,7 +1274,7 @@ py_test(
     name = "examples/batch_norm_model_ppo_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=80"]
 )
@@ -1378,6 +1378,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_2_tf",
+    main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/centralized_critic_2.py"],
@@ -1386,6 +1387,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_2_torch",
+    main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/centralized_critic_2.py"],
@@ -1567,6 +1569,7 @@ py_test(
 
 py_test(
     name = "examples/hierarchical_training_tf",
+    main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
     size = "small",
     srcs = ["examples/hierarchical_training.py"],
@@ -1575,6 +1578,7 @@ py_test(
 
 py_test(
     name = "examples/hierarchical_training_torch",
+    main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
     size = "small",
     srcs = ["examples/hierarchical_training.py"],
