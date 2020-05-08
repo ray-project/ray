@@ -115,6 +115,14 @@ py_test(
     srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
 )
 
+# ARS
+py_test(
+    name = "test_ars",
+    tags = ["agents_dir_X"],
+    size = "medium",
+    srcs = ["agents/ars/tests/test_ars.py"]
+)
+
 # DDPGTrainer
 py_test(
     name = "test_ddpg",
@@ -137,18 +145,26 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
-# IMPALA
+# ES
 py_test(
-    name = "test_vtrace",
+    name = "test_es",
     tags = ["agents_dir"],
-    size = "small",
-    srcs = ["agents/impala/tests/test_vtrace.py"]
+    size = "medium",
+    srcs = ["agents/es/tests/test_es.py"]
 )
+
+# IMPALA
 py_test(
     name = "test_impala",
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/impala/tests/test_impala.py"]
+)
+py_test(
+    name = "test_vtrace",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
 # MARWILTrainer
