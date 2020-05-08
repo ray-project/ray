@@ -1776,7 +1776,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
 )
 
 py_test(
@@ -1785,5 +1785,5 @@ py_test(
     tags = ["examples", "examples_U"],
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
+    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
 )
