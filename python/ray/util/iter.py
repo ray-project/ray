@@ -870,8 +870,12 @@ class LocalIterator(Generic[T]):
     def duplicate(self, n) -> List["LocalIterator[T]"]:
         """Copy this iterator `n` times, duplicating the data.
 
+        The child iterators will be prioritized by how much of the parent
+        stream they have consumed. That is, we will not allow children to fall
+        behind, since that can cause infinite memory buildup in this operator.
+
         Returns:
-            List[LocalIterator[T]]: multiple iterators that each have a copy
+            List[LocalIterator[T]]: child iterators that each have a copy
                 of the data of this iterator.
         """
 
@@ -891,9 +895,16 @@ class LocalIterator(Generic[T]):
         def make_next(i):
             def gen(timeout):
                 while True:
-                    if len(queues[i]) == 0:
-                        fill_next(timeout)
-                    yield queues[i].popleft()
+                    my_len = len(queues[i])
+                    max_len = max(len(q) for q in queues)
+                    # Yield to let other iterators that have fallen behind
+                    # process more items.
+                    if my_len < max_len:
+                        yield _NextValueNotReady()
+                    else:
+                        if len(queues[i]) == 0:
+                            fill_next(timeout)
+                        yield queues[i].popleft()
 
             return gen
 
@@ -939,21 +950,13 @@ class LocalIterator(Generic[T]):
         def build_union(timeout=None):
             while True:
                 for it in list(active):
-                    # Yield items from the iterator until _NextValueNotReady is
-                    # found, then switch to the next iterator.
-                    # To avoid starvation, we yield at most max_yield items per
-                    # iterator before switching.
-                    if deterministic:
-                        max_yield = 1  # Forces round robin.
-                    else:
-                        max_yield = 20
                     try:
-                        for _ in range(max_yield):
-                            item = next(it)
-                            if isinstance(item, _NextValueNotReady):
-                                break
-                            else:
+                        item = next(it)
+                        if isinstance(item, _NextValueNotReady):
+                            if timeout is not None:
                                 yield item
+                        else:
+                            yield item
                     except StopIteration:
                         active.remove(it)
                 if not active:

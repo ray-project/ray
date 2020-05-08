@@ -1683,22 +1683,6 @@ py_test(
     args = ["--num-cpus=4"]
 )
 
-sh_test(
-    name = "examples/serving/test_local_inference",
-    tags = ["examples", "examples_L", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_local_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "examples/serving/test_remote_inference",
-    tags = ["examples", "examples_R", "exclusive"],
-    size = "medium",
-    srcs = ["examples/serving/test_remote_inference.sh"],
-    data = glob(["examples/serving/*.py"]),
-)
-
 py_test(
     name = "examples/rock_paper_scissors_multiagent_tf",
     main = "examples/rock_paper_scissors_multiagent.py",
@@ -1715,6 +1699,30 @@ py_test(
     size = "small",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
+)
+
+sh_test(
+    name = "examples/serving/test_local_inference",
+    tags = ["examples", "examples_S", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "examples/serving/test_remote_inference",
+    tags = ["examples", "examples_S", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+py_test(
+    name = "examples/two_trainer_workflow",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--num-iters=2"]
 )
 
 py_test(
