@@ -4,7 +4,7 @@ from typing import List
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    SampleBatchType, _get_global_vars
+    SampleBatchType
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
