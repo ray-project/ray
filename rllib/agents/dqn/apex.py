@@ -3,7 +3,9 @@ import copy
 
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
+    SampleBatchType, _get_shared_metrics
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
@@ -84,8 +86,34 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+# Update worker weights as they finish generating experiences.
+class UpdateWorkerWeights:
+    def __init__(self, learner_thread, workers, max_weight_sync_delay):
+        self.learner_thread = learner_thread
+        self.workers = workers
+        self.steps_since_update = collections.defaultdict(int)
+        self.max_weight_sync_delay = max_weight_sync_delay
+        self.weights = None
+
+    def __call__(self, item: ("ActorHandle", SampleBatchType)):
+        actor, batch = item
+        self.steps_since_update[actor] += batch.count
+        if self.steps_since_update[actor] >= self.max_weight_sync_delay:
+            # Note that it's important to pull new weights once
+            # updated to avoid excessive correlation between actors.
+            if self.weights is None or self.learner_thread.weights_updated:
+                self.learner_thread.weights_updated = False
+                self.weights = ray.put(
+                    self.workers.local_worker().get_weights())
+            actor.set_weights.remote(self.weights)
+            self.steps_since_update[actor] = 0
+            # Update metrics.
+            metrics = LocalIterator.get_metrics()
+            metrics.counters["num_weight_syncs"] += 1
+
+
 # Experimental distributed execution impl; enable with "use_exec_api": True.
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     # TODO(ekl) support batch replay options
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
@@ -99,46 +127,21 @@ def execution_plan(workers, config):
         config["prioritized_replay_eps"],
     ], num_replay_buffer_shards)
 
+    # Start the learner thread.
+    learner_thread = LearnerThread(workers.local_worker())
+    learner_thread.start()
+
     # Update experience priorities post learning.
-    def update_prio_and_stats(item):
+    def update_prio_and_stats(item: ("ActorHandle", dict, int)):
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer
         metrics.timers["learner_overall"] = learner_thread.overall_timer
-
-    # Update worker weights as they finish generating experiences.
-    class UpdateWorkerWeights:
-        def __init__(self, learner_thread, workers, max_weight_sync_delay):
-            self.learner_thread = learner_thread
-            self.workers = workers
-            self.steps_since_update = collections.defaultdict(int)
-            self.max_weight_sync_delay = max_weight_sync_delay
-            self.weights = None
-
-        def __call__(self, item):
-            actor, batch = item
-            self.steps_since_update[actor] += batch.count
-            if self.steps_since_update[actor] >= self.max_weight_sync_delay:
-                # Note that it's important to pull new weights once
-                # updated to avoid excessive correlation between actors.
-                if self.weights is None or self.learner_thread.weights_updated:
-                    self.learner_thread.weights_updated = False
-                    self.weights = ray.put(
-                        self.workers.local_worker().get_weights())
-                actor.set_weights.remote(self.weights)
-                self.steps_since_update[actor] = 0
-                # Update metrics.
-                metrics = LocalIterator.get_metrics()
-                metrics.counters["num_weight_syncs"] += 1
-
-    # Start the learner thread.
-    learner_thread = LearnerThread(workers.local_worker())
-    learner_thread.start()
 
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our replay buffer actors. Update

@@ -1455,6 +1455,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/two_trainer_workflow",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
     name = "examples/nested_action_spaces_ppo",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
