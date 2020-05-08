@@ -3,7 +3,7 @@ import numpy as np
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -75,7 +75,7 @@ class RNNModel(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchRNNModel(RecurrentTorchModel):
+class TorchRNNModel(TorchRNN):
     def __init__(self,
                  obs_space,
                  action_space,
@@ -114,7 +114,7 @@ class TorchRNNModel(RecurrentTorchModel):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value
 
-    @override(RecurrentTorchModel)
+    @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
         """Feeds `inputs` (B x T x ..) through the Gru Unit.
 

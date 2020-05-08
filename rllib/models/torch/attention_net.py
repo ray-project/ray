@@ -8,14 +8,15 @@
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import sequence_mask
 
-tf = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class MultiHeadAttention(tf.keras.layers.Layer):
+class MultiHeadAttention(nn.Module):
     """A multi-head attention layer described in [1]."""
 
     def __init__(self, out_dim, num_heads, head_dim, **kwargs):
@@ -30,7 +31,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
             tf.keras.layers.Dense(out_dim, use_bias=False))
 
     def call(self, inputs):
-        L = tf.shape(inputs)[1]  # length of segment
+        L = inputs.shape[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
 
@@ -39,26 +40,26 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         queries, keys, values = tf.split(qkv, 3, -1)
         queries = queries[:, -L:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [-1, L, H, D])
-        keys = tf.reshape(keys, [-1, L, H, D])
-        values = tf.reshape(values, [-1, L, H, D])
+        queries = torch.reshape(queries, [-1, L, H, D])
+        keys = torch.reshape(keys, [-1, L, H, D])
+        values = torch.reshape(values, [-1, L, H, D])
 
-        score = tf.einsum("bihd,bjhd->bijh", queries, keys)
+        score = torch.einsum("bihd,bjhd->bijh", queries, keys)
         score = score / D ** 0.5
 
         # causal mask of the same length as the sequence
-        mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
+        mask = sequence_mask(torch.range(1, L + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = tf.nn.softmax(masked_score, axis=2)
+        wmat = nn.functional.softmax(masked_score, axis=2)
 
-        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+        out = torch.einsum("bijh,bjhd->bihd", wmat, values)
+        out = torch.reshape(out, torch.cat((out.shape[:2], [H * D]), dim=0))
         return self._linear_layer(out)
 
 
-class RelativeMultiHeadAttention(tf.keras.layers.Layer):
+class RelativeMultiHeadAttention(nn.Module):
     def __init__(self,
                  out_dim,
                  num_heads,
@@ -67,7 +68,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
                  input_layernorm=False,
                  output_activation=None,
                  **kwargs):
-        super().__init__(**kwargs)
+        super(RelativeMultiHeadAttention, self).__init__(**kwargs)
 
         # No bias or non-linearity.
         self._num_heads = num_heads
@@ -87,10 +88,10 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         self._input_layernorm = None
         if input_layernorm:
-            self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
+            self._input_layernorm = tf.keras.layers.LayerNormalization(dim=-1)
 
     def call(self, inputs, memory=None):
-        L = tf.shape(inputs)[1]  # length of segment
+        L = inputs.shape[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
 
@@ -98,8 +99,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
-            inputs = np.concatenate(
-                (tf.stop_gradient(memory), inputs), axis=1)
+            inputs = np.concatenate((memory.detach(), inputs), axis=1)
 
         if self._input_layernorm is not None:
             inputs = self._input_layernorm(inputs)
@@ -109,27 +109,27 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         queries, keys, values = tf.split(qkv, 3, -1)
         queries = queries[:, -L:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [-1, L, H, D])
-        keys = tf.reshape(keys, [-1, L + M, H, D])
-        values = tf.reshape(values, [-1, L + M, H, D])
+        queries = torch.reshape(queries, [-1, L, H, D])
+        keys = torch.reshape(keys, [-1, L + M, H, D])
+        values = torch.reshape(values, [-1, L + M, H, D])
 
         rel = self._pos_proj(self._rel_pos_encoder)
-        rel = tf.reshape(rel, [L, H, D])
+        rel = torch.reshape(rel, [L, H, D])
 
-        score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, rel)
+        score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
+        pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, rel)
         score = score + self.rel_shift(pos_score)
         score = score / D**0.5
 
         # causal mask of the same length as the sequence
-        mask = tf.sequence_mask(tf.range(M + 1, L + M + 1), dtype=score.dtype)
+        mask = sequence_mask(torch.range(M + 1, L + M + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = tf.nn.softmax(masked_score, axis=2)
+        wmat = nn.functional.softmax(masked_score, axis=2)
 
-        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+        out = torch.einsum("bijh,bjhd->bihd", wmat, values)
+        out = torch.reshape(out, torch.cat((out.shape[:2], [H * D]), dim=0))
         return self._linear_layer(out)
 
     @staticmethod
@@ -137,29 +137,29 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         # Transposed version of the shift approach implemented by Dai et al. 2019
         # https://github.com/kimiyoung/transformer-xl/blob/
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
-        x_size = tf.shape(x)
-
+        x_size = x.shape
+    
         x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
-        x = tf.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
+        x = torch.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
         x = tf.slice(x, [0, 1, 0, 0], [-1, -1, -1, -1])
-        x = tf.reshape(x, x_size)
+        x = torch.reshape(x, x_size)
 
         return x
 
 
-class PositionwiseFeedforward(tf.keras.layers.Layer):
+class PositionwiseFeedforward(nn.Module):
     """A 2x linear layer with ReLU activation in between described in [1]."""
 
     def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
         super().__init__(**kwargs)
 
-        self._hidden_layer = tf.keras.layers.Dense(
-            hidden_dim,
-            activation=tf.nn.relu,
+        self._hidden_layer = SlimFC(
+            num_inputs?, hidden_dim,
+            activation_fn=nn.ReLU,
         )
 
-        self._output_layer = tf.keras.layers.Dense(
-            out_dim, activation=output_activation)
+        self._output_layer = SlimFC(
+            hidden_dim, out_dim, activation_fn=output_activation)
 
     def call(self, inputs, **kwargs):
         del kwargs
@@ -167,7 +167,7 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
         return self._output_layer(output)
 
 
-class SkipConnection(tf.keras.layers.Layer):
+class SkipConnection(nn.Module):
     """Skip connection layer.
 
     If no fan-in layer is specified, then this layer behaves as a regular
@@ -175,7 +175,7 @@ class SkipConnection(tf.keras.layers.Layer):
     """
 
     def __init__(self, layer, fan_in_layer=None, **kwargs):
-        super().__init__(**kwargs)
+        super(SkipConnection, self).__init__(**kwargs)
         self._fan_in_layer = fan_in_layer
         self._layer = layer
 
@@ -190,10 +190,10 @@ class SkipConnection(tf.keras.layers.Layer):
         return outputs
 
 
-class GRUGate(tf.keras.layers.Layer):
+class GRUGate(nn.Module):
 
     def __init__(self, init_bias=0., **kwargs):
-        super().__init__(**kwargs)
+        super(GRUGate, self).__init__(**kwargs)
         self._init_bias = init_bias
 
     def build(self, input_shape):
@@ -266,7 +266,7 @@ class GRUGate(tf.keras.layers.Layer):
 
 #            layers.append(
 #                SkipConnection(PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
-#            layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+#            layers.append(tf.keras.layers.LayerNormalization(dim=-1))
 
 #        self.base_model = tf.keras.Sequential(layers)
 #        self.register_variables(self.base_model.variables)
@@ -294,14 +294,16 @@ class GTrXLNet(RecurrentNetwork):
 
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
+        in_size = self.max_seq_len * self.obs_dim
 
-        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
+        pos_embedding = self.relative_position_embedding(
+            self.max_seq_len, attn_dim)
 
-        input_layer = tf.keras.layers.Input(
-            shape=(self.max_seq_len, self.obs_dim), name="inputs")
+        #input_layer = tf.keras.layers.Input(
+        #    shape=(self.max_seq_len, self.obs_dim), name="inputs")
 
         # Collect the layers for the Transformer.
-        layers = [tf.keras.layers.Dense(attn_dim)]
+        layers = [SlimFC(in_size, attn_dim, TODO: whats the equivalent for keras.Dense? options)]
 
         for _ in range(num_layers):
             layers.append(
@@ -319,15 +321,15 @@ class GTrXLNet(RecurrentNetwork):
             layers.append(
                 SkipConnection(
                     tf.keras.Sequential(
-                        (tf.keras.layers.LayerNormalization(axis=-1),
+                        (tf.keras.layers.LayerNormalization(dim=-1),
                          PositionwiseFeedforward(
-                             attn_dim, ff_hidden_dim,
+                             in_dim?, attn_dim, ff_hidden_dim,
                              output_activation=tf.nn.relu))),
                     fan_in_layer=GRUGate(init_gate_bias),
                 ))
 
-        self.trxl_core = tf.keras.Sequential(layers)
-        trxl_out = self.trxl_core(input_layer)
+        self.trxl_core = nn.Sequential(layers)
+        TODO in forward: trxl_out = self.trxl_core(input_layer)
 
         #trxl_out = attention.make_GRU_TrXL(
         #    seq_length=model_config["max_seq_len"],
@@ -362,10 +364,10 @@ class GTrXLNet(RecurrentNetwork):
         # the current inputs to the end and only keep the most recent (up to
         # max_seq_len). This allows us to deal with timestep-wise inference
         # and full sequence training with the same logic.
-        state = tf.concat((state, inputs), axis=1)[:, -self.max_seq_len:]
+        state = torch.cat((state, inputs), dim=1)[:, -self.max_seq_len:]
         logits, self._value_out = self.trxl_model(state)
 
-        in_T = tf.shape(inputs)[1]
+        in_T = inputs.shape[1]
         logits = logits[:, -in_T:]
         self._value_out = self._value_out[:, -in_T:]
 
@@ -377,11 +379,11 @@ class GTrXLNet(RecurrentNetwork):
 
     @override(ModelV2)
     def value_function(self):
-        return tf.reshape(self._value_out, [-1])
+        return torch.reshape(self._value_out, [-1])
 
     @staticmethod
     def relative_position_embedding(seq_length, out_dim):
-        inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
-        pos_offsets = tf.range(seq_length - 1., -1., -1.)
+        inverse_freq = 1 / (10000 ** (torch.range(0, out_dim, 2.0) / out_dim))
+        pos_offsets = torch.range(seq_length - 1., -1., -1.)
         inputs = pos_offsets[:, None] * inverse_freq[None, :]
-        return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)
+        return torch.cat((torch.sin(inputs), torch.cos(inputs)), dim=-1)

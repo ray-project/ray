@@ -3,7 +3,7 @@ import numpy as np
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -89,7 +89,7 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
+class TorchMobileV2PlusRNNModel(TorchRNN):
     """A conv. + recurrent torch net example using a pre-trained MobileNet."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -115,7 +115,7 @@ class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
         self.logits = SlimFC(self.lstm_state_size, self.num_outputs)
         self.value_branch = SlimFC(self.lstm_state_size, 1)
 
-    @override(RecurrentNetwork)
+    @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
         # Create image dims.
         vision_in = torch.reshape(inputs, [-1] + self.cnn_shape)

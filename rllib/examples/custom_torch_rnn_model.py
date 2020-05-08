@@ -5,7 +5,7 @@ from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_torch
@@ -23,7 +23,7 @@ parser.add_argument("--fc-size", type=int, default=64)
 parser.add_argument("--lstm-cell-size", type=int, default=256)
 
 
-class RNNModel(RecurrentTorchModel):
+class RNNModel(TorchRNN):
     def __init__(self,
                  obs_space,
                  action_space,
@@ -62,7 +62,7 @@ class RNNModel(RecurrentTorchModel):
         assert self._cur_value is not None, "must call forward() first"
         return self._cur_value
 
-    @override(RecurrentTorchModel)
+    @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
         """Feeds `inputs` (B x T x ..) through the Gru Unit.
 
