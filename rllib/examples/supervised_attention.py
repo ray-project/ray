@@ -59,9 +59,9 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
 
     @tf.function
     def update_step(inputs, targets):
-        loss_fn = lambda: train_loss(targets, model(inputs))
-        var_fn = lambda: model.trainable_variables
-        optimizer.minimize(loss_fn, var_fn)
+
+        optimizer.minimize(lambda: train_loss(targets, model(inputs)),
+                           lambda: model.trainable_variables)
 
     for i, (inputs, targets) in zip(range(num_iterations), data_gen):
         update_step(
