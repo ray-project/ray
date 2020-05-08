@@ -4,7 +4,7 @@ import unittest
 import ray
 import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.utils.test_utils import check, framework_iterator, \
-    test_compute_action
+    check_compute_action
 
 
 class TestApexDQN(unittest.TestCase):
@@ -33,7 +33,7 @@ class TestApexDQN(unittest.TestCase):
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            test_compute_action(trainer)
+            check_compute_action(trainer)
 
             # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
             #            for i in range(1):

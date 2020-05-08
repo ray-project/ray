@@ -227,7 +227,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
-def test_compute_action(trainer):
+def check_compute_action(trainer):
     """Tests different combinations of arguments for trainer.compute_action.
 
     Args:

@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.utils.test_utils import test_compute_action
+from ray.rllib.utils.test_utils import check_compute_action
 
 
 class TestA2C(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestA2C(unittest.TestCase):
                 "use_exec_api": True
             })
         assert isinstance(trainer.train(), dict)
-        test_compute_action(trainer)
+        check_compute_action(trainer)
 
     def test_a2c_exec_impl_microbatch(ray_start_regular):
         trainer = A2CTrainer(
@@ -33,7 +33,7 @@ class TestA2C(unittest.TestCase):
                 "use_exec_api": True,
             })
         assert isinstance(trainer.train(), dict)
-        test_compute_action(trainer)
+        check_compute_action(trainer)
 
 
 if __name__ == "__main__":

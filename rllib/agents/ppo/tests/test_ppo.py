@@ -15,7 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
-    test_compute_action
+    check_compute_action
 
 tf = try_import_tf()
 
@@ -39,7 +39,7 @@ class TestPPO(unittest.TestCase):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
-            test_compute_action(trainer)
+            check_compute_action(trainer)
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""

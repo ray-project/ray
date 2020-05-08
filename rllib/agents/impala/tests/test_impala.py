@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.impala as impala
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator, test_compute_action
+from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
 
 tf = try_import_tf()
 
@@ -31,7 +31,7 @@ class TestIMPALA(unittest.TestCase):
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                test_compute_action(trainer)
+                check_compute_action(trainer)
 
                 # Test w/ LSTM.
                 print("w/o LSTM")
@@ -39,7 +39,7 @@ class TestIMPALA(unittest.TestCase):
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
-                test_compute_action(trainer)
+                check_compute_action(trainer)
 
 
 if __name__ == "__main__":

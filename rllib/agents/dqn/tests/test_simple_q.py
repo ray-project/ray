@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import check, framework_iterator, \
-    test_compute_action
+    check_compute_action
 
 tf = try_import_tf()
 
@@ -27,7 +27,7 @@ class TestSimpleQ(unittest.TestCase):
                 results = trainer.train()
                 print(results)
 
-            test_compute_action(trainer)
+            check_compute_action(trainer)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
