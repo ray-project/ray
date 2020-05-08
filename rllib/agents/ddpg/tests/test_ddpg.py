@@ -367,6 +367,8 @@ class TestDDPG(unittest.TestCase):
                         else:
                             check(tf_var, torch_var, rtol=0.07)
 
+            trainer.stop()
+
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
