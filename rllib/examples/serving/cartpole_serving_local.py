@@ -44,9 +44,9 @@ if __name__ == "__main__":
     state = trainer.get_policy().get_initial_state()
     obs = env.reset()
     while True:
-        action, state, info_trainer = trainer.compute_action(obs, state=state, full_fetch=True)
+        action, state, info_trainer = trainer.compute_action(
+            obs, state=state, full_fetch=True)
         obs, reward, done, info = env.step(action)
         env.render()
         if done:
             obs = env.reset()
-
