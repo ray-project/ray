@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_server.h"
+
 #include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
 #include "gcs_actor_manager.h"
@@ -169,12 +170,12 @@ void GcsServer::InitGcsActorManager() {
         gcs_actor_manager_->SchedulePendingActors();
       });
 
-  gcs_node_manager_->AddNodeRemovedListener([this](
-                                                std::shared_ptr<rpc::GcsNodeInfo> node) {
-    // All of the related actors should be reconstructed when a node is removed from the
-    // GCS.
-    gcs_actor_manager_->RestartActorsOnNode(ClientID::FromBinary(node->node_id()));
-  });
+  gcs_node_manager_->AddNodeRemovedListener(
+      [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        // All of the related actors should be reconstructed when a node is removed from
+        // the GCS.
+        gcs_actor_manager_->RestartActorsOnNode(ClientID::FromBinary(node->node_id()));
+      });
   RAY_CHECK_OK(redis_gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       [this](const WorkerID &id, const rpc::WorkerFailureData &worker_failure_data) {
         auto &worker_address = worker_failure_data.worker_address();
