@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -19,7 +18,8 @@ def relative_position_embedding(seq_length, out_dim):
 
 def rel_shift(x):
     # Transposed version of the shift approach implemented by Dai et al. 2019
-    # https://github.com/kimiyoung/transformer-xl/blob/44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
+    # https://github.com/kimiyoung/transformer-xl/blob/
+    # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
     x_size = tf.shape(x)
 
     x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
@@ -31,7 +31,6 @@ def rel_shift(x):
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
-
     def __init__(self, out_dim, num_heads, head_dim, **kwargs):
         super(MultiHeadAttention, self).__init__(**kwargs)
 
@@ -58,7 +57,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         values = tf.reshape(values, [-1, L, H, D])
 
         score = tf.einsum("bihd,bjhd->bijh", queries, keys)
-        score = score / D ** 0.5
+        score = score / D**0.5
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
@@ -112,8 +111,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
-            inputs = np.concatenate(
-                (tf.stop_gradient(memory), inputs), axis=1)
+            inputs = np.concatenate((tf.stop_gradient(memory), inputs), axis=1)
 
         if self._input_layernorm is not None:
             inputs = self._input_layernorm(inputs)
@@ -148,7 +146,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
-
     def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
         super(PositionwiseFeedforward, self).__init__(**kwargs)
 
@@ -189,7 +186,6 @@ class SkipConnection(tf.keras.layers.Layer):
 
 
 class GRUGate(tf.keras.layers.Layer):
-
     def __init__(self, init_bias=0., **kwargs):
         super(GRUGate, self).__init__(**kwargs)
         self._init_bias = init_bias
@@ -257,7 +253,8 @@ def make_GRU_TrXL(seq_length,
                   ff_hidden_dim,
                   init_gate_bias=2.):
     # Default initial bias for the gate taken from
-    # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement Learning." arXiv preprint arXiv:1910.06764 (2019).
+    # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement
+    # Learning." arXiv preprint arXiv:1910.06764 (2019).
     pos_embedding = relative_position_embedding(seq_length, attn_dim)
 
     layers = [tf.keras.layers.Dense(attn_dim)]
