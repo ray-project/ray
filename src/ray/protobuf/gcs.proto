@@ -105,7 +105,7 @@ message ActorTableData {
     ALIVE = 1;
     // Actor is dead, now being restarted.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 2;
+    RESTARTING = 2;
     // Actor is already dead and won't be restarted.
     DEAD = 3;
   }

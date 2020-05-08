@@ -66,7 +66,7 @@ ActorStats GetActorStatisticalData(
   for (auto &pair : actor_registry) {
     if (pair.second.GetState() == ray::rpc::ActorTableData::ALIVE) {
       item.live_actors += 1;
-    } else if (pair.second.GetState() == ray::rpc::ActorTableData::RECONSTRUCTING) {
+    } else if (pair.second.GetState() == ray::rpc::ActorTableData::RESTARTING) {
       item.reconstructing_actors += 1;
     } else {
       item.dead_actors += 1;
@@ -871,7 +871,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
-  } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
+  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
     RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
     if (!(RayConfig::instance().gcs_service_enabled() &&
           RayConfig::instance().gcs_actor_service_enabled())) {
@@ -1152,7 +1152,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   // Check if this actor needs to be restarted.
   ActorState new_state =
       actor_registration.GetRemainingRestarts() > 0 && !intentional_disconnect
-          ? ActorTableData::RECONSTRUCTING
+          ? ActorTableData::RESTARTING
           : ActorTableData::DEAD;
   if (was_local) {
     // Clean up the dummy objects from this actor.
@@ -1183,7 +1183,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
   RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification, done));
 
-  if (was_local && new_state == ActorTableData::RECONSTRUCTING) {
+  if (was_local && new_state == ActorTableData::RESTARTING) {
     RAY_LOG(INFO) << "A local actor (id = " << actor_id
                   << " ) is dead, reconstructing it.";
     const ObjectID &actor_creation_dummy_object_id =
@@ -2148,7 +2148,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // If we have already seen this actor and this actor is not being restarted,
     // its location is known.
     bool location_known =
-        seen && actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING;
+        seen && actor_entry->second.GetState() != ActorTableData::RESTARTING;
     if (location_known) {
       if (actor_entry->second.GetState() == ActorTableData::DEAD) {
         // If this actor is dead, either because the actor process is dead
@@ -2628,11 +2628,11 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
         task_spec.GetMessage().caller_address());
   } else {
     // If we've already seen this actor, it means that this actor was restarted.
-    // Thus, its previous state must be RECONSTRUCTING.
+    // Thus, its previous state must be RESTARTING.
     // TODO: The following is a workaround for the issue described in
     // https://github.com/ray-project/ray/issues/5524, please see the issue
     // description for more information.
-    if (actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
+    if (actor_entry->second.GetState() != ActorTableData::RESTARTING) {
       RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
                        << "died before creation handler could run. Actor state is "
                        << actor_entry->second.GetState();
