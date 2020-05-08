@@ -1349,7 +1349,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             // If we own the actor and the actor handle is no longer in scope,
             // terminate the actor. We do not do this if the GCS service is
             // enabled since then the GCS will terminate the actor for us.
-            if (!RayConfig::instance().gcs_service_enabled()) {
+            if (!(RayConfig::instance().gcs_service_enabled() &&
+                  RayConfig::instance().gcs_actor_service_enabled())) {
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
@@ -1361,7 +1362,11 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
 
           absl::MutexLock lock(&actor_handles_mutex_);
-          RAY_CHECK(actor_handles_.erase(actor_id));
+          // TODO(swang): Erase the actor handle once all refs to the actor
+          // have gone outof scope. We cannot erase it here in case the
+          // language frontend receives another ref to the same actor. In this
+          // case, we must remember the last task counter that we sent to the
+          // actor.
           auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
           if (callback) {
             callback.mapped()(actor_id);
@@ -1575,11 +1580,13 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   auto resource_ids = std::make_shared<ResourceMappingType>();
   auto return_objects = std::vector<std::shared_ptr<RayObject>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
-  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
-                                       /*inner_ids=*/{}, GetCallerId(), rpc_address_,
-                                       CurrentCallSite(), -1,
-                                       /*is_reconstructable=*/false);
+  if (!task_spec.IsActorCreationTask()) {
+    for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+      reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
+                                         /*inner_ids=*/{}, GetCallerId(), rpc_address_,
+                                         CurrentCallSite(), -1,
+                                         /*is_reconstructable=*/false);
+    }
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
