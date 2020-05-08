@@ -10,6 +10,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
     STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
     GRAD_WAIT_TIMER, _check_sample_batch_type
+from ray.rllib.policy.policy import PolicyID
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
@@ -190,7 +191,8 @@ class SelectExperiences:
         {"pol1", "pol2"}
     """
 
-    def __init__(self, policy_ids: List[str]):
+    def __init__(self, policy_ids: List[PolicyID]):
+        assert isinstance(policy_ids, list), policy_ids
         self.policy_ids = policy_ids
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:

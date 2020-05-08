@@ -2,10 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.es as es
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator
-
-tf = try_import_tf()
+from ray.rllib.utils.test_utils import framework_iterator, check_compute_action
 
 
 class TestES(unittest.TestCase):
@@ -25,6 +22,8 @@ class TestES(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+
+            check_compute_action(trainer)
 
 
 if __name__ == "__main__":
