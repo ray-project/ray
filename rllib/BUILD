@@ -118,7 +118,7 @@ py_test(
 # ARS
 py_test(
     name = "test_ars",
-    tags = ["agents_dir"],
+    tags = ["agents_dir_X"],
     size = "medium",
     srcs = ["agents/ars/tests/test_ars.py"]
 )
