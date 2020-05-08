@@ -16,7 +16,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import SampleBatchType, _get_shared_metrics
+from ray.rllib.execution.common import _get_shared_metrics
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
@@ -38,7 +38,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
         buffer_size=50000,
         replay_batch_size=64)
 
-    def add_ppo_metrics(batch: SampleBatchType):
+    def add_ppo_metrics(batch):
         print("PPO policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())
@@ -46,7 +46,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
         metrics.counters["agent_steps_trained_PPO"] += batch.total()
         return batch
 
-    def add_dqn_metrics(batch: SampleBatchType):
+    def add_dqn_metrics(batch):
         print("DQN policy learning on samples from",
               batch.policy_batches.keys(), "env steps", batch.count,
               "agent steps", batch.total())

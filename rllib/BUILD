@@ -1455,7 +1455,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/two_trainers_workflow",
+    name = "examples/two_trainer_workflow",
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
