@@ -5,7 +5,6 @@ import io.ray.api.BaseActor;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
-import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;

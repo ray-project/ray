@@ -15,7 +15,6 @@ import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
 import java.io.Serializable;
-import java.util.HashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

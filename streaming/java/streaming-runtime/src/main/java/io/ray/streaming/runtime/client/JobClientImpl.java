@@ -1,7 +1,5 @@
 package io.ray.streaming.runtime.client;
 
-import java.util.HashMap;
-import java.util.Map;
 import io.ray.api.Ray;
 import io.ray.api.RayActor;
 import io.ray.api.RayObject;
@@ -10,6 +8,8 @@ import io.ray.streaming.client.JobClient;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.master.JobMaster;
+import java.util.HashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

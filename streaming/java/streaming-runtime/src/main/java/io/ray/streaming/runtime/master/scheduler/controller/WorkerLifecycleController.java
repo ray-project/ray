@@ -2,9 +2,9 @@ package io.ray.streaming.runtime.master.scheduler.controller;
 
 import io.ray.api.BaseActor;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
 import io.ray.api.RayObject;
 import io.ray.api.WaitResult;
+import io.ray.api.function.PyActorClass;
 import io.ray.api.id.ActorId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.streaming.api.Language;
@@ -51,11 +51,12 @@ public class WorkerLifecycleController {
         .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTION)
         .createActorCreationOptions();
 
-    RayActor<JobWorker> actor = null;
+    BaseActor actor;
     if (Language.JAVA == language) {
       actor = Ray.createActor(JobWorker::new, options);
     } else {
-      // actor = Ray.createActor("ray.streaming.runtime.worker", "JobWorker", options);
+      actor = Ray.createActor(
+          new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
     }
 
     if (null == actor) {

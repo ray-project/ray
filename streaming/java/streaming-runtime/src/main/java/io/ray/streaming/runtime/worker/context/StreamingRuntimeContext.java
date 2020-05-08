@@ -1,5 +1,7 @@
 package io.ray.streaming.runtime.worker.context;
 
+import io.ray.streaming.api.context.RuntimeContext;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.state.backend.KeyStateBackend;
 import io.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import io.ray.streaming.state.keystate.desc.MapStateDescriptor;
@@ -8,9 +10,6 @@ import io.ray.streaming.state.keystate.state.ListState;
 import io.ray.streaming.state.keystate.state.MapState;
 import io.ray.streaming.state.keystate.state.ValueState;
 import java.util.Map;
-
-import io.ray.streaming.api.context.RuntimeContext;
-import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 
 /**
  * Use Ray to implement RuntimeContext.

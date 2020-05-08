@@ -58,7 +58,7 @@ public abstract class StreamTask implements Runnable {
 
     for (ExecutionEdge edge : outputEdges) {
       String queueName = ChannelID.genIdStr(
-        taskId, edge.getTargetVertex().getId(), executionVertex.getBuildTime());
+          taskId, edge.getTargetVertex().getId(), executionVertex.getBuildTime());
       outputActors.put(queueName, edge.getTargetVertex().getWorkerActor());
     }
 
@@ -78,7 +78,7 @@ public abstract class StreamTask implements Runnable {
     Map<String, BaseActor> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       String queueName = ChannelID.genIdStr(
-        edge.getSourceVertex().getId(), taskId, executionVertex.getBuildTime());
+          edge.getSourceVertex().getId(), taskId, executionVertex.getBuildTime());
       inputActors.put(queueName, edge.getSourceVertex().getWorkerActor());
     }
     if (!inputActors.isEmpty()) {

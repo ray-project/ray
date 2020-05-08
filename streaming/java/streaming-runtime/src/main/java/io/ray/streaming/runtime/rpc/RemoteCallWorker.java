@@ -9,7 +9,6 @@ import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JavaJobWorkerContext;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
-import io.ray.streaming.runtime.worker.context.PythonJobWorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

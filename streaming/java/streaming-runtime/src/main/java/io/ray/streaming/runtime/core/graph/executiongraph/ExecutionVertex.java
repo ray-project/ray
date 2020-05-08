@@ -2,7 +2,6 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
@@ -10,7 +9,6 @@ import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
 import io.ray.streaming.runtime.core.resource.ContainerID;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.worker.JobWorker;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -158,7 +156,7 @@ public class ExecutionVertex implements Serializable {
     return workerActor.getId();
   }
 
-  public void setWorkerActor(RayActor<JobWorker> workerActor) {
+  public void setWorkerActor(BaseActor workerActor) {
     this.workerActor = workerActor;
   }
 
@@ -181,7 +179,7 @@ public class ExecutionVertex implements Serializable {
   }
 
   public List<ExecutionVertex> getInputVertices() {
-     return inputEdges.stream()
+    return inputEdges.stream()
         .map(ExecutionEdge::getSourceVertex)
         .collect(Collectors.toList());
   }
