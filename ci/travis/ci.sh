@@ -17,6 +17,18 @@ keep_alive() {
   "${WORKSPACE_DIR}"/ci/keep_alive "$@"
 }
 
+# Calls the provided command with set -x temporarily suppressed
+suppress_xtrace() {
+  {
+    local restore_shell_state=""
+    if [ -o xtrace ]; then set +x; restore_shell_state="set -x"; fi
+  } 2> /dev/null
+  local status=0
+  "$@" || status=$?
+  ${restore_shell_state}
+  { return "${status}"; } 2> /dev/null
+}
+
 # If provided the names of one or more environment variables, returns 0 if any of them is triggered.
 # Usage: should_run_job [VAR_NAME]...
 should_run_job() {
@@ -84,6 +96,7 @@ upload_wheels() {
   if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
   local local_dir="python/dist"
   if [ -d "${local_dir}" ]; then
+    ls -a -l -- "${local_dir}"
     local remote_dir
     for remote_dir in latest "${branch}/${commit}"; do
       if command -V aws; then
@@ -165,7 +178,7 @@ install_cython_examples() {
 
 install_go() {
   local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
+  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
 
   if [ -z "${GOPATH-}" ]; then
     GOPATH="${GOPATH:-${HOME}/go_dir}"
@@ -207,13 +220,42 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      if ! python -c "import ray" 2> /dev/null; then
-        # This installs e.g. the pickle5 dependencies, which are needed for correct wheel testing
-        install_ray
-      fi
       (
-        cd "${WORKSPACE_DIR}"/python
-        python setup.py --quiet bdist_wheel
+        local backup_conda="${CONDA_PREFIX}.bak" ray_uninstall_status=0
+        test ! -d "${backup_conda}"
+        pip uninstall -y ray || ray_uninstall_status=1
+        mv -n -T -- "${CONDA_PREFIX}" "${backup_conda}"  # Back up conda
+
+        local pyversion pyversions=()
+        for pyversion in 3.6 3.7 3.8; do
+          if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
+          pyversions+=("${pyversion}")
+        done
+
+        pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
+        local local_dir="python/dist"
+        for pyversion in "${pyversions[@]}"; do
+          if [ -z "${pyversion}" ]; then continue; fi
+          "${ROOT_DIR}"/bazel-preclean.sh
+          git clean -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
+          git checkout -q -f -- .
+          cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
+          local existing_version
+          existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+          if [ "${pyversion}" != "${existing_version}" ]; then
+            suppress_xtrace conda install python="${pyversion}"
+          fi
+          install_ray
+          (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)
+          pip uninstall -y ray
+          rm -r -f -- "${CONDA_PREFIX}"
+        done
+
+        mv -n -T -- "${backup_conda}" "${CONDA_PREFIX}"
+        "${ROOT_DIR}"/bazel-preclean.sh
+        if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
+          install_ray
+        fi
       )
       ;;
   esac
