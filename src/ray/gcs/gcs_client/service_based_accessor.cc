@@ -283,10 +283,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
-      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()),
-      heartbeat_sub_executor_(client_impl->GetRedisGcsClient().heartbeat_table()),
-      heartbeat_batch_sub_executor_(
-          client_impl->GetRedisGcsClient().heartbeat_batch_table()) {}
+      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
@@ -577,12 +574,13 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing batch heartbeat.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const ClientID &node_id,
-                                  const HeartbeatBatchTableData &data) {
-    subscribe(data);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
+    heartbeat_batch_table_data.ParseFromString(data);
+    subscribe(heartbeat_batch_table_data);
   };
-  auto status = heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(),
-                                                                on_subscribe, done);
+  auto status = client_impl_->GetGcsPubSub().Subscribe(
+      HEARTBEAT_BATCH_CHANNEL, ClientID::Nil().Hex(), on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing batch heartbeat.";
   return status;
 }
