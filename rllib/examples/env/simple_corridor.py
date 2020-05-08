@@ -17,8 +17,6 @@ class SimpleCorridor(gym.Env):
 
     def set_corridor_length(self, length):
         self.end_pos = length
-        self.observation_space = Box(
-            0.0, self.end_pos, shape=(1, ), dtype=np.float32)
         print("Updated corridor length to {}".format(length))
 
     def reset(self):
