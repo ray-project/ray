@@ -68,6 +68,7 @@ def make_session(single_threaded):
 
 class ESTFPolicy:
     def __init__(self, obs_space, action_space, config):
+        self.observation_space = obs_space
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = config["action_noise_std"]
