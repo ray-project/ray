@@ -16,7 +16,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 @Test
-public class ActorRetryTest extends BaseTest {
+public class ActorRestartTest extends BaseTest {
 
   public static class Counter {
 
