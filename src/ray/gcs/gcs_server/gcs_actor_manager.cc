@@ -115,8 +115,6 @@ Status GcsActorManager::RegisterActor(
       stream << "Actor with name '" << actor->GetName() << "' already exists.";
       return Status::Invalid(stream.str());
     }
-  } else {
-    RAY_CHECK(actor->GetName() == "");
   }
 
   // Mark the callback as pending and invoke it after the actor has been successfully
