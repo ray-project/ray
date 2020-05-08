@@ -23,6 +23,9 @@ class RockPaperScissors(MultiAgentEnv):
         self.last_move = None
         self.num_moves = 0
 
+        # For test-case inspections (compare both players' scores).
+        self.player1_score = self.player2_score = 0
+
     def reset(self):
         self.last_move = (0, 0)
         self.num_moves = 0
@@ -79,4 +82,10 @@ class RockPaperScissors(MultiAgentEnv):
         done = {
             "__all__": self.num_moves >= 10,
         }
+
+        if rew["player1"] > rew["player2"]:
+            self.player1_score += 1
+        elif rew["player2"] > rew["player1"]:
+            self.player2_score += 1
+
         return obs, rew, done, {}
