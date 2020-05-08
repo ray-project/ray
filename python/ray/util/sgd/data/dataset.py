@@ -2,25 +2,60 @@ from ray.util.iter import ParallelIterator
 
 
 class Dataset():
+    """A simple Dataset abstraction for RaySGD.
+
+    This dataset is designed to work with RaySGD trainers (currently just
+    Torch) to provide support for streaming large external datasets, and built
+    in sharding.
+
+    .. code-block:: python
+
+            def to_mat(x):
+                return torch.tensor([[x]]).float()
+
+
+            data = [i * 0.001 for i in range(1000)]
+            p_iter = iter.from_items(data, num_shards=1, repeat=True)
+            dataset = Dataset(
+                p_iter,
+                batch_size=32,
+                max_concur=1,
+                download_func=lambda x: (to_mat(x), to_mat(x)))
+
+            trainer = TorchTrainer(
+                model_creator=model_creator,
+                data_creator=None,
+                optimizer_creator=optimizer_creator,
+                loss_creator=torch.nn.MSELoss,
+                num_workers=5,
+            )
+
+            for i in range(10):
+                # Train for another epoch using the dataset
+                trainer.train(dataset=dataset, num_steps=200)
+
+            model = trainer.get_model()
+            print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
+
+    """
     def __init__(self,
                  iterable,
-                 batch_size=2,
+                 batch_size=32,
                  download_func=None,
-                 max_concur=0,
+                 max_concurrency=0,
                  transform=None):
         par_iter = None
         if isinstance(iterable, ParallelIterator):
-            par_iter = iterable
+            par_iter = iterable.repartition(1)
         else:
-            par_iter = ParallelIterator.from_items(iterable)
+            par_iter = ParallelIterator.from_items(iterable, num_actors=1)
         if download_func:
             par_iter = par_iter.for_each_concur(
-                download_func, max_concur=max_concur)
-            # par_iter = par_iter.for_each(download_func)
+                download_func, max_concurrency=max_concur)
         self.iter = par_iter.batch(batch_size)
 
         self.batch_size = batch_size
-        self.max_concur = max_concur
+        self.max_concurrency = max_concur
         self.transform = transform
 
     def set_num_shards(self, num_shards):

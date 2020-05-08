@@ -21,32 +21,27 @@ class Net(nn.Module):
         return x
 
 
-def to_mat(x):
-    return torch.tensor([[x]]).float()
 
 
 def model_creator(config):
     return Net()
 
 
-data = [i * 0.001 for i in range(1000)]
-
-
-def data_creator(config):
-    as_list = list(map(lambda x: (to_mat(x), to_mat(x)), data))
-    return torch.utils.data.DataLoader(as_list)
+# def data_creator(config):
+#     as_list = list(map(lambda x: (to_mat(x), to_mat(x)), data))
+#     return torch.utils.data.DataLoader(as_list)
 
 
 def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
-
-def loss_creator(config):
-    return -nn.MSELoss(config)
-
-
 ray.init()
 
+def to_mat(x):
+    return torch.tensor([[x]]).float()
+
+
+data = [i * 0.001 for i in range(1000)]
 p_iter = iter.from_items(data, num_shards=1, repeat=True)
 dataset = Dataset(
     p_iter,
@@ -56,7 +51,7 @@ dataset = Dataset(
 
 trainer = TorchTrainer(
     model_creator=model_creator,
-    data_creator=data_creator,
+    data_creator=None,
     optimizer_creator=optimizer_creator,
     loss_creator=torch.nn.MSELoss,
     config={
