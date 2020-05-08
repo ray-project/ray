@@ -18,7 +18,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.examples.twostep_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tf
 

@@ -12,7 +12,7 @@ import numpy as np
 import gym
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from gym.spaces import Discrete, Box
 
 import ray

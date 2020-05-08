@@ -10,7 +10,7 @@ from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 
@@ -23,7 +23,7 @@ parser.add_argument("--stop", type=int, default=90)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
-class MyKerasRNN(RecurrentTFModelV2):
+class MyKerasRNN(RecurrentNetwork):
     """Example of using the Keras functional API to define a RNN model."""
 
     def __init__(self,
@@ -69,7 +69,7 @@ class MyKerasRNN(RecurrentTFModelV2):
         self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
-    @override(RecurrentTFModelV2)
+    @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
                                                           state)

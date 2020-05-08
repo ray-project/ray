@@ -12,7 +12,7 @@ from ray.tune import registry
 from ray.rllib import models
 from ray.rllib.utils import try_import_tf
 from ray.rllib.models.tf import attention
-from ray.rllib.models.tf import recurrent_tf_modelv2
+from ray.rllib.models.tf import recurrent_net
 from ray.rllib.examples.custom_keras_rnn_model import RepeatAfterMeEnv
 from ray.rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
 
@@ -78,7 +78,7 @@ class LookAndPush(gym.Env):
         return self._state, -1, False, {}
 
 
-class GRUTrXL(recurrent_tf_modelv2.RecurrentTFModelV2):
+class GRUTrXL(recurrent_net.RecurrentNetwork):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):

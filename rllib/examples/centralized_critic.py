@@ -28,7 +28,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf

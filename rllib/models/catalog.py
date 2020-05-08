@@ -534,9 +534,9 @@ class ModelCatalog:
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
         else:
-            from ray.rllib.models.tf.fcnet_v2 import \
+            from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet
-            from ray.rllib.models.tf.visionnet_v2 import \
+            from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
 
         # Discrete/1D obs-spaces.

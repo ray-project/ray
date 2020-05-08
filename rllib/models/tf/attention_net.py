@@ -1,7 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+"""
+[1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
+      Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
+      https://arxiv.org/pdf/1706.03762.pdf
+[2] - Stabilizing Transformers for Reinforcement Learning - E. Parisotto
+      et. al - DeepMind - 2019. https://arxiv.org/pdf/1910.06764.pdf
+"""
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -11,7 +14,7 @@ tf = try_import_tf()
 
 
 def relative_position_embedding(seq_length, out_dim):
-    inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
+    inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
     pos_offsets = tf.range(seq_length - 1., -1., -1.)
     inputs = pos_offsets[:, None] * inverse_freq[None, :]
     return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)
@@ -19,7 +22,8 @@ def relative_position_embedding(seq_length, out_dim):
 
 def rel_shift(x):
     # Transposed version of the shift approach implemented by Dai et al. 2019
-    # https://github.com/kimiyoung/transformer-xl/blob/44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
+    # https://github.com/kimiyoung/transformer-xl/blob/
+    # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
     x_size = tf.shape(x)
 
     x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
@@ -31,11 +35,12 @@ def rel_shift(x):
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
+    """A multi-head attention layer described in [1]."""
 
     def __init__(self, out_dim, num_heads, head_dim, **kwargs):
         super(MultiHeadAttention, self).__init__(**kwargs)
 
-        # no bias or non-linearity
+        # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
         self._qkv_layer = tf.keras.layers.Dense(
@@ -83,7 +88,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
                  **kwargs):
         super(RelativeMultiHeadAttention, self).__init__(**kwargs)
 
-        # no bias or non-linearity
+        # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
         self._qkv_layer = tf.keras.layers.Dense(
@@ -148,14 +153,16 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
+    """A 2x linear layer with ReLU activation in between described in [1]."""
 
     def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
-        super(PositionwiseFeedforward, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self._hidden_layer = tf.keras.layers.Dense(
             hidden_dim,
             activation=tf.nn.relu,
         )
+
         self._output_layer = tf.keras.layers.Dense(
             out_dim, activation=output_activation)
 
@@ -230,23 +237,48 @@ class GRUGate(tf.keras.layers.Layer):
         return (1 - z) * x + z * h
 
 
-def make_TrXL(seq_length, num_layers, attn_dim, num_heads, head_dim,
-              ff_hidden_dim):
-    pos_embedding = relative_position_embedding(seq_length, attn_dim)
+class TrXLNet(TFModelV2):
+    """A TrXL net Model described in [1]."""
 
-    layers = [tf.keras.layers.Dense(attn_dim)]
-    for _ in range(num_layers):
-        layers.append(
-            SkipConnection(
-                RelativeMultiHeadAttention(attn_dim, num_heads, head_dim,
-                                           pos_embedding)))
-        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+    def __init__(self, observation_space, action_space, num_outputs,
+                 model_config, name, seq_length, num_layers, attn_dim,
+                 num_heads, head_dim, ff_hidden_dim, gru=False):
+        """Initializes a TrXLNet.
+        
+        Args:
+            seq_length (int):
+            num_layers (int): The number of repeats to use (N in the paper).
+            attn_dim ():
+            num_heads:
+            head_dim:
+            ff_hidden_dim:
+            gru (bool): Whether to build a GRU version of the Net TODO: describe.
+        """
 
-        layers.append(
-            SkipConnection(PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
-        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
 
-    return tf.keras.Sequential(layers)
+        pos_embedding = relative_position_embedding(seq_length, attn_dim)
+
+        layers = [tf.keras.layers.Dense(attn_dim)]
+
+        for _ in range(num_layers):
+            layers.append(
+                SkipConnection(RelativeMultiHeadAttention(
+                    attn_dim, num_heads, head_dim, pos_embedding,
+                    input_layernorm=True if gru else False,
+                    output_activation=tf.nn.relu if gru else None),
+                    fan_in_layer=GRUGate(init_gate_bias) if gru else None))
+
+            if gru:
+                layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+    
+            layers.append(
+                SkipConnection(PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
+            layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+    
+        self.base_model = tf.keras.Sequential(layers)
+        self.register_variables(self.base_model.variables)
 
 
 def make_GRU_TrXL(seq_length,
@@ -255,24 +287,25 @@ def make_GRU_TrXL(seq_length,
                   num_heads,
                   head_dim,
                   ff_hidden_dim,
-                  init_gate_bias=2.):
+                  init_gate_bias=2.0):
     # Default initial bias for the gate taken from
-    # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement Learning." arXiv preprint arXiv:1910.06764 (2019).
-    pos_embedding = relative_position_embedding(seq_length, attn_dim)
+    # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement
+    # Learning." arXiv preprint arXiv:1910.06764 (2019).
+    #pos_embedding = relative_position_embedding(seq_length, attn_dim)
 
-    layers = [tf.keras.layers.Dense(attn_dim)]
+    #layers = [tf.keras.layers.Dense(attn_dim)]
     for _ in range(num_layers):
-        layers.append(
-            SkipConnection(
-                RelativeMultiHeadAttention(
-                    attn_dim,
-                    num_heads,
-                    head_dim,
-                    pos_embedding,
-                    input_layernorm=True,
-                    output_activation=tf.nn.relu),
-                fan_in_layer=GRUGate(init_gate_bias),
-            ))
+        #layers.append(
+        #    SkipConnection(
+        #        RelativeMultiHeadAttention(
+        #            attn_dim,
+        #            num_heads,
+        #            head_dim,
+        #            pos_embedding,
+        #            input_layernorm=True,
+        #            output_activation=tf.nn.relu),
+        #        fan_in_layer=GRUGate(init_gate_bias),
+        #    ))
 
         layers.append(
             SkipConnection(
@@ -284,4 +317,4 @@ def make_GRU_TrXL(seq_length,
                 fan_in_layer=GRUGate(init_gate_bias),
             ))
 
-    return tf.keras.Sequential(layers)
+    #return tf.keras.Sequential(layers)

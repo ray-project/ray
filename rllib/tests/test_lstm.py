@@ -9,7 +9,7 @@ from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.misc import normc_initializer
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
@@ -92,7 +92,7 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual(seq_lens.tolist(), [1, 2])
 
 
-class RNNSpyModel(RecurrentTFModelV2):
+class RNNSpyModel(RecurrentNetwork):
     capture_index = 0
     cell_size = 3
 
@@ -171,7 +171,7 @@ class RNNSpyModel(RecurrentTFModelV2):
         self.base_model.summary()
         self.register_variables(self.base_model.variables)
 
-    @override(RecurrentTFModelV2)
+    @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         # Previously, a new class object was created during
         # deserialization and this `capture_index`

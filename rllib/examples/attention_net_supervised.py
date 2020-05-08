@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from rllib.models.tf import attention
-from ray.rllib.utils import try_import_tf
+from rllib.models.tf.attention import attention
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
