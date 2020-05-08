@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 
@@ -197,6 +198,12 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
+        # Used primarily for testing.
+        if os.environ.get("RAY_USE_RANDOM_PORTS", False):
+            if self.min_worker_port is None and self.min_worker_port is None:
+                self.min_worker_port = 0
+                self.max_worker_port = 0
+
         if self.min_worker_port is not None:
             if self.min_worker_port != 0 and (self.min_worker_port < 1024
                                               or self.min_worker_port > 65535):

@@ -163,14 +163,14 @@ def dashboard(cluster_config_file, cluster_name, port):
     "--min-worker-port",
     required=False,
     type=int,
-    default=0,
+    default=10000,
     help="the lowest port number that workers will bind on. If not set, "
     "random ports will be chosen.")
 @click.option(
     "--max-worker-port",
     required=False,
     type=int,
-    default=0,
+    default=10999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
 @click.option(

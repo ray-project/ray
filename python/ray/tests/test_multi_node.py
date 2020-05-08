@@ -285,7 +285,10 @@ ray.get([a.log.remote(), f.remote()])
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 --num-gpus=1 " +
+        "--min-worker-port=0 --max-worker-port=0"
+    ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
     address = call_ray_start
