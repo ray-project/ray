@@ -174,7 +174,6 @@ install_go() {
 }
 
 install_ray() {
-  bazel build -k "//:*"   # Do a full build first to ensure everything passes
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
@@ -362,6 +361,7 @@ init() {
 
 build() {
   if ! need_wheels; then
+    bazel build -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
