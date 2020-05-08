@@ -732,7 +732,7 @@ def test_actor_creation_task_crash(ray_start_regular):
     # Test an actor can be restarted successfully
     # afte it dies in its constructor.
     @ray.remote(max_restarts=3)
-    class ReconstructableActor:
+    class RestartableActor:
         def __init__(self):
             count = self.get_count()
             count += 1
@@ -759,7 +759,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             _internal_kv_put("count", count, True)
 
     # Verify we can get the object successfully.
-    ra = ReconstructableActor.remote()
+    ra = RestartableActor.remote()
     ray.get(ra.f.remote())
 
 

@@ -131,7 +131,7 @@ def test_actor_restart(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
     @ray.remote(max_restarts=1)
-    class ReconstructableActor:
+    class RestartableActor:
         """An actor that will be restarted at most once."""
 
         def __init__(self):
@@ -145,7 +145,7 @@ def test_actor_restart(ray_start_regular):
         def get_pid(self):
             return os.getpid()
 
-    actor = ReconstructableActor.remote()
+    actor = RestartableActor.remote()
     pid = ray.get(actor.get_pid.remote())
     # Call increase 3 times
     for _ in range(3):
@@ -168,7 +168,7 @@ def test_actor_restart(ray_start_regular):
         ray.get(actor.increase.remote())
 
     # Create another actor.
-    actor = ReconstructableActor.remote()
+    actor = RestartableActor.remote()
     # Intentionlly exit the actor
     actor.__ray_terminate__.remote()
     # Check that the actor won't be restarted.
@@ -180,7 +180,7 @@ def test_actor_restart_without_task(ray_start_regular):
     """Test a dead actor can be restarted without sending task to it."""
 
     @ray.remote(max_restarts=1)
-    class ReconstructableActor:
+    class RestartableActor:
         def __init__(self, obj_ids):
             for obj_id in obj_ids:
                 # Every time the actor gets constructed,
@@ -194,7 +194,7 @@ def test_actor_restart_without_task(ray_start_regular):
             return os.getpid()
 
     obj_ids = [ray.ObjectID.from_random() for _ in range(2)]
-    actor = ReconstructableActor.remote(obj_ids)
+    actor = RestartableActor.remote(obj_ids)
     # Kill the actor.
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
@@ -212,7 +212,7 @@ def test_caller_actor_restart(ray_start_regular):
        by the receiving actor."""
 
     @ray.remote(max_restarts=1)
-    class ReconstructableActor:
+    class RestartableActor:
         """An actor that will be restarted at most once."""
 
         def __init__(self, actor):
@@ -236,7 +236,7 @@ def test_caller_actor_restart(ray_start_regular):
             return self.value
 
     remote_actor = Actor.remote()
-    actor = ReconstructableActor.remote(remote_actor)
+    actor = RestartableActor.remote(remote_actor)
     # Call increase 3 times
     for _ in range(3):
         ray.get(actor.increase.remote())
