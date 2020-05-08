@@ -157,7 +157,9 @@ def execution_plan(workers: WorkerSet, config: dict):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
     replay_op = Replay(actors=replay_actors, num_async=4) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
