@@ -115,6 +115,8 @@ Status GcsActorManager::RegisterActor(
       stream << "Actor with name '" << actor->GetName() << "' already exists.";
       return Status::Invalid(stream.str());
     }
+  } else {
+    RAY_CHECK(actor->GetName() == "");
   }
 
   // Mark the callback as pending and invoke it after the actor has been successfully
@@ -125,12 +127,10 @@ Status GcsActorManager::RegisterActor(
   return Status::OK();
 }
 
-ActorID GcsActorManager::GetNamedActorID(const std::string &name) {
-  ActorID actor_id;
+ActorID GcsActorManager::GetActorIDByName(const std::string &name) {
+  ActorID actor_id = ActorID::Nil();
   auto it = named_actors_.find(name);
-  if (it == named_actors_.end()) {
-    actor_id = ActorID::Nil();
-  } else {
+  if (it != named_actors_.end()) {
     actor_id = it->second;
   }
   return actor_id;

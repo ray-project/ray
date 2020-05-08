@@ -1379,7 +1379,7 @@ Status CoreWorker::GetNamedActorHandle(const std::string &name,
   std::shared_ptr<std::condition_variable> cv =
       std::make_shared<std::condition_variable>();
   std::unique_lock<std::mutex> lk(*m);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetNamed(
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready, m, cv](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (!status.ok()) {

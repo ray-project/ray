@@ -202,7 +202,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   Status status = gcs_actor_manager_.RegisterActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor1").Binary(),
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor1").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
   auto request2 =
@@ -210,11 +210,11 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   status = gcs_actor_manager_.RegisterActor(request2,
                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
   // Check that looking up a non-existent name returns ActorID::Nil();
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor3"), ActorID::Nil());
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor3"), ActorID::Nil());
 
   // Check that naming collisions return Status::Invalid.
   auto request3 =
@@ -222,7 +222,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   status = gcs_actor_manager_.RegisterActor(request3,
                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.IsInvalid());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
   // Check that naming collisions are enforced across JobIDs.
@@ -231,24 +231,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   status = gcs_actor_manager_.RegisterActor(request4,
                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.IsInvalid());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
-
-  // Check that naming only applies to detached actors.
-  auto request5 = Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/false,
-                                                /*name=*/"actor2");
-  status = gcs_actor_manager_.RegisterActor(request5,
-                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor2").Binary(),
-            request2.task_spec().actor_creation_task_spec().actor_id());
-
-  auto request6 = Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/false,
-                                                /*name=*/"actor3");
-  status = gcs_actor_manager_.RegisterActor(request6,
-                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetNamedActorID("actor3"), ActorID::Nil());
 }
 
 }  // namespace ray

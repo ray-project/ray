@@ -89,7 +89,7 @@ void DefaultActorInfoHandler::HandleGetNamedActorInfo(
   };
 
   // Try to look up the actor ID for the named actor.
-  ActorID actor_id = gcs_actor_manager_.GetNamedActorID(name);
+  ActorID actor_id = gcs_actor_manager_.GetActorIDByName(name);
 
   if (actor_id.IsNil()) {
     // The named actor was not found.

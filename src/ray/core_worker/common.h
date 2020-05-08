@@ -142,7 +142,7 @@ struct ActorCreationOptions {
   const bool is_detached = false;
   /// The name to give this detached actor that can be used to get a handle to it from
   /// other drivers. This must be globally unique across the cluster.
-  /// This should only and *must* be set if is_detached is true.
+  /// This should set if and only if is_detached is true.
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;

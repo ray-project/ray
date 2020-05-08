@@ -107,7 +107,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncGetNamed(
+Status ServiceBasedActorInfoAccessor::AsyncGetByName(
     const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;

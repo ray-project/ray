@@ -130,7 +130,7 @@ class GcsActorManager {
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
-  ActorID GetNamedActorID(const std::string &name);
+  ActorID GetActorIDByName(const std::string &name);
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources

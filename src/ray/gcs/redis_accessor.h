@@ -42,8 +42,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
-  Status AsyncGetNamed(const std::string &name,
-                       const OptionalItemCallback<ActorTableData> &callback) override {
+  Status AsyncGetByName(const std::string &name,
+                        const OptionalItemCallback<ActorTableData> &callback) override {
     return Status::NotImplemented(
         "RedisLogBasedActorInfoAccessor does not support named detached actors.");
   }
@@ -120,8 +120,8 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
-  Status AsyncGetNamed(const std::string &name,
-                       const OptionalItemCallback<ActorTableData> &callback) override {
+  Status AsyncGetByName(const std::string &name,
+                        const OptionalItemCallback<ActorTableData> &callback) override {
     return Status::NotImplemented(
         "RedisActorInfoAccessor does not support named detached actors.");
   }

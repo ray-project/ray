@@ -52,7 +52,7 @@ class ActorInfoAccessor {
   /// \param name The name of the detached actor to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetNamed(
+  virtual Status AsyncGetByName(
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
