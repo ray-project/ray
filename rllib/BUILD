@@ -1687,7 +1687,7 @@ py_test(
     name = "examples/rock_paper_scissors_multiagent_tf",
     main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test"],
 )
@@ -1696,7 +1696,7 @@ py_test(
     name = "examples/rock_paper_scissors_multiagent_torch",
     main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
 )
