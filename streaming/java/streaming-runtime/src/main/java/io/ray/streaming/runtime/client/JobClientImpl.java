@@ -36,6 +36,8 @@ public class JobClientImpl implements JobClient {
     jobConfig.put(CommonConfig.JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
     jobConfig.put(CommonConfig.JOB_NAME, jobGraph.getJobName());
 
+    jobGraph.getJobConfig().putAll(jobConfig);
+
     this.jobMasterActor = Ray.createActor(JobMaster::new, jobConfig, options);
     RayObject<Boolean> submitResult = jobMasterActor.call(JobMaster::submitJob,
         jobMasterActor, jobGraph);

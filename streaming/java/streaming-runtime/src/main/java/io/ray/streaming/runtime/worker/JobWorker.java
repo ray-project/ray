@@ -52,7 +52,7 @@ public class JobWorker implements Serializable {
    * Initialize JobWorker and data communication pipeline.
    */
   public Boolean init(JavaJobWorkerContext workerContext) {
-    LOG.info("Initiating job worker: {}. Worker context is: {}. ",
+    LOG.info("Initiating job worker: {}. Worker context is: {}.",
         workerContext.getWorkerName(), workerContext);
 
     try {

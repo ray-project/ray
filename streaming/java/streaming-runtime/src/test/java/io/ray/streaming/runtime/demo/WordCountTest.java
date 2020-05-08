@@ -40,11 +40,12 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
   @Test
   public void testWordCount() {
-    Ray.shutdown();
+    Ray.setAsyncContext(rayAsyncContext);
+
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
-    config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+    config.put(Config.CHANNEL_TYPE, "MEMORY_CHANNEL");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
@@ -73,6 +74,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
         LOG.warn("Got an exception while sleeping.", e);
       }
     }
+
     Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
     streamingContext.stop();
   }
