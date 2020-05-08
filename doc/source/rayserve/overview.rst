@@ -17,12 +17,12 @@ RayServe is a scalable model-serving library built on Ray.
 
 For users RayServe is:
 
-- **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models 
+- **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models
   built with frameworks like PyTorch or TensorFlow to scikit-learn models or arbitrary business logic.
-- **Python First**: Configure your model serving with pure Python code - no more YAMLs or 
+- **Python First**: Configure your model serving with pure Python code - no more YAMLs or
   JSON configs.
 
-RayServe enables: 
+RayServe enables:
 
 -  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
 - **Batching** built-in to help you meet your performance objectives.
@@ -30,8 +30,8 @@ RayServe enables:
 Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
 and allows you to leverage all of the other Ray frameworks so you can deploy and scale on any cloud.
 
-.. note:: 
-  If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
+.. note::
+  If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_
   and discuss in the #serve channel.
 
 
@@ -77,7 +77,7 @@ For more on the motivation behind RayServe, check out these `meetup slides <http
 When should I use Ray Serve?
 ++++++++++++++++++++++++++++
 
-RayServe should be used when you need to deploy at least one model, preferrably many models.  
+RayServe should be used when you need to deploy at least one model, preferrably many models.
 RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
 
 .. _serve-key-concepts:
@@ -99,14 +99,16 @@ To follow along, you'll need to make the necessary imports.
 Endpoints
 ~~~~~~~~~
 
-Endpoints allow you to name the "entity" that you'll be exposing, 
-the HTTP path that your application will expose. 
-Endpoints are "logical" and decoupled from the business logic or 
+Endpoints allow you to name the "entity" that you'll be exposing,
+the HTTP path that your application will expose.
+Endpoints are "logical" and decoupled from the business logic or
 model that you'll be serving. To create one, we'll simply specify the name, route, and methods.
 
 .. code-block:: python
 
   serve.create_endpoint("simple_endpoint", "/simple")
+
+By default, this registers the endpoint for HTTP `GET` requests. Pass `methods=["GET","PUT"]`, for example, to support other HTTP methods.
 
 You can also delete an endpoint using `serve.delete_endpoint`.
 Note that this will not delete any associated backends, which can be reused for other endpoints.
@@ -120,22 +122,30 @@ Note that this will not delete any associated backends, which can be reused for 
 Backends
 ~~~~~~~~
 
-Backends are the logical structures for your business logic or models and 
+Backends are the logical structures for your business logic or models and
 how you specify what should happen when an endpoint is queried.
-To define a backend, first you must define the "handler" or the business logic you'd like to respond with. 
+To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
 The input to this request will be a `Flask Request object <https://flask.palletsprojects.com/en/1.1.x/api/?highlight=request#flask.Request>`_.
-Once you define the function (or class) that will handle a request. 
+Once you define the function (or class) that will handle a request.
 You'd use a function when your response is stateless and a class when you
-might need to maintain some state (like a model). 
-For both functions and classes (that take as input Flask Requests), you'll need to 
+might need to maintain some state (like a model).
+For both functions and classes (that take as input Flask Requests), you'll need to
 define them as backends to RayServe.
 
-It's important to note that RayServe places these backends in individual workers, which are replicas of the model.
+It's important to note that RayServe places these backends in individual workers, which are replicas of the model. This means that any global state you need shared across workers must be in a Ray actor (or external data store), which is referenced from the function or regular class you specify for the backend.
+
+Here is an example that uses a function as a request handler:
 
 .. code-block:: python
-  
+
   def handle_request(flask_request):
     return "hello world"
+
+  serve.create_backend("simple_backend", handle_request)
+
+Here is a similar example that uses a class as a request handler:
+
+.. code-block:: python
 
   class RequestHandler:
     def __init__(self):
@@ -144,12 +154,11 @@ It's important to note that RayServe places these backends in individual workers
     def __call__(self, flask_request):
         return self.msg
 
-  serve.create_backend("simple_backend", handle_request)
-  serve.create_backend("simple_backend_class", RequestHandler)
+  serve.create_backend("simple_backend", RequestHandler)
 
-Lastly, we need to link the particular backend to the server endpoint. 
+Lastly, we need to link the particular backend to the server endpoint.
 To do that we'll use the ``link`` capability.
-A link is essentially a load-balancer and allow you to define queuing policies 
+A link is essentially a load-balancer and allow you to define queuing policies
 for how you would like backends to be served via an endpoint.
 For instance, you can route 50% of traffic to Model A and 50% of traffic to Model B.
 
@@ -160,7 +169,7 @@ For instance, you can route 50% of traffic to Model A and 50% of traffic to Mode
 Once we've done that, we can now query our endpoint via HTTP (we use `requests` to make HTTP calls here).
 
 .. code-block:: python
-  
+
   import requests
   print(requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).text)
 
@@ -177,7 +186,7 @@ Configuring Backends
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better response performance. To do all of this,
-you will create a ``BackendConfig``, a configuration object that you'll use to set 
+you will create a ``BackendConfig``, a configuration object that you'll use to set
 the properties of a particular backend.
 
 Scaling Out
@@ -198,7 +207,7 @@ Splitting Traffic
 It's trivial to also split traffic, simply specify the endpoint and the backends that you want to split.
 
 .. code-block:: python
-  
+
   serve.create_endpoint("endpoint_identifier_split", "/split", methods=["GET", "POST"])
 
   # splitting traffic 70/30
