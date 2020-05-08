@@ -719,7 +719,8 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
     node_resource_change.set_node_id(id.Binary());
     if (result.IsAdded()) {
       for (auto &it : result.GetData()) {
-        (*node_resource_change.mutable_updated_resources())[it.first] = *(it.second);
+        (*node_resource_change.mutable_updated_resources())[it.first] =
+            it.second->resource_capacity();
       }
     } else {
       for (auto &it : result.GetData()) {

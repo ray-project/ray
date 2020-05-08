@@ -220,19 +220,15 @@ ray::Status NodeManager::RegisterGcs() {
     const auto &resources_changed =
         [this](const rpc::NodeResourceChange &resource_notification) {
           auto id = ClientID::FromBinary(resource_notification.node_id());
-          if (0 == resource_notification.deleted_resources_size()) {
-            ResourceSet resource_set;
-            for (auto &entry : resource_notification.updated_resources()) {
-              resource_set.AddOrUpdateResource(entry.first,
-                                               entry.second.resource_capacity());
-            }
+          if (resource_notification.updated_resources_size() != 0) {
+            ResourceSet resource_set(
+                MapFromProtobuf(resource_notification.updated_resources()));
             ResourceCreateUpdated(id, resource_set);
-          } else {
-            std::vector<std::string> resource_names;
-            for (auto &entry : resource_notification.deleted_resources()) {
-              resource_names.push_back(entry);
-            }
-            ResourceDeleted(id, resource_names);
+          }
+
+          if (resource_notification.deleted_resources_size() != 0) {
+            ResourceDeleted(
+                id, VectorFromProtobuf(resource_notification.deleted_resources()));
           }
         };
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(

@@ -234,7 +234,8 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       for (auto &it : *to_be_updated_resources) {
-        (*node_resource_change.mutable_updated_resources())[it.first] = *(it.second);
+        (*node_resource_change.mutable_updated_resources())[it.first] =
+            it.second->resource_capacity();
       }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
