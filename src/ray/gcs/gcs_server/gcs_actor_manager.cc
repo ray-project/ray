@@ -54,6 +54,14 @@ ActorID GcsActor::GetActorID() const {
   return ActorID::FromBinary(actor_table_data_.actor_id());
 }
 
+bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
+
+std::string GcsActor::GetName() const {
+  RAY_CHECK(actor_table_data_.is_detached())
+      << "Actor names are only valid for detached actors.";
+  return actor_table_data_.name();
+}
+
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
   return TaskSpecification(task_spec);
@@ -71,7 +79,7 @@ GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> sch
     : gcs_actor_scheduler_(std::move(scheduler)),
       actor_info_accessor_(actor_info_accessor) {}
 
-void GcsActorManager::RegisterActor(
+Status GcsActorManager::RegisterActor(
     const ray::rpc::CreateActorRequest &request,
     std::function<void(std::shared_ptr<GcsActor>)> callback) {
   RAY_CHECK(callback);
@@ -86,7 +94,7 @@ void GcsActorManager::RegisterActor(
     // receiving the reply from GcsServer. If the actor has been created successfully then
     // just reply to the caller.
     callback(iter->second);
-    return;
+    return Status::OK();
   }
 
   auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
@@ -94,16 +102,36 @@ void GcsActorManager::RegisterActor(
     // It is a duplicate message, just mark the callback as pending and invoke it after
     // the actor has been successfully created.
     pending_register_iter->second.emplace_back(std::move(callback));
-    return;
+    return Status::OK();
+  }
+
+  auto actor = std::make_shared<GcsActor>(request);
+  if (actor->IsDetached()) {
+    auto it = named_actors_.find(actor->GetName());
+    if (it == named_actors_.end()) {
+      named_actors_.emplace(actor->GetName(), actor->GetActorID());
+    } else {
+      std::stringstream stream;
+      stream << "Actor with name '" << actor->GetName() << "' already exists.";
+      return Status::Invalid(stream.str());
+    }
   }
 
   // Mark the callback as pending and invoke it after the actor has been successfully
   // created.
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
-
-  auto actor = std::make_shared<GcsActor>(request);
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
   gcs_actor_scheduler_->Schedule(actor);
+  return Status::OK();
+}
+
+ActorID GcsActorManager::GetActorIDByName(const std::string &name) {
+  ActorID actor_id = ActorID::Nil();
+  auto it = named_actors_.find(name);
+  if (it != named_actors_.end()) {
+    actor_id = it->second;
+  }
+  return actor_id;
 }
 
 void GcsActorManager::ReconstructActorOnWorker(const ray::ClientID &node_id,

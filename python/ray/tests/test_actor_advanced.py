@@ -658,19 +658,30 @@ def test_detached_actor(ray_start_regular):
         def ping(self):
             return "pong"
 
-    with pytest.raises(Exception, match="Detached actors must be named"):
+    with pytest.raises(
+            ValueError, match="Actor name cannot be an empty string"):
+        DetachedActor._remote(detached=True, name="")
+
+    with pytest.raises(ValueError, match="Detached actors must be named"):
         DetachedActor._remote(detached=True)
 
-    with pytest.raises(ValueError, match="Please use a different name"):
-        _ = DetachedActor._remote(name="d_actor")
+    with pytest.raises(ValueError, match="Only detached actors can be named"):
         DetachedActor._remote(name="d_actor")
+
+    DetachedActor._remote(detached=True, name="d_actor")
+    with pytest.raises(ValueError, match="Please use a different name"):
+        DetachedActor._remote(detached=True, name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
-    actor_name = "DetachedActor"
+    get_actor_name = "d_actor"
+    create_actor_name = "DetachedActor"
     driver_script = """
 import ray
 ray.init(address="{}")
+
+existing_actor = ray.util.get_actor("{}")
+assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
 class DetachedActor:
@@ -679,10 +690,10 @@ class DetachedActor:
 
 actor = DetachedActor._remote(name="{}", detached=True)
 ray.get(actor.ping.remote())
-""".format(redis_address, actor_name)
+""".format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
-    detached_actor = ray.util.get_actor(actor_name)
+    detached_actor = ray.util.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 

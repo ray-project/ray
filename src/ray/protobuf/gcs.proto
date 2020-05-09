@@ -131,10 +131,12 @@ message ActorTableData {
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
+  // Name of the actor. Only populated if is_detached is true.
+  string name = 12;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 12;
+  double timestamp = 13;
   // The task specification of this actor's creation task.
-  TaskSpec task_spec = 13;
+  TaskSpec task_spec = 14;
 }
 
 message ErrorTableData {
@@ -356,7 +358,8 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
-
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
 }
