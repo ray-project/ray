@@ -218,22 +218,17 @@ ray::Status NodeManager::RegisterGcs() {
     RAY_CHECK_OK(status);
     // Subscribe to resource changes.
     const auto &resources_changed =
-        [this](const ClientID &id,
-               const gcs::ResourceChangeNotification &resource_notification) {
-          if (resource_notification.IsAdded()) {
-            ResourceSet resource_set;
-            for (auto &entry : resource_notification.GetData()) {
-              resource_set.AddOrUpdateResource(entry.first,
-                                               entry.second->resource_capacity());
-            }
+        [this](const rpc::NodeResourceChange &resource_notification) {
+          auto id = ClientID::FromBinary(resource_notification.node_id());
+          if (resource_notification.updated_resources_size() != 0) {
+            ResourceSet resource_set(
+                MapFromProtobuf(resource_notification.updated_resources()));
             ResourceCreateUpdated(id, resource_set);
-          } else {
-            RAY_CHECK(resource_notification.IsRemoved());
-            std::vector<std::string> resource_names;
-            for (auto &entry : resource_notification.GetData()) {
-              resource_names.push_back(entry.first);
-            }
-            ResourceDeleted(id, resource_names);
+          }
+
+          if (resource_notification.deleted_resources_size() != 0) {
+            ResourceDeleted(
+                id, VectorFromProtobuf(resource_notification.deleted_resources()));
           }
         };
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
@@ -440,16 +435,11 @@ void NodeManager::WarnResourceDeadlock() {
     return;
   }
 
-  // suppress duplicates warning messages
-  if (resource_deadlock_warned_) {
-    return;
-  }
-
   // The node is full of actors and no progress has been made for some time.
   // If there are any pending tasks, build a warning.
   std::ostringstream error_message;
   ray::Task exemplar;
-  bool should_warn = false;
+  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
 
@@ -461,14 +451,23 @@ void NodeManager::WarnResourceDeadlock() {
     } else {
       pending_tasks += 1;
     }
-    if (!should_warn) {
+    if (!any_pending) {
       exemplar = task;
-      should_warn = true;
+      any_pending = true;
     }
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
-  if (should_warn) {
+  if (any_pending) {
+    // Actor references may be caught in cycles, preventing them from being deleted.
+    // Trigger global GC to hopefully free up resource slots.
+    TriggerGlobalGC();
+
+    // Suppress duplicates warning messages.
+    if (resource_deadlock_warned_) {
+      return;
+    }
+
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
@@ -3685,6 +3684,10 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
+  TriggerGlobalGC();
+}
+
+void NodeManager::TriggerGlobalGC() {
   RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.

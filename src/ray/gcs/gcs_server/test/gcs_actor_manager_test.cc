@@ -84,10 +84,11 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  Status status = gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       });
+  RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -182,10 +183,11 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  Status status = gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       });
+  RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -223,10 +225,11 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto create_actor_request = Mocker::GenCreateActorRequest(
       job_id, /*max_reconstructions=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  Status status = gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       });
+  RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -352,6 +355,48 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   // The child actor should not be marked as dead.
   ASSERT_TRUE(worker_client_->killed_actors.empty());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+}
+
+TEST_F(GcsActorManagerTest, TestNamedActors) {
+  auto job_id_1 = JobID::FromInt(1);
+  auto job_id_2 = JobID::FromInt(2);
+
+  auto request1 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor1");
+  Status status = gcs_actor_manager_.RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor1").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+
+  auto request2 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor2");
+  status = gcs_actor_manager_.RegisterActor(request2,
+                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+            request2.task_spec().actor_creation_task_spec().actor_id());
+
+  // Check that looking up a non-existent name returns ActorID::Nil();
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor3"), ActorID::Nil());
+
+  // Check that naming collisions return Status::Invalid.
+  auto request3 =
+      Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor2");
+  status = gcs_actor_manager_.RegisterActor(request3,
+                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+            request2.task_spec().actor_creation_task_spec().actor_id());
+
+  // Check that naming collisions are enforced across JobIDs.
+  auto request4 =
+      Mocker::GenCreateActorRequest(job_id_2, 0, /*is_detached=*/true, /*name=*/"actor2");
+  status = gcs_actor_manager_.RegisterActor(request4,
+                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+            request2.task_spec().actor_creation_task_spec().actor_id());
 }
 
 }  // namespace ray

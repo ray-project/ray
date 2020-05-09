@@ -47,6 +47,15 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
+  /// Get actor specification for a named actor from GCS asynchronously.
+  ///
+  /// \param name The name of the detached actor to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetByName(
+      const std::string &name,
+      const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
   /// Create an actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -463,7 +472,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const ItemCallback<rpc::NodeResourceChange> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report heartbeat of a node to GCS asynchronously.

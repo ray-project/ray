@@ -664,6 +664,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  /// Get a handle to a named actor.
+  ///
+  /// \param[in] name The name of the actor whose handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::NotFound if an actor with the specified name wasn't found.
+  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and

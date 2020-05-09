@@ -49,11 +49,25 @@ service JobInfoGcsService {
 }
 
 message GetActorInfoRequest {
-  // ID of this actor.
+  // ID of this actor. If actor_id is set, name will not be set.
   bytes actor_id = 1;
+  // Name of the actor. This is only used for detached actors. If name is set,
+  // actor_id will not be set.
+  string name = 2;
 }
 
 message GetActorInfoReply {
+  GcsStatus status = 1;
+  // Data of actor.
+  ActorTableData actor_table_data = 2;
+}
+
+message GetNamedActorInfoRequest {
+  // Name of the actor.
+  string name = 2;
+}
+
+message GetNamedActorInfoReply {
   GcsStatus status = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
@@ -110,8 +124,10 @@ message GetActorCheckpointIDReply {
 service ActorInfoGcsService {
   // Create actor via gcs service
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
-  // Get actor data from GCS Service.
+  // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+  // Get actor data from GCS Service by name.
+  rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
   // Register an actor to GCS Service.
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.
