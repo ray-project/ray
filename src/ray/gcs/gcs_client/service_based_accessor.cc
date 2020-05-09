@@ -282,8 +282,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()) {}
+    : client_impl_(client_impl) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
@@ -522,12 +521,18 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
-    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing node resources change.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.ParseFromString(data);
+    subscribe(node_resource_change);
+  };
+
+  auto status = client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL,
+                                                          on_subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return status;
 }

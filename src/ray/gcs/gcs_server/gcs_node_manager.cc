@@ -228,9 +228,19 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     for (auto &entry : *to_be_updated_resources) {
       iter->second[entry.first] = entry.second;
     }
-    auto on_done = [node_id, to_be_updated_resources, reply,
-                    send_reply_callback](Status status) {
+    auto on_done = [this, node_id, to_be_updated_resources, reply,
+                    send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_node_id(node_id.Binary());
+      for (auto &it : *to_be_updated_resources) {
+        (*node_resource_change.mutable_updated_resources())[it.first] =
+            it.second->resource_capacity();
+      }
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                         node_resource_change.SerializeAsString(),
+                                         nullptr));
+
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
@@ -255,8 +265,18 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
     for (auto &resource_name : resource_names) {
       iter->second.erase(resource_name);
     }
-    auto on_done = [reply, send_reply_callback](Status status) {
+    auto on_done = [this, node_id, resource_names, reply,
+                    send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
+      rpc::NodeResourceChange node_resource_change;
+      node_resource_change.set_node_id(node_id.Binary());
+      for (const auto &resource_name : resource_names) {
+        node_resource_change.add_deleted_resources(resource_name);
+      }
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                         node_resource_change.SerializeAsString(),
+                                         nullptr));
+
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
     RAY_CHECK_OK(

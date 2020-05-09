@@ -225,9 +225,7 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeToResources(
-      const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
-          &subscribe) {
+  bool SubscribeToResources(const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -613,12 +611,11 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   // Subscribe to node resource changes.
   std::atomic<int> add_count(0);
   std::atomic<int> remove_count(0);
-  auto on_subscribe = [&add_count, &remove_count](
-                          const ClientID &id,
-                          const gcs::ResourceChangeNotification &notification) {
-    if (notification.IsAdded()) {
+  auto on_subscribe = [&add_count,
+                       &remove_count](const rpc::NodeResourceChange &notification) {
+    if (0 == notification.deleted_resources_size()) {
       ++add_count;
-    } else if (notification.IsRemoved()) {
+    } else {
       ++remove_count;
     }
   };

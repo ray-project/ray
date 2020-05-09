@@ -317,6 +317,16 @@ message ObjectLocationChange {
   ObjectTableData data = 2;
 }
 
+// A notification message about one node's resources being changed.
+message NodeResourceChange {
+  // ID of the node whose resources have changed.
+  bytes node_id = 1;
+  // Labels of the updated resources and their latest capacities.
+  map<string, double> updated_resources = 2;
+  // Labels of the resources that were deleted.
+  repeated string deleted_resources = 3;
+}
+
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
