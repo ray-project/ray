@@ -22,6 +22,7 @@ import yaml
 
 import ray
 from ray.tune import run_experiments
+from ray.rllib import _register_all
 
 if __name__ == "__main__":
     # Bazel regression test mode: Get path to look for yaml files from argv[2].
@@ -54,6 +55,7 @@ if __name__ == "__main__":
                 trials = run_experiments(experiments, resume=False)
             finally:
                 ray.shutdown()
+                _register_all()
 
             for t in trials:
                 if (t.last_result["episode_reward_mean"] >=
