@@ -1359,14 +1359,14 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             }
           }
 
-          RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
-
           absl::MutexLock lock(&actor_handles_mutex_);
           // TODO(swang): Erase the actor handle once all refs to the actor
-          // have gone outof scope. We cannot erase it here in case the
+          // have gone out of scope. We cannot erase it here in case the
           // language frontend receives another ref to the same actor. In this
           // case, we must remember the last task counter that we sent to the
           // actor.
+          // TODO(swang): Unsubscribe from the actor table once all local refs
+          // to the actor have gone out of scope.
           auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
           if (callback) {
             callback.mapped()(actor_id);

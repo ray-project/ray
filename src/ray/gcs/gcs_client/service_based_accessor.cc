@@ -536,7 +536,6 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
   ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
-  RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
@@ -545,8 +544,6 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reporting heartbeat, status = " << status
-                       << ", node id = " << node_id;
       });
   return Status::OK();
 }

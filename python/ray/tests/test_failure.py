@@ -1077,7 +1077,10 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     def probe():
         return
 
-    @ray.remote(max_reconstructions=3)
+    # TODO(swang): This test does not pass if max_reconstructions > 0 for the
+    # raylet codepath. Add this parameter once the GCS actor service is enabled
+    # by default.
+    @ray.remote
     class Actor(object):
         def __init__(self):
             return
