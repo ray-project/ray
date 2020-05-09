@@ -89,7 +89,6 @@ EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
 +---------------+----------+-------+-----+-----+
 ... 10 more trials not shown (10 PENDING)"""
 
-
 EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
