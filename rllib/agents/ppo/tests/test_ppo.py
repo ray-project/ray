@@ -23,20 +23,17 @@ tf = try_import_tf()
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
     SampleBatch.CUR_OBS: np.array(
-        [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
-         [0.9, 1.0, 1.1, 1.2]],
+        [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32),
     SampleBatch.ACTIONS: np.array([0, 1, 1]),
     SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
     SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
-    SampleBatch.PREV_REWARDS: np.array(
-        [1.0, -1.0, .5], dtype=np.float32),
+    SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
     SampleBatch.DONES: np.array([False, False, True]),
     SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
     SampleBatch.ACTION_DIST_INPUTS: np.array(
         [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-    SampleBatch.ACTION_LOGP: np.array(
-        [-0.5, -0.1, -0.2], dtype=np.float32),
+    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
 }
 
 
