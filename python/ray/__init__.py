@@ -31,7 +31,7 @@ thirdparty_files = os.path.join(
 sys.path.insert(0, thirdparty_files)
 
 import ray.compat  # noqa: E402
-ray.compat.apply_patches()
+ray.compat.patch_redis_empty_recv()
 
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet

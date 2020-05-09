@@ -3,7 +3,11 @@ import socket
 import sys
 
 
-def patch_redis():
+def patch_redis_empty_recv():
+    """On Windows, socket disconnect result in errors rather than empty reads.
+    redis-py does not handle these errors correctly.
+    This patch translates connection resets to empty reads as in POSIX.
+    """
     if sys.platform == "win32":
         import redis
 
@@ -17,7 +21,3 @@ def patch_redis():
             return result
 
         redis.connection.recv = redis_recv
-
-
-def apply_patches():
-    patch_redis()
