@@ -58,14 +58,14 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const SegmentedCallback<std::pair<std::string, std::string>> &callback) {
+    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   std::vector<std::pair<std::string, std::string>> result;
   for (auto &record : table->records_) {
     result.emplace_back(std::make_pair(record.first, record.second));
   }
-  main_io_service_.post([result, callback]() { callback(Status::OK(), false, result); });
+  main_io_service_.post([result, callback]() { callback(Status::OK(), result); });
   return Status::OK();
 }
 
@@ -75,6 +75,18 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_.erase(key);
+  main_io_service_.post([callback]() { callback(Status::OK()); });
+  return Status::OK();
+}
+
+Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
+                                             const std::vector<std::string> &keys,
+                                             const StatusCallback &callback) {
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+  for (auto &key : keys) {
+    table->records_.erase(key);
+  }
   main_io_service_.post([callback]() { callback(Status::OK()); });
   return Status::OK();
 }

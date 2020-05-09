@@ -16,6 +16,7 @@
 #define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -27,7 +28,7 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
+  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
   Status AsyncPut(const std::string &table_name, const std::string &key,
@@ -42,10 +43,14 @@ class RedisStoreClient : public StoreClient {
 
   Status AsyncGetAll(
       const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
+      const MultiItemCallback<std::pair<std::string, std::string>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
+
+  Status AsyncBatchDelete(const std::string &table_name,
+                          const std::vector<std::string> &keys,
+                          const StatusCallback &callback) override;
 
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
@@ -58,26 +63,30 @@ class RedisStoreClient : public StoreClient {
   /// Otherwise it will disturb the status of the RedisScanner.
   class RedisScanner {
    public:
-    RedisScanner(std::shared_ptr<RedisClient> redis_client);
+    explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
+                          std::string table_name, std::string match_pattern);
 
-    void DoScan();
+    Status ScanRows(
+        const MultiItemCallback<std::pair<std::string, std::string>> &callback);
+
+    Status ScanKeys(const MultiItemCallback<std::string> &callback);
 
    private:
+    void Scan();
+
     void OnScanDone();
 
-    void OnScanCallback(size_t shard_index, std::shared_ptr<CallbackReply> reply);
+    void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply);
 
-    void ProcessScanResult(size_t shard_index, size_t cursor,
-                           const std::vector<std::string> &scan_result,
-                           bool pending_done);
+    void ReadRows(const absl::flat_hash_set<std::string> &keys);
+
+    std::string table_name_;
 
     /// The scan match pattern.
     std::string match_pattern_;
 
-    /// The callback that will be called when ScanPartialRows receving some data from
-    /// redis. And the scan may not done.
-    SegmentedCallback<std::pair<std::string, std::string>> scan_partial_rows_callback_{
-        nullptr};
+    /// The callback that will be called when scan finished.
+    StatusCallback callback_{nullptr};
 
     /// The scan result in rows.
     /// If the scan type is kScanPartialRows, partial scan result will be saved in this
@@ -85,25 +94,22 @@ class RedisStoreClient : public StoreClient {
     /// variable.
     std::vector<std::pair<std::string, std::string>> rows_;
 
-    /// The scan result in keys.
-    /// If the scan type is kScanPartialKeys, partial scan result will be saved in this
-    /// variable. If the scan type is kScanAllKeys, all scan result will be saved in this
-    /// variable.
-    std::vector<std::string> keys_;
-
     absl::Mutex mutex_;
 
     /// The scan cursor for each shard.
-    absl::flat_hash_map<size_t, size_t> shard_to_cursor_ GUARDED_BY(mutex_);
+    absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
 
     /// All keys that received from redis.
-    std::unordered_set<std::string> all_received_keys_ GUARDED_BY(mutex_);
+    absl::flat_hash_set<std::string> keys_;
 
     /// Whether the scan is failed.
     std::atomic<bool> is_failed_{false};
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
+
+    /// Total pending read request count.
+    std::atomic<size_t> pending_read_count_{0};
 
     std::shared_ptr<RedisClient> redis_client_;
   };
@@ -112,6 +118,8 @@ class RedisStoreClient : public StoreClient {
                const StatusCallback &callback);
 
   std::shared_ptr<RedisClient> redis_client_;
+
+  std::shared_ptr<RedisScanner> redis_scanner_;
 };
 
 }  // namespace gcs

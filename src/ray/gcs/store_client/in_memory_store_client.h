@@ -44,10 +44,14 @@ class InMemoryStoreClient : public StoreClient {
 
   Status AsyncGetAll(
       const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
+      const MultiItemCallback<std::pair<std::string, std::string>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
+
+  Status AsyncBatchDelete(const std::string &table_name,
+                          const std::vector<std::string> &keys,
+                          const StatusCallback &callback) override;
 
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;

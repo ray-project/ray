@@ -183,11 +183,13 @@ class StoreClientTestBase : public ::testing::Test {
 
     // AsyncGetAll
     auto get_all_callback =
-        [this](const Status &status, bool has_more,
+        [this](const Status &status,
                const std::vector<std::pair<std::string, std::string>> &result) {
           RAY_CHECK_OK(status);
           static std::unordered_set<ActorID> received_keys;
+          RAY_LOG(INFO) << "9999999999999999999result size = " << result.size();
           for (const auto &item : result) {
+            RAY_LOG(INFO) << "item.first size = " << item.first.size();
             const ActorID &actor_id = ActorID::FromBinary(item.first);
             auto it = received_keys.find(actor_id);
             RAY_CHECK(it == received_keys.end());
@@ -196,9 +198,7 @@ class StoreClientTestBase : public ::testing::Test {
             auto map_it = key_to_value_.find(actor_id);
             RAY_CHECK(map_it != key_to_value_.end());
           }
-          if (!has_more) {
-            RAY_CHECK(received_keys.size() == key_to_value_.size());
-          }
+          RAY_CHECK(received_keys.size() == key_to_value_.size());
           pending_count_ -= result.size();
         };
 

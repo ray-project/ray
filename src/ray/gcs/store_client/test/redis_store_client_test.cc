@@ -44,11 +44,11 @@ class RedisStoreClientTest : public StoreClientTestBase {
   std::shared_ptr<RedisClient> redis_client_;
 };
 
-TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
+// TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
+//
+// TEST_F(RedisStoreClientTest, AsyncDeleteTest) { TestAsyncDelete(); }
 
-TEST_F(RedisStoreClientTest, AsyncDeleteTest) { TestAsyncDelete(); }
-
-TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) { TestAsyncGetAll(); }
+TEST_F(RedisStoreClientTest, AsyncGetAllTest) { TestAsyncGetAll(); }
 
 }  // namespace gcs
 
