@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
         passed = False
         for i in range(3):
-            trials = run_experiments(experiments, resume=False, verbose=0)
+            trials = run_experiments(experiments, resume=False)
 
             for t in trials:
                 if (t.last_result["episode_reward_mean"] >=
