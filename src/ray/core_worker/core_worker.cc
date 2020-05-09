@@ -1920,7 +1920,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     // NOTE(hchen): Use `quick_exit` to force-exit this process. If we use `exit` here,
     // static objects will be destructed in an incorrect order, which will lead to
     // core dumps.
-    quick_exit(1);
+    std::quick_exit(1);
   }
 }
 
@@ -1959,7 +1959,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // NOTE(hchen): Use `quick_exit` to force-exit this process. If we use `exit` here,
     // static objects will be destructed in an incorrect order, which will lead to
     // core dumps.
-    quick_exit(1);
+    std::quick_exit(1);
   } else {
     Exit(/*intentional=*/true);
   }
