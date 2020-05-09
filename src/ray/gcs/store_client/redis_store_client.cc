@@ -131,6 +131,105 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
   return Status::OK();
 }
 
+RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client)
+    : redis_client_(std::move(redis_client)) {
+  for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
+    shard_to_cursor_.emplace(index, /*cursor*/ 0);
+  }
+}
+
+void RedisStoreClient::RedisScanner::DoScan() {
+  bool is_scan_done = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    is_scan_done = shard_to_cursor_.empty();
+  }
+
+  if (is_scan_done) {
+    RAY_CHECK(pending_request_count_ == 0);
+    OnScanDone();
+    return;
+  }
+
+  {
+    size_t batch_count = RayConfig::instance().maximum_gcs_scan_batch_size();
+    absl::MutexLock lock(&mutex_);
+    for (const auto &item : shard_to_cursor_) {
+      ++pending_request_count_;
+
+      size_t shard_index = item.first;
+      size_t cursor = item.second;
+      auto scan_callback = [this, shard_index](std::shared_ptr<CallbackReply> reply) {
+        OnScanCallback(shard_index, reply);
+      };
+
+      // Scan by prefix from Redis.
+      std::vector<std::string> args = {"SCAN",  std::to_string(cursor),
+                                       "MATCH", match_pattern_,
+                                       "COUNT", std::to_string(batch_count)};
+      auto shard_context = redis_client_->GetShardContexts()[shard_index];
+      Status status = shard_context->RunArgvAsync(args, scan_callback);
+
+      if (!status.ok()) {
+        is_failed_ = true;
+        if (--pending_request_count_ == 0) {
+          OnScanDone();
+        }
+        RAY_LOG(INFO) << "Scan failed, status " << status.ToString();
+        return;
+      }
+    }
+  }
+}
+
+void RedisStoreClient::RedisScanner::OnScanDone() {
+  Status status = is_failed_ ? Status::RedisError("Redis Error.") : Status::OK();
+  scan_partial_rows_callback_(status, /* has_more */ false, rows_);
+}
+
+void RedisStoreClient::RedisScanner::OnScanCallback(
+    size_t shard_index, std::shared_ptr<CallbackReply> reply) {
+  RAY_CHECK(reply);
+  bool pending_done = (--pending_request_count_ == 0);
+
+  if (is_failed_) {
+    if (pending_done) {
+      OnScanDone();
+    }
+    return;
+  }
+
+  std::vector<std::string> keys;
+  size_t cursor = reply->ReadAsScanArray(&keys);
+  ProcessScanResult(shard_index, cursor, keys, pending_done);
+}
+
+void RedisStoreClient::RedisScanner::ProcessScanResult(
+    size_t shard_index, size_t cursor, const std::vector<std::string> &scan_result,
+    bool pending_done) {
+  {
+    absl::MutexLock lock(&mutex_);
+    // Update shard cursors.
+    auto shard_it = shard_to_cursor_.find(shard_index);
+    RAY_CHECK(shard_it != shard_to_cursor_.end());
+    if (cursor == 0) {
+      shard_to_cursor_.erase(shard_it);
+    } else {
+      shard_it->second = cursor;
+    }
+  }
+
+  // Deduplicate keys.
+  auto deduped_result = Deduplicate(scan_result);
+  // Save scan result.
+  size_t total_count = UpdateResult(deduped_result);
+
+  if (!pending_done) {
+    // Waiting for all pending scan command return.
+    return;
+  }
+}
+
 }  // namespace gcs
 
 }  // namespace ray

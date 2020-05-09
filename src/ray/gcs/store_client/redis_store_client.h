@@ -15,8 +15,7 @@
 #ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
-#include <memory>
-#include <unordered_set>
+#include "absl/container/flat_hash_map.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -52,6 +51,63 @@ class RedisStoreClient : public StoreClient {
                             const StatusCallback &callback) override;
 
  private:
+  /// \class RedisScanner
+  /// This class is used to scan data from Redis.
+  ///
+  /// If you called one method, should never call the other methods.
+  /// Otherwise it will disturb the status of the RedisScanner.
+  class RedisScanner {
+   public:
+    RedisScanner(std::shared_ptr<RedisClient> redis_client);
+
+    void DoScan();
+
+   private:
+    void OnScanDone();
+
+    void OnScanCallback(size_t shard_index, std::shared_ptr<CallbackReply> reply);
+
+    void ProcessScanResult(size_t shard_index, size_t cursor,
+                           const std::vector<std::string> &scan_result,
+                           bool pending_done);
+
+    /// The scan match pattern.
+    std::string match_pattern_;
+
+    /// The callback that will be called when ScanPartialRows receving some data from
+    /// redis. And the scan may not done.
+    SegmentedCallback<std::pair<std::string, std::string>> scan_partial_rows_callback_{
+        nullptr};
+
+    /// The scan result in rows.
+    /// If the scan type is kScanPartialRows, partial scan result will be saved in this
+    /// variable. If the scan type is kScanAllRows, all scan result will be saved in this
+    /// variable.
+    std::vector<std::pair<std::string, std::string>> rows_;
+
+    /// The scan result in keys.
+    /// If the scan type is kScanPartialKeys, partial scan result will be saved in this
+    /// variable. If the scan type is kScanAllKeys, all scan result will be saved in this
+    /// variable.
+    std::vector<std::string> keys_;
+
+    absl::Mutex mutex_;
+
+    /// The scan cursor for each shard.
+    absl::flat_hash_map<size_t, size_t> shard_to_cursor_ GUARDED_BY(mutex_);
+
+    /// All keys that received from redis.
+    std::unordered_set<std::string> all_received_keys_ GUARDED_BY(mutex_);
+
+    /// Whether the scan is failed.
+    std::atomic<bool> is_failed_{false};
+
+    /// The pending shard scan count.
+    std::atomic<size_t> pending_request_count_{0};
+
+    std::shared_ptr<RedisClient> redis_client_;
+  };
+
   Status DoPut(const std::string &key, const std::string &data,
                const StatusCallback &callback);
 
