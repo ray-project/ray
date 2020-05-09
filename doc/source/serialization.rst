@@ -39,13 +39,13 @@ Ray is currently using Pickle protocol version 5. The default pickle protocal us
     l3 = ray.get(ray.put(l2))
 
     assert l2[0] is l2[1]
-    assert not l3[0] is l3[1]  # will raise AssertionError for protocol 4 & 5, but not protocol 3
+    assert l3[0] is l3[1]  # will raise AssertionError for protocol 4 & 5, but not protocol 3
 
     l = []
     l.append(l)
 
     # Try to put this list that recursively contains itself in the object store.
-    ray.put(l)  # without any issues
+    ray.put(l)  # ok 
 
 - For non-native objects, Ray will always keep a single copy even it is reference multiple times in an object:
 
