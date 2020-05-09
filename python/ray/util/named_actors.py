@@ -1,7 +1,6 @@
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray._raylet import gcs_actor_service_enabled
 
 
 def _calculate_key(name):
@@ -27,7 +26,7 @@ def get_actor(name):
     Returns:
         The ActorHandle object corresponding to the name.
     """
-    if gcs_actor_service_enabled():
+    if ray._raylet.gcs_actor_service_enabled():
         worker = ray.worker.global_worker
         handle = worker.core_worker.get_named_actor_handle(name)
     else:
