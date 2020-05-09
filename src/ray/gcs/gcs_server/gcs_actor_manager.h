@@ -72,8 +72,6 @@ class GcsActor {
   ClientID GetNodeID() const;
   /// Get the id of the worker on which this actor is created.
   WorkerID GetWorkerID() const;
-  /// Whether this actor is detached.
-  bool IsDetached() const;
   /// Get the actor's owner ID.
   WorkerID GetOwnerID() const;
   /// Get the node ID of the actor's owner.

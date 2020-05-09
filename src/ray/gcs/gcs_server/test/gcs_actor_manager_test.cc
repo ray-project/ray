@@ -113,10 +113,10 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
-      });
+      }));
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -144,10 +144,10 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
-      });
+      }));
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -285,10 +285,10 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto create_actor_request = Mocker::GenCreateActorRequest(
       job_id, /*max_reconstructions=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
-      });
+      }));
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -328,10 +328,10 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   auto create_actor_request =
       Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/1, /*detached=*/true);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
-      });
+      }));
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);

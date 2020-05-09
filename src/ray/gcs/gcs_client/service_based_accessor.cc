@@ -560,12 +560,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
-  ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      request,
-      [node_id, callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
         }

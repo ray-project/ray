@@ -42,8 +42,6 @@ WorkerID GcsActor::GetWorkerID() const {
   return WorkerID::FromBinary(address.worker_id());
 }
 
-bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
-
 WorkerID GcsActor::GetOwnerID() const {
   return WorkerID::FromBinary(GetOwnerAddress().worker_id());
 }
