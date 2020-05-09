@@ -15,7 +15,11 @@
 #ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
+<<<<<<< HEAD
 #include "absl/container/flat_hash_set.h"
+=======
+#include "absl/container/flat_hash_map.h"
+>>>>>>> add part code
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
