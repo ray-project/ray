@@ -1362,6 +1362,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_tf",
+    main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/centralized_critic.py"],
@@ -1370,6 +1371,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_torch",
+    main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/centralized_critic.py"],
@@ -1449,7 +1451,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
+    name = "examples/custom_keras_model_a2c",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_model.py"],
@@ -1457,7 +1460,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
+    name = "examples/custom_keras_model_dqn",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_keras_model.py"],
@@ -1465,7 +1469,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
+    name = "examples/custom_keras_model_ppo",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_keras_model.py"],
@@ -1596,6 +1601,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_cartpole_tf",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_cartpole.py"],
@@ -1604,6 +1610,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_cartpole_torch",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_cartpole.py"],
@@ -1612,6 +1619,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy_tf",
+    main = "examples/multi_agent_custom_policy.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
@@ -1620,6 +1628,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_custom_policy_torch",
+    main = "examples/multi_agent_custom_policy.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
@@ -1628,6 +1637,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_two_trainers_tf",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_two_trainers.py"],
@@ -1636,6 +1646,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_two_trainers_torch",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_two_trainers.py"],
@@ -1644,6 +1655,7 @@ py_test(
 
 py_test(
     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_two_trainers.py"],
