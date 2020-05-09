@@ -20,6 +20,25 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
 
 tf = try_import_tf()
 
+# Fake CartPole episode of n time steps.
+FAKE_BATCH = {
+    SampleBatch.CUR_OBS: np.array(
+        [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
+         [0.9, 1.0, 1.1, 1.2]],
+        dtype=np.float32),
+    SampleBatch.ACTIONS: np.array([0, 1, 1]),
+    SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
+    SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
+    SampleBatch.PREV_REWARDS: np.array(
+        [1.0, -1.0, .5], dtype=np.float32),
+    SampleBatch.DONES: np.array([False, False, True]),
+    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+    SampleBatch.ACTION_DIST_INPUTS: np.array(
+        [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
+    SampleBatch.ACTION_LOGP: np.array(
+        [-0.5, -0.1, -0.2], dtype=np.float32),
+}
+
 
 class TestPPO(unittest.TestCase):
     @classmethod
@@ -118,25 +137,6 @@ class TestPPO(unittest.TestCase):
         config["model"]["free_log_std"] = True
         config["vf_share_layers"] = True
 
-        # Fake CartPole episode of n time steps.
-        train_batch = {
-            SampleBatch.CUR_OBS: np.array(
-                [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
-                 [0.9, 1.0, 1.1, 1.2]],
-                dtype=np.float32),
-            SampleBatch.ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.PREV_REWARDS: np.array(
-                [1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.DONES: np.array([False, False, True]),
-            SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            SampleBatch.ACTION_DIST_INPUTS: np.array(
-                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-            SampleBatch.ACTION_LOGP: np.array(
-                [-0.5, -0.1, -0.2], dtype=np.float32),
-        }
-
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
@@ -168,9 +168,9 @@ class TestPPO(unittest.TestCase):
             assert init_std == 0.0, init_std
 
             if fw == "tf" or fw == "eager":
-                batch = postprocess_ppo_gae_tf(policy, train_batch)
+                batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
-                batch = postprocess_ppo_gae_torch(policy, train_batch)
+                batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
 
@@ -186,25 +186,6 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         config["vf_share_layers"] = True
-
-        # Fake CartPole episode of n time steps.
-        train_batch = {
-            SampleBatch.CUR_OBS: np.array(
-                [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
-                 [0.9, 1.0, 1.1, 1.2]],
-                dtype=np.float32),
-            SampleBatch.ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.PREV_REWARDS: np.array(
-                [1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.DONES: np.array([False, False, True]),
-            SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            SampleBatch.ACTION_DIST_INPUTS: np.array(
-                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-            SampleBatch.ACTION_LOGP: np.array(
-                [-0.5, -0.1, -0.2], dtype=np.float32),
-        }
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -228,9 +209,9 @@ class TestPPO(unittest.TestCase):
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
             if fw == "tf" or fw == "eager":
-                train_batch = postprocess_ppo_gae_tf(policy, train_batch)
+                train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
-                train_batch = postprocess_ppo_gae_torch(policy, train_batch)
+                train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
             # Check Advantage values.
