@@ -15,11 +15,7 @@
 #ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
-<<<<<<< HEAD
 #include "absl/container/flat_hash_set.h"
-=======
-#include "absl/container/flat_hash_map.h"
->>>>>>> add part code
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -102,6 +98,9 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
+    /// Total pending read request count.
+    std::atomic<size_t> pending_read_count_{0};
+
     std::shared_ptr<RedisClient> redis_client_;
   };
 
@@ -136,6 +135,8 @@ class RedisStoreClient : public StoreClient {
                                         const std::string &index_key);
 
   std::shared_ptr<RedisClient> redis_client_;
+
+  std::shared_ptr<RedisScanner> redis_scanner_;
 };
 
 }  // namespace gcs
