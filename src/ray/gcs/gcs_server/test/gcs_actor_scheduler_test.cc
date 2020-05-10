@@ -223,7 +223,6 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(actor->GetActorID(), actor_ids.front());
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_TRUE(actor->GetNodeID().IsNil());
 
   // Grant a worker, which will influence nothing.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
@@ -269,7 +268,6 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   ASSERT_EQ(1, actor_ids.size());
   ASSERT_EQ(actor->GetActorID(), actor_ids.front());
   ASSERT_EQ(1, worker_client_->callbacks.size());
-  ASSERT_TRUE(actor->GetNodeID().IsNil());
 
   // Reply the actor creation request, which will influence nothing.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
@@ -309,8 +307,6 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(actor->GetActorID(),
             gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
   ASSERT_EQ(1, worker_client_->callbacks.size());
-  ASSERT_TRUE(actor->GetNodeID().IsNil());
-  ASSERT_TRUE(actor->GetWorkerID().IsNil());
 
   // Reply the actor creation request, which will influence nothing.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
