@@ -605,6 +605,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Trigger global GC across the cluster to free up references to actors or
+  /// object ids.
+  void TriggerGlobalGC();
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 

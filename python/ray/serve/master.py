@@ -7,12 +7,12 @@ import time
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
-                                 SERVE_PROXY_NAME, SERVE_METRIC_MONITOR_NAME)
+                                 SERVE_PROXY_NAME, SERVE_METRIC_SINK_NAME)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.utils import async_retryable, get_random_letters, logger
+from ray.serve.metric.exporter import MetricExporterActor
 
 import numpy as np
 
@@ -49,7 +49,8 @@ class ServeMaster:
     """
 
     async def __init__(self, router_class, router_kwargs, start_http_proxy,
-                       http_proxy_host, http_proxy_port, metric_gc_window_s):
+                       http_proxy_host, http_proxy_port,
+                       metric_exporter_class):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store = RayInternalKVStore()
@@ -82,14 +83,14 @@ class ServeMaster:
         # Cached handles to actors in the system.
         self.router = None
         self.http_proxy = None
-        self.metric_monitor = None
+        self.metric_exporter = None
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
+        self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_router(router_class, router_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
-        self._get_or_start_metric_monitor(metric_gc_window_s)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -157,26 +158,23 @@ class ServeMaster:
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes, self.get_router()
 
-    def _get_or_start_metric_monitor(self, gc_window_s):
-        """Get the metric monitor belonging to this serve cluster.
+    def _get_or_start_metric_exporter(self, metric_exporter_class):
+        """Get the metric exporter belonging to this serve cluster.
 
-        If the metric monitor does not already exist, it will be started.
+        If the metric exporter does not already exist, it will be started.
         """
         try:
-            self.metric_monitor = ray.util.get_actor(SERVE_METRIC_MONITOR_NAME)
+            self.metric_exporter = ray.util.get_actor(SERVE_METRIC_SINK_NAME)
         except ValueError:
-            logger.info("Starting metric monitor with name '{}'".format(
-                SERVE_METRIC_MONITOR_NAME))
-            self.metric_monitor = MetricMonitor.options(
+            logger.info("Starting metric exporter with name '{}'".format(
+                SERVE_METRIC_SINK_NAME))
+            self.metric_exporter = MetricExporterActor.options(
                 detached=True,
-                name=SERVE_METRIC_MONITOR_NAME).remote(gc_window_s)
-            # TODO(edoakes): move these into the constructor.
-            start_metric_monitor_loop.remote(self.metric_monitor)
-            self.metric_monitor.add_target.remote(self.router)
+                name=SERVE_METRIC_SINK_NAME).remote(metric_exporter_class)
 
-    def get_metric_monitor(self):
-        """Returns a handle to the metric monitor managed by this actor."""
-        return [self.metric_monitor]
+    def get_metric_exporter(self):
+        """Returns a handle to the metric exporter managed by this actor."""
+        return [self.metric_exporter]
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
@@ -213,10 +211,16 @@ class ServeMaster:
         logger.info("Recovering from checkpoint")
 
         # Load internal state from the checkpoint data.
-        (self.routes, self.backends, self.traffic_policies, self.replicas,
-         self.replicas_to_start, self.replicas_to_stop,
-         self.backends_to_remove,
-         self.endpoints_to_remove) = pickle.loads(checkpoint_bytes)
+        (
+            self.routes,
+            self.backends,
+            self.traffic_policies,
+            self.replicas,
+            self.replicas_to_start,
+            self.replicas_to_stop,
+            self.backends_to_remove,
+            self.endpoints_to_remove,
+        ) = pickle.loads(checkpoint_bytes)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
@@ -323,9 +327,6 @@ class ServeMaster:
                 await self.router.add_new_worker.remote(
                     backend_tag, replica_tag, worker_handle)
 
-                # Register the worker with the metric monitor.
-                self.metric_monitor.add_target.remote(worker_handle)
-
         self.replicas_to_start.clear()
 
     async def _stop_pending_replicas(self):
@@ -415,6 +416,10 @@ class ServeMaster:
         """Fetched by the router on startup."""
         return self.workers
 
+    def get_all_backends(self):
+        """Used for validation by the API client."""
+        return list(self.backends.keys())
+
     def get_all_endpoints(self):
         """Used for validation by the API client."""
         return [endpoint for endpoint, methods in self.routes.values()]
@@ -500,25 +505,20 @@ class ServeMaster:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified endpoint exists on the client.
-            if endpoint not in self.traffic_policies:
-                logger.info("Endpoint '{}' doesn't exist".format(endpoint))
-                return
-
-            # Remove the traffic policy entry.
-            del self.traffic_policies[endpoint]
-
             for route, (route_endpoint, _) in self.routes.items():
                 if route_endpoint == endpoint:
                     route_to_delete = route
                     break
             else:
-                # This should never happen, we either add to or delete from
-                # both self.traffic_policies and self.routes.
-                assert False, "No route found for endpoint '{}'".format(
-                    endpoint)
+                logger.info("Endpoint '{}' doesn't exist".format(endpoint))
+                return
 
             # Remove the routing entry.
             del self.routes[route_to_delete]
+
+            # Remove the traffic policy entry if it exists.
+            if endpoint in self.traffic_policies:
+                del self.traffic_policies[endpoint]
 
             self.endpoints_to_remove.append(endpoint)
 

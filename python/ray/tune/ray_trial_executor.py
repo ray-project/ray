@@ -256,9 +256,6 @@ class RayTrialExecutor(TrialExecutor):
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-        if stop_logger:
-            trial.close_logger()
-
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         trial.set_location(Location())
 
@@ -278,6 +275,8 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
+            if stop_logger:
+                trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.

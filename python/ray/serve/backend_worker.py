@@ -1,4 +1,3 @@
-import time
 import traceback
 import inspect
 
@@ -7,9 +6,12 @@ from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.serve.utils import parse_request_item
+from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
+from ray.serve.metric import MetricClient
 from ray.async_compat import sync_to_async
+
+logger = _get_logger()
 
 
 def create_backend_worker(func_or_class):
@@ -30,10 +32,8 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            self.backend = RayServeWorker(backend_tag, _callable, is_function)
-
-        def get_metrics(self):
-            return self.backend.get_metrics()
+            self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
+                                          is_function)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -66,37 +66,39 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, _callable, is_function):
+    def __init__(self, name, replica_tag, _callable, is_function):
         self.name = name
+        self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
 
-        self.error_counter = 0
-        self.latency_list = []
+        self.metric_client = MetricClient.connect_from_serve(
+            default_labels={"backend": self.name})
+        self.request_counter = self.metric_client.new_counter(
+            "backend_request_counter",
+            description=("Number of queries that have been "
+                         "processed in this replica"),
+        )
+        self.error_counter = self.metric_client.new_counter(
+            "backend_error_counter",
+            description=("Number of exceptions that have "
+                         "occurred in the backend"),
+        )
+        self.restart_counter = self.metric_client.new_counter(
+            "backend_worker_starts",
+            description=("The number of time this replica workers "
+                         "has been restarted due to failure."),
+            label_names=("replica_tag", ))
 
-    def get_metrics(self):
-        # Make a copy of the latency list and clear current list
-        latency_list = self.latency_list[:]
-        self.latency_list = []
-
-        return {
-            "{}_error_counter".format(self.name): {
-                "value": self.error_counter,
-                "type": "counter",
-            },
-            "{}_latency_s".format(self.name): {
-                "value": latency_list,
-                "type": "list",
-            },
-        }
+        self.restart_counter.labels(replica_tag=self.replica_tag).add()
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
         if not hasattr(self.callable, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
-                                    "The avaiable methods are {}".format(
-                                        method_name, dir(self)))
+                                    "The available methods are {}".format(
+                                        method_name, dir(self.callable)))
         return getattr(self.callable, method_name)
 
     def has_positional_args(self, f):
@@ -116,18 +118,17 @@ class RayServeWorker:
     async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
-        start_timestamp = time.time()
 
         method_to_call = self.get_runner_method(request_item)
         args = args if self.has_positional_args(method_to_call) else []
         method_to_call = ensure_async(method_to_call)
         try:
             result = await method_to_call(*args, **kwargs)
+            self.request_counter.add()
         except Exception as e:
             result = wrap_to_ray_error(e)
-            self.error_counter += 1
+            self.error_counter.add()
 
-        self.latency_list.append(time.time() - start_timestamp)
         return result
 
     async def invoke_batch(self, request_item_list):
@@ -191,10 +192,9 @@ class RayServeWorker:
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
 
-            start_timestamp = time.time()
+            self.request_counter.add(batch_size)
             result_list = await call_method(*arg_list, **kwargs_list)
 
-            self.latency_list.append(time.time() - start_timestamp)
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
                 error_message = ("Worker doesn't preserve batch size. The "
@@ -206,7 +206,7 @@ class RayServeWorker:
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter += batch_size
+            self.error_counter.add()
             return [wrapped_exception for _ in range(batch_size)]
 
     async def handle_request(self, request):
