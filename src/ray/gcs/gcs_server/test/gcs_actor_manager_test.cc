@@ -64,7 +64,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks;
   std::vector<ActorID> killed_actors;
-}
+};
 
 class MockGcsPubSub : public gcs::GcsPubSub {
  public:
@@ -79,22 +79,21 @@ class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
       : mock_actor_scheduler_(new MockActorScheduler()),
-        worker_client_(new MockWorkerClient()),
-        gcs_actor_manager_(mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_
-                           [&](const rpc::Address &addr) { return worker_client_; }) {
+        worker_client_(new MockWorkerClient()) {
     gcs_pub_sub_ = std::make_shared<MockGcsPubSub>(redis_client_);
     EXPECT_CALL(*gcs_pub_sub_, Publish(_, _, _, _))
         .WillRepeatedly(::testing::Return(Status::OK()));
 
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_, [&](const rpc::Address &addr) { return worker_client_; }));
+        mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_,
+        [&](const rpc::Address &addr) { return worker_client_; }));
   }
 
   GcsServerMocker::MockedActorInfoAccessor actor_info_accessor_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  gcs::GcsActorManager gcs_actor_manager_;
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
@@ -120,7 +119,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   address.set_raylet_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
-  gcs_actor_manager_.OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
   ASSERT_TRUE(worker_client_->Reply());
@@ -131,7 +130,7 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
@@ -162,7 +161,7 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
@@ -179,7 +178,7 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   address.set_raylet_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
-  gcs_actor_manager_.OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Killing another worker does not affect this actor.
@@ -303,7 +302,7 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto create_actor_request = Mocker::GenCreateActorRequest(
       job_id, /*max_reconstructions=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
@@ -321,12 +320,12 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   address.set_raylet_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
-  gcs_actor_manager_.OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Remove the owner's node.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
-  gcs_actor_manager_.OnNodeDead(owner_node_id);
+  gcs_actor_manager_->OnNodeDead(owner_node_id);
   // The child actor should be marked as dead.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_EQ(worker_client_->killed_actors.size(), 1);
@@ -335,9 +334,9 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   // Remove the actor's node and check that the actor is not restarted, since
   // its owner has died.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
-  gcs_actor_manager_.OnNodeDead(node_id);
+  gcs_actor_manager_->OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  gcs_actor_manager_.SchedulePendingActors();
+  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 }
 
@@ -346,7 +345,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   auto create_actor_request =
       Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/1, /*detached=*/true);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_.RegisterActor(
+  RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
@@ -364,12 +363,12 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   address.set_raylet_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
-  gcs_actor_manager_.OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Remove the owner's node.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
-  gcs_actor_manager_.OnNodeDead(owner_node_id);
+  gcs_actor_manager_->OnNodeDead(owner_node_id);
   // The child actor should not be marked as dead.
   ASSERT_TRUE(worker_client_->killed_actors.empty());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
@@ -381,39 +380,39 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
 
   auto request1 =
       Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor1");
-  Status status = gcs_actor_manager_.RegisterActor(
+  Status status = gcs_actor_manager_->RegisterActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor1").Binary(),
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor1").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
   auto request2 =
       Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_.RegisterActor(request2,
-                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(request2,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
-  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
   // Check that looking up a non-existent name returns ActorID::Nil();
-  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor3"), ActorID::Nil());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor3"), ActorID::Nil());
 
   // Check that naming collisions return Status::Invalid.
   auto request3 =
       Mocker::GenCreateActorRequest(job_id_1, 0, /*is_detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_.RegisterActor(request3,
-                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(request3,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.IsInvalid());
-  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
   // Check that naming collisions are enforced across JobIDs.
   auto request4 =
       Mocker::GenCreateActorRequest(job_id_2, 0, /*is_detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_.RegisterActor(request4,
-                                            [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(request4,
+                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.IsInvalid());
-  ASSERT_EQ(gcs_actor_manager_.GetActorIDByName("actor2").Binary(),
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 }
 

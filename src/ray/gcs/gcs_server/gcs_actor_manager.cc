@@ -92,7 +92,7 @@ GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> sch
                                  const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       actor_info_accessor_(actor_info_accessor),
-      gcs_pub_sub_(std::move(gcs_pub_sub),
+      gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {}
 
 Status GcsActorManager::RegisterActor(
@@ -272,8 +272,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(
-      actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor->GetActorID(), actor_table_data,
+      [this, actor_id, actor_table_data](Status status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                           actor_table_data->SerializeAsString(),
+                                           nullptr));
+      }));
 }
 
 void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
