@@ -252,7 +252,6 @@ void RedisStoreClient::RedisScanner::OnScanDone() {
   if (is_failed_) {
     callback_(Status::RedisError("Redis Error."));
   } else {
-    //    absl::MutexLock lock(&mutex_);
     ReadRows(keys_);
   }
 }
@@ -265,7 +264,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
 
   // Update shard cursors and keys_.
   {
-    //    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(&mutex_);
     RAY_LOG(INFO) << "OnScanCallback shard_index = " << shard_index
                   << ", shard_to_cursor_ size = " << shard_to_cursor_.size()
                   << ", scan_result size = " << scan_result.size();
