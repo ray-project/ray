@@ -28,6 +28,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--eager", action="store_true")
 
+# Constraints on the List space.
+MAX_PLAYERS = 4
+MAX_ITEMS = 7
+
 
 class SimpleRPG(gym.Env):
     """Example of a custom env with a complex, structured observation.
@@ -50,11 +54,11 @@ class SimpleRPG(gym.Env):
         self.player_space = Dict({
             "location": Box(-100, 100, shape=(2, )),
             "status": Box(-1, 1, shape=(10, )),
-            "items": List(self.item_space, max_len=7),
+            "items": List(self.item_space, max_len=MAX_ITEMS),
         })
 
         # Observation is a list of players.
-        self.observation_space = List(self.player_space, max_len=4)
+        self.observation_space = List(self.player_space, max_len=MAX_PLAYERS)
 
     def reset(self):
         return self.observation_space.sample()
@@ -100,7 +104,7 @@ class CustomTFRPGModel(TFModelV2):
         self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
-        # The unpacked input tensors, where M=4, N=7:
+        # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:
         # {
         #   'items', <tf.Tensor shape=(?, M, N, 5) dtype=float32>,
         #   'location', <tf.Tensor shape=(?, M, 2) dtype=float32>,
