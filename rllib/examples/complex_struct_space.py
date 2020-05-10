@@ -79,11 +79,11 @@ class CustomTorchRPGModel(TorchModelV2, nn.Module):
                                 model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        # The unpacked input tensors:
+        # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:
         # {
-        #   'items', <torch.Tensor shape=(?, ?, 7, 5)>,
-        #   'location', <torch.Tensor shape=(?, ?, 2)>,
-        #   'status', <torch.Tensor shape=(?, ?, 10)>,
+        #   'items', <torch.Tensor shape=(?, M, N, 5)>,
+        #   'location', <torch.Tensor shape=(?, M, 2)>,
+        #   'status', <torch.Tensor shape=(?, M, 10)>,
         # }
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
