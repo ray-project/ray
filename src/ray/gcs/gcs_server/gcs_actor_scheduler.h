@@ -79,7 +79,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// will be used if not set.
   explicit GcsActorScheduler(
       boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
-      const GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
       LeaseClientFactoryFn lease_client_factory = nullptr,
@@ -249,6 +249,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       core_worker_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The handler to handle the scheduling failures.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler_;
   /// The handler to handle the successful scheduling.

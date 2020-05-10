@@ -66,24 +66,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   std::vector<ActorID> killed_actors;
 };
 
-class MockGcsPubSub : public gcs::GcsPubSub {
- public:
-  MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
-      : GcsPubSub(redis_client) {}
-
-  MOCK_METHOD4(Publish, Status(const std::string &channel, const std::string &id,
-                               const std::string &data, const gcs::StatusCallback &done));
-};
-
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
       : mock_actor_scheduler_(new MockActorScheduler()),
         worker_client_(new MockWorkerClient()) {
-    gcs_pub_sub_ = std::make_shared<MockGcsPubSub>(redis_client_);
-    EXPECT_CALL(*gcs_pub_sub_, Publish(_, _, _, _))
-        .WillRepeatedly(::testing::Return(Status::OK()));
-
+    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
         mock_actor_scheduler_, actor_info_accessor_, gcs_pub_sub_,
         [&](const rpc::Address &addr) { return worker_client_; }));
@@ -93,7 +81,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
-  std::shared_ptr<MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 

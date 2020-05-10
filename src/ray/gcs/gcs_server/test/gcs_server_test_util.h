@@ -360,6 +360,17 @@ struct GcsServerMocker {
       return Status::OK();
     }
   };
+
+  class MockGcsPubSub : public gcs::GcsPubSub {
+   public:
+    MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
+        : GcsPubSub(redis_client) {}
+
+    Status Publish(const std::string &channel, const std::string &id,
+                   const std::string &data, const gcs::StatusCallback &done) override {
+      return Status::OK();
+    }
+  };
 };
 
 }  // namespace ray
