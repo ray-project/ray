@@ -72,13 +72,14 @@ class RedisStoreClient : public StoreClient {
     Status ScanKeys(const MultiItemCallback<std::string> &callback);
 
    private:
-    void Scan();
+    void Scan(const StatusCallback &callback);
 
-    void OnScanDone();
+    void OnScanDone(const StatusCallback &callback);
 
-    void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply);
+    void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
+                        const StatusCallback &callback);
 
-    void ReadRows(const absl::flat_hash_set<std::string> &keys,
+    void ReadRows(const std::vector<std::string> &keys,
                   const MultiItemCallback<std::pair<std::string, std::string>> &callback);
 
     std::string table_name_;
@@ -86,8 +87,8 @@ class RedisStoreClient : public StoreClient {
     /// The scan match pattern.
     std::string match_pattern_;
 
-    /// The callback that will be called when scan finished.
-    StatusCallback callback_{nullptr};
+    /// All keys that received from redis.
+    absl::flat_hash_set<std::string> keys_;
 
     /// The scan result in rows.
     /// If the scan type is kScanPartialRows, partial scan result will be saved in this
@@ -99,9 +100,6 @@ class RedisStoreClient : public StoreClient {
 
     /// The scan cursor for each shard.
     absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
-
-    /// All keys that received from redis.
-    absl::flat_hash_set<std::string> keys_;
 
     /// Whether the scan is failed.
     std::atomic<bool> is_failed_{false};
