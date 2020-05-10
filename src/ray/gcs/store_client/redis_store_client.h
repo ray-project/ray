@@ -135,8 +135,6 @@ class RedisStoreClient : public StoreClient {
                                         const std::string &index_key);
 
   std::shared_ptr<RedisClient> redis_client_;
-
-  std::shared_ptr<RedisScanner> redis_scanner_;
 };
 
 }  // namespace gcs

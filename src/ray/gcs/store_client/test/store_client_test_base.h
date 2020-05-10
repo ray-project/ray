@@ -149,9 +149,7 @@ class StoreClientTestBase : public ::testing::Test {
     auto get_all_callback =
         [this](const std::unordered_map<std::string, std::string> &result) {
           static std::unordered_set<ActorID> received_keys;
-          RAY_LOG(INFO) << "9999999999999999999result size = " << result.size();
           for (const auto &item : result) {
-            RAY_LOG(INFO) << "item.first size = " << item.first.size();
             const ActorID &actor_id = ActorID::FromBinary(item.first);
             auto it = received_keys.find(actor_id);
             RAY_CHECK(it == received_keys.end());
