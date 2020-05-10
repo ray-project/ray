@@ -5,7 +5,6 @@ import threading
 import traceback
 from six.moves import queue
 
-from ray.tune import track
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
@@ -267,8 +266,6 @@ def wrap_function(train_func):
     try:
         func_args = inspect.getfullargspec(train_func).args
         use_track = ("reporter" not in func_args and len(func_args) == 1)
-        if use_track:
-            logger.debug("tune.track signature detected.")
     except Exception:
         logger.info(
             "Function inspection failed - assuming reporter signature.")
@@ -282,12 +279,13 @@ def wrap_function(train_func):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-    class WrappedTrackFunc(FunctionRunner):
-        def _trainable_func(self, config, reporter):
-            track.init(_tune_reporter=reporter)
-            output = train_func(config)
+    class CheckpointFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter, checkpoint=None):
+            from ray.tune import session
+            session.init(reporter)
+            output = train_func(config, checkpoint=checkpoint)
             reporter(**{RESULT_DUPLICATE: True})
-            track.shutdown()
+            session.shutdown()
             return output
 
-    return WrappedTrackFunc if use_track else WrappedFunc
+    return CheckpointFunc if use_track else WrappedFunc
