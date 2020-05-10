@@ -104,9 +104,13 @@ Status RedisStoreClient::AsyncGetAll(
     const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   RAY_CHECK(callback);
   std::string match_pattern = table_name + "*";
-  redis_scanner_ =
-      std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  return redis_scanner_->ScanRows(callback);
+  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
+  auto on_done = [callback, scanner](
+                     const Status &status,
+                     const std::vector<std::pair<std::string, std::string>> &result) {
+    callback(status, result);
+  };
+  return scanner->ScanRows(on_done);
 }
 
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
@@ -115,8 +119,6 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   RedisCallback delete_callback = nullptr;
   if (callback) {
     delete_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-      int64_t deleted_count = reply->ReadAsInteger();
-      RAY_LOG(DEBUG) << "Delete done, total delete count " << deleted_count;
       callback(Status::OK());
     };
   }
@@ -150,21 +152,16 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
                                             const StatusCallback &callback) {
   std::string match_pattern = index_key + table_name + "*";
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  auto on_done = [this, table_name, callback](const Status &status,
-                                              const std::vector<std::string> &result) {
+  auto on_done = [this, table_name, index_key, callback, scanner](
+                     const Status &status, const std::vector<std::string> &result) {
     if (!result.empty()) {
-      auto finished_count = std::make_shared<int>(0);
-      int size = result.size();
-      for (auto &key : result) {
-        auto on_delete_done = [finished_count, size, callback](const Status &status) {
-          ++(*finished_count);
-          if (*finished_count == size) {
-            callback(Status::OK());
-          }
-        };
-
-        RAY_CHECK_OK(AsyncDelete(table_name, key, on_delete_done));
+      auto pos = index_key.size() + table_name.size();
+      std::vector<std::string> keys;
+      keys.resize(result.size());
+      for (auto &item : result) {
+        keys.push_back(item.substr(pos, item.size() - pos));
       }
+      RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, callback));
     } else {
       callback(status);
     }
@@ -178,20 +175,14 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
     : table_name_(std::move(table_name)),
       match_pattern_(std::move(match_pattern)),
       redis_client_(std::move(redis_client)) {
-  RAY_LOG(INFO) << "RedisScanner GetShardContexts size = "
-                << redis_client_->GetShardContexts().size();
   for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
     shard_to_cursor_[index] = 0;
   }
-  RAY_LOG(INFO) << "RedisScanner shard_to_cursor_ size = " << shard_to_cursor_.size();
 }
 
 Status RedisStoreClient::RedisScanner::ScanRows(
     const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
-  callback_ = [this, callback](const Status &status) {
-    RAY_LOG(INFO) << "RedisStoreClient::RedisScanner::ScanRows................";
-    callback(status, rows_);
-  };
+  callback_ = [this, callback](const Status &status) { ReadRows(keys_, callback); };
   Scan();
   return Status::OK();
 }
@@ -200,7 +191,6 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
     const MultiItemCallback<std::string> &callback) {
   callback_ = [this, callback](const Status &status) {
     std::vector<std::string> result;
-    //    absl::MutexLock lock(&mutex_);
     result.insert(result.begin(), keys_.begin(), keys_.end());
     callback(status, result);
   };
@@ -223,9 +213,6 @@ void RedisStoreClient::RedisScanner::Scan() {
 
     auto scan_callback = [this,
                           shard_index](const std::shared_ptr<CallbackReply> &reply) {
-      RAY_LOG(INFO) << "RedisScanner::Scan shard_to_cursor_ size = "
-                    << this->shard_to_cursor_.size() << ", shard_index = " << shard_index
-                    << ", this = " << this;
       OnScanCallback(shard_index, reply);
     };
 
@@ -248,11 +235,10 @@ void RedisStoreClient::RedisScanner::Scan() {
 }
 
 void RedisStoreClient::RedisScanner::OnScanDone() {
-  RAY_LOG(INFO) << "RedisStoreClient::RedisScanner::OnScanDone()............";
   if (is_failed_) {
     callback_(Status::RedisError("Redis Error."));
   } else {
-    ReadRows(keys_);
+    callback_(Status::OK());
   }
 }
 
@@ -265,9 +251,6 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   // Update shard cursors and keys_.
   {
     absl::MutexLock lock(&mutex_);
-    RAY_LOG(INFO) << "OnScanCallback shard_index = " << shard_index
-                  << ", shard_to_cursor_ size = " << shard_to_cursor_.size()
-                  << ", scan_result size = " << scan_result.size();
     auto shard_it = shard_to_cursor_.find(shard_index);
     RAY_CHECK(shard_it != shard_to_cursor_.end());
     if (cursor == 0) {
@@ -286,12 +269,14 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
 }
 
 void RedisStoreClient::RedisScanner::ReadRows(
-    const absl::flat_hash_set<std::string> &keys) {
+    const absl::flat_hash_set<std::string> &keys,
+    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   for (const auto &key : keys) {
     ++pending_read_count_;
 
     std::vector<std::string> args = {"GET", key};
-    auto read_callback = [this, key](const std::shared_ptr<CallbackReply> &reply) {
+    auto read_callback = [this, key,
+                          callback](const std::shared_ptr<CallbackReply> &reply) {
       std::string value;
       if (!reply->IsNil()) {
         value = reply->ReadAsString();
@@ -304,13 +289,9 @@ void RedisStoreClient::RedisScanner::ReadRows(
 
       if (--pending_read_count_ == 0) {
         if (!is_failed_) {
-          RAY_LOG(INFO)
-              << "RedisStoreClient::RedisScanner::ReadRows.............1111111111";
-          callback_(Status::OK());
+          callback(Status::OK(), rows_);
         } else {
-          RAY_LOG(INFO)
-              << "RedisStoreClient::RedisScanner::ReadRows.............222222222222";
-          callback_(Status::RedisError("Redis return failed."));
+          callback(Status::RedisError("Redis return failed."), rows_);
         }
       }
     };

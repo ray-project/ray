@@ -78,7 +78,8 @@ class RedisStoreClient : public StoreClient {
 
     void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply);
 
-    void ReadRows(const absl::flat_hash_set<std::string> &keys);
+    void ReadRows(const absl::flat_hash_set<std::string> &keys,
+                  const MultiItemCallback<std::pair<std::string, std::string>> &callback);
 
     std::string table_name_;
 
@@ -118,8 +119,6 @@ class RedisStoreClient : public StoreClient {
                const StatusCallback &callback);
 
   std::shared_ptr<RedisClient> redis_client_;
-
-  std::shared_ptr<RedisScanner> redis_scanner_;
 };
 
 }  // namespace gcs
