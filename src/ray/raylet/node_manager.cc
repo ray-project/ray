@@ -218,22 +218,17 @@ ray::Status NodeManager::RegisterGcs() {
     RAY_CHECK_OK(status);
     // Subscribe to resource changes.
     const auto &resources_changed =
-        [this](const ClientID &id,
-               const gcs::ResourceChangeNotification &resource_notification) {
-          if (resource_notification.IsAdded()) {
-            ResourceSet resource_set;
-            for (auto &entry : resource_notification.GetData()) {
-              resource_set.AddOrUpdateResource(entry.first,
-                                               entry.second->resource_capacity());
-            }
+        [this](const rpc::NodeResourceChange &resource_notification) {
+          auto id = ClientID::FromBinary(resource_notification.node_id());
+          if (resource_notification.updated_resources_size() != 0) {
+            ResourceSet resource_set(
+                MapFromProtobuf(resource_notification.updated_resources()));
             ResourceCreateUpdated(id, resource_set);
-          } else {
-            RAY_CHECK(resource_notification.IsRemoved());
-            std::vector<std::string> resource_names;
-            for (auto &entry : resource_notification.GetData()) {
-              resource_names.push_back(entry.first);
-            }
-            ResourceDeleted(id, resource_names);
+          }
+
+          if (resource_notification.deleted_resources_size() != 0) {
+            ResourceDeleted(
+                id, VectorFromProtobuf(resource_notification.deleted_resources()));
           }
         };
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
@@ -2529,6 +2524,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                                        failed_nodes_cache_.count(owner_node_id) > 0)) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
+      RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
+                    << " died, killing leased worker " << worker->WorkerId();
       KillWorker(worker);
     }
 

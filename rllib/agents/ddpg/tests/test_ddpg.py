@@ -10,7 +10,8 @@ from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    check_compute_action
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -32,6 +33,7 @@ class TestDDPG(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+            check_compute_action(trainer)
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""

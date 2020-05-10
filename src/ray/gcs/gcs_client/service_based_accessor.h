@@ -61,6 +61,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncGetByName(
+      const std::string &name,
+      const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
@@ -150,9 +154,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
 
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
@@ -176,10 +179,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   using NodeChangeCallback =
       std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
-
-  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
-      DynamicResourceSubscriptionExecutor;
-  DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;

@@ -42,6 +42,12 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
+  Status AsyncGetByName(const std::string &name,
+                        const OptionalItemCallback<ActorTableData> &callback) override {
+    return Status::NotImplemented(
+        "RedisLogBasedActorInfoAccessor does not support named detached actors.");
+  }
+
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
@@ -113,6 +119,12 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncGetByName(const std::string &name,
+                        const OptionalItemCallback<ActorTableData> &callback) override {
+    return Status::NotImplemented(
+        "RedisActorInfoAccessor does not support named detached actors.");
+  }
 
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
@@ -319,9 +331,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToResources(
-      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
 
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;

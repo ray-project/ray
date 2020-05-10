@@ -711,10 +711,25 @@ Status RedisNodeInfoAccessor::AsyncDeleteResources(
 }
 
 Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
-    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto on_subscribe = [subscribe](const ClientID &id,
+                                  const ResourceChangeNotification &result) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.set_node_id(id.Binary());
+    if (result.IsAdded()) {
+      for (auto &it : result.GetData()) {
+        (*node_resource_change.mutable_updated_resources())[it.first] =
+            it.second->resource_capacity();
+      }
+    } else {
+      for (auto &it : result.GetData()) {
+        node_resource_change.add_deleted_resources(it.first);
+      }
+    }
+    subscribe(node_resource_change);
+  };
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
 }
 
 RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)

@@ -272,10 +272,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
+    std::string name = "";
     ActorCreationOptions actor_options{
         max_reconstructions,
-        /*max_concurrency*/ 1, resources,           resources, {},
-        /*is_detached*/ false, /*is_asyncio*/ false};
+        /*max_concurrency=*/1, resources, resources,           {},
+        /*is_detached=*/false, name,      /*is_asyncio=*/false};
 
     // Create an actor.
     ActorID actor_id;

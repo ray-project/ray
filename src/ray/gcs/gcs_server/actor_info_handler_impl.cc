@@ -26,19 +26,24 @@ void DefaultActorInfoHandler::HandleCreateActor(
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
-  gcs_actor_manager_.RegisterActor(request, [reply, send_reply_callback, actor_id](
-                                                std::shared_ptr<gcs::GcsActor> actor) {
-    RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  });
+  Status status = gcs_actor_manager_.RegisterActor(
+      request,
+      [reply, send_reply_callback, actor_id](std::shared_ptr<gcs::GcsActor> actor) {
+        RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to create actor: " << status.ToString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
 }
 
 void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Getting actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
+  RAY_LOG(DEBUG) << "Getting actor info"
+                 << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   auto on_done = [actor_id, reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
@@ -53,14 +58,54 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  // Look up the actor_id in the GCS.
   Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
 }
 
+void DefaultActorInfoHandler::HandleGetNamedActorInfo(
+    const rpc::GetNamedActorInfoRequest &request, rpc::GetNamedActorInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const std::string &name = request.name();
+  RAY_LOG(DEBUG) << "Getting actor info"
+                 << ", name = " << name;
+
+  auto on_done = [name, reply, send_reply_callback](
+                     Status status, const boost::optional<ActorTableData> &result) {
+    if (status.ok()) {
+      if (result) {
+        reply->mutable_actor_table_data()->CopyFrom(*result);
+      }
+    } else {
+      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
+                     << ", name = " << name;
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  // Try to look up the actor ID for the named actor.
+  ActorID actor_id = gcs_actor_manager_.GetActorIDByName(name);
+
+  if (actor_id.IsNil()) {
+    // The named actor was not found.
+    std::stringstream stream;
+    stream << "Actor with name '" << name << "' was not found.";
+    on_done(Status::NotFound(stream.str()), boost::none);
+  } else {
+    // Look up the actor_id in the GCS.
+    Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
+    if (!status.ok()) {
+      on_done(status, boost::none);
+    }
+    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+                   << ", actor id = " << actor_id;
+  }
+}
 void DefaultActorInfoHandler::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
