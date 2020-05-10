@@ -96,7 +96,7 @@ if __name__ == "__main__":
     tune.run(
         "PG",
         stop={
-            "training_iteration": args.iters,
+            "training_iteration": args.stop_iters,
         },
         config={
             "env": "CartPole-v0",

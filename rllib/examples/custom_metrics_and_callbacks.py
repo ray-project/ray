@@ -71,7 +71,7 @@ if __name__ == "__main__":
     trials = tune.run(
         "PG",
         stop={
-            "training_iteration": args.num_iters,
+            "training_iteration": args.stop_iters,
         },
         config={
             "env": "CartPole-v0",

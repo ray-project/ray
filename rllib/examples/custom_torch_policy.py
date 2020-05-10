@@ -33,7 +33,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     tune.run(
         MyTrainer,
-        stop={"training_iteration": args.iters},
+        stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",
             "num_workers": 2,
