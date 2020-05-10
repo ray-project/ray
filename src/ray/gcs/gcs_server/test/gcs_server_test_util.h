@@ -179,6 +179,11 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
+    Status AsyncGetAll(
+        const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
     Status AsyncGetByName(
         const std::string &name,
         const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {

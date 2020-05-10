@@ -47,6 +47,12 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
+  /// Get all actor specification from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) = 0;
+
   /// Get actor specification for a named actor from GCS asynchronously.
   ///
   /// \param name The name of the detached actor to look up in the GCS.

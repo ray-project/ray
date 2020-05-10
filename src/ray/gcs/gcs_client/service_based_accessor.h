@@ -61,6 +61,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
+
   Status AsyncGetByName(
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
@@ -97,8 +99,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
-  Status AsyncGetAllActorInfo(const MultiItemCallback<rpc::ActorTableData> &callback);
-
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;

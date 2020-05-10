@@ -104,6 +104,19 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ActorTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all actor info.";
+  rpc::GetAllActorInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllActorInfo(
+      request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.actor_table_data());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncGetByName(
     const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
@@ -214,7 +227,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
           done(status);
         }
       };
-      RAY_CHECK_OK(AsyncGetAllActorInfo(callback));
+      RAY_CHECK_OK(AsyncGetAll(callback));
     } else if (done) {
       done(status);
     }
@@ -335,19 +348,6 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
         }
         RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
                        << ", actor id = " << actor_id;
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncGetAllActorInfo(
-    const MultiItemCallback<rpc::ActorTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting all actor info.";
-  rpc::GetAllActorInfoRequest request;
-  client_impl_->GetGcsRpcClient().GetAllActorInfo(
-      request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.actor_table_data());
-        callback(status, result);
-        RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
       });
   return Status::OK();
 }

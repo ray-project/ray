@@ -67,13 +67,20 @@ void DefaultActorInfoHandler::HandleGetAllActorInfo(
     const rpc::GetAllActorInfoRequest &request, rpc::GetAllActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
-  std::vector<rpc::ActorTableData> actor_table_data_list;
-  Status status = gcs_client_.Actors().GetAll(&actor_table_data_list);
-  for (auto &actor_table_data : actor_table_data_list) {
-    reply->add_actor_table_data()->CopyFrom(actor_table_data);
+
+  auto on_done = [reply, send_reply_callback](const Status &status,
+                                              const std::vector<ActorTableData> &result) {
+    for (auto &it : result) {
+      reply->add_actor_table_data()->CopyFrom(it);
+    }
+    RAY_LOG(DEBUG) << "Finished getting all actor info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  Status status = gcs_client_.Actors().AsyncGetAll(on_done);
+  if (!status.ok()) {
+    on_done(status, std::vector<ActorTableData>());
   }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  RAY_LOG(DEBUG) << "Finished getting all actor info.";
 }
 
 void DefaultActorInfoHandler::HandleGetNamedActorInfo(
