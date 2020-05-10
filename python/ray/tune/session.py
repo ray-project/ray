@@ -9,7 +9,7 @@ class _ReporterSession:
     def __init__(self, tune_reporter):
         self.tune_reporter = tune_reporter
 
-    def on_result(self, **metrics):
+    def report(self, **metrics):
         return self.tune_reporter(**metrics)
 
     @property
@@ -58,7 +58,7 @@ def shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
-    del _session
+    _session = None
 
 
 def report(**kwargs):
@@ -81,7 +81,7 @@ def report(**kwargs):
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session.log(**kwargs)
+    return _session.report(**kwargs)
 
 
 def get_trial_dir():

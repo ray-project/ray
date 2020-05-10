@@ -24,7 +24,7 @@ class TrackApiTest(unittest.TestCase):
         # by session.init() and session.shutdown()
         for _ in range(2):
             # do it twice to see that we can reopen the session
-            session.init(trial_name="test_init")
+            session.init(reporter=None)
             self.assertTrue(session._session is not None)
             session.shutdown()
             self.assertTrue(session._session is None)

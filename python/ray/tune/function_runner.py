@@ -279,13 +279,13 @@ def wrap_function(train_func):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-    class CheckpointFunc(FunctionRunner):
-        def _trainable_func(self, config, reporter, checkpoint=None):
+    class ImplicitFunc(FunctionRunner):
+        def _trainable_func(self, config, reporter):
             from ray.tune import session
             session.init(reporter)
-            output = train_func(config, checkpoint=checkpoint)
+            output = train_func(config)
             reporter(**{RESULT_DUPLICATE: True})
             session.shutdown()
             return output
 
-    return CheckpointFunc if use_track else WrappedFunc
+    return ImplicitFunc if use_track else WrappedFunc
