@@ -3,7 +3,8 @@ import unittest
 
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    check_compute_action
 
 tf = try_import_tf()
 
@@ -21,6 +22,7 @@ class TestTD3(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+            check_compute_action(trainer)
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""

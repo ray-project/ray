@@ -31,6 +31,7 @@ namespace ray {
 struct Mocker {
   static TaskSpecification GenActorCreationTask(const JobID &job_id,
                                                 int max_reconstructions, bool detached,
+                                                const std::string &name,
                                                 const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
@@ -40,13 +41,15 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached);
+    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached,
+                                     name);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
                                                        int max_reconstructions = 0,
-                                                       bool detached = false) {
+                                                       bool detached = false,
+                                                       const std::string name = "") {
     rpc::CreateActorRequest request;
     rpc::Address owner_address;
     if (owner_address.raylet_id().empty()) {
@@ -56,7 +59,7 @@ struct Mocker {
       owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     }
     auto actor_creation_task_spec =
-        GenActorCreationTask(job_id, max_reconstructions, detached, owner_address);
+        GenActorCreationTask(job_id, max_reconstructions, detached, name, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }

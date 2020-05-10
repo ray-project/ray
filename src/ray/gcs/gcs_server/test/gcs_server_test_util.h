@@ -179,6 +179,12 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
+    Status AsyncGetByName(
+        const std::string &name,
+        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
     Status AsyncCreateActor(const TaskSpecification &task_spec,
                             const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
@@ -308,8 +314,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeToResources(
-        const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
-            &subscribe,
+        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
