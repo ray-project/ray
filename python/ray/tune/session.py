@@ -31,7 +31,9 @@ class _ReporterSession:
 def get_session():
     global _session
     if not _session:
-        raise ValueError("Session not detected. Are you running Tune?")
+        raise ValueError(
+            "Session not detected. You should not be calling this function "
+            "while using the class API. ")
     return _session
 
 
@@ -87,7 +89,8 @@ def report(**kwargs):
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
-    This includes json data containing the session's parameters and metrics.
+    For function API use only. Do not call this method in the Class API. Use
+    `self.logdir` instead.
     """
     _session = get_session()
     return _session.logdir
@@ -96,7 +99,8 @@ def get_trial_dir():
 def get_trial_name():
     """Trial name for the corresponding trial of this Trainable.
 
-    This is not set if not using Tune.
+    For function API use only. Do not call this method in the Class API. Use
+    `self.trial_name` instead.
     """
     _session = get_session()
     return _session.trial_name
@@ -105,7 +109,8 @@ def get_trial_name():
 def get_trial_id():
     """Trial id for the corresponding trial of this Trainable.
 
-    This is not set if not using Tune.
+    For function API use only. Do not call this method in the Class API. Use
+    `self.trial_id` instead.
     """
     _session = get_session()
     return _session.trial_id

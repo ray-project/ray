@@ -8,8 +8,10 @@ _session = None
 warned = False
 
 
-def _deprecation_warning(soft=True):
-    msg = "tune.track is now deprecated. Use `tune.report` instead."
+def _deprecation_warning(alternative_call=None, soft=True):
+    msg = "tune.track is now deprecated."
+    if alternative_call:
+        msg += " Use `tune.{}` instead.".format(alternative_call)
     global warned
     if soft:
         msg += " This warning will throw an error in a future version of Ray."
@@ -33,20 +35,20 @@ def shutdown():
 
 
 def log(**kwargs):
-    _deprecation_warning(soft=True)
+    _deprecation_warning(alternative_call="report", soft=True)
     session.report(**kwargs)
 
 
 def trial_dir():
-    _deprecation_warning(soft=True)
+    _deprecation_warning(alternative_call="get_trial_dir", soft=True)
     return _session.logdir
 
 
 def trial_name():
-    _deprecation_warning(soft=True)
+    _deprecation_warning(alternative_call="get_trial_name", soft=True)
     return session.trial_name
 
 
 def trial_id():
-    _deprecation_warning(soft=True)
+    _deprecation_warning(alternative_call="get_trial_id", soft=True)
     return session.trial_id
