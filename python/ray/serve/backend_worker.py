@@ -198,14 +198,14 @@ class RayServeWorker:
 
             if not isinstance(result_list, Iterable) or isinstance(
                     result_list, (dict, set)):
-                error_message = ("Worker returned a {}. RayServe expect "
-                                 "an ordered iterable object.".format(
+                error_message = ("RayServe expects an ordered iterable object "
+                                 "but the worker returned a {}".format(
                                      type(result_list)))
                 raise RayServeException(error_message)
 
             # Normalize the result into a list type. This operation is fast
             # in Python because it doesn't copy anything.
-            result_list = [val for val in result_list]
+            result_list = list(result_list)
 
             if (len(result_list) != batch_size):
                 error_message = ("Worker doesn't preserve batch size. The "
