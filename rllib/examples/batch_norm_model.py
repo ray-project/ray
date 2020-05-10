@@ -22,7 +22,7 @@ parser.add_argument("--stop-reward", type=float, default=150)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=True)
 
     ModelCatalog.register_custom_model(
         "bn_model", TorchBatchNormModel if args.torch else BatchNormModel)

@@ -30,8 +30,8 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    assert args.torch != args.mixed_torch_tf,\
-        "Use either --torch xor --mixed-torch-tf, not both!"
+    assert not (args.torch and args.mixed_torch_tf),\
+        "Use either --torch or --mixed-torch-tf, not both!"
 
     ray.init()
 

@@ -1576,7 +1576,7 @@ py_test(
     name = "examples/hierarchical_training_tf",
     main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/hierarchical_training.py"],
     args = ["--stop-reward=0.0"]
 )
@@ -1585,7 +1585,7 @@ py_test(
     name = "examples/hierarchical_training_torch",
     main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/hierarchical_training.py"],
     args = ["--torch", "--stop-reward=0.0"]
 )
@@ -1668,7 +1668,7 @@ py_test(
     tags = ["examples", "examples_N"],
     size = "small",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--stop-rewards=-600", "--run=PPO"]
+    args = ["--as-test", "--stop-reward=-600", "--run=PPO"]
 )
 
 py_test(
@@ -1677,7 +1677,7 @@ py_test(
     tags = ["examples", "examples_N"],
     size = "small",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--torch", "--stop-rewards=-600", "--run=PPO"]
+    args = ["--as-test", "--torch", "--stop-reward=-600", "--run=PPO"]
 )
 
 py_test(
