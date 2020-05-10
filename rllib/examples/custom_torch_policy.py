@@ -7,7 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iters", type=int, default=200)
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 

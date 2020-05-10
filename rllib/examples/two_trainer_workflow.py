@@ -28,7 +28,7 @@ from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--stop-iters", type=int, default=20)
 
 
 def custom_training_workflow(workers: WorkerSet, config: dict):

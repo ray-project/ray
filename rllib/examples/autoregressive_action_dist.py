@@ -29,7 +29,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=int, default=200)
+parser.add_argument("--stop-reward", type=float, default=200)
 
 if __name__ == "__main__":
     args = parser.parse_args()

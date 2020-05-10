@@ -27,8 +27,8 @@
 # 2) everything in a) using tf1.x
 # 3) everything in b) c) d) and e)
 # 4) everything in g)
-# 5) f), BUT only those tagged `tests_dir_A` to `tests_dir_I`
-# 6) f), BUT only those tagged `tests_dir_J` to `tests_dir_Z`
+# 5) f), BUT only those tagged `tests_dir_A` to `tests_dir_L`
+# 6) f), BUT only those tagged `tests_dir_M` to `tests_dir_Z`
 
 
 # --------------------------------------------------------------------
@@ -1247,7 +1247,7 @@ py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
 )
@@ -1256,7 +1256,7 @@ py_test(
     name = "examples/autoregressive_action_dist_torch",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--torch", "--stop-reward=150", "--num-cpus=4"]
 )
@@ -1478,6 +1478,32 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_loss",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    srcs = ["examples/custom_loss.py"],
+    args = ["--stop-iters=2", "--input-files=tests/data/cartpole_small"]
+)
+
+py_test(
+    name = "examples/custom_metrics_and_callbacks",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_metrics_and_callbacks_legacy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
     name = "examples/custom_rnn_model_repeat_after_me_tf",
     main = "examples/custom_rnn_model.py",
     tags = ["examples", "examples_C"],
@@ -1514,46 +1540,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_loss",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
-    srcs = ["examples/custom_loss.py"],
-    args = ["--iters=2", "--input-files=tests/data/cartpole_small"]
-)
-
-py_test(
-    name = "examples/custom_metrics_and_callbacks",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks.py"],
-    args = ["--num-iters=2"]
-)
-
-py_test(
-    name = "examples/custom_metrics_and_callbacks_legacy",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
-    args = ["--num-iters=2"]
-)
-
-py_test(
     name = "examples/custom_tf_policy",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_torch_rnn_model",
-    main = "examples/custom_torch_rnn_model.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/custom_torch_rnn_model.py"],
-    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
+    args = ["--stop-iters=2", "--num-cpus=4"]
 )
 
 py_test(
@@ -1561,7 +1552,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_torch_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
+    args = ["--stop-iters=2", "--num-cpus=4"]
 )
 
 py_test(
@@ -1569,7 +1560,7 @@ py_test(
     tags = ["examples", "examples_E"],
     size = "small",
     srcs = ["examples/eager_execution.py"],
-    args = ["--iters=2"]
+    args = ["--stop-iters=2"]
 )
 
 py_test(
@@ -1763,7 +1754,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--num-iters=2"]
+    args = ["--stop-iters=2"]
 )
 
 py_test(

@@ -10,7 +10,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iters", type=int, default=200)
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
