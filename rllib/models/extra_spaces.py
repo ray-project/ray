@@ -2,6 +2,33 @@ import numpy as np
 import gym
 
 
+class List(gym.Space):
+    """Represents a variable-length list of child spaces.
+
+    Example usage:
+    self.observation_space = spaces.List(spaces.Box(4,), max_len=10)
+        --> from 0 to 10 boxes of shape (4,)
+    """
+
+    def __init__(self, child_space: gym.Space, max_len: int):
+        self.np_random = np.random.RandomState()
+        self.child_space = child_space
+        self.max_len = max_len
+        super().__init__()
+
+    def seed(self, seed=None):
+        self.np_random = np.random.RandomState()
+        self.np_random.seed(seed)
+
+    def sample(self):
+        return [self.child_space.sample()
+            for _ in range(self.np_random.randint(1, self.max_len + 1))]
+
+    def contains(self, x):
+        return (isinstance(x, list) and len(x) <= self.max_len and
+            all([self.child_space.contains(c) for c in x]))
+
+
 class Simplex(gym.Space):
     """Represents a d - 1 dimensional Simplex in R^d.
 
@@ -32,7 +59,7 @@ class Simplex(gym.Space):
         super().__init__(shape, dtype)
         self.np_random = np.random.RandomState()
 
-    def seed(self, seed):
+    def seed(self, seed=None):
         self.np_random.seed(seed)
 
     def sample(self):

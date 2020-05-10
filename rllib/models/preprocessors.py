@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import gym
 
+from ray.rllib.models import extra_spaces
 from ray.rllib.utils.annotations import override, PublicAPI
 
 ATARI_OBS_SHAPE = (210, 160, 3)
@@ -77,7 +78,8 @@ class Preprocessor:
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in model.py
         if (isinstance(self, TupleFlatteningPreprocessor)
-                or isinstance(self, DictFlatteningPreprocessor)):
+                or isinstance(self, DictFlatteningPreprocessor)
+                or isinstance(self, ListBatchingPreprocessor)):
             obs_space.original_space = self._obs_space
         return obs_space
 
@@ -243,6 +245,42 @@ class DictFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
+class ListBatchingPreprocessor(Preprocessor):
+    """Pads and batches the variable-length list value."""
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        assert isinstance(self._obs_space, extra_spaces.List)
+        child_space = obs_space.child_space
+        self.child_preprocessor = get_preprocessor(child_space)(
+            child_space, self._options)
+        size = self.child_preprocessor.size * obs_space.max_len
+        return (size, )
+
+    @override(Preprocessor)
+    def transform(self, observation):
+        array = np.zeros(self.shape)
+        if isinstance(observation, list):
+            for elem in observation:
+                self.child_preprocessor.check_shape(elem)
+        self.write(observation, array, 0)
+        return array
+
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
+        if not isinstance(observation, list):
+            raise ValueError(
+                "Input for {} must be list type, got {}".format(
+                    self, observation))
+        elif len(observation) > self._obs_space.max_len:
+            raise ValueError(
+                "Input {} exceeds max len of space {}".format(
+                    observation, self._obs_space.max_len))
+        for i, elem in enumerate(observation):
+            offset = i * self.child_preprocessor.size
+            self.child_preprocessor.write(elem, array, offset)
+
+
 @PublicAPI
 def get_preprocessor(space):
     """Returns an appropriate preprocessor class for the given space."""
@@ -260,6 +298,8 @@ def get_preprocessor(space):
         preprocessor = TupleFlatteningPreprocessor
     elif isinstance(space, gym.spaces.Dict):
         preprocessor = DictFlatteningPreprocessor
+    elif isinstance(space, extra_spaces.List):
+        preprocessor = ListBatchingPreprocessor
     else:
         preprocessor = NoPreprocessor
 
