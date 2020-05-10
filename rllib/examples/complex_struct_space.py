@@ -81,9 +81,9 @@ class CustomTorchRPGModel(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         # The unpacked input tensors:
         # {
-        #   'items', <tf.Tensor shape=(?, ?, 7, 5) dtype=float32>,
-        #   'location', <tf.Tensor shape=(?, ?, 2) dtype=float32>,
-        #   'status', <tf.Tensor shape=(?, ?, 10) dtype=float32>,
+        #   'items', <torch.Tensor shape=(?, ?, 7, 5)>,
+        #   'location', <torch.Tensor shape=(?, ?, 2)>,
+        #   'status', <torch.Tensor shape=(?, ?, 10)>,
         # }
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
@@ -106,9 +106,9 @@ class CustomTFRPGModel(TFModelV2):
     def forward(self, input_dict, state, seq_lens):
         # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:
         # {
-        #   'items', <tf.Tensor shape=(?, M, N, 5) dtype=float32>,
-        #   'location', <tf.Tensor shape=(?, M, 2) dtype=float32>,
-        #   'status', <tf.Tensor shape=(?, M, 10) dtype=float32>,
+        #   'items', <tf.Tensor shape=(?, M, N, 5)>,
+        #   'location', <tf.Tensor shape=(?, M, 2)>,
+        #   'status', <tf.Tensor shape=(?, M, 10)>,
         # }
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
