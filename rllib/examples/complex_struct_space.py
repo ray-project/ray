@@ -100,11 +100,11 @@ class CustomTFRPGModel(TFModelV2):
         self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
-        # The unpacked input tensors:
+        # The unpacked input tensors, where M=4, N=7:
         # {
-        #   'items', <tf.Tensor shape=(?, ?, 7, 5) dtype=float32>,
-        #   'location', <tf.Tensor shape=(?, ?, 2) dtype=float32>,
-        #   'status', <tf.Tensor shape=(?, ?, 10) dtype=float32>,
+        #   'items', <tf.Tensor shape=(?, M, N, 5) dtype=float32>,
+        #   'location', <tf.Tensor shape=(?, M, 2) dtype=float32>,
+        #   'status', <tf.Tensor shape=(?, M, 10) dtype=float32>,
         # }
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
