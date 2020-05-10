@@ -33,7 +33,7 @@ def get_session():
     if not _session:
         raise ValueError(
             "Session not detected. You should not be calling this function "
-            "while using the class API. ")
+            "outside `tune.run` or while using the class API. ")
     return _session
 
 

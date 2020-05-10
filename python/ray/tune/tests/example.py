@@ -27,7 +27,7 @@ def train_mnist(config):
 
 
 analysis = tune.run(
-    train_mnist, config={"lr": tune.grid_search([0.001, 0.01, 0.1])}, fail_fast=True)
+    train_mnist, config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
 
 print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))
 

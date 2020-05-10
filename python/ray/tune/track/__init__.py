@@ -8,9 +8,10 @@ _session = None
 warned = False
 
 
-def _deprecation_warning(alternative_call=None, soft=True):
+def _deprecation_warning(call=None, alternative_call=None, soft=True):
     msg = "tune.track is now deprecated."
-    if alternative_call:
+    if call and alternative_call:
+        msg = "tune.track.{} is now deprecated.".format(call)
         msg += " Use `tune.{}` instead.".format(alternative_call)
     global warned
     if soft:
@@ -35,20 +36,23 @@ def shutdown():
 
 
 def log(**kwargs):
-    _deprecation_warning(alternative_call="report", soft=True)
+    _deprecation_warning(call="log", alternative_call="report", soft=True)
     session.report(**kwargs)
 
 
 def trial_dir():
-    _deprecation_warning(alternative_call="get_trial_dir", soft=True)
-    return _session.logdir
+    _deprecation_warning(
+        call="trial_dir", alternative_call="get_trial_dir", soft=True)
+    return session.get_trial_dir()
 
 
 def trial_name():
-    _deprecation_warning(alternative_call="get_trial_name", soft=True)
-    return session.trial_name
+    _deprecation_warning(
+        call="trial_name", alternative_call="get_trial_name", soft=True)
+    return session.get_trial_name()
 
 
 def trial_id():
-    _deprecation_warning(alternative_call="get_trial_id", soft=True)
-    return session.trial_id
+    _deprecation_warning(
+        call="trial_id", alternative_call="get_trial_id", soft=True)
+    return session.get_trial_id()
