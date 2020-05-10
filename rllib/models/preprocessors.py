@@ -252,8 +252,8 @@ class ListBatchingPreprocessor(Preprocessor):
     def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, extra_spaces.List)
         child_space = obs_space.child_space
-        self.child_preprocessor = get_preprocessor(child_space)(
-            child_space, self._options)
+        self.child_preprocessor = get_preprocessor(child_space)(child_space,
+                                                                self._options)
         size = self.child_preprocessor.size * obs_space.max_len
         return (size, )
 
@@ -269,13 +269,11 @@ class ListBatchingPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation, array, offset):
         if not isinstance(observation, list):
-            raise ValueError(
-                "Input for {} must be list type, got {}".format(
-                    self, observation))
+            raise ValueError("Input for {} must be list type, got {}".format(
+                self, observation))
         elif len(observation) > self._obs_space.max_len:
-            raise ValueError(
-                "Input {} exceeds max len of space {}".format(
-                    observation, self._obs_space.max_len))
+            raise ValueError("Input {} exceeds max len of space {}".format(
+                observation, self._obs_space.max_len))
         for i, elem in enumerate(observation):
             offset = i * self.child_preprocessor.size
             self.child_preprocessor.write(elem, array, offset)

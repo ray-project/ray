@@ -21,12 +21,14 @@ class List(gym.Space):
         self.np_random.seed(seed)
 
     def sample(self):
-        return [self.child_space.sample()
-            for _ in range(self.np_random.randint(1, self.max_len + 1))]
+        return [
+            self.child_space.sample()
+            for _ in range(self.np_random.randint(1, self.max_len + 1))
+        ]
 
     def contains(self, x):
-        return (isinstance(x, list) and len(x) <= self.max_len and
-            all([self.child_space.contains(c) for c in x]))
+        return (isinstance(x, list) and len(x) <= self.max_len
+                and all([self.child_space.contains(c) for c in x]))
 
 
 class Simplex(gym.Space):

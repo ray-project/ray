@@ -371,8 +371,8 @@ def _unpack_obs(obs, space, tensorlib=tf):
                 offset += p.size
                 u.append(
                     _unpack_obs(
-                        tensorlib.reshape(
-                            obs_slice, batch_dims + list(p.shape)),
+                        tensorlib.reshape(obs_slice,
+                                          batch_dims + list(p.shape)),
                         v,
                         tensorlib=tensorlib))
         elif isinstance(space, gym.spaces.Dict):
