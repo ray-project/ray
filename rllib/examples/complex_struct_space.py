@@ -8,7 +8,6 @@ For PyTorch / TF eager mode, use the --torch and --eager flags.
 """
 
 import argparse
-import numpy as np
 import gym
 from gym.spaces import Discrete, Box, Dict
 
@@ -21,7 +20,6 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as TFFCNet
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
-from ray.tune import grid_search
 
 tf = try_import_tf()
 torch, nn = try_import_torch()
@@ -33,7 +31,7 @@ parser.add_argument("--eager", action="store_true")
 
 class SimpleRPG(gym.Env):
     """Example of a custom env with a complex, structured observation.
-    
+
     The observation is a list of players, each of which is a Dict of
     attributes, and may further hold a list of items (categorical space).
 
@@ -50,8 +48,8 @@ class SimpleRPG(gym.Env):
 
         # Represents a player.
         self.player_space = Dict({
-            "location": Box(-100, 100, shape=(2,)),
-            "status": Box(-1, 1, shape=(10,)),
+            "location": Box(-100, 100, shape=(2, )),
+            "status": Box(-1, 1, shape=(10, )),
             "items": List(self.item_space, max_len=7),
         })
 
@@ -70,11 +68,11 @@ class CustomTorchRPGModel(TorchModelV2, nn.Module):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super().__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
         nn.Module.__init__(self)
-        self.model = TorchFCNet(obs_space, action_space,
-                                           num_outputs, model_config, name)
+        self.model = TorchFCNet(obs_space, action_space, num_outputs,
+                                model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
         # The unpacked input tensors:
@@ -95,10 +93,10 @@ class CustomTFRPGModel(TFModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super().__init__(
-            obs_space, action_space, num_outputs, model_config, name)
-        self.model = TFFCNet(obs_space, action_space,
-                                           num_outputs, model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
+        self.model = TFFCNet(obs_space, action_space, num_outputs,
+                             model_config, name)
         self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
