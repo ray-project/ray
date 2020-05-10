@@ -58,7 +58,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         # Build the policy network.
         self.policy_model = nn.Sequential()
-        ins = obs_space.shape[-1]
+        ins = num_outputs
         self.obs_ins = ins
         activation = get_activation_fn(
             actor_hidden_activation, framework="torch")
