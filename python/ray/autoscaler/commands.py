@@ -1,5 +1,4 @@
 import copy
-import hashlib
 import json
 import os
 import tempfile
@@ -102,13 +101,6 @@ def create_or_update_cluster(config_file, override_min_workers,
 def _bootstrap_config(config):
     config = prepare_config(config)
 
-    hasher = hashlib.sha1()
-    hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
-    cache_key = os.path.join(tempfile.gettempdir(),
-                             "ray-config-{}".format(hasher.hexdigest()))
-    if os.path.exists(cache_key):
-        logger.info("Using cached config at {}".format(cache_key))
-        return json.loads(open(cache_key).read())
     validate_config(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
@@ -118,8 +110,6 @@ def _bootstrap_config(config):
 
     bootstrap_config, _ = importer()
     resolved_config = bootstrap_config(config)
-    with open(cache_key, "w") as f:
-        f.write(json.dumps(resolved_config))
     return resolved_config
 
 
