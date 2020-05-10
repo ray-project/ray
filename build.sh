@@ -128,7 +128,8 @@ pushd "$BUILD_DIR"
 
 
 need_pickle5_backport=0
-case "${PYTHON_VERSION}.0.0" in
+PYTHON_REVISION="$("$PYTHON_EXECUTABLE" -s -c "import sys; print('{}.{}.{}'.format(*sys.version_info))")"
+case "${PYTHON_REVISION}.0" in
 3\.[5-7].*|3.8.[0-1].*) need_pickle5_backport=1;;
 esac
 
