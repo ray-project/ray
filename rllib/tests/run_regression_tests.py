@@ -81,7 +81,7 @@ if __name__ == "__main__":
             try:
                 watchdog.reset()
                 ray.init(num_cpus=5)
-                trials = run_experiments(experiments, resume=False)
+                trials = run_experiments(experiments, resume=False, verbose=0)
             finally:
                 ray.shutdown()
                 _register_all()
