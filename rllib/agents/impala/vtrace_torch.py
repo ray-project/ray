@@ -215,10 +215,12 @@ def multi_from_logits(behaviour_policy_logits,
         # can't use precalculated values, recompute them. Note that
         # recomputing won't work well for autoregressive action dists
         # which may have variables not captured by 'logits'
-        behaviour_action_log_probs = (multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions, dist_class, model))
+        behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
+            behaviour_policy_logits, actions, dist_class, model)
 
     behaviour_action_log_probs = force_list(behaviour_action_log_probs)
+    print("target_action_log_probs.device={}".format(target_action_log_probs[0].device))
+    print("behaviour_action_log_probs.device={}".format(behaviour_action_log_probs[0].device))
     log_rhos = get_log_rhos(target_action_log_probs,
                             behaviour_action_log_probs)
 
