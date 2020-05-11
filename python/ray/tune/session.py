@@ -86,6 +86,71 @@ def report(**kwargs):
     return _session.report(**kwargs)
 
 
+def report(**kwargs):
+    """Logs all keyword arguments.
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+
+        def run_me(config):
+            for iter in range(100):
+                time.sleep(1)
+                tune.report(hello="world", ray="tune")
+
+        analysis = tune.run(run_me)
+
+    Args:
+        **kwargs: Any key value pair to be logged by Tune. Any of these
+            metrics can be used for early stopping or optimization.
+    """
+    _session = get_session()
+    return _session.report(**kwargs)
+
+
+def track_checkpoint(checkpoint):
+    """Register the given checkpoint.
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+
+        def run_me(config, checkpoint=0):
+            for iter in range(checkpoint, 100):
+                time.sleep(1)
+                tune.track_checkpoint(iter)
+                tune.report(hello="world", ray="tune")
+
+        analysis = tune.run(run_me)
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+
+        def run_me(config, checkpoint=None):
+            for iter in range(checkpoint, 100):
+                time.sleep(1)
+
+                checkpoint_dir = tune.get_next_checkpoint_dir()
+                with open(checkpoint_dir + "/checkpoint", "wb") as f:
+                    f.write(iter)
+                tune.track_checkpoint(checkpoint_dir)
+
+                tune.report(hello="world", ray="tune")
+
+        analysis = tune.run(run_me)
+
+    Args:
+        **kwargs: Any key value pair to be logged by Tune. Any of these
+            metrics can be used for early stopping or optimization.
+    """
+    _session = get_session()
+    return _session.report(**kwargs)
+
+
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
