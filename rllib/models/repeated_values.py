@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import TensorType
 class RepeatedValues:
     """Represents a variable-length list of items from extra_spaces.Repeated.
 
-    RepeatedValueses are created when you use extra_spaces.Repeated, and are
+    RepeatedValues are created when you use extra_spaces.Repeated, and are
     accessible as part of input_dict["obs"] in ModelV2 forward functions.
 
     Example:
