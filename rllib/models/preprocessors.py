@@ -254,7 +254,8 @@ class ListBatchingPreprocessor(Preprocessor):
         child_space = obs_space.child_space
         self.child_preprocessor = get_preprocessor(child_space)(child_space,
                                                                 self._options)
-        size = self.child_preprocessor.size * obs_space.max_len
+        # The first slot encodes the list length.
+        size = 1 + self.child_preprocessor.size * obs_space.max_len
         return (size, )
 
     @override(Preprocessor)
@@ -274,8 +275,10 @@ class ListBatchingPreprocessor(Preprocessor):
         elif len(observation) > self._obs_space.max_len:
             raise ValueError("Input {} exceeds max len of space {}".format(
                 observation, self._obs_space.max_len))
+        # The first slot encodes the list length.
+        array[offset] = len(observation)
         for i, elem in enumerate(observation):
-            offset = i * self.child_preprocessor.size
+            offset = 1 + i * self.child_preprocessor.size
             self.child_preprocessor.write(elem, array, offset)
 
 

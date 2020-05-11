@@ -4,9 +4,11 @@ import gym
 from ray.rllib.models.preprocessors import get_preprocessor, \
     ListBatchingPreprocessor
 from ray.rllib.models import extra_spaces
+from ray.rllib.models.list_batch import ListBatch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -389,15 +391,16 @@ def _unpack_obs(obs, space, tensorlib=tf):
         elif isinstance(space, extra_spaces.List):
             assert isinstance(prep, ListBatchingPreprocessor), prep
             child_size = prep.child_preprocessor.size
-            # [B, ..., max_len * child_size] -> [B, ..., max_len, child_size]
+            # The list lengths are stored in the first slot of the flat obs.
+            lengths = obs[..., 0]
+            # [B, ..., 1 + max_len * child_sz] -> [B, ..., max_len, child_sz]
             with_repeat_dim = tensorlib.reshape(
-                obs, batch_dims + [space.max_len, child_size])
+                obs[..., 1:], batch_dims + [space.max_len, child_size])
             # Retry the unpack, dropping the List container space.
             u = _unpack_obs(
                 with_repeat_dim, space.child_space, tensorlib=tensorlib)
-            # TODO(ekl) we should also include the number of elements that
-            # are valid in the return somehow. Perhaps by encoding this in the
-            # flattened observation and returning ListBatch(u, u_len)?
+            return ListBatch(
+                u, lengths=lengths, max_len=prep._obs_space.max_len)
         else:
             assert False, space
         return u

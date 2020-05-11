@@ -79,12 +79,23 @@ class CustomTorchRPGModel(TorchModelV2, nn.Module):
                                 model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:
-        # {
-        #   'items', <torch.Tensor shape=(?, M, N, 5)>,
-        #   'location', <torch.Tensor shape=(?, M, 2)>,
-        #   'status', <torch.Tensor shape=(?, M, 10)>,
-        # }
+        """Forward pass which has access to the batched list data.
+
+        Example:
+            >>> # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS
+            >>> input_dict["obs"]
+            ... ListBatch(
+            ...     value={
+            ...         'items': ListBatch(
+            ...             value=<tf.Tensor shape=(B, M, N, 5)>,
+            ...             lengths=<tf.Tensor shape=(B, M)>,
+            ...             max_len=N),
+            ...         'location': <tf.Tensor shape=(B, M, 2)>,
+            ...         'status': <tf.Tensor shape=(B, M, 10)>,
+            ...     }
+            ...     lengths=<tf.Tensor shape=(B,)>,
+            ...     max_len=M)
+        """
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
 
@@ -104,12 +115,23 @@ class CustomTFRPGModel(TFModelV2):
         self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
-        # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:
-        # {
-        #   'items', <tf.Tensor shape=(?, M, N, 5)>,
-        #   'location', <tf.Tensor shape=(?, M, 2)>,
-        #   'status', <tf.Tensor shape=(?, M, 10)>,
-        # }
+        """Forward pass which has access to the batched list data.
+
+        Example:
+            >>> # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS
+            >>> input_dict["obs"]
+            ... ListBatch(
+            ...     value={
+            ...         'items': ListBatch(
+            ...             value=<torch.Tensor shape=(B, M, N, 5)>,
+            ...             lengths=<torch.Tensor shape=(B, M)>,
+            ...             max_len=N),
+            ...         'location': <torch.Tensor shape=(B, M, 2)>,
+            ...         'status': <torch.Tensor shape=(B, M, 10)>,
+            ...     }
+            ...     lengths=<torch.Tensor shape=(B,)>,
+            ...     max_len=M)
+        """
         print("The unpacked input tensors:", input_dict["obs"])
         return self.model.forward(input_dict, state, seq_lens)
 
