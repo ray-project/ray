@@ -71,17 +71,15 @@ class FullyConnectedNetwork(TFModelV2):
                     kernel_initializer=normc_initializer(0.01))(last_layer)
             # Adjust num_outputs to be the number of nodes in the last layer.
             else:
-                num_outputs = (
+                self.num_outputs = (
                     [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std:
 
             def tiled_log_std(x):
-                return tf.repeat(
-                    tf.expand_dims(self.log_std_var, 0),
-                    tf.shape(x)[0],
-                    axis=0)
+                return tf.tile(
+                    tf.expand_dims(self.log_std_var, 0), [tf.shape(x)[0], 1])
 
             log_std_out = tf.keras.layers.Lambda(tiled_log_std)(inputs)
             layer_out = tf.keras.layers.Concatenate(axis=1)(
