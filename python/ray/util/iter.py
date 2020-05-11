@@ -921,12 +921,19 @@ class LocalIterator(Generic[T]):
     def union(self,
               *others: "LocalIterator[T]",
               deterministic: bool = False,
-              round_robin_weights: List[int] = None) -> "LocalIterator[T]":
+              round_robin_weights: List[float] = None) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the others.
 
-        If deterministic=True, we alternate between reading from one iterator
-        and the others. Otherwise we return items from iterators as they
-        become ready.
+        Args:
+            deterministic (bool): If deterministic=True, we alternate between
+                reading from one iterator and the others. Otherwise we return
+                items from iterators as they become ready.
+            round_robin_weights (list): List of weights to use for round robin
+                mode. For example, [2, 1] will cause the iterator to pull twice
+                as many items from the first iterator as the second. [2, 1, *]
+                will cause as many items to be pulled as possible from the
+                third iterator without blocking. This overrides the
+                deterministic flag.
         """
 
         for it in others:
@@ -966,7 +973,7 @@ class LocalIterator(Generic[T]):
                     if weight == "*":
                         max_pull = 100  # TOOD(ekl) how to best bound this?
                     else:
-                        max_pull = weight
+                        max_pull = _randomized_int_cast(weight)
                     try:
                         for _ in range(max_pull):
                             item = next(it)
@@ -1065,6 +1072,14 @@ class ParallelIteratorWorker(object):
                 raise StopIteration
 
         return self.next_ith_buffer[start].pop(0)
+
+
+def _randomized_int_cast(float_value):
+    base = int(float_value)
+    remainder = float_value - base
+    if random.random() < remainder:
+        base += 1
+    return base
 
 
 class _NextValueNotReady(Exception):
