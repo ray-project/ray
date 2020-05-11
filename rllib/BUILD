@@ -1328,7 +1328,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1337,7 +1337,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1355,7 +1355,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
@@ -1644,7 +1644,7 @@ py_test(
     name = "examples/multi_agent_two_trainers_tf",
     main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--stop-reward=70"]
 )
@@ -1765,6 +1765,7 @@ sh_test(
 
 py_test(
     name = "examples/two_trainer_workflow_tf",
+    main = "examples/two_trainer_workflow.py",
     tags = ["examples", "examples_T"],
     size = "small",
     srcs = ["examples/two_trainer_workflow.py"],
@@ -1773,6 +1774,7 @@ py_test(
 
 py_test(
     name = "examples/two_trainer_workflow_torch",
+    main = "examples/two_trainer_workflow.py",
     tags = ["examples", "examples_T"],
     size = "small",
     srcs = ["examples/two_trainer_workflow.py"],
@@ -1781,6 +1783,7 @@ py_test(
 
 py_test(
     name = "examples/two_trainer_workflow_mixed_torch_tf",
+    main = "examples/two_trainer_workflow.py",
     tags = ["examples", "examples_T"],
     size = "small",
     srcs = ["examples/two_trainer_workflow.py"],
