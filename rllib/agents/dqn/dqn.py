@@ -89,6 +89,7 @@ DEFAULT_CONFIG = with_common_config({
     "multiagent_sync_replay": False,
     # Callback to run before learning on a multi-agent batch of experiences.
     "before_learn_on_batch": None,
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
