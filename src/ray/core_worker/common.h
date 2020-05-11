@@ -111,7 +111,7 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_restarts, int max_concurrency,
+  ActorCreationOptions(int64_t max_restarts, int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
