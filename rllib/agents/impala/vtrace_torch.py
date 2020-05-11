@@ -197,16 +197,13 @@ def multi_from_logits(behaviour_policy_logits,
 
     behaviour_policy_logits = convert_to_torch_tensor(
         behaviour_policy_logits, device="cpu")
-    print("behaviour_policy_logits[0].device={}".format(behaviour_policy_logits[0].device))
     target_policy_logits = convert_to_torch_tensor(
         target_policy_logits, device="cpu")
-    print("target_policy_logits[0].device={}".format(target_policy_logits[0].device))
     actions = convert_to_torch_tensor(actions, device="cpu")
-    print("actions[0].device={}".format(actions[0].device))
 
+    # Make sure tensor ranks are as expected.
+    # The rest will be checked by from_action_log_probs.
     for i in range(len(behaviour_policy_logits)):
-        # Make sure tensor ranks are as expected.
-        # The rest will be checked by from_action_log_probs.
         assert len(behaviour_policy_logits[i].size()) == 3
         assert len(target_policy_logits[i].size()) == 3
 
@@ -224,8 +221,6 @@ def multi_from_logits(behaviour_policy_logits,
     behaviour_action_log_probs = convert_to_torch_tensor(
         behaviour_action_log_probs, device="cpu")
     behaviour_action_log_probs = force_list(behaviour_action_log_probs)
-    print("target_action_log_probs[0].device={}".format(target_action_log_probs[0].device))
-    print("behaviour_action_log_probs[0].device={}".format(behaviour_action_log_probs[0].device))
     log_rhos = get_log_rhos(target_action_log_probs,
                             behaviour_action_log_probs)
 
