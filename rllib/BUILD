@@ -1608,7 +1608,7 @@ py_test(
     name = "examples/multi_agent_cartpole_tf",
     main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--stop-reward=70.0", "--num-cpus=4"]
 )
@@ -1653,7 +1653,7 @@ py_test(
     name = "examples/multi_agent_two_trainers_torch",
     main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--torch", "--stop-reward=70"]
 )
@@ -1671,7 +1671,7 @@ py_test(
     name = "examples/nested_action_spaces_ppo_tf",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--as-test", "--stop-reward=-600", "--run=PPO"]
 )
@@ -1680,7 +1680,7 @@ py_test(
     name = "examples/nested_action_spaces_ppo_torch",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--as-test", "--torch", "--stop-reward=-600", "--run=PPO"]
 )
@@ -1689,7 +1689,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--stop-reward=60.0", "--run=PG"]
 )
@@ -1698,7 +1698,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_dqn_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--stop-reward=60.0", "--run=DQN"]
 )
@@ -1716,7 +1716,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_dqn_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=DQN"]
 )
@@ -1764,11 +1764,27 @@ sh_test(
 )
 
 py_test(
-    name = "examples/two_trainer_workflow",
+    name = "examples/two_trainer_workflow_tf",
     tags = ["examples", "examples_T"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--stop-iters=2"]
+    args = ["--as-test", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/two_trainer_workflow_torch",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--as-test", "--torch", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/two_trainer_workflow_mixed_torch_tf",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=100.0"]
 )
 
 py_test(
