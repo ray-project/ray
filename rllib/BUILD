@@ -1438,7 +1438,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=2"]
+    args = ["--stop-iters=1", "--num-cpus=4"]
 )
 
 py_test(
@@ -1447,7 +1447,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--torch", "--stop-iters=2"]
+    args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
 )
 
 py_test(

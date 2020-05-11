@@ -14,13 +14,14 @@ from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
 from ray.rllib.models import ModelCatalog
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--num-cpus", type=int, default=2)
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
 
     ModelCatalog.register_custom_model(
         "fast_model", TorchFastModel if args.torch else FastModel)
