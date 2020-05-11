@@ -254,7 +254,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
 
   // Remove worker and then check that the actor is being restarted.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
-  gcs_actor_manager_.OnNodeDead(node_id);
+  gcs_actor_manager_->OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.

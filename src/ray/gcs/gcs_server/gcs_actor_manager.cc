@@ -361,7 +361,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  // If the need_reschedule is set to false, then set the `remaining_reconstructions` to 0
+  // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
@@ -376,7 +376,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   }
   RAY_LOG(WARNING) << "Actor is failed " << actor_id << " on worker " << worker_id
                    << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                   << ", remaining_reconstructions = " << remaining_reconstructions;
+                   << ", remaining_restarts = " << remaining_restarts;
   if (remaining_restarts != 0) {
     mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);

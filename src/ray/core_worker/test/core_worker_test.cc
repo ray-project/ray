@@ -58,7 +58,7 @@ static void flushall_redis(void) {
 }
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
-                          uint64_t max_restarts) {
+                          int64_t max_restarts) {
   std::unique_ptr<ActorHandle> actor_handle;
 
   uint8_t array[] = {1, 2, 3};
