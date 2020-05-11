@@ -151,15 +151,19 @@ def _unbatch_helper(v, max_len):
 
 
 def _batch_index_helper(v, i, j):
-    """Recursively selects the ith slice of the batch dimension."""
+    """Selects the item at the ith batch index and jth repetition."""
     if isinstance(v, dict):
         return {k: _batch_index_helper(u, i, j) for (k, u) in v.items()}
     elif isinstance(v, tuple):
         return tuple(_batch_index_helper(u, i, j) for u in v)
     elif isinstance(v, list):
+        # This is the output of unbatch_repeat_dim(). Unfortunately we have to
+        # process it here instead of in unbatch_all(), since it may be buried
+        # under a dict / tuple.
         return _batch_index_helper(v[j], i, j)
     elif isinstance(v, ListBatch):
         unbatched = v.unbatch_all()
+        # Don't need to select j here; that's already done in unbatch_all.
         return unbatched[i]
     else:
         return v[i, ...]
