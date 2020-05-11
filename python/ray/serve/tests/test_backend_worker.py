@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+import numpy as np
 
 import ray
 from ray import serve
@@ -9,6 +10,7 @@ from ray.serve.policy import RoundRobinPolicyQueueActor
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.request_params import RequestMetadata
 from ray.serve.config import BackendConfig
+from ray.serve.exceptions import RayServeException
 
 pytestmark = pytest.mark.asyncio
 
@@ -151,6 +153,15 @@ async def test_task_runner_custom_method_batch(serve_instance):
         def b(self, _):
             return ["b-{}".format(i) for i in range(serve.context.batch_size)]
 
+        def error_different_size(self, _):
+            return [""] * (serve.context.batch_size * 2)
+
+        def error_non_iterable(self, _):
+            return 42
+
+        def return_np_array(self, _):
+            return np.array([1] * serve.context.batch_size).astype(np.int32)
+
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
@@ -163,10 +174,12 @@ async def test_task_runner_custom_method_batch(serve_instance):
             "max_batch_size": 10
         }, accepts_batches=True))
 
-    a_query_param = RequestMetadata(
-        PRODUCER_NAME, context.TaskContext.Python, call_method="a")
-    b_query_param = RequestMetadata(
-        PRODUCER_NAME, context.TaskContext.Python, call_method="b")
+    def make_request_param(call_method):
+        return RequestMetadata(
+            PRODUCER_NAME, context.TaskContext.Python, call_method=call_method)
+
+    a_query_param = make_request_param("a")
+    b_query_param = make_request_param("b")
 
     futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
     futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
@@ -175,3 +188,15 @@ async def test_task_runner_custom_method_batch(serve_instance):
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
+
+    with pytest.raises(RayServeException, match="doesn't preserve batch size"):
+        different_size = make_request_param("error_different_size")
+        await q.enqueue_request.remote(different_size)
+
+    with pytest.raises(RayServeException, match="iterable"):
+        non_iterable = make_request_param("error_non_iterable")
+        await q.enqueue_request.remote(non_iterable)
+
+    np_array = make_request_param("return_np_array")
+    result_np_value = await q.enqueue_request.remote(np_array)
+    assert isinstance(result_np_value, np.int32)
