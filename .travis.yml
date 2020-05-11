@@ -226,7 +226,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_I=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -242,7 +242,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
     - os: linux
       env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
