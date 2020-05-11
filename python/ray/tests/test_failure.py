@@ -1051,7 +1051,10 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
-def test_fate_sharing(ray_start_cluster):
+@pytest.mark.parametrize("use_actors,node_failure",
+                         [(False, False), (False, True), (True, False),
+                          (True, True)])
+def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -1074,6 +1077,9 @@ def test_fate_sharing(ray_start_cluster):
     def probe():
         return
 
+    # TODO(swang): This test does not pass if max_reconstructions > 0 for the
+    # raylet codepath. Add this parameter once the GCS actor service is enabled
+    # by default.
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -1121,10 +1127,20 @@ def test_fate_sharing(ray_start_cluster):
         assert wait_for_condition(child_resource_available)
         return node_to_kill
 
-    test_process_failure(use_actors=True)
-    test_process_failure(use_actors=False)
-    node_to_kill = test_node_failure(node_to_kill, use_actors=True)
-    node_to_kill = test_node_failure(node_to_kill, use_actors=False)
+    if node_failure:
+        test_node_failure(node_to_kill, use_actors)
+    else:
+        test_process_failure(use_actors)
+
+    ray.state.state._check_connected()
+    keys = [
+        key for r in ray.state.state.redis_clients
+        for key in r.keys("WORKER_FAILURE*")
+    ]
+    if node_failure:
+        assert len(keys) <= 1, len(keys)
+    else:
+        assert len(keys) <= 2, len(keys)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor,
-                          std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub);
+                          std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
