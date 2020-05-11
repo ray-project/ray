@@ -89,9 +89,11 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                                  gcs::ActorInfoAccessor &actor_info_accessor,
+                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                  const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       actor_info_accessor_(actor_info_accessor),
+      gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {}
 
 Status GcsActorManager::RegisterActor(
@@ -271,8 +273,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(
-      actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor->GetActorID(), actor_table_data,
+      [this, actor_id, actor_table_data](Status status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                           actor_table_data->SerializeAsString(),
+                                           nullptr));
+      }));
 }
 
 void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
@@ -367,27 +374,33 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
-  RAY_LOG(WARNING) << "Actor is failed " << actor->GetActorID() << " on worker "
-                   << worker_id << " at node " << node_id
-                   << ", need_reschedule = " << need_reschedule
-                   << ", remaining_restarts = " << remaining_restarts;
-
+  RAY_LOG(WARNING) << "Actor is failed " << actor_id << " on worker " << worker_id
+                   << " at node " << node_id << ", need_reschedule = " << need_reschedule
+                   << ", remaining_reconstructions = " << remaining_reconstructions;
   if (remaining_restarts != 0) {
     mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(
-        actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                             actor_table_data->SerializeAsString(),
+                                             nullptr));
+        }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(
-        actor_info_accessor_.AsyncUpdate(actor->GetActorID(), actor_table_data, nullptr));
+    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                             actor_table_data->SerializeAsString(),
+                                             nullptr));
+        }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out
@@ -408,7 +421,12 @@ void GcsActorManager::OnActorCreationSuccess(std::shared_ptr<GcsActor> actor) {
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(actor_id, actor_table_data, nullptr));
+  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
+      actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                           actor_table_data->SerializeAsString(),
+                                           nullptr));
+      }));
 
   // Invoke all callbacks for all registration requests of this actor (duplicated
   // requests are included) and remove all of them from actor_to_register_callbacks_.
