@@ -1,7 +1,10 @@
 import numpy as np
 import gym
 
+from ray.rllib.utils.annotations import PublicAPI
 
+
+@PublicAPI
 class List(gym.Space):
     """Represents a variable-length list of child spaces.
 
@@ -34,6 +37,7 @@ class List(gym.Space):
                 and all([self.child_space.contains(c) for c in x]))
 
 
+@PublicAPI
 class Simplex(gym.Space):
     """Represents a d - 1 dimensional Simplex in R^d.
 
