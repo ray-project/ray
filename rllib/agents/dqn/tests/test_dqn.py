@@ -3,7 +3,8 @@ import unittest
 
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    check_compute_action
 
 tf = try_import_tf()
 
@@ -23,6 +24,8 @@ class TestDQN(unittest.TestCase):
                 results = trainer.train()
                 print(results)
 
+            check_compute_action(trainer)
+
             # Rainbow.
             # TODO(sven): Add torch once DQN-torch supports distributional-Q.
             if fw == "torch":
@@ -37,6 +40,8 @@ class TestDQN(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+
+            check_compute_action(trainer)
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
