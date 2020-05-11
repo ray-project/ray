@@ -13,7 +13,7 @@ class RepeatedValues:
 
     Example:
         Suppose the gym space definition was:
-            List(List(Box(K), N), M)
+            Repeated(Repeated(Box(K), N), M)
 
         Then in the model forward function, input_dict["obs"] is of type:
             RepeatedValues(RepeatedValues(<Tensor shape=(B, M, N, K)>))
