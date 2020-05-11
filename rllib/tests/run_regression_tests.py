@@ -52,7 +52,7 @@ if __name__ == "__main__":
         for i in range(3):
             try:
                 ray.init(num_cpus=5)
-                trials = run_experiments(experiments, resume=False, verbose=0)
+                trials = run_experiments(experiments, resume=False, verbose=1)
             finally:
                 ray.shutdown()
                 _register_all()

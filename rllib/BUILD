@@ -61,19 +61,41 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/regression_tests/cartpole-appo-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_appo_vtrace_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
         "tuned_examples/regression_tests/cartpole-appo-vtrace-tf.yaml",
     ],
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_es_ars_tf",
+    name = "run_regression_tests_cartpole_es_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/regression_tests/cartpole-es-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_ars_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
         "tuned_examples/regression_tests/cartpole-ars-tf.yaml",
     ],
     args = ["BAZEL", "tuned_examples/regression_tests"]
