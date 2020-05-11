@@ -3,13 +3,14 @@ from typing import List
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import TensorType
 
+
 @PublicAPI
 class ListBatch:
     """Represents a variable-length list of items from extra_spaces.List.
 
     ListBatches are created when you use extra_spaces.List, and are accessible
     as part of input_dict["obs"] in ModelV2 forward functions.
-    
+
     Attributes:
         value (Tensor): The padded data tensor of shape [B, max_len, ..., sz],
             where B is the batch dimension, max_len is the max length of this
