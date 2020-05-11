@@ -197,6 +197,7 @@ def multi_from_logits(behaviour_policy_logits,
 
     behaviour_policy_logits = convert_to_torch_tensor(
         behaviour_policy_logits, device="cpu")
+    print("behaviour_policy_logits[0].device={}".format(behaviour_policy_logits[0].device))
     target_policy_logits = convert_to_torch_tensor(
         target_policy_logits, device="cpu")
     actions = convert_to_torch_tensor(actions, device="cpu")
@@ -219,11 +220,10 @@ def multi_from_logits(behaviour_policy_logits,
             behaviour_policy_logits, actions, dist_class, model)
 
     behaviour_action_log_probs = force_list(behaviour_action_log_probs)
-    print("behaviour_policy_logits.device={}".format(behaviour_policy_logits.device))
     print("target_policy_logits.device={}".format(target_policy_logits.device))
     print("actions.device={}".format(actions.device))
-    print("target_action_log_probs.device={}".format(target_action_log_probs[0].device))
-    print("behaviour_action_log_probs.device={}".format(behaviour_action_log_probs[0].device))
+    print("target_action_log_probs[0].device={}".format(target_action_log_probs[0].device))
+    print("behaviour_action_log_probs[0].device={}".format(behaviour_action_log_probs[0].device))
     log_rhos = get_log_rhos(target_action_log_probs,
                             behaviour_action_log_probs)
 
