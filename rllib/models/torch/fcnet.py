@@ -88,7 +88,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
-        obs = input_dict["obs_flat"]
+        obs = input_dict["obs_flat"].float()
         features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
         logits = self._logits(features) if self._logits else features
         self._cur_value = self._value_branch(features).squeeze(1)
