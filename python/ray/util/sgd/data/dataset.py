@@ -49,14 +49,15 @@ class Dataset():
         if isinstance(iterable, ParallelIterator):
             par_iter = iterable.repartition(1)
         else:
-            par_iter = ParallelIterator.from_items(iterable, num_actors=1, repeat=True)
+            par_iter = ParallelIterator.from_items(
+                iterable, num_actors=1, repeat=True)
         if download_func:
             par_iter = par_iter.for_each_concur(
-                download_func, max_concurrency=max_concur)
+                download_func, max_concurrency=max_concurrency)
         self.iter = par_iter.batch(batch_size)
 
         self.batch_size = batch_size
-        self.max_concurrency = max_concur
+        self.max_concurrency = max_concurrency
         self.transform = transform
 
     def set_num_shards(self, num_shards):
