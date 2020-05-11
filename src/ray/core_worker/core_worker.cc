@@ -1917,10 +1917,10 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
     }
-    // NOTE(hchen): Use `quick_exit` to force-exit this process. If we use `exit` here,
-    // static objects will be destructed in an incorrect order, which will lead to
+    // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
+    // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    std::quick_exit(1);
+    _Exit(1);
   }
 }
 
@@ -1956,10 +1956,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
     }
-    // NOTE(hchen): Use `quick_exit` to force-exit this process. If we use `exit` here,
-    // static objects will be destructed in an incorrect order, which will lead to
+    // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
+    // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    std::quick_exit(1);
+    _Exit(1);
   } else {
     Exit(/*intentional=*/true);
   }
