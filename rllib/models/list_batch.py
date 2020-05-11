@@ -44,6 +44,71 @@ class ListBatch:
         self.value = value
         self.lengths = lengths
         self.max_len = max_len
+        self._unbatched_repr = None
+
+    def unbatch_all(self):
+        """Unbatch both the repeat and batch dimensions into Python lists.
+
+        This is only supported in PyTorch / TF eager mode.
+
+        This lets you view the data unbatched in its original form, but is
+        not efficient for processing.
+
+        Examples:
+            >>> batch = ListBatch(<Tensor shape=(B, N, K)>)
+            >>> items = batch.to_list()
+            >>> print(len(items) == B)
+            True
+            >>> print(max(len(x) for x in items) <= N)
+            True
+            >>> print(items)
+            ... [[<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
+            ...  ...
+            ...  [<Tensor_1 shape=(K)>, <Tensor_2 shape=(K)>],
+            ...  ...
+            ...  [<Tensor_1 shape=(K)>],
+            ...  ...
+            ...  [<Tensor_1 shape=(K)>, ..., <Tensor_N shape=(K)>]]
+        """
+
+        if self._unbatched_repr is None:
+            B = _get_batch_dim_helper(self.value)
+            if B is None:
+                raise ValueError(
+                    "Cannot call unbatch_all() when batch_dim is unknown. "
+                    "This is probably because you are using TF graph mode.")
+            else:
+                B = int(B)
+            slices = self.unbatch_repeat_dim()
+            result = []
+            for i in range(B):
+                if hasattr(self.lengths[i], "item"):
+                    dynamic_len = int(self.lengths[i].item())
+                else:
+                    dynamic_len = int(self.lengths[i].numpy())
+                dynamic_slice = []
+                for j in range(dynamic_len):
+                    dynamic_slice.append(_batch_index_helper(slices, i, j))
+                result.append(dynamic_slice)
+            self._unbatched_repr = result
+
+        return self._unbatched_repr
+
+    def unbatch_repeat_dim(self):
+        """Unbatches the repeat dimension (the one `max_len` in size).
+
+        This removes the repeat dimension. The result will be a Python list of
+        with length `self.max_len`. Note that the data is still padded.
+
+        Examples:
+            >>> batch = ListBatch(<Tensor shape=(B, N, K)>)
+            >>> items = batch.unbatch()
+            >>> len(items) == batch.max_len
+            True
+            >>> print(items)
+            ... [<Tensor_1 shape=(B, K)>, ..., <Tensor_N shape=(B, K)>]
+        """
+        return _unbatch_helper(self.value, self.max_len)
 
     def __repr__(self):
         return "ListBatch(value={}, lengths={}, max_len={})".format(
@@ -51,3 +116,50 @@ class ListBatch:
 
     def __str__(self):
         return repr(self)
+
+
+def _get_batch_dim_helper(v):
+    """Tries to find the batch dimension size of v, or None."""
+    if isinstance(v, dict):
+        for u in v.values():
+            return _get_batch_dim_helper(u)
+    elif isinstance(v, tuple):
+        return _get_batch_dim_helper(v[0])
+    elif isinstance(v, ListBatch):
+        return _get_batch_dim_helper(v.value)
+    else:
+        B = v.shape[0]
+        if hasattr(B, "value"):
+            B = B.value  # TensorFlow
+        return B
+
+
+def _unbatch_helper(v, max_len):
+    """Recursively unpacks the repeat dimension (max_len)."""
+    if isinstance(v, dict):
+        return {k: _unbatch_helper(u, max_len) for (k, u) in v.items()}
+    elif isinstance(v, tuple):
+        return tuple(_unbatch_helper(u, max_len) for u in v)
+    elif isinstance(v, ListBatch):
+        unbatched = _unbatch_helper(v.value, max_len)
+        return [
+            ListBatch(u, v.lengths[:, i, ...], v.max_len)
+            for i, u in enumerate(unbatched)
+        ]
+    else:
+        return [v[:, i, ...] for i in range(max_len)]
+
+
+def _batch_index_helper(v, i, j):
+    """Recursively selects the ith slice of the batch dimension."""
+    if isinstance(v, dict):
+        return {k: _batch_index_helper(u, i, j) for (k, u) in v.items()}
+    elif isinstance(v, tuple):
+        return tuple(_batch_index_helper(u, i, j) for u in v)
+    elif isinstance(v, list):
+        return _batch_index_helper(v[j], i, j)
+    elif isinstance(v, ListBatch):
+        unbatched = v.unbatch_all()
+        return unbatched[i]
+    else:
+        return v[i, ...]
