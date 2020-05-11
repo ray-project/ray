@@ -1,5 +1,6 @@
 import traceback
 import inspect
+from collections.abc import Iterable
 
 import ray
 from ray import serve
@@ -195,8 +196,18 @@ class RayServeWorker:
             self.request_counter.add(batch_size)
             result_list = await call_method(*arg_list, **kwargs_list)
 
-            if (not isinstance(result_list,
-                               list)) or (len(result_list) != batch_size):
+            if not isinstance(result_list, Iterable) or isinstance(
+                    result_list, (dict, set)):
+                error_message = ("RayServe expects an ordered iterable object "
+                                 "but the worker returned a {}".format(
+                                     type(result_list)))
+                raise RayServeException(error_message)
+
+            # Normalize the result into a list type. This operation is fast
+            # in Python because it doesn't copy anything.
+            result_list = list(result_list)
+
+            if (len(result_list) != batch_size):
                 error_message = ("Worker doesn't preserve batch size. The "
                                  "input has length {} but the returned list "
                                  "has length {}. Please return a list of "

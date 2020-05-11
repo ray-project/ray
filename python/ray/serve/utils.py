@@ -69,6 +69,10 @@ class ServeEncoder(json.JSONEncoder):
         if isinstance(o, Exception):
             return str(o)
         if isinstance(o, np.ndarray):
+            if o.dtype.kind == "f":  # floats
+                o = o.astype(float)
+            if o.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+                o = o.astype(int)
             return o.tolist()
         return super().default(o)
 
