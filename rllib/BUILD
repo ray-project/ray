@@ -74,7 +74,7 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/regression_tests/cartpole-es-tf.yaml",
-        "tuned_examples/regression_tests/cartpole-ars-vtrace-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-ars-tf.yaml",
     ],
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
