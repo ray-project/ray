@@ -107,6 +107,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
+  std::string name = "";
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
       static_cast<int>(max_concurrency),
@@ -114,6 +115,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
+      name,
       /*is_asyncio=*/false};
   return actor_creation_options;
 }

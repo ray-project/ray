@@ -303,12 +303,14 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                  replay_batch_size,
                  prioritized_replay_alpha=0.6,
                  prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6):
+                 prioritized_replay_eps=1e-6,
+                 multiagent_sync_replay=False):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+        self.multiagent_sync_replay = multiagent_sync_replay
 
         def gen_replay():
             while True:
@@ -369,10 +371,17 @@ class LocalReplayBuffer(ParallelIteratorWorker):
 
         with self.replay_timer:
             samples = {}
+            idxes = None
             for policy_id, replay_buffer in self.replay_buffers.items():
+                if self.multiagent_sync_replay:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(
+                            self.replay_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(self.replay_batch_size)
                 (obses_t, actions, rewards, obses_tp1, dones, weights,
-                 batch_indexes) = replay_buffer.sample(
-                     self.replay_batch_size, beta=self.prioritized_replay_beta)
+                 batch_indexes) = replay_buffer.sample_with_idxes(
+                     idxes, beta=self.prioritized_replay_beta)
                 samples[policy_id] = SampleBatch({
                     "obs": obses_t,
                     "actions": actions,
