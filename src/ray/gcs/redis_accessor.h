@@ -42,6 +42,11 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) {
+    return Status::NotImplemented(
+        "RedisLogBasedActorInfoAccessor does not support AsyncGetAll.");
+  }
+
   Status AsyncGetByName(const std::string &name,
                         const OptionalItemCallback<ActorTableData> &callback) override {
     return Status::NotImplemented(
@@ -65,7 +70,7 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
   Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
                             const StatusCallback &callback) override;
@@ -120,6 +125,8 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
+
   Status AsyncGetByName(const std::string &name,
                         const OptionalItemCallback<ActorTableData> &callback) override {
     return Status::NotImplemented(
@@ -140,7 +147,7 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+  Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
  protected:
   std::vector<ActorID> GetAllActorID() const override;

@@ -28,6 +28,7 @@ namespace gcs {
 #define JOB_CHANNEL "JOB"
 #define NODE_CHANNEL "NODE"
 #define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
+#define ACTOR_CHANNEL "ACTOR"
 #define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
@@ -55,8 +56,8 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  Status Publish(const std::string &channel, const std::string &id,
-                 const std::string &data, const StatusCallback &done);
+  virtual Status Publish(const std::string &channel, const std::string &id,
+                         const std::string &data, const StatusCallback &done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
   ///
