@@ -41,13 +41,91 @@
 # --------------------------------------------------------------------
 
 py_test(
-    name = "run_regression_tests_cartpole_tf",
+    name = "run_regression_tests_cartpole_pg_a3c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "enormous",  # = 60min timeout
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/regression_tests/cartpole-*-tf.yaml"]),
-    # Pass `BAZEL` option and the path to look for yaml regression files.
+    data = [
+        "tuned_examples/regression_tests/cartpole-pg-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-a3c-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_appo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-appo-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-appo-vtrace-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_es_ars_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-es-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-ars-vtrace-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_dqn_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-simpleq-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-dqn-tf.yaml",
+        "tuned_examples/regression_tests/cartpole-dqn-param-noise-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_impala_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-impala-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_sac_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-sac-tf.yaml",
+    ],
+    args = ["BAZEL", "tuned_examples/regression_tests"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_ppo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/regression_tests/cartpole-ppo-tf.yaml",
+    ],
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 

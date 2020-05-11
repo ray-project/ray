@@ -19,35 +19,10 @@
 from pathlib import Path
 import sys
 import yaml
-import time
-import os
-import threading
 
 import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
-
-
-# Manage timeouts internally. If we let the travis time limit be hit, we might
-# never see the logs of the hanging test.
-class Watchdog(threading.Thread):
-    def __init__(self, timeout_seconds):
-        threading.Thread.__init__(self)
-        self.timeout_seconds = timeout_seconds
-        self.daemon = True
-        self.ok = False
-
-    def reset(self):
-        self.ok = True
-
-    def run(self):
-        while True:
-            time.sleep(self.timeout_seconds)
-            if not self.ok:
-                print("Watchdog timed out after", self.timeout_seconds)
-                os._exit(1)
-            self.ok = False
-
 
 if __name__ == "__main__":
     # Bazel regression test mode: Get path to look for yaml files from argv[2].
@@ -66,9 +41,6 @@ if __name__ == "__main__":
     for yaml_file in yaml_files:
         print("->", yaml_file)
 
-    watchdog = Watchdog(15 * 60)
-    watchdog.start()
-
     # Loop through all collected files.
     for yaml_file in yaml_files:
         experiments = yaml.load(open(yaml_file).read())
@@ -79,7 +51,6 @@ if __name__ == "__main__":
         passed = False
         for i in range(3):
             try:
-                watchdog.reset()
                 ray.init(num_cpus=5)
                 trials = run_experiments(experiments, resume=False, verbose=0)
             finally:
