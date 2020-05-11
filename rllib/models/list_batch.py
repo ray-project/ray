@@ -19,7 +19,7 @@ class ListBatch:
             ListBatch(ListBatch(<Tensor shape=(B, M, N, K)>))
 
         The tensor is accessible via:
-            input_dict["obs"].value
+            input_dict["obs"].value.value
 
         And the actual data lengths via:
             # outer repetition, shape [B], range [0, M]
