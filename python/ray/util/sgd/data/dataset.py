@@ -19,7 +19,7 @@ class Dataset():
             dataset = Dataset(
                 p_iter,
                 batch_size=32,
-                max_concur=1,
+                max_concurrency=1,
                 download_func=lambda x: (to_mat(x), to_mat(x)))
 
             trainer = TorchTrainer(
@@ -38,6 +38,7 @@ class Dataset():
             print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
 
     """
+
     def __init__(self,
                  iterable,
                  batch_size=32,
@@ -48,7 +49,7 @@ class Dataset():
         if isinstance(iterable, ParallelIterator):
             par_iter = iterable.repartition(1)
         else:
-            par_iter = ParallelIterator.from_items(iterable, num_actors=1)
+            par_iter = ParallelIterator.from_items(iterable, num_actors=1, repeat=True)
         if download_func:
             par_iter = par_iter.for_each_concur(
                 download_func, max_concurrency=max_concur)

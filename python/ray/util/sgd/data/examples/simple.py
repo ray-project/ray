@@ -21,8 +21,6 @@ class Net(nn.Module):
         return x
 
 
-
-
 def model_creator(config):
     return Net()
 
@@ -35,7 +33,9 @@ def model_creator(config):
 def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
+
 ray.init()
+
 
 def to_mat(x):
     return torch.tensor([[x]]).float()
