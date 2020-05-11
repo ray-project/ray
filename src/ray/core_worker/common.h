@@ -115,13 +115,14 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, bool is_asyncio)
+                       bool is_detached, std::string &name, bool is_asyncio)
       : max_reconstructions(max_reconstructions),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
+        name(name),
         is_asyncio(is_asyncio){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
@@ -139,6 +140,10 @@ struct ActorCreationOptions {
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
+  /// The name to give this detached actor that can be used to get a handle to it from
+  /// other drivers. This must be globally unique across the cluster.
+  /// This should set if and only if is_detached is true.
+  const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
 };
