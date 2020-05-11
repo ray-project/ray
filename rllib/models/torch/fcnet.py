@@ -81,7 +81,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     initializer=normc_initializer(0.01),
                     activation_fn=None)
             else:
-                num_outputs = (
+                self.num_outputs = (
                     [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
 
         # Layer to add the log std vars to the state-dependent means.
