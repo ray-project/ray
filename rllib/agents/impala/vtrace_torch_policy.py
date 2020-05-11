@@ -90,7 +90,8 @@ class VTraceLoss:
             model=model,
             clip_rho_threshold=clip_rho_threshold,
             clip_pg_rho_threshold=clip_pg_rho_threshold)
-        self.value_targets = self.vtrace_returns.vs
+        # Move v-trace results back to GPU for actual loss computing.
+        self.value_targets = self.vtrace_returns.vs.to(model.device)
 
         # The policy gradients loss
         self.pi_loss = -torch.sum(
