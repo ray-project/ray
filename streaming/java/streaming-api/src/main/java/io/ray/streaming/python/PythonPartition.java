@@ -1,6 +1,8 @@
 package io.ray.streaming.python;
 
+import com.google.common.base.Preconditions;
 import io.ray.streaming.api.partition.Partition;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Represents a python partition function.
@@ -13,28 +15,33 @@ import io.ray.streaming.api.partition.Partition;
  * If this object is constructed from moduleName and className/functionName,
  * python worker will use `importlib` to load python partition function.
  * <p>
- * TODO serialize to bytes using protobuf
  */
-public class PythonPartition implements Partition {
+public class PythonPartition implements Partition<Object> {
   public static final PythonPartition BroadcastPartition = new PythonPartition(
-      "ray.streaming.partition", "BroadcastPartition", null);
+      "ray.streaming.partition", "BroadcastPartition");
   public static final PythonPartition KeyPartition = new PythonPartition(
-      "ray.streaming.partition", "KeyPartition", null);
+      "ray.streaming.partition", "KeyPartition");
   public static final PythonPartition RoundRobinPartition = new PythonPartition(
-      "ray.streaming.partition", "RoundRobinPartition", null);
+      "ray.streaming.partition", "RoundRobinPartition");
 
   private byte[] partition;
   private String moduleName;
-  private String className;
   private String functionName;
 
   public PythonPartition(byte[] partition) {
+    Preconditions.checkNotNull(partition);
     this.partition = partition;
   }
 
-  public PythonPartition(String moduleName, String className, String functionName) {
+  /**
+   * Create a python partition from a moduleName and partition function name
+   * @param moduleName module name of python partition
+   * @param functionName function/class name of the partition function.
+   */
+  public PythonPartition(String moduleName, String functionName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
+    Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
     this.moduleName = moduleName;
-    this.className = className;
     this.functionName = functionName;
   }
 
@@ -51,10 +58,6 @@ public class PythonPartition implements Partition {
 
   public String getModuleName() {
     return moduleName;
-  }
-
-  public String getClassName() {
-    return className;
   }
 
   public String getFunctionName() {

@@ -23,24 +23,14 @@ def create_backend_worker(func_or_class):
         assert False, "func_or_class must be function or class."
 
     class RayServeWrappedWorker(object):
-        def __init__(self,
-                     backend_tag,
-                     replica_tag,
-                     init_args,
-                     router_handle=None):
+        def __init__(self, backend_tag, replica_tag, init_args):
             serve.init()
             if is_function:
                 _callable = func_or_class
             else:
                 _callable = func_or_class(*init_args)
 
-            if router_handle is None:
-                master_actor = serve.api._get_master_actor()
-                [router_handle] = ray.get(
-                    master_actor.get_backend_worker_config.remote())
-
-            self.backend = RayServeWorker(backend_tag, _callable,
-                                          router_handle, is_function)
+            self.backend = RayServeWorker(backend_tag, _callable, is_function)
 
         def get_metrics(self):
             return self.backend.get_metrics()
@@ -76,10 +66,9 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, _callable, router_handle, is_function):
+    def __init__(self, name, _callable, is_function):
         self.name = name
         self.callable = _callable
-        self.router_handle = router_handle
         self.is_function = is_function
 
         self.error_counter = 0
@@ -208,11 +197,12 @@ class RayServeWorker:
             self.latency_list.append(time.time() - start_timestamp)
             if (not isinstance(result_list,
                                list)) or (len(result_list) != batch_size):
-                raise RayServeException("__call__ function "
-                                        "doesn't preserve batch-size. "
-                                        "Please return a list of result "
-                                        "with length equals to the batch "
-                                        "size.")
+                error_message = ("Worker doesn't preserve batch size. The "
+                                 "input has length {} but the returned list "
+                                 "has length {}. Please return a list of "
+                                 "results with length equal to the batch size"
+                                 ".".format(batch_size, len(result_list)))
+                raise RayServeException(error_message)
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)

@@ -40,7 +40,7 @@ public class DataReader {
     }
     long timerInterval = Long.parseLong(
         conf.getOrDefault(Config.TIMER_INTERVAL_MS, "-1"));
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    String channelType = conf.get(Config.CHANNEL_TYPE);
     boolean isMock = false;
     if (Config.MEMORY_CHANNEL.equals(channelType)) {
       isMock = true;

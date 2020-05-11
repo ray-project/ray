@@ -71,11 +71,17 @@
                     {
                         "name": "ray-subnet",
                         "properties": {
-                            "addressPrefix": "[parameters('subnet')]"
+                            "addressPrefix": "[parameters('subnet')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                              }
                         }
                     }
                 ]
-            }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'ray-nsg')]"
+            ]
         }
     ]
 }

@@ -15,6 +15,25 @@ MIN_LOG_NN_OUTPUT = -20
 MAX_LOG_NN_OUTPUT = 2
 
 
+def huber_loss(x, delta=1.0):
+    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+    return np.where(
+        np.abs(x) < delta,
+        np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta))
+
+
+def l2_loss(x):
+    """Computes half the L2 norm of a tensor (w/o the sqrt): sum(x**2) / 2
+
+    Args:
+        x (np.ndarray): The input tensor.
+
+    Returns:
+        The l2-loss output according to the above formula given `x`.
+    """
+    return np.sum(np.square(x)) / 2.0
+
+
 def sigmoid(x, derivative=False):
     """
     Returns the sigmoid function applied to x.
@@ -228,10 +247,3 @@ def lstm(x,
             unrolled_outputs[:, t, :] = h_states
 
     return unrolled_outputs, (c_states, h_states)
-
-
-def huber_loss(x, delta=1.0):
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
-    return np.where(
-        np.abs(x) < delta,
-        np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta))

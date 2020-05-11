@@ -1,11 +1,13 @@
 from collections import defaultdict
+import numpy as np
 import random
 
-import numpy as np
-
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+
+tree = try_import_tree()
 
 
 @DeveloperAPI

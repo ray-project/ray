@@ -82,6 +82,7 @@ def ray_deps_setup():
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:redis-quiet.patch",
         ],
     )
 
@@ -214,8 +215,8 @@ def ray_deps_setup():
         url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
         sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
         patches = [
-            "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
+            "//thirdparty/patches:grpc-python.patch",
         ],
     )
 

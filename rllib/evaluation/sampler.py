@@ -15,11 +15,13 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
+from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+
+tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +77,8 @@ class SyncSampler(SamplerInput):
                  tf_sess=None,
                  clip_actions=True,
                  soft_horizon=False,
-                 no_done_at_end=False):
+                 no_done_at_end=False,
+                 observation_fn=None):
         self.base_env = BaseEnv.to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
@@ -90,7 +93,7 @@ class SyncSampler(SamplerInput):
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
-            no_done_at_end)
+            no_done_at_end, observation_fn)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -138,7 +141,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  clip_actions=True,
                  blackhole_outputs=False,
                  soft_horizon=False,
-                 no_done_at_end=False):
+                 no_done_at_end=False,
+                 observation_fn=None):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -165,6 +169,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.no_done_at_end = no_done_at_end
         self.perf_stats = PerfStats()
         self.shutdown = False
+        self.observation_fn = observation_fn
 
     def run(self):
         try:
@@ -186,7 +191,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
-            self.perf_stats, self.soft_horizon, self.no_done_at_end)
+            self.perf_stats, self.soft_horizon, self.no_done_at_end,
+            self.observation_fn)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -231,7 +237,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
 def _env_runner(worker, base_env, extra_batch_callback, policies,
                 policy_mapping_fn, rollout_fragment_length, horizon,
                 preprocessors, obs_filters, clip_rewards, clip_actions, pack,
-                callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end):
+                callbacks, tf_sess, perf_stats, soft_horizon, no_done_at_end,
+                observation_fn):
     """This implements the common experience collection logic.
 
     Args:
@@ -263,6 +270,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             environment when the horizon is hit.
         no_done_at_end (bool): Ignore the done=True at the end of the episode
             and instead record done=False.
+        observation_fn (ObservationFunction): Optional multi-agent
+            observation func to use for preprocessing observations.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -313,11 +322,12 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                                     get_batch_builder, extra_batch_callback)
         # Call each policy's Exploration.on_episode_start method.
         for p in policies.values():
-            p.exploration.on_episode_start(
-                policy=p,
-                environment=base_env,
-                episode=episode,
-                tf_sess=getattr(p, "_sess", None))
+            if getattr(p, "exploration", None) is not None:
+                p.exploration.on_episode_start(
+                    policy=p,
+                    environment=base_env,
+                    episode=episode,
+                    tf_sess=getattr(p, "_sess", None))
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
@@ -346,7 +356,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             worker, base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, rollout_fragment_length, pack,
-            callbacks, soft_horizon, no_done_at_end)
+            callbacks, soft_horizon, no_done_at_end, observation_fn)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
@@ -371,11 +381,11 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
         perf_stats.env_wait_time += time.time() - t4
 
 
-def _process_observations(worker, base_env, policies, batch_builder_pool,
-                          active_episodes, unfiltered_obs, rewards, dones,
-                          infos, off_policy_actions, horizon, preprocessors,
-                          obs_filters, rollout_fragment_length, pack,
-                          callbacks, soft_horizon, no_done_at_end):
+def _process_observations(
+        worker, base_env, policies, batch_builder_pool, active_episodes,
+        unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
+        preprocessors, obs_filters, rollout_fragment_length, pack, callbacks,
+        soft_horizon, no_done_at_end, observation_fn):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -437,8 +447,21 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
             all_done = False
             active_envs.add(env_id)
 
+        # Custom observation function is applied before preprocessing.
+        if observation_fn:
+            agent_obs = observation_fn(
+                agent_obs=agent_obs,
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode)
+            if not isinstance(agent_obs, dict):
+                raise ValueError(
+                    "observe() must return a dict of agent observations")
+
         # For each agent in the environment.
         for agent_id, raw_obs in agent_obs.items():
+            assert agent_id != "__all__"
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
                                      policy_id).transform(raw_obs)
@@ -505,11 +528,12 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
             batch_builder_pool.append(episode.batch_builder)
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
-                p.exploration.on_episode_end(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                if getattr(p, "exploration", None) is not None:
+                    p.exploration.on_episode_end(
+                        policy=p,
+                        environment=base_env,
+                        episode=episode,
+                        tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
             callbacks.on_episode_end(
                 worker=worker,
@@ -532,6 +556,13 @@ def _process_observations(worker, base_env, policies, batch_builder_pool,
                 # Creates a new episode if this is not async return
                 # If reset is async, we will get its result in some future poll
                 episode = active_episodes[env_id]
+                if observation_fn:
+                    resetted_obs = observation_fn(
+                        agent_obs=resetted_obs,
+                        worker=worker,
+                        base_env=base_env,
+                        policies=policies,
+                        episode=episode)
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id = episode.policy_for(agent_id)
                     policy = _get_or_raise(policies, policy_id)
@@ -579,9 +610,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
 
             obs_batch = [t.obs for t in eval_data]
             state_batches = _to_column_format(rnn_in)
-
             # TODO(ekl): how can we make info batch available to TF code?
-            obs_batch = [t.obs for t in eval_data]
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
 
@@ -640,6 +669,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         rnn_out_cols = eval_results[policy_id][1]
         pi_info_cols = eval_results[policy_id][2]
 
+        # In case actions is a list (representing the 0th dim of a batch of
+        # primitive actions), try to convert it first.
+        if isinstance(actions, list):
+            actions = np.array(actions)
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
@@ -648,17 +682,17 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             pi_info_cols["state_in_{}".format(f_i)] = column
         for f_i, column in enumerate(rnn_out_cols):
             pi_info_cols["state_out_{}".format(f_i)] = column
-        # Save output rows
-        actions = _unbatch_tuple_actions(actions)
+
         policy = _get_or_raise(policies, policy_id)
+        # Clip if necessary (while action components are still batched).
+        if clip_actions:
+            actions = clip_action(actions, policy.action_space_struct)
+        # Split action-component batches into single action rows.
+        actions = unbatch_actions(actions)
         for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
-            if clip_actions:
-                actions_to_send[env_id][agent_id] = clip_action(
-                    action, policy.action_space)
-            else:
-                actions_to_send[env_id][agent_id] = action
+            actions_to_send[env_id][agent_id] = action
             episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
@@ -692,17 +726,41 @@ def _fetch_atari_metrics(base_env):
     return atari_out
 
 
-def _unbatch_tuple_actions(action_batch):
-    # convert list of batches -> batch of lists
-    if isinstance(action_batch, TupleActions):
-        out = []
-        for j in range(len(action_batch.batches[0])):
-            out.append([
-                action_batch.batches[i][j]
-                for i in range(len(action_batch.batches))
-            ])
-        return out
-    return action_batch
+def unbatch_actions(action_batches):
+    """Converts action_batches from list of batches to batch of lists.
+
+    Input: Struct of batches:
+        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
+    Output: Batch (list) of structs (each of these structs representing a
+        single action):
+        [
+            {"a": 1, "b": (4, 7.0)},  <- action 1
+            {"a": 2, "b": (5, 8.0)},  <- action 2
+            {"a": 3, "b": (6, 9.0)},  <- action 3
+        ]
+
+    Args:
+        action_batches (any): The list of action-component batches. Each item
+            in this list represents the batch for a single action component
+            (in case action is Tuple/Dict), meaning the list is already
+            flattened.
+            Alternatively, `action_batches` may also simply be a batch of
+            primitive actions (non Tuple/Dict).
+
+    Returns:
+        List[List[action-components]]: The list of action rows. Each item
+            in the returned list represents a single (maybe complex) action.
+    """
+    flat_action_batches = tree.flatten(action_batches)
+
+    out = []
+    for batch_pos in range(len(flat_action_batches[0])):
+        out.append(
+            tree.unflatten_as(action_batches, [
+                flat_action_batches[i][batch_pos]
+                for i in range(len(flat_action_batches))
+            ]))
+    return out
 
 
 def _to_column_format(rnn_state_rows):

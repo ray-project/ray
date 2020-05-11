@@ -32,6 +32,7 @@ tensors.
 from ray.rllib.agents.impala.vtrace_tf import VTraceFromLogitsReturns, \
     VTraceReturns
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
@@ -217,6 +218,7 @@ def multi_from_logits(behaviour_policy_logits,
         behaviour_action_log_probs = (multi_log_probs_from_logits_and_actions(
             behaviour_policy_logits, actions, dist_class, model))
 
+    behaviour_action_log_probs = force_list(behaviour_action_log_probs)
     log_rhos = get_log_rhos(target_action_log_probs,
                             behaviour_action_log_probs)
 

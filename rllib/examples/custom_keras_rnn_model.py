@@ -1,14 +1,13 @@
 """Example of using a custom RNN keras model."""
 
 import argparse
-import gym
-from gym.spaces import Discrete
 import numpy as np
-import random
 
 import ray
 from ray import tune
 from ray.tune.registry import register_env
+from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
+from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
@@ -88,70 +87,12 @@ class MyKerasRNN(RecurrentTFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class RepeatInitialEnv(gym.Env):
-    """Simple env where policy has to always repeat the initial observation.
-
-    Runs for 100 steps.
-    r=1 if action correct, -1 otherwise (max. R=100).
-    """
-
-    def __init__(self, episode_len=100):
-        self.observation_space = Discrete(2)
-        self.action_space = Discrete(2)
-        self.token = None
-        self.episode_len = episode_len
-        self.num_steps = 0
-
-    def reset(self):
-        self.token = random.choice([0, 1])
-        self.num_steps = 0
-        return self.token
-
-    def step(self, action):
-        if action == self.token:
-            reward = 1
-        else:
-            reward = -1
-        self.num_steps += 1
-        done = self.num_steps >= self.episode_len
-        return 0, reward, done, {}
-
-
-class RepeatAfterMeEnv(gym.Env):
-    """Simple env in which the policy learns to repeat a previous observation
-    token after a given delay."""
-
-    def __init__(self, config):
-        self.observation_space = Discrete(2)
-        self.action_space = Discrete(2)
-        self.delay = config["repeat_delay"]
-        assert self.delay >= 1, "delay must be at least 1"
-        self.history = []
-
-    def reset(self):
-        self.history = [0] * self.delay
-        return self._next_obs()
-
-    def step(self, action):
-        if action == self.history[-(1 + self.delay)]:
-            reward = 1
-        else:
-            reward = -1
-        done = len(self.history) > 100
-        return self._next_obs(), reward, done, {}
-
-    def _next_obs(self):
-        token = random.choice([0, 1])
-        self.history.append(token)
-        return token
-
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
-    register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())
+    register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
     config = {
         "env": args.env,
@@ -169,7 +110,6 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
     }
-
     tune.run(
         args.run,
         config=config,

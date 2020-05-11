@@ -85,10 +85,10 @@ def flatten_to_single_ndarray(input_):
         >>> #     1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
         >>> # ])
     """
-    # Concatenate tuple actions
-    if isinstance(input_, (list, tuple)):
+    # Concatenate complex inputs.
+    if isinstance(input_, (list, tuple, dict)):
         expanded = []
-        for in_ in input_:
+        for in_ in tree.flatten(input_):
             expanded.append(np.reshape(in_, [-1]))
         input_ = np.concatenate(expanded, axis=0).flatten()
     return input_

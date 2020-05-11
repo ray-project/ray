@@ -55,6 +55,11 @@ class GatewayClient:
         call = self._python_gateway_actor.callMethod.remote(java_params)
         return deserialize(ray.get(call))
 
+    def new_instance(self, java_class_name):
+        call = self._python_gateway_actor.newInstance.remote(
+            serialize(java_class_name))
+        return deserialize(ray.get(call))
+
 
 def serialize(obj) -> bytes:
     """Serialize a python object which can be deserialized by `PythonGateway`

@@ -1,17 +1,9 @@
 import numpy as np
-import logging
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils import try_import_torch, try_import_tree
 
 torch, _ = try_import_torch()
-
-logger = logging.getLogger(__name__)
-
-try:
-    import tree
-except (ImportError, ModuleNotFoundError) as e:
-    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
-    raise e
+tree = try_import_tree()
 
 
 def global_norm(tensors):
