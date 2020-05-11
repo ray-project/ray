@@ -11,6 +11,23 @@ class ListBatch:
     ListBatches are created when you use extra_spaces.List, and are accessible
     as part of input_dict["obs"] in ModelV2 forward functions.
 
+    Example:
+        Suppose the gym space definition was:
+            List(List(Box(K), N), M)
+
+        Then in the model forward function, input_dict["obs"] is of type:
+            ListBatch(ListBatch(<Tensor shape=(B, M, N, K)>))
+
+        The tensor is accessible via:
+            input_dict["obs"].value
+
+        And the actual data lengths via:
+            # outer repetition, shape [B], range [0, M]
+            input_dict["obs"].lengths
+                -and-
+            # inner repetition, shape [B, M], range [0, N]
+            input_dict["obs"].value.lengths
+
     Attributes:
         value (Tensor): The padded data tensor of shape [B, max_len, ..., sz],
             where B is the batch dimension, max_len is the max length of this

@@ -5,9 +5,12 @@ import gym
 class List(gym.Space):
     """Represents a variable-length list of child spaces.
 
-    Example usage:
-    self.observation_space = spaces.List(spaces.Box(4,), max_len=10)
-        --> from 0 to 10 boxes of shape (4,)
+    Example:
+        self.observation_space = spaces.List(spaces.Box(4,), max_len=10)
+            --> from 0 to 10 boxes of shape (4,)
+
+    See also: documentation for rllib.models.ListBatch, which shows how the
+        lists are represented as batched input for ModelV2 classes.
     """
 
     def __init__(self, child_space: gym.Space, max_len: int):
