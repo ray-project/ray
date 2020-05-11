@@ -918,7 +918,7 @@ def _start_redis_instance(executable,
         # This ensures that we will use the given port.
         num_retries = 1
     else:
-        port = ray_constants.DEFAULT_REDIS_PORT
+        port = ray_constants.DEFAULT_PORT
 
     load_module_args = []
     for module in modules:
