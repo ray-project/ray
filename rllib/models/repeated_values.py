@@ -5,31 +5,31 @@ from ray.rllib.utils.framework import TensorType
 
 
 @PublicAPI
-class ListBatch:
-    """Represents a variable-length list of items from extra_spaces.List.
+class RepeatedValues:
+    """Represents a variable-length list of items from extra_spaces.Repeated.
 
-    ListBatches are created when you use extra_spaces.List, and are accessible
-    as part of input_dict["obs"] in ModelV2 forward functions.
+    RepeatedValueses are created when you use extra_spaces.Repeated, and are
+    accessible as part of input_dict["obs"] in ModelV2 forward functions.
 
     Example:
         Suppose the gym space definition was:
             List(List(Box(K), N), M)
 
         Then in the model forward function, input_dict["obs"] is of type:
-            ListBatch(ListBatch(<Tensor shape=(B, M, N, K)>))
+            RepeatedValues(RepeatedValues(<Tensor shape=(B, M, N, K)>))
 
         The tensor is accessible via:
-            input_dict["obs"].value.value
+            input_dict["obs"].values.values
 
         And the actual data lengths via:
             # outer repetition, shape [B], range [0, M]
             input_dict["obs"].lengths
                 -and-
             # inner repetition, shape [B, M], range [0, N]
-            input_dict["obs"].value.lengths
+            input_dict["obs"].values.lengths
 
     Attributes:
-        value (Tensor): The padded data tensor of shape [B, max_len, ..., sz],
+        values (Tensor): The padded data tensor of shape [B, max_len, ..., sz],
             where B is the batch dimension, max_len is the max length of this
             list, followed by any number of sub list max lens, followed by the
             actual data size.
@@ -38,10 +38,12 @@ class ListBatch:
             other lists, there will be extra dimensions for the parent list
             max lens.
         max_len (int): The max number of items allowed in each list.
+
+    TODO(ekl): support conversion to tf.RaggedTensor.
     """
 
-    def __init__(self, value: TensorType, lengths: List[int], max_len: int):
-        self.value = value
+    def __init__(self, values: TensorType, lengths: List[int], max_len: int):
+        self.values = values
         self.lengths = lengths
         self.max_len = max_len
         self._unbatched_repr = None
@@ -55,8 +57,8 @@ class ListBatch:
         not efficient for processing.
 
         Examples:
-            >>> batch = ListBatch(<Tensor shape=(B, N, K)>)
-            >>> items = batch.to_list()
+            >>> batch = RepeatedValues(<Tensor shape=(B, N, K)>)
+            >>> items = batch.unbatch_all()
             >>> print(len(items) == B)
             True
             >>> print(max(len(x) for x in items) <= N)
@@ -72,7 +74,7 @@ class ListBatch:
         """
 
         if self._unbatched_repr is None:
-            B = _get_batch_dim_helper(self.value)
+            B = _get_batch_dim_helper(self.values)
             if B is None:
                 raise ValueError(
                     "Cannot call unbatch_all() when batch_dim is unknown. "
@@ -101,18 +103,18 @@ class ListBatch:
         with length `self.max_len`. Note that the data is still padded.
 
         Examples:
-            >>> batch = ListBatch(<Tensor shape=(B, N, K)>)
+            >>> batch = RepeatedValues(<Tensor shape=(B, N, K)>)
             >>> items = batch.unbatch()
             >>> len(items) == batch.max_len
             True
             >>> print(items)
             ... [<Tensor_1 shape=(B, K)>, ..., <Tensor_N shape=(B, K)>]
         """
-        return _unbatch_helper(self.value, self.max_len)
+        return _unbatch_helper(self.values, self.max_len)
 
     def __repr__(self):
-        return "ListBatch(value={}, lengths={}, max_len={})".format(
-            repr(self.value), repr(self.lengths), self.max_len)
+        return "RepeatedValues(value={}, lengths={}, max_len={})".format(
+            repr(self.values), repr(self.lengths), self.max_len)
 
     def __str__(self):
         return repr(self)
@@ -125,8 +127,8 @@ def _get_batch_dim_helper(v):
             return _get_batch_dim_helper(u)
     elif isinstance(v, tuple):
         return _get_batch_dim_helper(v[0])
-    elif isinstance(v, ListBatch):
-        return _get_batch_dim_helper(v.value)
+    elif isinstance(v, RepeatedValues):
+        return _get_batch_dim_helper(v.values)
     else:
         B = v.shape[0]
         if hasattr(B, "value"):
@@ -140,10 +142,10 @@ def _unbatch_helper(v, max_len):
         return {k: _unbatch_helper(u, max_len) for (k, u) in v.items()}
     elif isinstance(v, tuple):
         return tuple(_unbatch_helper(u, max_len) for u in v)
-    elif isinstance(v, ListBatch):
-        unbatched = _unbatch_helper(v.value, max_len)
+    elif isinstance(v, RepeatedValues):
+        unbatched = _unbatch_helper(v.values, max_len)
         return [
-            ListBatch(u, v.lengths[:, i, ...], v.max_len)
+            RepeatedValues(u, v.lengths[:, i, ...], v.max_len)
             for i, u in enumerate(unbatched)
         ]
     else:
@@ -161,7 +163,7 @@ def _batch_index_helper(v, i, j):
         # process it here instead of in unbatch_all(), since it may be buried
         # under a dict / tuple.
         return _batch_index_helper(v[j], i, j)
-    elif isinstance(v, ListBatch):
+    elif isinstance(v, RepeatedValues):
         unbatched = v.unbatch_all()
         # Don't need to select j here; that's already done in unbatch_all.
         return unbatched[i]

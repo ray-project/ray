@@ -79,7 +79,7 @@ class Preprocessor:
         # automatically in model.py
         if (isinstance(self, TupleFlatteningPreprocessor)
                 or isinstance(self, DictFlatteningPreprocessor)
-                or isinstance(self, ListBatchingPreprocessor)):
+                or isinstance(self, RepeatedValuesPreprocessor)):
             obs_space.original_space = self._obs_space
         return obs_space
 
@@ -245,12 +245,12 @@ class DictFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
-class ListBatchingPreprocessor(Preprocessor):
+class RepeatedValuesPreprocessor(Preprocessor):
     """Pads and batches the variable-length list value."""
 
     @override(Preprocessor)
     def _init_shape(self, obs_space, options):
-        assert isinstance(self._obs_space, extra_spaces.List)
+        assert isinstance(self._obs_space, extra_spaces.Repeated)
         child_space = obs_space.child_space
         self.child_preprocessor = get_preprocessor(child_space)(child_space,
                                                                 self._options)
@@ -299,8 +299,8 @@ def get_preprocessor(space):
         preprocessor = TupleFlatteningPreprocessor
     elif isinstance(space, gym.spaces.Dict):
         preprocessor = DictFlatteningPreprocessor
-    elif isinstance(space, extra_spaces.List):
-        preprocessor = ListBatchingPreprocessor
+    elif isinstance(space, extra_spaces.Repeated):
+        preprocessor = RepeatedValuesPreprocessor
     else:
         preprocessor = NoPreprocessor
 

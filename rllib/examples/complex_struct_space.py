@@ -1,7 +1,7 @@
-"""Example of using variable-length List / struct observation spaces.
+"""Example of using variable-length Repeated / struct observation spaces.
 
 This example shows:
-  - using a custom environment with variable-length List / struct observations
+  - using a custom environment with Repeated / struct observations
   - using a custom model to view the batched list observations
 
 For PyTorch / TF eager mode, use the --torch and --eager flags.
@@ -15,7 +15,7 @@ import ray
 from ray import tune
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.extra_spaces import List
+from ray.rllib.models.extra_spaces import Repeated
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as TFFCNet
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--eager", action="store_true")
 
-# Constraints on the List space.
+# Constraints on the Repeated space.
 MAX_PLAYERS = 4
 MAX_ITEMS = 7
 
@@ -40,7 +40,7 @@ class SimpleRPG(gym.Env):
     attributes, and may further hold a list of items (categorical space).
 
     Note that the env doesn't train, it's just a dummy example to show how to
-    use extra_spaces.List in a custom model (see CustomRPGModel below).
+    use extra_spaces.Repeated in a custom model (see CustomRPGModel below).
     """
 
     def __init__(self, config):
@@ -54,11 +54,12 @@ class SimpleRPG(gym.Env):
         self.player_space = Dict({
             "location": Box(-100, 100, shape=(2, )),
             "status": Box(-1, 1, shape=(10, )),
-            "items": List(self.item_space, max_len=MAX_ITEMS),
+            "items": Repeated(self.item_space, max_len=MAX_ITEMS),
         })
 
         # Observation is a list of players.
-        self.observation_space = List(self.player_space, max_len=MAX_PLAYERS)
+        self.observation_space = Repeated(
+            self.player_space, max_len=MAX_PLAYERS)
 
     def reset(self):
         return self.observation_space.sample()
@@ -89,9 +90,8 @@ class CustomTorchRPGModel(TorchModelV2, nn.Module):
         print()
         print("Unbatched repeat dim", input_dict["obs"].unbatch_repeat_dim())
         print()
-        if args.eager or args.torch:
-            print("Fully unbatched", input_dict["obs"].unbatch_all())
-            print()
+        print("Fully unbatched", input_dict["obs"].unbatch_all())
+        print()
         return self.model.forward(input_dict, state, seq_lens)
 
     def value_function(self):
@@ -120,7 +120,7 @@ class CustomTFRPGModel(TFModelV2):
         print()
         print("Unbatched repeat dim", input_dict["obs"].unbatch_repeat_dim())
         print()
-        if args.eager or args.torch:
+        if args.eager:
             print("Fully unbatched", input_dict["obs"].unbatch_all())
             print()
         return self.model.forward(input_dict, state, seq_lens)

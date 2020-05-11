@@ -2,9 +2,9 @@ from collections import OrderedDict
 import gym
 
 from ray.rllib.models.preprocessors import get_preprocessor, \
-    ListBatchingPreprocessor
+    RepeatedValuesPreprocessor
 from ray.rllib.models import extra_spaces
-from ray.rllib.models.list_batch import ListBatch
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -345,7 +345,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
 
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, extra_spaces.List)):
+            or isinstance(space, extra_spaces.Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -387,8 +387,8 @@ def _unpack_obs(obs, space, tensorlib=tf):
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, extra_spaces.List):
-            assert isinstance(prep, ListBatchingPreprocessor), prep
+        elif isinstance(space, extra_spaces.Repeated):
+            assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.
             lengths = obs[..., 0]
@@ -398,7 +398,7 @@ def _unpack_obs(obs, space, tensorlib=tf):
             # Retry the unpack, dropping the List container space.
             u = _unpack_obs(
                 with_repeat_dim, space.child_space, tensorlib=tensorlib)
-            return ListBatch(
+            return RepeatedValues(
                 u, lengths=lengths, max_len=prep._obs_space.max_len)
         else:
             assert False, space
