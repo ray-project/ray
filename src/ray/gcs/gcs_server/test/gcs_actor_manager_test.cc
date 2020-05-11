@@ -256,7 +256,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   gcs_actor_manager_.OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
-  
+
   // Add node and check that the actor is restarted.
   gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
