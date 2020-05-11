@@ -35,6 +35,7 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
+parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=0.0)

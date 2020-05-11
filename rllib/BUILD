@@ -1479,6 +1479,7 @@ py_test(
 
 py_test(
     name = "examples/custom_loss_tf",
+    main = "examples/custom_loss.py",
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
@@ -1489,6 +1490,7 @@ py_test(
 
 py_test(
     name = "examples/custom_loss_torch",
+    main = "examples/custom_loss.py",
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
@@ -1499,6 +1501,7 @@ py_test(
 
 py_test(
     name = "examples/custom_metrics_and_callbacks",
+    main = "examples/custom_metrics_and_callbacks.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks.py"],
@@ -1507,6 +1510,7 @@ py_test(
 
 py_test(
     name = "examples/custom_metrics_and_callbacks_legacy",
+    main = "examples/custom_metrics_and_callbacks_legacy.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
