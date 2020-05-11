@@ -16,10 +16,13 @@ import argparse
 import numpy as np
 from gym.spaces import Discrete
 
+import ray
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss
+    PPOLoss as TFLoss
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy, \
+    KLCoeffMixin as TorchKLCoeffMixin, PPOLoss as TorchLoss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -29,12 +32,16 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
+from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
+    EntropyCoeffSchedule as TorchEntropyCoeffSchedule
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
+torch, nn = try_import_torch()
 
 OPPONENT_OBS = "opponent_obs"
 OPPONENT_ACTION = "opponent_action"
@@ -51,8 +58,11 @@ class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
-        self.compute_central_vf = make_tf_callable(self.get_session())(
-            self.model.central_value_function)
+        if not self.config["use_pytorch"]:
+            self.compute_central_vf = make_tf_callable(self.get_session())(
+                self.model.central_value_function)
+        else:
+            self.compute_central_vf = self.model.central_value_function
 
 
 # Grabs the opponent obs/act and includes it in the experience train_batch,
@@ -61,7 +71,9 @@ def centralized_critic_postprocessing(policy,
                                       sample_batch,
                                       other_agent_batches=None,
                                       episode=None):
-    if policy.loss_initialized():
+    pytorch = policy.config["use_pytorch"]
+    if (pytorch and hasattr(policy, "compute_central_vf")) or \
+            (not pytorch and policy.loss_initialized()):
         assert other_agent_batches is not None
         [(_, opponent_batch)] = list(other_agent_batches.values())
 
@@ -70,11 +82,18 @@ def centralized_critic_postprocessing(policy,
         sample_batch[OPPONENT_ACTION] = opponent_batch[SampleBatch.ACTIONS]
 
         # overwrite default VF prediction with the central VF
-        sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
-            sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
-            sample_batch[OPPONENT_ACTION])
+        if args.torch:
+            sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
+                convert_to_torch_tensor(sample_batch[SampleBatch.CUR_OBS]),
+                convert_to_torch_tensor(sample_batch[OPPONENT_OBS]),
+                convert_to_torch_tensor(sample_batch[OPPONENT_ACTION])). \
+                detach().numpy()
+        else:
+            sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
+                sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
+                sample_batch[OPPONENT_ACTION])
     else:
-        # policy hasn't initialized yet, use zeros
+        # Policy hasn't been initialized yet, use zeros.
         sample_batch[OPPONENT_OBS] = np.zeros_like(
             sample_batch[SampleBatch.CUR_OBS])
         sample_batch[OPPONENT_ACTION] = np.zeros_like(
@@ -107,7 +126,13 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])
 
-    policy.loss_obj = PPOLoss(
+    func = TFLoss if not policy.config["use_pytorch"] else TorchLoss
+    adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool) \
+        if not policy.config["use_pytorch"] else \
+        torch.ones_like(train_batch[Postprocessing.ADVANTAGES],
+                        dtype=torch.bool)
+
+    policy.loss_obj = func(
         dist_class,
         model,
         train_batch[Postprocessing.VALUE_TARGETS],
@@ -119,7 +144,7 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         action_dist,
         policy.central_value_out,
         policy.kl_coeff,
-        tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool),
+        adv,
         entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
@@ -146,8 +171,8 @@ def central_vf_stats(policy, train_batch, grads):
     }
 
 
-CCPPO = PPOTFPolicy.with_updates(
-    name="CCPPO",
+CCPPOTFPolicy = PPOTFPolicy.with_updates(
+    name="CCPPOTFPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
     before_loss_init=setup_mixins,
@@ -157,10 +182,29 @@ CCPPO = PPOTFPolicy.with_updates(
         CentralizedValueMixin
     ])
 
+CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
+    name="CCPPOTorchPolicy",
+    postprocess_fn=centralized_critic_postprocessing,
+    loss_fn=loss_with_central_critic,
+    before_init=setup_mixins,
+    mixins=[
+        TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
+        CentralizedValueMixin
+    ])
+
+
+def get_policy_class(config):
+    return CCPPOTorchPolicy if config["use_pytorch"] else CCPPOTFPolicy
+
+
 CCTrainer = PPOTrainer.with_updates(
-    name="CCPPOTrainer", default_policy=CCPPO, get_policy_class=None)
+    name="CCPPOTrainer",
+    default_policy=CCPPOTFPolicy,
+    get_policy_class=get_policy_class,
+)
 
 if __name__ == "__main__":
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(

@@ -1364,7 +1364,7 @@ py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--stop-reward=7.2"]
 )
@@ -1373,7 +1373,7 @@ py_test(
     name = "examples/centralized_critic_torch",
     main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--torch", "--stop-reward=7.2"]
 )
@@ -1382,7 +1382,7 @@ py_test(
     name = "examples/centralized_critic_2_tf",
     main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--stop-reward=6.0"]
 )
@@ -1391,7 +1391,7 @@ py_test(
     name = "examples/centralized_critic_2_torch",
     main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--torch", "--stop-reward=6.0"]
 )
@@ -1400,7 +1400,7 @@ py_test(
     name = "examples/custom_env_tf",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test"]
 )
@@ -1409,7 +1409,7 @@ py_test(
     name = "examples/custom_env_torch",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test", "--torch"]
 )
@@ -1478,13 +1478,23 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_loss",
+    name = "examples/custom_loss_tf",
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
     srcs = ["examples/custom_loss.py"],
     args = ["--stop-iters=2", "--input-files=tests/data/cartpole_small"]
+)
+
+py_test(
+    name = "examples/custom_loss_torch",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    srcs = ["examples/custom_loss.py"],
+    args = ["--torch", "--stop-iters=2", "--input-files=tests/data/cartpole_small"]
 )
 
 py_test(
