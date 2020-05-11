@@ -3,7 +3,7 @@
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 [2] - Stabilizing Transformers for Reinforcement Learning - E. Parisotto
-      et. al - DeepMind - 2019. https://arxiv.org/pdf/1910.06764.pdf
+      et al. - DeepMind - 2019. https://arxiv.org/pdf/1910.06764.pdf
 """
 import numpy as np
 

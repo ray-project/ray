@@ -3,7 +3,10 @@
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 [2] - Stabilizing Transformers for Reinforcement Learning - E. Parisotto
-      et. al - DeepMind - 2019. https://arxiv.org/pdf/1910.06764.pdf
+      et al. - DeepMind - 2019. https://arxiv.org/pdf/1910.06764.pdf
+[3] - Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context.
+      Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
+      https://www.aclweb.org/anthology/P19-1285.pdf
 """
 import numpy as np
 
@@ -15,50 +18,55 @@ from ray.rllib.utils.framework import try_import_tf
 tf = try_import_tf()
 
 
-class MultiHeadAttention(tf.keras.layers.Layer):
-    """A multi-head attention layer described in [1]."""
+# TODO: Move this somewhere else (examples?).
+#class MultiHeadAttention(tf.keras.layers.Layer):
+#    """A multi-head attention layer described in [1]."""
 
-    def __init__(self, out_dim, num_heads, head_dim, **kwargs):
-        super().__init__(**kwargs)
+#    def __init__(self, out_dim, num_heads, head_dim, **kwargs):
+#        super().__init__(**kwargs)
 
-        # No bias or non-linearity.
-        self._num_heads = num_heads
-        self._head_dim = head_dim
-        self._qkv_layer = tf.keras.layers.Dense(
-            3 * num_heads * head_dim, use_bias=False)
-        self._linear_layer = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.Dense(out_dim, use_bias=False))
+#        # No bias or non-linearity.
+#        self._num_heads = num_heads
+#        self._head_dim = head_dim
+#        self._qkv_layer = tf.keras.layers.Dense(
+#            3 * num_heads * head_dim, use_bias=False)
+#        self._linear_layer = tf.keras.layers.TimeDistributed(
+#            tf.keras.layers.Dense(out_dim, use_bias=False))
 
-    def call(self, inputs):
-        L = tf.shape(inputs)[1]  # length of segment
-        H = self._num_heads  # number of attention heads
-        D = self._head_dim  # attention head dimension
+#    def call(self, inputs):
+#        L = tf.shape(inputs)[1]  # length of segment
+#        H = self._num_heads  # number of attention heads
+#        D = self._head_dim  # attention head dimension
 
-        qkv = self._qkv_layer(inputs)
+#        qkv = self._qkv_layer(inputs)
 
-        queries, keys, values = tf.split(qkv, 3, -1)
-        queries = queries[:, -L:]  # only query based on the segment
+#        queries, keys, values = tf.split(qkv, 3, -1)
+#        queries = queries[:, -L:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [-1, L, H, D])
-        keys = tf.reshape(keys, [-1, L, H, D])
-        values = tf.reshape(values, [-1, L, H, D])
+#        queries = tf.reshape(queries, [-1, L, H, D])
+#        keys = tf.reshape(keys, [-1, L, H, D])
+#        values = tf.reshape(values, [-1, L, H, D])
 
-        score = tf.einsum("bihd,bjhd->bijh", queries, keys)
-        score = score / D ** 0.5
+#        score = tf.einsum("bihd,bjhd->bijh", queries, keys)
+#        score = score / D ** 0.5
 
-        # causal mask of the same length as the sequence
-        mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
-        mask = mask[None, :, :, None]
+#        # causal mask of the same length as the sequence
+#        mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
+#        mask = mask[None, :, :, None]
 
-        masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = tf.nn.softmax(masked_score, axis=2)
+#        masked_score = score * mask + 1e30 * (mask - 1.)
+#        wmat = tf.nn.softmax(masked_score, axis=2)
 
-        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
-        return self._linear_layer(out)
+#        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
+#        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+#        return self._linear_layer(out)
 
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
+    """A RelativeMultiHeadAttention layer as described in [3].
+
+    Uses segment level recurrence with state reuse.
+    """
     def __init__(self,
                  out_dim,
                  num_heads,
@@ -67,11 +75,27 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
                  input_layernorm=False,
                  output_activation=None,
                  **kwargs):
+        """Initializes a RelativeMultiHeadAttention keras Layer object.
+
+        Args:
+            out_dim (int):
+            num_heads (int): The number of attention heads to use.
+                Denoted `H` in [2].
+            head_dim (int): The dimension of a single(!) attention head
+                Denoted `D` in [2].
+            rel_pos_encoder (:
+            input_layernorm (bool): Whether to prepend a LayerNorm before
+                everything else. Should be True for building a GTrXL.
+            output_activation (Optional[tf.nn.activation]): Optional tf.nn
+                activation function. Should be relu for GTrXL.
+            **kwargs:
+        """
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
+        #3=Query, key, and value inputs.
         self._qkv_layer = tf.keras.layers.Dense(
             3 * num_heads * head_dim, use_bias=False)
         self._linear_layer = tf.keras.layers.TimeDistributed(
@@ -90,51 +114,52 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
     def call(self, inputs, memory=None):
-        L = tf.shape(inputs)[1]  # length of segment
+        T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
-        D = self._head_dim  # attention head dimension
+        d = self._head_dim  # attention head dimension
 
-        # length of the memory segment
-        M = memory.shape[0] if memory is not None else 0
-
+        # Add previous memory chunk (as const, w/o gradient) to input.
+        # Tau (number of (prev) time slices in each memory chunk).
+        Tau = memory.shape[0] if memory is not None else 0
         if memory is not None:
             inputs = np.concatenate(
                 (tf.stop_gradient(memory), inputs), axis=1)
 
+        # Apply the Layer-Norm.
         if self._input_layernorm is not None:
             inputs = self._input_layernorm(inputs)
 
         qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
-        queries = queries[:, -L:]  # only query based on the segment
+        queries = queries[:, -T:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [-1, L, H, D])
-        keys = tf.reshape(keys, [-1, L + M, H, D])
-        values = tf.reshape(values, [-1, L + M, H, D])
+        queries = tf.reshape(queries, [-1, T, H, d])
+        keys = tf.reshape(keys, [-1, T + Tau, H, d])
+        values = tf.reshape(values, [-1, T + Tau, H, d])
 
         rel = self._pos_proj(self._rel_pos_encoder)
-        rel = tf.reshape(rel, [L, H, D])
+        rel = tf.reshape(rel, [T, H, d])
 
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, rel)
         score = score + self.rel_shift(pos_score)
-        score = score / D**0.5
+        score = score / d**0.5
 
         # causal mask of the same length as the sequence
-        mask = tf.sequence_mask(tf.range(M + 1, L + M + 1), dtype=score.dtype)
+        mask = tf.sequence_mask(tf.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
         wmat = tf.nn.softmax(masked_score, axis=2)
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * d]), axis=0))
         return self._linear_layer(out)
 
     @staticmethod
     def rel_shift(x):
-        # Transposed version of the shift approach implemented by Dai et al. 2019
+        # Transposed version of the shift approach described in [3].
         # https://github.com/kimiyoung/transformer-xl/blob/
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
         x_size = tf.shape(x)
@@ -148,7 +173,11 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
-    """A 2x linear layer with ReLU activation in between described in [1]."""
+    """A 2x linear layer with ReLU activation in between described in [1].
+
+    Each timestep coming from the attention head will be passed through this
+    layer separately.
+    """
 
     def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
         super().__init__(**kwargs)
@@ -170,20 +199,30 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
 class SkipConnection(tf.keras.layers.Layer):
     """Skip connection layer.
 
-    If no fan-in layer is specified, then this layer behaves as a regular
-    residual layer.
+    Adds the original input to the output (regular residual layer) OR uses
+    input as hidden state input to a given fan_in_layer.
     """
 
     def __init__(self, layer, fan_in_layer=None, **kwargs):
+        """Initializes a SkipConnection keras layer object.
+
+        Args:
+            layer (tf.keras.layers.Layer): Any layer processing inputs.
+            fan_in_layer (Optional[tf.keras.layers.Layer]): An optional
+                layer taking two inputs: The original input and the output
+                of `layer`.
+        """
         super().__init__(**kwargs)
-        self._fan_in_layer = fan_in_layer
         self._layer = layer
+        self._fan_in_layer = fan_in_layer
 
     def call(self, inputs, **kwargs):
         del kwargs
         outputs = self._layer(inputs)
+        # Residual case, just add inputs to outputs.
         if self._fan_in_layer is None:
             outputs = outputs + inputs
+        # Fan-in e.g. RNN: Call fan-in with `inputs` and `outputs`.
         else:
             outputs = self._fan_in_layer((inputs, outputs))
 
@@ -205,6 +244,7 @@ class GRUGate(tf.keras.layers.Layer):
         self._w_r = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
         self._w_z = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
         self._w_h = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
+
         self._u_r = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
         self._u_z = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
         self._u_h = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
@@ -281,11 +321,14 @@ class GTrXLNet(RecurrentNetwork):
         """Initializes a GTrXLNet.
 
         Args:
-            num_layers (int): The number of repeats to use (N in the paper).
-            attn_dim ():
-            num_heads:
-            head_dim:
-            ff_hidden_dim:
+            num_layers (int): The number of repeats to use (denoted L in [2]).
+            attn_dim (int): The input dimension of one Transformer unit.
+            
+            num_heads (int): The number of attention heads to use in parallel.
+                Denoted as `H` in [3].
+            head_dim (int): The dimension of a single(!) head.
+                Denoted as `d` in [3].
+            ff_hidden_dim (int):
             init_gate_bias (float):
         """
 
@@ -295,27 +338,32 @@ class GTrXLNet(RecurrentNetwork):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
+        # Constant (non-trainable) sinusoid rel pos encoding matrix.
+        Phi = self.relative_position_embedding(self.max_seq_len, attn_dim)
 
+        # Raw observation input.
         input_layer = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
 
         # Collect the layers for the Transformer.
+        # 1) Map observation dim to transformer (attention) dim.
         layers = [tf.keras.layers.Dense(attn_dim)]
 
+        # 2) Create L Transformer blocks according to [2].
         for _ in range(num_layers):
+            # RelativeMultiHeadAttention part.
             layers.append(
                 SkipConnection(
                     RelativeMultiHeadAttention(
                         attn_dim,
                         num_heads,
                         head_dim,
-                        pos_embedding,
+                        Phi,
                         input_layernorm=True,
                         output_activation=tf.nn.relu),
                     fan_in_layer=GRUGate(init_gate_bias),
                 ))
-
+            # Position-wise MLP part.
             layers.append(
                 SkipConnection(
                     tf.keras.Sequential(
@@ -338,7 +386,7 @@ class GTrXLNet(RecurrentNetwork):
         #    ff_hidden_dim=model_config["custom_options"]["ff_hidden_dim"],
         #)(input_layer)
 
-        # Postprocess TrXL output with another hidden layer and compute values
+        # Postprocess TrXL output with another hidden layer and compute values.
         logits = tf.keras.layers.Dense(
             self.num_outputs,
             activation=tf.keras.activations.linear,
@@ -356,23 +404,25 @@ class GTrXLNet(RecurrentNetwork):
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
-        state = state[0]
-
-        # We assume state is the history of recent observations and append
+        # To make Attention work with current RLlib's ModelV2 API:
+        # We assume `state` is the history of L recent observations (
+        # all concatenated into one tensor) and append
         # the current inputs to the end and only keep the most recent (up to
-        # max_seq_len). This allows us to deal with timestep-wise inference
-        # and full sequence training with the same logic.
+        # `max_seq_len`). This allows us to deal with timestep-wise inference
+        # and full sequence training within the same logic.
+        state = state[0]
         state = tf.concat((state, inputs), axis=1)[:, -self.max_seq_len:]
         logits, self._value_out = self.trxl_model(state)
 
-        in_T = tf.shape(inputs)[1]
-        logits = logits[:, -in_T:]
-        self._value_out = self._value_out[:, -in_T:]
+        T = tf.shape(inputs)[1]  # Length of input segment (time).
+        logits = logits[:, -T:]
+        self._value_out = self._value_out[:, -T:]
 
         return logits, [state]
 
     @override(RecurrentNetwork)
     def get_initial_state(self):
+        # State is the T last observations concat'd together into one Tensor.
         return [np.zeros((self.max_seq_len, self.obs_dim), np.float32)]
 
     @override(ModelV2)
@@ -381,6 +431,19 @@ class GTrXLNet(RecurrentNetwork):
 
     @staticmethod
     def relative_position_embedding(seq_length, out_dim):
+        """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
+
+        Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
+        matrix.
+
+        Args:
+            seq_length (int): The max. sequence length (time axis).
+            out_dim (int): The number of nodes to go into the first Tranformer
+                layer with.
+
+        Returns:
+            tf.Tensor: The encoding matrix Phi.
+        """
         inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
         pos_offsets = tf.range(seq_length - 1., -1., -1.)
         inputs = pos_offsets[:, None] * inverse_freq[None, :]

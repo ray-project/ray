@@ -2,8 +2,8 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib import models
 from ray.rllib.utils import try_import_tf
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
@@ -25,8 +25,10 @@ parser.add_argument("--torch", action="store_true")
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
+    ModelCatalog.register_custom_model(
+        "trxl", TorchGTrXLNet if args.torch else GTrXLNet)
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env(
         "RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
@@ -44,7 +46,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
         "model": {
-            "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,
+            "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,  #"trxl",
             "max_seq_len": 10,
             "custom_options": {
                 "num_layers": 1,
