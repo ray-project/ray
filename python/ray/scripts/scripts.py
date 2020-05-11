@@ -125,7 +125,9 @@ def dashboard(cluster_config_file, cluster_name, port):
     "--redis-port",
     required=False,
     type=str,
-    help="the port to use for starting Redis")
+    help="the port to use for starting Redis. If not provided, tries to use "
+    "{0}, falling back to a random port if {0} is "
+    "not available".format(ray_constants.DEFAULT_REDIS_PORT))
 @click.option(
     "--num-redis-shards",
     required=False,
