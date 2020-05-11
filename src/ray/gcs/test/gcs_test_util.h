@@ -28,9 +28,8 @@
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_restarts, bool detached,
-                                                const std::string &name,
+  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
+                                                bool detached, const std::string &name,
                                                 const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
@@ -40,8 +39,7 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached,
-                                     name);
+    builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
 

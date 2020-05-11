@@ -235,7 +235,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
     request.set_force_kill(true);
-    request.set_no_reconstruction(true);
+    request.set_no_restart(true);
     RAY_UNUSED(actor_client->KillActor(request, nullptr));
 
     RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
