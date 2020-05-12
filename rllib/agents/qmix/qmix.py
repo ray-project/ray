@@ -1,10 +1,12 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.execution.replay_ops import MixInReplay
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.optimizers import SyncBatchReplayOptimizer
 
 # yapf: disable
@@ -102,16 +104,22 @@ def make_sync_batch_optimizer(workers, config):
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
-    train_op = rollouts \
-        .for_each(MixInReplay(config["buffer_size"])) \
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    train_op = Replay(local_buffer=replay_buffer) \
         .combine(
             ConcatBatches(min_batch_size=config["train_batch_size"])) \
         .for_each(TrainOneStep(workers)) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    return StandardMetricsReporting(train_op, workers, config)
+    merged_op = Concurrently(
+        [store_op, train_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(merged_op, workers, config)
 
 
 QMixTrainer = GenericOffPolicyTrainer.with_updates(
