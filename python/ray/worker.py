@@ -1730,6 +1730,7 @@ def make_decorator(num_return_vals=None,
                    max_calls=None,
                    max_retries=None,
                    max_reconstructions=None,
+                   max_task_retries=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1737,6 +1738,9 @@ def make_decorator(num_return_vals=None,
             # Set the remote function default resources.
             if max_reconstructions is not None:
                 raise ValueError("The keyword 'max_reconstructions' is not "
+                                 "allowed for remote functions.")
+            if max_task_retries is not None:
+                raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -1754,7 +1758,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_reconstructions)
+                                        max_reconstructions, max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1801,6 +1805,12 @@ def remote(*args, **kwargs):
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
       value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **max_task_retries**: Only for *actors*. This specifies the maximum
+      number of times that the remote function should be rerun when the actor
+      process executing it crashes unexpectedly. Once this limit is reached,
+      the task will no longer be retried and will instead return a
+      `RayActorError` exception that will be thrown if `ray.get` is called. The
+      default value is 0, and -1 means infinite retries.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
@@ -1868,6 +1878,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_reconstructions",
+            "max_task_retries",
             "max_retries",
         ], error_string
 
@@ -1886,6 +1897,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_reconstructions = kwargs.get("max_reconstructions")
+    max_task_retries = kwargs.get("max_task_retries")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
@@ -1899,5 +1911,6 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
+        max_task_retries=max_task_retries,
         max_retries=max_retries,
         worker=worker)
