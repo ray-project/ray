@@ -10,13 +10,13 @@ git:
 before_install:
   - rvm reset && rvm implode --force && gem uninstall rvm || true  # uninstall Ruby RVM
   - unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
-  - mkdir -p -- "${TRAVIS_REPO_SLUG}"
-  - cd -- "${TRAVIS_REPO_SLUG}"
-  - git init
-  - git remote add -- origin "https://github.com/${TRAVIS_REPO_SLUG}.git"
-  - git fetch --quiet -- origin "${TRAVIS_COMMIT}"
-  - if [ -n "${TRAVIS_PULL_REQUEST-}" ]; then git fetch --quiet -- origin "+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"; fi
-  - git checkout --quiet --force "${TRAVIS_COMMIT}" --
+  - |
+    git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
+    cd -- "${TRAVIS_REPO_SLUG}"
+    to_fetch=("${TRAVIS_COMMIT}")
+    if [ -n "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
+    git fetch -q -- origin "${to_fetch[@]}"
+    git checkout -qf "${TRAVIS_COMMIT}" --
 
 matrix:
   include:
