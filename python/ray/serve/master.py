@@ -6,13 +6,14 @@ import time
 
 import ray
 import ray.cloudpickle as pickle
+from ray.serve.backend_worker import create_backend_worker
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_ROUTER_NAME,
                                  SERVE_PROXY_NAME, SERVE_METRIC_SINK_NAME)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.backend_worker import create_backend_worker
-from ray.serve.utils import async_retryable, get_random_letters, logger
 from ray.serve.metric.exporter import MetricExporterActor
+from ray.serve.router import Router
+from ray.serve.utils import async_retryable, get_random_letters, logger
 
 import numpy as np
 
@@ -48,8 +49,8 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, router_class, router_kwargs, start_http_proxy,
-                       http_proxy_host, http_proxy_port,
+    async def __init__(self, router_policy, router_policy_kwargs,
+                       start_http_proxy, http_proxy_host, http_proxy_port,
                        metric_exporter_class):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
@@ -88,7 +89,7 @@ class ServeMaster:
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_router(router_class, router_kwargs)
+        self._get_or_start_router(router_policy, router_policy_kwargs)
         if start_http_proxy:
             self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
 
@@ -112,7 +113,7 @@ class ServeMaster:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_router(self, router_class, router_kwargs):
+    def _get_or_start_router(self, policy, policy_kwargs):
         """Get the router belonging to this serve cluster.
 
         If the router does not already exist, it will be started.
@@ -122,12 +123,12 @@ class ServeMaster:
         except ValueError:
             logger.info(
                 "Starting router with name '{}'".format(SERVE_ROUTER_NAME))
-            self.router = async_retryable(router_class).options(
+            self.router = async_retryable(ray.remote(Router)).options(
                 detached=True,
                 name=SERVE_ROUTER_NAME,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-            ).remote(**router_kwargs)
+            ).remote(policy, policy_kwargs)
 
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
