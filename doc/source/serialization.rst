@@ -28,9 +28,9 @@ The numpy array is stored as a read-only object, and all Ray workers on the same
 Serialization notes
 -------------------
 
-Ray is currently using Pickle protocol version 5. The default pickle protocal used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 on serializing larger objects, but they also introduce serveral behavior changes (also applied to Ray):
+- Ray is currently using Pickle protocol version 5. The default pickle protocal used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 for larger objects.
 
-- Ray may drop some references of simple native objects (e.g. list), but recursive objects are treated carefully without any issues:
+- Ray may drop some references of simple native objects (e.g. list, and this is also the default behavior of Pickle Protocol 4 & 5), but recursive objects are treated carefully without any issues:
 
   .. code-block:: python
 
@@ -47,7 +47,7 @@ Ray is currently using Pickle protocol version 5. The default pickle protocal us
     # Try to put this list that recursively contains itself in the object store.
     ray.put(l)  # ok 
 
-- For non-native objects, Ray will always keep a single copy even it is reference multiple times in an object:
+- For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
 
   .. code-block:: python
 
@@ -57,6 +57,8 @@ Ray is currently using Pickle protocol version 5. The default pickle protocal us
     assert l[0] is l[1]  # no problem!
 
 - Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
+
+- Lock objects are mostly unserialiazable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
 Last resort: Custom Serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
