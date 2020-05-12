@@ -224,6 +224,7 @@ class SkipConnection(tf.keras.layers.Layer):
             outputs = outputs + inputs
         # Fan-in e.g. RNN: Call fan-in with `inputs` and `outputs`.
         else:
+            # NOTE: In the GRU case, `inputs` is the prev. hidden state.
             outputs = self._fan_in_layer((inputs, outputs))
 
         return outputs
@@ -236,40 +237,42 @@ class GRUGate(tf.keras.layers.Layer):
         self._init_bias = init_bias
 
     def build(self, input_shape):
-        x_shape, y_shape = input_shape
-        if x_shape[-1] != y_shape[-1]:
+        h_shape, x_shape = input_shape
+        if x_shape[-1] != h_shape[-1]:
             raise ValueError(
-                "Both inputs to GRUGate must equal size last axis.")
+                "Both inputs to GRUGate must have equal size in last axis!")
 
-        self._w_r = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
-        self._w_z = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
-        self._w_h = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
+        dim = h_shape[-1]
+        self._w_r = self.add_weight(shape=(dim, dim))
+        self._w_z = self.add_weight(shape=(dim, dim))
+        self._w_h = self.add_weight(shape=(dim, dim))
 
-        self._u_r = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
-        self._u_z = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
-        self._u_h = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
+        self._u_r = self.add_weight(shape=(dim, dim))
+        self._u_z = self.add_weight(shape=(dim, dim))
+        self._u_h = self.add_weight(shape=(dim, dim))
 
         def bias_initializer(shape, dtype):
             return tf.fill(shape, tf.cast(self._init_bias, dtype=dtype))
 
         self._bias_z = self.add_weight(
-            shape=(x_shape[-1], ), initializer=bias_initializer)
+            shape=(dim, ), initializer=bias_initializer)
 
     def call(self, inputs, **kwargs):
-        x, y = inputs
-        r = (tf.tensordot(y, self._w_r, axes=1) + tf.tensordot(
-            x, self._u_r, axes=1))
+        # Pass in internal state first.
+        h, X = inputs
+        r = tf.tensordot(X, self._w_r, axes=1) + \
+            tf.tensordot(h, self._u_r, axes=1)
         r = tf.nn.sigmoid(r)
 
-        z = (tf.tensordot(y, self._w_z, axes=1) + tf.tensordot(
-            x, self._u_z, axes=1) + self._bias_z)
+        z = tf.tensordot(X, self._w_z, axes=1) + \
+            tf.tensordot(h, self._u_z, axes=1) + self._bias_z
         z = tf.nn.sigmoid(z)
 
-        h = (tf.tensordot(y, self._w_h, axes=1) + tf.tensordot(
-            (x * r), self._u_h, axes=1))
-        h = tf.nn.tanh(h)
+        h_next = tf.tensordot(X, self._w_h, axes=1) + \
+                 tf.tensordot((h * r), self._u_h, axes=1)
+        h_next = tf.nn.tanh(h_next)
 
-        return (1 - z) * x + z * h
+        return (1 - z) * h + z * h_next
 
 
 #class TrXLNet(TFModelV2):
