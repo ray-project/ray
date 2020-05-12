@@ -120,7 +120,7 @@ def async_retryable(cls):
     be invoked in an async context.
 
     Usage:
-        @ray.remote(max_reconstructions=10000)
+        @ray.remote(max_restarts=10000)
         @async_retryable
         class A:
             pass

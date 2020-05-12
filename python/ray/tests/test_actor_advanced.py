@@ -119,7 +119,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     }],
     indirect=True)
 def test_deleted_actor_no_restart(ray_start_regular):
-    @ray.remote(resources={"actor": 1}, max_reconstructions=3)
+    @ray.remote(resources={"actor": 1}, max_restarts=3)
     class Actor:
         def method(self):
             return 1

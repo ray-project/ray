@@ -289,7 +289,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
 TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(
-      job_id, /*max_reconstructions=*/1, /*detached=*/false);
+      job_id, /*max_restarts=*/1, /*detached=*/false);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
@@ -332,7 +332,7 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
 TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request =
-      Mocker::GenCreateActorRequest(job_id, /*max_reconstructions=*/1, /*detached=*/true);
+      Mocker::GenCreateActorRequest(job_id, /*max_restarts=*/1, /*detached=*/true);
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(
       create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
