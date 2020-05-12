@@ -106,3 +106,18 @@ class SlimFC(nn.Module):
 
     def forward(self, x):
         return self._model(x)
+
+
+class AppendBiasLayer(nn.Module):
+    """Simple bias appending layer for free_log_std."""
+
+    def __init__(self, num_bias_vars):
+        super().__init__()
+        self.log_std = torch.nn.Parameter(
+            torch.as_tensor([0.0] * num_bias_vars))
+        self.register_parameter("log_std", self.log_std)
+
+    def forward(self, x):
+        out = torch.cat(
+            [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
+        return out

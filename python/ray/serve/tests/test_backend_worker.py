@@ -6,9 +6,10 @@ import numpy as np
 import ray
 from ray import serve
 import ray.serve.context as context
-from ray.serve.policy import RoundRobinPolicyQueueActor
+from ray.serve.policy import RoundRobinPolicy
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.request_params import RequestMetadata
+from ray.serve.router import Router
 from ray.serve.config import BackendConfig
 from ray.serve.exceptions import RayServeException
 
@@ -42,7 +43,7 @@ async def test_runner_wraps_error():
 
 
 async def test_runner_actor(serve_instance):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     def echo(flask_request, i=None):
         return i
@@ -63,7 +64,7 @@ async def test_runner_actor(serve_instance):
 
 
 async def test_ray_serve_mixin(serve_instance):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     CONSUMER_NAME = "runner-cls"
     PRODUCER_NAME = "prod-cls"
@@ -88,7 +89,7 @@ async def test_ray_serve_mixin(serve_instance):
 
 
 async def test_task_runner_check_context(serve_instance):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     def echo(flask_request, i=None):
         # Accessing the flask_request without web context should throw.
@@ -109,7 +110,7 @@ async def test_task_runner_check_context(serve_instance):
 
 
 async def test_task_runner_custom_method_single(serve_instance):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     class NonBatcher:
         def a(self, _):
@@ -143,7 +144,7 @@ async def test_task_runner_custom_method_single(serve_instance):
 
 
 async def test_task_runner_custom_method_batch(serve_instance):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     @serve.accept_batch
     class Batcher:
