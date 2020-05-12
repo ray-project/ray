@@ -27,8 +27,8 @@
 # 2) everything in a) using tf1.x
 # 3) everything in b) c) d) and e)
 # 4) everything in g)
-# 5) f), BUT only those tagged `tests_dir_A` to `tests_dir_I`
-# 6) f), BUT only those tagged `tests_dir_J` to `tests_dir_Z`
+# 5) f), BUT only those tagged `tests_dir_A` to `tests_dir_L`
+# 6) f), BUT only those tagged `tests_dir_M` to `tests_dir_Z`
 
 
 # --------------------------------------------------------------------
@@ -1453,95 +1453,215 @@ py_test(
 
 
 py_test(
-    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist_tf",
+    main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--stop=150", "--num-cpus=4"]
+    args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_ppo", main="examples/batch_norm_model.py",
+    name = "examples/autoregressive_action_dist_torch",
+    main = "examples/autoregressive_action_dist.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/autoregressive_action_dist.py"],
+    args = ["--as-test", "--torch", "--stop-reward=150", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/batch_norm_model_ppo_tf",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=PPO", "--num-iters=1"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_ppo_torch",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=PG", "--num-iters=1"]
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_dqn_tf",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "medium",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DQN", "--num-iters=1"]
+    args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
+    name = "examples/batch_norm_model_dqn_torch",
+    main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "medium",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DDPG", "--num-iters=1"]
+    args = ["--as-test", "--torch", "--run=DQN", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
+    name = "examples/batch_norm_model_ddpg_tf",
+    main = "examples/batch_norm_model.py",
+    tags = ["examples", "examples_B"],
+    size = "small",
+    srcs = ["examples/batch_norm_model.py"],
+    args = ["--run=DDPG", "--stop-iters=1"]
+)
+
+py_test(
+    name = "examples/batch_norm_model_ddpg_torch",
+    main = "examples/batch_norm_model.py",
+    tags = ["examples", "examples_B"],
+    size = "small",
+    srcs = ["examples/batch_norm_model.py"],
+    args = ["--torch", "--run=DDPG", "--stop-iters=1"]
+)
+
+py_test(
+    name = "examples/cartpole_lstm_impala_tf",
+    main = "examples/cartpole_lstm.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/cartpole_lstm_impala_torch",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=40", "--num-cpus=4"]
+    args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_ppo_tf",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo_with_prev_a_and_r", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_ppo_torch",
+    main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "small",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=40", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/centralized_critic",
+    name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
+    main = "examples/cartpole_lstm.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/centralized_critic_tf",
+    main = "examples/centralized_critic.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
-    args = ["--stop=2000"]
+    args = ["--as-test", "--stop-reward=7.2"]
 )
 
 py_test(
-    name = "examples/centralized_critic_2",
+    name = "examples/centralized_critic_torch",
+    main = "examples/centralized_critic.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/centralized_critic.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7.2"]
+)
+
+py_test(
+    name = "examples/centralized_critic_2_tf",
+    main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
-    args = ["--stop=2000"]
+    args = ["--as-test", "--stop-reward=6.0"]
 )
 
 py_test(
-    name = "examples/custom_eval", main = "examples/custom_eval.py",
+    name = "examples/centralized_critic_2_torch",
+    main = "examples/centralized_critic_2.py",
     tags = ["examples", "examples_C"],
     size = "medium",
-    srcs = ["examples/custom_eval.py"],
-    args = ["--custom-eval", "--num-cpus=4"]
+    srcs = ["examples/centralized_critic_2.py"],
+    args = ["--as-test", "--torch", "--stop-reward=6.0"]
 )
 
 py_test(
-    name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
+    name = "examples/custom_env_tf",
+    main = "examples/custom_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_env.py"],
+    args = ["--as-test"]
+)
+
+py_test(
+    name = "examples/custom_env_torch",
+    main = "examples/custom_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_env.py"],
+    args = ["--as-test", "--torch"]
+)
+
+py_test(
+    name = "examples/custom_eval_tf",
+    main = "examples/custom_eval.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_eval_torch",
+    main = "examples/custom_eval.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--torch", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_fast_model_tf",
+    main = "examples/custom_fast_model.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_fast_model.py"],
+    args = ["--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_fast_model_torch",
+    main = "examples/custom_fast_model.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_fast_model.py"],
+    args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_keras_model_a2c",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_model.py"],
@@ -1549,7 +1669,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
+    name = "examples/custom_keras_model_dqn",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_keras_model.py"],
@@ -1557,7 +1678,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
+    name = "examples/custom_keras_model_ppo",
+    main = "examples/custom_keras_model.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_keras_model.py"],
@@ -1565,46 +1687,79 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_rnn_model_repeat_after_me", main = "examples/custom_keras_rnn_model.py",
-    tags = ["examples", "examples_C"],
-    size = "large",
-    srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_keras_rnn_model_repeat_initial",
-    main = "examples/custom_keras_rnn_model.py",
-    tags = ["examples", "examples_C"],
-    size = "large",
-    srcs = ["examples/custom_keras_rnn_model.py"],
-    args = ["--run=PPO", "--stop=50", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_loss",
+    name = "examples/custom_loss_tf",
+    main = "examples/custom_loss.py",
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
     srcs = ["examples/custom_loss.py"],
-    args = ["--iters=2", "--input-files=tests/data/cartpole_small"]
+    args = ["--stop-iters=2", "--input-files=tests/data/cartpole_small"]
+)
+
+py_test(
+    name = "examples/custom_loss_torch",
+    main = "examples/custom_loss.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    srcs = ["examples/custom_loss.py"],
+    args = ["--torch", "--stop-iters=2", "--input-files=tests/data/cartpole_small"]
 )
 
 py_test(
     name = "examples/custom_metrics_and_callbacks",
+    main = "examples/custom_metrics_and_callbacks.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks.py"],
-    args = ["--num-iters=2"]
+    args = ["--stop-iters=2"]
 )
 
 py_test(
     name = "examples/custom_metrics_and_callbacks_legacy",
+    main = "examples/custom_metrics_and_callbacks_legacy.py",
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
-    args = ["--num-iters=2"]
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_after_me_tf",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_initial_obs_tf",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_after_me_torch",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_rnn_model_repeat_initial_obs_torch",
+    main = "examples/custom_rnn_model.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -1612,16 +1767,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_torch_rnn_model",
-    main = "examples/custom_torch_rnn_model.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/custom_torch_rnn_model.py"],
-    args = ["--run=PPO", "--stop=90", "--num-cpus=4"]
+    args = ["--stop-iters=2", "--num-cpus=4"]
 )
 
 py_test(
@@ -1629,7 +1775,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_torch_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
+    args = ["--stop-iters=2", "--num-cpus=4"]
 )
 
 py_test(
@@ -1637,90 +1783,151 @@ py_test(
     tags = ["examples", "examples_E"],
     size = "small",
     srcs = ["examples/eager_execution.py"],
-    args = ["--iters=2"]
+    args = ["--stop-iters=2"]
 )
 
 py_test(
     name = "examples/hierarchical_training_tf",
+    main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/hierarchical_training.py"],
     args = ["--stop-reward=0.0"]
 )
 
 py_test(
     name = "examples/hierarchical_training_torch",
+    main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/hierarchical_training.py"],
     args = ["--torch", "--stop-reward=0.0"]
 )
 
+# Do not run this test (MobileNetV2 is gigantic and takes forever for 1 iter).
+# py_test(
+#     name = "examples/mobilenet_v2_with_lstm_tf",
+#     main = "examples/mobilenet_v2_with_lstm.py",
+#     tags = ["examples", "examples_M"],
+#     size = "small",
+#     srcs = ["examples/mobilenet_v2_with_lstm.py"]
+# )
+
 py_test(
-    name = "examples/multi_agent_cartpole",
+    name = "examples/multi_agent_cartpole_tf",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--num-iters=2", "--num-cpus=4"]
+    args = ["--as-test", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_custom_policy",
+    name = "examples/multi_agent_cartpole_torch",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["examples", "examples_M"],
-    size = "medium",
-    srcs = ["examples/multi_agent_custom_policy.py"],
+    size = "small",
+    srcs = ["examples/multi_agent_cartpole.py"],
+    args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_two_trainers",
+    name = "examples/multi_agent_custom_policy_tf",
+    main = "examples/multi_agent_custom_policy.py",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test", "--stop-reward=80"]
+)
+
+py_test(
+    name = "examples/multi_agent_custom_policy_torch",
+    main = "examples/multi_agent_custom_policy.py",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test", "--torch", "--stop-reward=80"]
+)
+
+py_test(
+    name = "examples/multi_agent_two_trainers_tf",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--num-iters=2"]
+    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/two_trainer_workflow",
-    tags = ["examples", "examples_T"],
+    name = "examples/multi_agent_two_trainers_torch",
+    main = "examples/multi_agent_two_trainers.py",
+    tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--num-iters=2"]
+    srcs = ["examples/multi_agent_two_trainers.py"],
+    args = ["--as-test", "--torch", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/nested_action_spaces_ppo",
+    name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+    main = "examples/multi_agent_two_trainers.py",
+    tags = ["examples", "examples_M"],
+    size = "small",
+    srcs = ["examples/multi_agent_two_trainers.py"],
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
+)
+
+py_test(
+    name = "examples/nested_action_spaces_ppo_tf",
     main = "examples/nested_action_spaces.py",
     tags = ["examples", "examples_N"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--stop=-500", "--run=PPO"]
+    args = ["--as-test", "--stop-reward=-600", "--run=PPO"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_pg",
+    name = "examples/nested_action_spaces_ppo_torch",
+    main = "examples/nested_action_spaces.py",
+    tags = ["examples", "examples_N"],
+    size = "medium",
+    srcs = ["examples/nested_action_spaces.py"],
+    args = ["--as-test", "--torch", "--stop-reward=-600", "--run=PPO"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=PG", "--stop=50"]
+    args = ["--as-test", "--stop-reward=60.0", "--run=PG"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_ppo",
+    name = "examples/parametric_actions_cartpole_dqn_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=PPO", "--stop=50"]
+    args = ["--as-test", "--stop-reward=60.0", "--run=DQN"]
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_dqn",
+    name = "examples/parametric_actions_cartpole_pg_torch",
+    main = "examples/parametric_actions_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "small",
+    srcs = ["examples/parametric_actions_cartpole.py"],
+    args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_dqn_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--run=DQN", "--stop=50"]
+    args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=DQN"]
 )
 
 py_test(
@@ -1731,9 +1938,27 @@ py_test(
     args = ["--num-cpus=4"]
 )
 
+py_test(
+    name = "examples/rock_paper_scissors_multiagent_tf",
+    main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--as-test"],
+)
+
+py_test(
+    name = "examples/rock_paper_scissors_multiagent_torch",
+    main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--as-test", "--torch"],
+)
+
 sh_test(
     name = "examples/serving/test_local_inference",
-    tags = ["examples", "examples_L", "exclusive"],
+    tags = ["examples", "examples_S", "exclusive"],
     size = "medium",
     srcs = ["examples/serving/test_local_inference.sh"],
     data = glob(["examples/serving/*.py"]),
@@ -1741,27 +1966,82 @@ sh_test(
 
 sh_test(
     name = "examples/serving/test_remote_inference",
-    tags = ["examples", "examples_R", "exclusive"],
+    tags = ["examples", "examples_S", "exclusive"],
     size = "medium",
     srcs = ["examples/serving/test_remote_inference.sh"],
     data = glob(["examples/serving/*.py"]),
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent",
-    main = "examples/rock_paper_scissors_multiagent.py",
-    tags = ["examples", "examples_R"],
-    size = "large",
-    srcs = ["examples/rock_paper_scissors_multiagent.py"],
-    args = ["--stop=200"],
+    name = "examples/two_trainer_workflow_tf",
+    main = "examples/two_trainer_workflow.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--as-test", "--stop-reward=100.0"]
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
+    name = "examples/two_trainer_workflow_torch",
+    main = "examples/two_trainer_workflow.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--as-test", "--torch", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/two_trainer_workflow_mixed_torch_tf",
+    main = "examples/two_trainer_workflow.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["examples/two_trainer_workflow.py"],
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/twostep_game_maddpg",
+    main = "examples/twostep_game.py",
     tags = ["examples", "examples_T"],
     size = "large",
     srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=contrib/MADDPG"]
+    args = ["--stop-timesteps=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "examples/twostep_game_pg_tf",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--as-test", "--stop-reward=7", "--run=PG"]
+)
+
+py_test(
+    name = "examples/twostep_game_pg_torch",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7", "--run=PG"]
+)
+
+py_test(
+    name = "examples/twostep_game_qmix",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop-timesteps=2000", "--run=QMIX"]
+)
+
+py_test(
+    name = "examples/twostep_game_apex_qmix",
+    main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop-timesteps=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )
 
 py_test(
@@ -1770,7 +2050,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
 )
 
 py_test(
@@ -1779,29 +2059,5 @@ py_test(
     tags = ["examples", "examples_U"],
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
-)
-
-py_test(
-    name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=PG"]
-)
-
-py_test(
-    name = "examples/twostep_game_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/twostep_game_apex_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=APEX_QMIX", "--num-cpus=4"]
+    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
 )

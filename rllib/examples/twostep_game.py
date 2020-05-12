@@ -17,11 +17,15 @@ from ray import tune
 from ray.tune import register_env, grid_search
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop", type=int, default=50000)
 parser.add_argument("--run", type=str, default="PG")
 parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-reward", type=float, default=7.0)
+parser.add_argument("--stop-timesteps", type=int, default=50000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -73,6 +77,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
+            "use_pytorch": args.torch,
         }
         group = False
     elif args.run == "QMIX":
@@ -87,6 +92,7 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
+            "use_pytorch": args.torch,
         }
         group = True
     elif args.run == "APEX_QMIX":
@@ -107,6 +113,7 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
+            "use_pytorch": args.torch,
         }
         group = True
     else:
@@ -114,12 +121,19 @@ if __name__ == "__main__":
         group = False
 
     ray.init(num_cpus=args.num_cpus or None)
-    tune.run(
-        args.run,
-        stop={
-            "timesteps_total": args.stop,
-        },
-        config=dict(config, **{
-            "env": "grouped_twostep" if group else TwoStepGame,
-        }),
-    )
+
+    stop = {
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    config = dict(config, **{
+        "env": "grouped_twostep" if group else TwoStepGame,
+    })
+
+    results = tune.run(args.run, stop=stop, config=config)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

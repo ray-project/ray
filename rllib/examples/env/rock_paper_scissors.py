@@ -15,9 +15,9 @@ class RockPaperScissors(MultiAgentEnv):
     SPOCK = 4
 
     def __init__(self, config):
-        self.action_space = Discrete(3)
-        self.observation_space = Discrete(3)
         self.sheldon_cooper = config.get("sheldon_cooper", False)
+        self.action_space = Discrete(5 if self.sheldon_cooper else 3)
+        self.observation_space = Discrete(5 if self.sheldon_cooper else 3)
         self.player1 = "player1"
         self.player2 = "player2"
         self.last_move = None
