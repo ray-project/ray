@@ -68,12 +68,13 @@ Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callbac
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
                                         const StatusCallback &callback) {
-  std::vector<std::string> delete_keys;
-  delete_keys.reserve(keys.size());
+  std::vector<std::string> keys_to_delete;
+  keys_to_delete.reserve(keys.size());
   for (auto &key : keys) {
-    delete_keys.emplace_back(std::move(key.Binary()));
+    keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  return this->store_client_->AsyncBatchDelete(this->table_name_, delete_keys, callback);
+  return this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
+                                               callback);
 }
 
 template <typename Key, typename Data>
