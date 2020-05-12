@@ -28,9 +28,9 @@ The numpy array is stored as a read-only object, and all Ray workers on the same
 Serialization notes
 -------------------
 
-- Ray is currently using Pickle protocol version 5. The default pickle protocal used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 for larger objects.
+- Ray is currently using Pickle protocol version 5. The default pickle protocol used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 for larger objects.
 
-- Ray may drop some references of simple native objects (e.g. list, and this is also the default behavior of Pickle Protocol 4 & 5), but recursive objects are treated carefully without any issues:
+- Ray may create extra copies of simple native objects (e.g. list, and this is also the default behavior of Pickle Protocol 4 & 5), but recursive objects are treated carefully without any issues:
 
   .. code-block:: python
 
