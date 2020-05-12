@@ -2,12 +2,13 @@ import logging
 import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.torch.misc import SlimFC, normc_initializer
+from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
+    normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn
 from ray.rllib.utils import try_import_torch
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             model_config.get("fcnet_activation"), framework="torch")
         hiddens = model_config.get("fcnet_hiddens")
         no_final_linear = model_config.get("no_final_linear")
+        self.free_log_std = model_config.get("free_log_std")
 
         # TODO(sven): implement case: vf_shared_layers = False.
         # vf_share_layers = model_config.get("vf_share_layers")
@@ -33,6 +35,13 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         layers = []
         prev_layer_size = int(np.product(obs_space.shape))
         self._logits = None
+
+        # Maybe generate free-floating bias variables for the second half of
+        # the outputs.
+        if self.free_log_std:
+            assert num_outputs % 2 == 0, (
+                "num_outputs must be divisible by two", num_outputs)
+            num_outputs = num_outputs // 2
 
         # Create layers 0 to second-last.
         for size in hiddens[:-1]:
@@ -46,14 +55,14 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
 
         # The last layer is adjusted to be of size num_outputs, but it's a
         # layer with activation.
-        if no_final_linear and self.num_outputs:
+        if no_final_linear and num_outputs:
             layers.append(
                 SlimFC(
                     in_size=prev_layer_size,
-                    out_size=self.num_outputs,
+                    out_size=num_outputs,
                     initializer=normc_initializer(1.0),
                     activation_fn=activation))
-            prev_layer_size = self.num_outputs
+            prev_layer_size = num_outputs
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
         else:
@@ -65,15 +74,19 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                         initializer=normc_initializer(1.0),
                         activation_fn=activation))
                 prev_layer_size = hiddens[-1]
-            if self.num_outputs:
+            if num_outputs:
                 self._logits = SlimFC(
                     in_size=prev_layer_size,
-                    out_size=self.num_outputs,
+                    out_size=num_outputs,
                     initializer=normc_initializer(0.01),
                     activation_fn=None)
             else:
                 self.num_outputs = (
                     [np.product(obs_space.shape)] + hiddens[-1:-1])[-1]
+
+        # Layer to add the log std vars to the state-dependent means.
+        if self.free_log_std:
+            self._append_free_log_std = AppendBiasLayer(num_outputs)
 
         self._hidden_layers = nn.Sequential(*layers)
 
@@ -91,6 +104,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         obs = input_dict["obs_flat"].float()
         features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
         logits = self._logits(features) if self._logits else features
+        if self.free_log_std:
+            logits = self._append_free_log_std(logits)
         self._cur_value = self._value_branch(features).squeeze(1)
         return logits, state
 
