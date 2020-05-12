@@ -2,8 +2,21 @@ language: generic
 # Use Ubuntu 16.04
 dist: xenial
 
+git:
+  clone: false  # Clone manually to work around Travis issues like https://github.com/travis-ci/travis-ci/issues/6337
+  depth: false  # Shallow clones can prevent diff against base branch
+  quiet: true
+
 before_install:
+  - rvm reset && rvm implode --force && gem uninstall rvm || true  # uninstall Ruby RVM
   - unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
+  - |
+    git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
+    cd -- "${TRAVIS_REPO_SLUG}"
+    to_fetch=("${TRAVIS_COMMIT}")
+    if [ -n "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
+    git fetch -q -- origin "${to_fetch[@]}"
+    git checkout -qf "${TRAVIS_COMMIT}" --
 
 matrix:
   include:
