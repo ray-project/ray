@@ -953,9 +953,9 @@ class LocalIterator(Generic[T]):
                 items from iterators as they become ready.
             round_robin_weights (list): List of weights to use for round robin
                 mode. For example, [2, 1] will cause the iterator to pull twice
-                as many items from the first iterator as the second. [2, 1, *]
-                will cause as many items to be pulled as possible from the
-                third iterator without blocking. This overrides the
+                as many items from the first iterator as the second.
+                [2, 1, "*"] will cause as many items to be pulled as possible
+                from the third iterator without blocking. This overrides the
                 deterministic flag.
         """
 
