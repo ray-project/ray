@@ -4,9 +4,9 @@ pong-a3c:
     env: PongDeterministic-v4
     run: A3C
     config:
+        framework: tf
         num_workers: 16
         rollout_fragment_length: 20
-        use_pytorch: false
         vf_loss_coeff: 0.5
         entropy_coeff: 0.01
         gamma: 0.99

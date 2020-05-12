@@ -5,7 +5,7 @@ pendulum-ppo-tf:
         episode_reward_mean: -500
         timesteps_total: 400000
     config:
-        use_pytorch: false
+        framework: tf
         train_batch_size: 2048
         vf_clip_param: 10.0
         num_workers: 0

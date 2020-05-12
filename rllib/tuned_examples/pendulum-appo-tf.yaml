@@ -5,7 +5,7 @@ pendulum-appo-vtrace-tf:
         episode_reward_mean: -1000  # just check it learns a bit
         timesteps_total: 500000
     config:
-        use_pytorch: false
+        framework: tf
         vtrace: true
         num_gpus: 0
         num_workers: 1

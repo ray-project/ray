@@ -5,7 +5,7 @@ cartpole-ars-torch:
         episode_reward_mean: 150
         timesteps_total: 500000
     config:
-        use_pytorch: true
+        framework: torch
         noise_stdev: 0.02
         num_rollouts: 50
         rollouts_used: 25

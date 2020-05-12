@@ -5,6 +5,6 @@ pendulum-ddpg-torch:
         episode_reward_mean: -700
         timesteps_total: 100000
     config:
-        use_pytorch: true
+        framework: torch
         use_huber: true
         clip_rewards: false

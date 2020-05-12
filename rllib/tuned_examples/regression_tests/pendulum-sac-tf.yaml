@@ -5,7 +5,7 @@ pendulum-sac-tf:
         episode_reward_mean: -300  # note that evaluation perf is higher
         timesteps_total: 10000
     config:
-        use_pytorch: false
+        framework: tf
         soft_horizon: true
         clip_actions: false
         normalize_actions: true

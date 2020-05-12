@@ -5,7 +5,7 @@ cartpole-ppo-torch:
         episode_reward_mean: 150
         timesteps_total: 100000
     config:
-        use_pytorch: true
+        framework: torch
         gamma: 0.99
         lr: 0.0003
         num_workers: 1

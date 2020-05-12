@@ -5,7 +5,7 @@ cartpole-dqn-tf-w-param-noise:
         episode_reward_mean: 150
         timesteps_total: 300000
     config:
-        use_pytorch: false
+        framework: tf
         exploration_config:
             type: ParameterNoise
             random_timesteps: 10000

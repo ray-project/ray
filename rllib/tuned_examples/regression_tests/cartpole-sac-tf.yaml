@@ -5,7 +5,7 @@ cartpole-sac-tf:
         episode_reward_mean: 150
         timesteps_total: 50000
     config:
-        use_pytorch: false
+        framework: tf
         gamma: 0.95
         no_done_at_end: false
         target_network_update_freq: 32

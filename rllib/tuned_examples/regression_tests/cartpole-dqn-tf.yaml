@@ -5,6 +5,6 @@ cartpole-dqn-tf:
         episode_reward_mean: 150
         timesteps_total: 50000
     config:
-        use_pytorch: false
+        framework: tf
         n_step: 3
         gamma: 0.95
