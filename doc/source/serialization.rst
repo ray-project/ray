@@ -13,7 +13,7 @@ Each node has its own object store. When data is put into the object store, it d
 Overview
 --------
 
-Ray has decided to use a customed `Pickle protocol version 5 <https://www.python.org/dev/peps/pep-0574/>`_ backport to replace the original PyArrow serializer. This cancels several previous critical limitations (e.g. cannot serialize recursive objects).
+Ray has decided to use a customed `Pickle protocol version 5 <https://www.python.org/dev/peps/pep-0574/>`_ backport to replace the original PyArrow serializer. This gets rid of several previous limitations (e.g. cannot serialize recursive objects).
 
 Ray is currently compatible with Pickle protocol version 5, while Ray supports serialization of a wilder range of objects (e.g. lambda & nested functions, dynamic classes) with the support of cloudpickle.
 
@@ -58,7 +58,7 @@ Serialization notes
 
 - Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
 
-- Lock objects are mostly unserialiazable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
+- Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
 Last resort: Custom Serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
