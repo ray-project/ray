@@ -44,7 +44,9 @@ MODEL_DEFAULTS = {
     "fcnet_activation": "tanh",
     # Number of hidden layers for fully connected net
     "fcnet_hiddens": [256, 256],
-    # For control envs, documented in ray.rllib.models.Model
+    # For DiagGaussian action distributions, make the second half of the model
+    # outputs floating bias variables instead of state-dependent. This only
+    # has an effect is using the default fully connected net.
     "free_log_std": False,
     # Whether to skip the final linear layer used to resize the hidden layer
     # outputs to size `num_outputs`. If True, then the last hidden layer

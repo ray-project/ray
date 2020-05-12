@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import unittest
 
@@ -19,6 +20,22 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
 
 tf = try_import_tf()
 
+# Fake CartPole episode of n time steps.
+FAKE_BATCH = {
+    SampleBatch.CUR_OBS: np.array(
+        [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
+        dtype=np.float32),
+    SampleBatch.ACTIONS: np.array([0, 1, 1]),
+    SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
+    SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
+    SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
+    SampleBatch.DONES: np.array([False, False, True]),
+    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+    SampleBatch.ACTION_DIST_INPUTS: np.array(
+        [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
+    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+}
+
 
 class TestPPO(unittest.TestCase):
     @classmethod
@@ -31,7 +48,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
-        config = ppo.DEFAULT_CONFIG.copy()
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 0  # Run locally.
         num_iterations = 2
 
@@ -43,7 +60,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
-        config = ppo.DEFAULT_CONFIG.copy()
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
@@ -70,7 +87,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
-        config = ppo.DEFAULT_CONFIG.copy()
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 0  # Run locally.
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs = np.array(0)
@@ -107,46 +124,91 @@ class TestPPO(unittest.TestCase):
                         prev_reward=np.array(1.0)))
             check(np.mean(actions), 1.5, atol=0.2)
 
+    def test_ppo_free_log_std(self):
+        """Tests the free log std option works."""
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        config["num_workers"] = 0  # Run locally.
+        config["gamma"] = 0.99
+        config["model"]["fcnet_hiddens"] = [10]
+        config["model"]["fcnet_activation"] = "linear"
+        config["model"]["free_log_std"] = True
+        config["vf_share_layers"] = True
+
+        for fw, sess in framework_iterator(config, session=True):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            policy = trainer.get_policy()
+
+            # Check the free log std var is created.
+            if fw == "torch":
+                matching = [
+                    v for (n, v) in policy.model.named_parameters()
+                    if "log_std" in n
+                ]
+            else:
+                matching = [
+                    v for v in policy.model.trainable_variables()
+                    if "log_std" in str(v)
+                ]
+            assert len(matching) == 1, matching
+            log_std_var = matching[0]
+
+            def get_value():
+                if fw == "tf":
+                    return policy.get_session().run(log_std_var)[0]
+                elif fw == "torch":
+                    return log_std_var.detach().numpy()[0]
+                else:
+                    return log_std_var.numpy()[0]
+
+            # Check the variable is initially zero.
+            init_std = get_value()
+            assert init_std == 0.0, init_std
+
+            if fw == "tf" or fw == "eager":
+                batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
+            else:
+                batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
+                batch = policy._lazy_tensor_dict(batch)
+            policy.learn_on_batch(batch)
+
+            # Check the variable is updated.
+            post_std = get_value()
+            assert post_std != 0.0, post_std
+
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
-        config = ppo.DEFAULT_CONFIG.copy()
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         config["num_workers"] = 0  # Run locally.
         config["gamma"] = 0.99
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         config["vf_share_layers"] = True
 
-        # Fake CartPole episode of n time steps.
-        train_batch = {
-            SampleBatch.CUR_OBS: np.array(
-                [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
-                 [0.9, 1.0, 1.1, 1.2]],
-                dtype=np.float32),
-            SampleBatch.ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.PREV_REWARDS: np.array(
-                [1.0, -1.0, .5], dtype=np.float32),
-            SampleBatch.DONES: np.array([False, False, True]),
-            SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            SampleBatch.ACTION_DIST_INPUTS: np.array(
-                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-            SampleBatch.ACTION_LOGP: np.array(
-                [-0.5, -0.1, -0.2], dtype=np.float32),
-        }
-
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
+
+            # Check no free log std var by default.
+            if fw == "torch":
+                matching = [
+                    v for (n, v) in policy.model.named_parameters()
+                    if "log_std" in n
+                ]
+            else:
+                matching = [
+                    v for v in policy.model.trainable_variables()
+                    if "log_std" in str(v)
+                ]
+            assert len(matching) == 0, matching
 
             # Post-process (calculate simple (non-GAE) advantages) and attach
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
             if fw == "tf" or fw == "eager":
-                train_batch = postprocess_ppo_gae_tf(policy, train_batch)
+                train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
-                train_batch = postprocess_ppo_gae_torch(policy, train_batch)
+                train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
             # Check Advantage values.

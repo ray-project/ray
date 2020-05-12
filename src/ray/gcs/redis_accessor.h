@@ -42,7 +42,7 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) {
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override {
     return Status::NotImplemented(
         "RedisLogBasedActorInfoAccessor does not support AsyncGetAll.");
   }

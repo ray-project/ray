@@ -111,8 +111,10 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
 
         # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         input_size = 6 + 6 + 2  # obs + opp_obs + opp_act
-        self.central_vf_dense = SlimFC(input_size, 16, activation_fn=nn.Tanh)
-        self.central_vf_out = SlimFC(16, 1)
+        self.central_vf = nn.Sequential(
+            SlimFC(input_size, 16, activation_fn=nn.Tanh),
+            SlimFC(16, 1),
+        )
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -122,10 +124,9 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         input_ = torch.cat([
             obs, opponent_obs,
-            torch.nn.functional.one_hot(opponent_actions, 2)
+            torch.nn.functional.one_hot(opponent_actions, 2).float()
         ], 1)
-        return torch.reshape(
-            self.central_vf_out(self.central_vf_dense(input_)), [-1])
+        return torch.reshape(self.central_vf(input_), [-1])
 
     @override(ModelV2)
     def value_function(self):
