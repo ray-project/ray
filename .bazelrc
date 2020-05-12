@@ -55,7 +55,7 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 
-# test:ci --flaky_test_attempts=3 # DO NOT MERGE
+test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --progress_report_interval=100
 test:ci --show_progress_rate_limit=100
