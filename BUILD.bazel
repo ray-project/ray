@@ -1505,7 +1505,6 @@ genrule(
     name = "redis",
     srcs = [
     ] + select({
-        # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": [
             "@com_github_tporadowski_redis_bin//file",
         ],
@@ -1519,7 +1518,6 @@ genrule(
         "redis-cli",
     ],
     cmd = select({
-        # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": """
             unzip -q -o -- $(location @com_github_tporadowski_redis_bin//file) redis-server.exe redis-cli.exe &&
             mv -f -- redis-server.exe $(location redis-server) &&
