@@ -143,9 +143,8 @@ Status RedisLogBasedActorInfoAccessor::AsyncSubscribe(
                                                       done);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                        const StatusCallback &done) {
-  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncAddCheckpoint(
@@ -249,6 +248,36 @@ Status RedisActorInfoAccessor::AsyncGet(
   return client_impl_->actor_table().Lookup(JobID::Nil(), actor_id, on_done, on_failure);
 }
 
+Status RedisActorInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ActorTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto actor_id_list = GetAllActorID();
+  if (actor_id_list.empty()) {
+    callback(Status::OK(), std::vector<rpc::ActorTableData>());
+    return Status::OK();
+  }
+
+  auto finished_count = std::make_shared<int>(0);
+  auto result = std::make_shared<std::vector<ActorTableData>>();
+  int size = actor_id_list.size();
+  for (auto &actor_id : actor_id_list) {
+    auto on_done = [finished_count, size, result, callback](
+                       const Status &status,
+                       const boost::optional<ActorTableData> &data) {
+      ++(*finished_count);
+      if (data) {
+        result->push_back(*data);
+      }
+      if (*finished_count == size) {
+        callback(Status::OK(), *result);
+      }
+    };
+    RAY_CHECK_OK(AsyncGet(actor_id, on_done));
+  }
+
+  return Status::OK();
+}
+
 Status RedisActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -289,9 +318,8 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
   return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
-Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)

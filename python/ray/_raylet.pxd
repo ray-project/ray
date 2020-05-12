@@ -17,7 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject
 )
-from ray.includes.libcoreworker cimport CFiberEvent
+from ray.includes.libcoreworker cimport CActorHandle, CFiberEvent
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
@@ -86,6 +86,7 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
+    cdef make_actor_handle(self, CActorHandle *c_actor_handle)
 
 cdef class FunctionDescriptor:
     cdef:
