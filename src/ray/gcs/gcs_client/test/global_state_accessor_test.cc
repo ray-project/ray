@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/global_state.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -21,7 +21,7 @@
 
 namespace ray {
 
-class GlobalStateTest : public RedisServiceManagerForTest {
+class GlobalStateAccessorTest : public RedisServiceManagerForTest {
  protected:
   void SetUp() override {
     config.grpc_server_port = 0;
@@ -55,8 +55,8 @@ class GlobalStateTest : public RedisServiceManagerForTest {
     // Create global state.
     std::stringstream address;
     address << config.redis_address << ":" << config.redis_port;
-    global_state_.reset(new gcs::GlobalState(address.str(), "", true));
-    RAY_CHECK_OK(global_state_->Connect());
+    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), "", true));
+    RAY_CHECK(global_state_->Connect());
   }
 
   void TearDown() override {
@@ -85,13 +85,13 @@ class GlobalStateTest : public RedisServiceManagerForTest {
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
 
-  std::unique_ptr<gcs::GlobalState> global_state_;
+  std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-TEST_F(GlobalStateTest, TestJobTable) {
+TEST_F(GlobalStateAccessorTest, TestJobTable) {
   int job_count = 100;
   ASSERT_EQ(global_state_->GetJobTable().size(), 0);
   for (int index = 0; index < job_count; ++index) {

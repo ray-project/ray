@@ -12,24 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GLOBAL_STATE_H
-#define RAY_GCS_GLOBAL_STATE_H
+#ifndef RAY_GCS_GLOBAL_STATE_ACCESSOR_H
+#define RAY_GCS_GLOBAL_STATE_ACCESSOR_H
 
 #include "service_based_gcs_client.h"
 
 namespace ray {
 namespace gcs {
 
-class GlobalState {
+class GlobalStateAccessor {
  public:
-  explicit GlobalState(const std::string &redis_address,
-                       const std::string &redis_password, bool is_test = false);
+  explicit GlobalStateAccessor(const std::string &redis_address,
+                               const std::string &redis_password, bool is_test = false);
 
-  Status Connect();
+  bool Connect();
 
   void Disconnect();
 
-  std::vector<gcs::JobTableData> GetJobTable();
+  std::vector<std::string> GetJobTable();
 
  private:
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
@@ -41,4 +41,4 @@ class GlobalState {
 }  // namespace gcs
 }  // namespace ray
 
-#endif  // RAY_GCS_GLOBAL_STATE_H
+#endif  // RAY_GCS_GLOBAL_STATE_ACCESSOR_H

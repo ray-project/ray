@@ -14,13 +14,16 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "global_state.h"
+#include "global_state_accessor.h"
 
 namespace ray {
 namespace gcs {
 
-GlobalState::GlobalState(const std::string &redis_address,
-                         const std::string &redis_password, bool is_test) {
+GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
+                                         const std::string &redis_password,
+                                         bool is_test) {
+  RAY_LOG(INFO) << "Redis server address = " << redis_address
+                << ", is test flag = " << is_test;
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
@@ -40,24 +43,23 @@ GlobalState::GlobalState(const std::string &redis_address,
   }));
 }
 
-Status GlobalState::Connect() {
-  auto status = gcs_client_->Connect(*io_service_);
-  return status;
-}
+bool GlobalStateAccessor::Connect() { return gcs_client_->Connect(*io_service_).ok(); }
 
-void GlobalState::Disconnect() {
+void GlobalStateAccessor::Disconnect() {
   gcs_client_->Disconnect();
   io_service_->stop();
   thread_io_service_->join();
 }
 
-std::vector<gcs::JobTableData> GlobalState::GetJobTable() {
-  std::vector<gcs::JobTableData> job_table_data;
+std::vector<std::string> GlobalStateAccessor::GetJobTable() {
+  std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   auto on_done = [&job_table_data, &promise](
                      const Status &status, const std::vector<rpc::JobTableData> &result) {
     RAY_CHECK_OK(status);
-    job_table_data.insert(job_table_data.begin(), result.begin(), result.end());
+    for (auto &data : result) {
+      job_table_data.push_back(data.SerializeAsString());
+    }
     promise.set_value(true);
   };
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(on_done));
