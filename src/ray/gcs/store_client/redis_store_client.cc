@@ -133,16 +133,30 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           const StatusCallback &callback) {
-  auto finished_count = std::make_shared<int>(0);
-  int size = keys.size();
+  std::unordered_map<RedisContext *, std::vector<std::string>> shards;
   for (auto &key : keys) {
-    auto done = [finished_count, size, callback](const Status &status) {
+    std::string full_key = table_name + key;
+    auto shard_context = redis_client_->GetShardContext(full_key).get();
+    auto it = shards.find(shard_context);
+    if (it == shards.end()) {
+      shards[shard_context].push_back("DEL");
+      shards[shard_context].push_back(full_key);
+    } else {
+      it->second.push_back(full_key);
+    }
+  }
+
+  auto finished_count = std::make_shared<int>(0);
+  int size = shards.size();
+  for (auto &item : shards) {
+    auto delete_callback = [finished_count, size,
+                            callback](const std::shared_ptr<CallbackReply> &reply) {
       ++(*finished_count);
       if (*finished_count == size) {
         callback(Status::OK());
       }
     };
-    RAY_CHECK_OK(AsyncDelete(table_name, key, done));
+    RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));
   }
   return Status::OK();
 }
@@ -157,7 +171,7 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
     if (!result.empty()) {
       auto pos = index_key.size() + table_name.size();
       std::vector<std::string> keys;
-      keys.resize(result.size());
+      keys.reserve(result.size());
       for (auto &item : result) {
         keys.push_back(item.substr(pos, item.size() - pos));
       }
