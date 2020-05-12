@@ -251,12 +251,6 @@ def postprocess_trajectory(policy,
     return sample_batch
 
 
-def validate_config(policy, obs_space, action_space, config):
-    if config["vtrace"] and not config["in_evaluation"]:
-        assert config["batch_mode"] == "truncate_episodes", \
-            "Must use `truncate_episodes` batch mode with V-trace."
-
-
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
         return tf.train.AdamOptimizer(policy.cur_lr)
@@ -289,7 +283,6 @@ VTraceTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

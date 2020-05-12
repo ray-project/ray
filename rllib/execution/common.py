@@ -39,3 +39,10 @@ def _check_sample_batch_type(batch):
 def _get_global_vars():
     metrics = LocalIterator.get_metrics()
     return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
+
+
+def _get_shared_metrics():
+    """Return shared metrics for the training workflow.
+
+    This only applies if this trainer has an execution plan."""
+    return LocalIterator.get_metrics()

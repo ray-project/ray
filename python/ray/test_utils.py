@@ -137,9 +137,7 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         num_errors, error_type))
 
 
-def wait_for_condition(condition_predictor,
-                       timeout=1000,
-                       retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
     """A helper function that waits until a condition is met.
 
     Args:
@@ -223,6 +221,21 @@ class SignalActor:
     async def wait(self, should_wait=True):
         if should_wait:
             await self.ready_event.wait()
+
+
+@ray.remote(num_cpus=0)
+class Semaphore:
+    def __init__(self, value=1):
+        self._sema = asyncio.Semaphore(value=value)
+
+    async def acquire(self):
+        self._sema.acquire()
+
+    async def release(self):
+        self._sema.release()
+
+    async def locked(self):
+        return self._sema.locked()
 
 
 @ray.remote

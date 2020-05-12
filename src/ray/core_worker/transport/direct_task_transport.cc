@@ -30,19 +30,19 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
-      auto status =
+      RAY_CHECK_OK(
           actor_create_callback_(task_spec, [this, actor_id, task_id](Status status) {
-            // If GCS is failed, GcsRpcClient may receive IOError status but it will
-            // not trigger this callback, because GcsRpcClient has retry logic at the
-            // bottom. So if this callback is invoked with an error there must be
-            // something wrong with the protocol of gcs-based actor management.
-            // So just check `status.ok()` here.
-            RAY_CHECK_OK(status);
-            RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
-            task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                rpc::Address());
-          });
-      RAY_CHECK_OK(status);
+            if (status.ok()) {
+              RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
+              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                                  rpc::Address());
+            } else {
+              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
+                             << " with: " << status.ToString();
+              task_finisher_->PendingTaskFailed(
+                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+            }
+          }));
       return;
     }
 
@@ -367,4 +367,19 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }));
   return Status::OK();
 }
+
+Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
+                                                       const rpc::Address &worker_addr,
+                                                       bool force_kill) {
+  absl::MutexLock lock(&mu_);
+  auto client = client_cache_.find(rpc::WorkerAddress(worker_addr));
+  if (client == client_cache_.end()) {
+    return Status::Invalid("No remote worker found");
+  }
+  auto request = rpc::RemoteCancelTaskRequest();
+  request.set_force_kill(force_kill);
+  request.set_remote_object_id(object_id.Binary());
+  return client->second->RemoteCancelTask(request, nullptr);
+}
+
 };  // namespace ray

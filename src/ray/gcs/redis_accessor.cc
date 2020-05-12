@@ -143,9 +143,8 @@ Status RedisLogBasedActorInfoAccessor::AsyncSubscribe(
                                                       done);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                        const StatusCallback &done) {
-  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncAddCheckpoint(
@@ -249,6 +248,36 @@ Status RedisActorInfoAccessor::AsyncGet(
   return client_impl_->actor_table().Lookup(JobID::Nil(), actor_id, on_done, on_failure);
 }
 
+Status RedisActorInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::ActorTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto actor_id_list = GetAllActorID();
+  if (actor_id_list.empty()) {
+    callback(Status::OK(), std::vector<rpc::ActorTableData>());
+    return Status::OK();
+  }
+
+  auto finished_count = std::make_shared<int>(0);
+  auto result = std::make_shared<std::vector<ActorTableData>>();
+  int size = actor_id_list.size();
+  for (auto &actor_id : actor_id_list) {
+    auto on_done = [finished_count, size, result, callback](
+                       const Status &status,
+                       const boost::optional<ActorTableData> &data) {
+      ++(*finished_count);
+      if (data) {
+        result->push_back(*data);
+      }
+      if (*finished_count == size) {
+        callback(Status::OK(), *result);
+      }
+    };
+    RAY_CHECK_OK(AsyncGet(actor_id, on_done));
+  }
+
+  return Status::OK();
+}
+
 Status RedisActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -289,9 +318,8 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
   return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
-Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
@@ -389,9 +417,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
   return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                               const StatusCallback &done) {
-  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AsyncAddTaskLease(
@@ -406,6 +433,24 @@ Status RedisTaskInfoAccessor::AsyncAddTaskLease(
   return task_lease_table.Add(task_id.JobId(), task_id, data_ptr, on_done);
 }
 
+Status RedisTaskInfoAccessor::AsyncGetTaskLease(
+    const TaskID &task_id, const OptionalItemCallback<TaskLeaseData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client, const TaskID &task_id,
+                               const TaskLeaseData &data) {
+    boost::optional<TaskLeaseData> result(data);
+    callback(Status::OK(), result);
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
+    boost::optional<TaskLeaseData> result;
+    callback(Status::Invalid("Task not exist."), result);
+  };
+
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Lookup(task_id.JobId(), task_id, on_success, on_failure);
+}
+
 Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
     const TaskID &task_id,
     const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
@@ -414,9 +459,8 @@ Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
   return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
 }
 
-Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
-                                                        const StatusCallback &done) {
-  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, nullptr);
 }
 
 Status RedisTaskInfoAccessor::AttemptTaskReconstruction(
@@ -502,9 +546,8 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
   return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
 }
 
-Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
-                                                            const StatusCallback &done) {
-  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, nullptr);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
@@ -696,10 +739,25 @@ Status RedisNodeInfoAccessor::AsyncDeleteResources(
 }
 
 Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
-    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto on_subscribe = [subscribe](const ClientID &id,
+                                  const ResourceChangeNotification &result) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.set_node_id(id.Binary());
+    if (result.IsAdded()) {
+      for (auto &it : result.GetData()) {
+        (*node_resource_change.mutable_updated_resources())[it.first] =
+            it.second->resource_capacity();
+      }
+    } else {
+      for (auto &it : result.GetData()) {
+        node_resource_change.add_deleted_resources(it.first);
+      }
+    }
+    subscribe(node_resource_change);
+  };
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
 }
 
 RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)

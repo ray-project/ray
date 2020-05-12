@@ -313,7 +313,10 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute_actions(observation, update=True)[0]
+        action = self.policy.compute_actions(observation, update=True)[0]
+        if kwargs.get("full_fetch"):
+            return action, [], {}
+        return action
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0

@@ -114,6 +114,8 @@ struct CoreWorkerOptions {
   bool is_local_mode;
   /// The number of workers to be started in the current process.
   int num_workers;
+  /// The function to destroy asyncio event and loops.
+  std::function<void()> terminate_asyncio_thread;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -662,6 +664,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  /// Get a handle to a named actor.
+  ///
+  /// \param[in] name The name of the actor whose handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::NotFound if an actor with the specified name wasn't found.
+  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -689,6 +698,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleWaitForActorOutOfScope(const rpc::WaitForActorOutOfScopeRequest &request,
+                                    rpc::WaitForActorOutOfScopeReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
@@ -706,6 +720,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleCancelTask(const rpc::CancelTaskRequest &request,
                         rpc::CancelTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+                              rpc::RemoteCancelTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
@@ -981,6 +1000,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
+  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
+  // protects into the ActorManager.
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;
@@ -988,6 +1009,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
+
+  /// Map from actor ID to a callback to call when all local handles to that
+  /// actor have gone out of scpoe.
+  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
+      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
 
   ///
   /// Fields related to task execution.

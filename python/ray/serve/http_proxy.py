@@ -4,11 +4,12 @@ import socket
 import uvicorn
 
 import ray
-from ray.serve.constants import SERVE_MASTER_NAME
 from ray.serve.context import TaskContext
+from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.utils import logger, retry_actor_failures_async
+from ray.serve.constants import SERVE_MASTER_NAME
 
 from urllib.parse import parse_qs
 
@@ -29,9 +30,20 @@ class HTTPProxy:
     async def fetch_config_from_master(self):
         assert ray.is_initialized()
         master = ray.util.get_actor(SERVE_MASTER_NAME)
+
         self.route_table, [
             self.router_handle
         ] = await retry_actor_failures_async(master.get_http_proxy_config)
+
+        # The exporter is required to return results for /-/metrics endpoint.
+        [self.metric_exporter] = await retry_actor_failures_async(
+            master.get_metric_exporter)
+
+        self.metric_client = MetricClient.connect_from_serve()
+        self.request_counter = self.metric_client.new_counter(
+            "num_http_requests",
+            description="The number of requests processed",
+            label_names=("route", ))
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -90,6 +102,19 @@ class HTTPProxy:
 
         return sender
 
+    async def _handle_system_request(self, scope, receive, send):
+        current_path = scope["path"]
+        if current_path == "/-/routes":
+            await Response(self.route_table).send(scope, receive, send)
+        elif current_path == "/-/metrics":
+            metric_info = await retry_actor_failures_async(
+                self.metric_exporter.inspect_metrics)
+            await Response(metric_info).send(scope, receive, send)
+        else:
+            await Response(
+                "System path {} not found".format(current_path),
+                status_code=404).send(scope, receive, send)
+
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
         #       https://asgi.readthedocs.io/en/latest/specs/index.html
@@ -104,8 +129,11 @@ class HTTPProxy:
             "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
-        if current_path == "/-/routes":
-            await Response(self.route_table).send(scope, receive, send)
+
+        self.request_counter.labels(route=current_path).add()
+
+        if current_path.startswith("/-/"):
+            await self._handle_system_request(scope, receive, send)
             return
 
         try:
@@ -120,7 +148,7 @@ class HTTPProxy:
 
         if scope["method"] not in methods_allowed:
             error_message = ("Methods {} not allowed. "
-                             "Avaiable HTTP methods are {}.").format(
+                             "Available HTTP methods are {}.").format(
                                  scope["method"], methods_allowed)
             await error_sender(error_message, 405)
             return

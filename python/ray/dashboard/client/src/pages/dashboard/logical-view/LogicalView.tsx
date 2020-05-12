@@ -5,7 +5,6 @@ import {
   WithStyles,
   withStyles,
 } from "@material-ui/core";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { StoreState } from "../../../store";
@@ -31,13 +30,9 @@ class LogicalView extends React.Component<
   WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
   render() {
-    const { classes, rayletInfo } = this.props;
+    const { rayletInfo } = this.props;
     return (
       <div>
-        <Typography className={classes.warning} color="textSecondary">
-          <WarningRoundedIcon className={classes.warningIcon} /> Note: This tab
-          is experimental.
-        </Typography>
         {rayletInfo === null ? (
           <Typography color="textSecondary">Loading...</Typography>
         ) : Object.entries(rayletInfo.actors).length === 0 ? (

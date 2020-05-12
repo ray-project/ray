@@ -131,10 +131,12 @@ message ActorTableData {
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
+  // Name of the actor. Only populated if is_detached is true.
+  string name = 12;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 12;
+  double timestamp = 13;
   // The task specification of this actor's creation task.
-  TaskSpec task_spec = 13;
+  TaskSpec task_spec = 14;
 }
 
 message ErrorTableData {
@@ -311,6 +313,22 @@ message ObjectTableDataList {
   repeated ObjectTableData items = 1;
 }
 
+// A notification message about one object's locations being changed.
+message ObjectLocationChange {
+  bool is_add = 1;
+  ObjectTableData data = 2;
+}
+
+// A notification message about one node's resources being changed.
+message NodeResourceChange {
+  // ID of the node whose resources have changed.
+  bytes node_id = 1;
+  // Labels of the updated resources and their latest capacities.
+  map<string, double> updated_resources = 2;
+  // Labels of the resources that were deleted.
+  repeated string deleted_resources = 3;
+}
+
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
@@ -340,7 +358,8 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
-
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
 }

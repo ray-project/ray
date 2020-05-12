@@ -53,14 +53,14 @@ def on_postprocess_traj(info):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num-iters", type=int, default=2000)
+    parser.add_argument("--stop-iters", type=int, default=2000)
     args = parser.parse_args()
 
     ray.init()
     trials = tune.run(
         "PG",
         stop={
-            "training_iteration": args.num_iters,
+            "training_iteration": args.stop_iters,
         },
         config={
             "env": "CartPole-v0",

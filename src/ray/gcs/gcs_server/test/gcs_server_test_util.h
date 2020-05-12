@@ -35,9 +35,6 @@ struct GcsServerMocker {
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
       callbacks.push_back(callback);
-      if (enable_auto_reply) {
-        ReplyPushTask();
-      }
       return Status::OK();
     }
 
@@ -55,7 +52,6 @@ struct GcsServerMocker {
       return true;
     }
 
-    bool enable_auto_reply = false;
     std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   };
 
@@ -76,10 +72,6 @@ struct GcsServerMocker {
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
-      if (!auto_grant_node_id.IsNil()) {
-        GrantWorkerLease("", 0, WorkerID::FromRandom(), auto_grant_node_id,
-                         ClientID::Nil());
-      }
       return Status::OK();
     }
 
@@ -89,6 +81,10 @@ struct GcsServerMocker {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
       return Status::OK();
+    }
+
+    bool GrantWorkerLease() {
+      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, ClientID::Nil());
     }
 
     // Trigger reply to RequestWorkerLease.
@@ -136,7 +132,7 @@ struct GcsServerMocker {
     int num_workers_returned = 0;
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
-    ClientID auto_grant_node_id;
+    ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
   };
@@ -183,6 +179,17 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
+    Status AsyncGetAll(
+        const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
+    Status AsyncGetByName(
+        const std::string &name,
+        const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+      return Status::NotImplemented("");
+    }
+
     Status AsyncCreateActor(const TaskSpecification &task_spec,
                             const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
@@ -215,8 +222,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnsubscribe(const ActorID &actor_id,
-                            const gcs::StatusCallback &done) override {
+    Status AsyncUnsubscribe(const ActorID &actor_id) override {
       return Status::NotImplemented("");
     }
 
@@ -312,8 +318,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeToResources(
-        const gcs::SubscribeCallback<ClientID, gcs::ResourceChangeNotification>
-            &subscribe,
+        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
@@ -352,6 +357,17 @@ struct GcsServerMocker {
       if (callback) {
         callback(Status::OK());
       }
+      return Status::OK();
+    }
+  };
+
+  class MockGcsPubSub : public gcs::GcsPubSub {
+   public:
+    MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
+        : GcsPubSub(redis_client) {}
+
+    Status Publish(const std::string &channel, const std::string &id,
+                   const std::string &data, const gcs::StatusCallback &done) override {
       return Status::OK();
     }
   };

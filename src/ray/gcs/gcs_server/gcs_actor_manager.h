@@ -19,10 +19,12 @@
 #include <ray/common/task/task_execution_spec.h>
 #include <ray/common/task/task_spec.h>
 #include <ray/protobuf/gcs_service.pb.h>
+#include <ray/rpc/worker/core_worker_client.h>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "gcs_actor_scheduler.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 namespace gcs {
@@ -56,6 +58,7 @@ class GcsActor {
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
+    actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(
         request.task_spec().caller_address());
 
@@ -70,6 +73,12 @@ class GcsActor {
   ClientID GetNodeID() const;
   /// Get the id of the worker on which this actor is created.
   WorkerID GetWorkerID() const;
+  /// Get the actor's owner ID.
+  WorkerID GetOwnerID() const;
+  /// Get the node ID of the actor's owner.
+  ClientID GetOwnerNodeID() const;
+  /// Get the address of the actor's owner.
+  const rpc::Address &GetOwnerAddress() const;
 
   /// Update the `Address` of this actor (see gcs.proto).
   void UpdateAddress(const rpc::Address &address);
@@ -83,6 +92,10 @@ class GcsActor {
 
   /// Get the id of this actor.
   ActorID GetActorID() const;
+  /// Returns whether or not this is a detached actor.
+  bool IsDetached() const;
+  /// Get the name of this actor (only set if it's a detached actor).
+  std::string GetName() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
@@ -104,23 +117,15 @@ class GcsActorManager {
  public:
   /// Create a GcsActorManager
   ///
-  /// \param io_context The main event loop.
+  /// \param scheduler Used to schedule actor creation tasks.
   /// \param actor_info_accessor Used to flush actor data to storage.
-  /// \param gcs_node_manager The actor manager needs to listen to the node change events
-  /// inside gcs_node_manager.
-  /// \param lease_client_factory Factory to create remote lease client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
-  /// \param client_factory Factory to create remote core worker client, it will be passed
-  /// through to the constructor of gcs_actor_scheduler, the gcs_actor_scheduler will use
-  /// default factory inside itself if it is not set.
-  explicit GcsActorManager(boost::asio::io_context &io_context,
-                           gcs::ActorInfoAccessor &actor_info_accessor,
-                           gcs::GcsNodeManager &gcs_node_manager,
-                           LeaseClientFactoryFn lease_client_factory = nullptr,
-                           rpc::ClientFactoryFn client_factory = nullptr);
+  /// \param gcs_pub_sub Used to publish gcs message.
+  GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+                  gcs::ActorInfoAccessor &actor_info_accessor,
+                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                  const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
-  virtual ~GcsActorManager() = default;
+  ~GcsActorManager() = default;
 
   /// Register actor asynchronously.
   ///
@@ -128,64 +133,115 @@ class GcsActorManager {
   /// \param callback Will be invoked after the actor is created successfully or be
   /// invoked immediately if the actor is already registered to `registered_actors_` and
   /// its state is `ALIVE`.
-  void RegisterActor(const rpc::CreateActorRequest &request,
-                     RegisterActorCallback callback);
+  /// \return Status::Invalid if this is a named actor and an actor with the specified
+  /// name already exists. The callback will not be called in this case.
+  Status RegisterActor(const rpc::CreateActorRequest &request,
+                       RegisterActorCallback callback);
 
-  /// Reconstruct all actors associated with the specified node id, including actors which
-  /// are scheduled or have been created on this node. Triggered when the given node goes
-  /// down.
-  ///
-  /// \param node_id The specified node id.
-  void ReconstructActorsOnNode(const ClientID &node_id);
+  /// Get the actor ID for the named actor. Returns nil if the actor was not found.
+  /// \param name The name of the detached actor to look up.
+  /// \returns ActorID The ID of the actor. Nil if the actor was not found.
+  ActorID GetActorIDByName(const std::string &name);
 
-  /// Reconstruct actor associated with the specified node_id and worker_id.
-  /// The actor may be pending or already created.
-  ///
-  /// \param node_id ID of the node where the worker is located
-  /// \param worker_id  ID of the worker that the actor is creating/created on
-  /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
-  /// users want to kill an actor intentionally and don't want it to be rescheduled
-  /// again.
-  void ReconstructActorOnWorker(const ClientID &node_id, const WorkerID &worker_id,
-                                bool need_reschedule = true);
-
- protected:
   /// Schedule actors in the `pending_actors_` queue.
-  /// This method is triggered when new nodes are registered or resources change.
+  /// This method should be called when new nodes are registered or resources
+  /// change.
   void SchedulePendingActors();
 
+  /// Handle a node death. This will restart all actors associated with the
+  /// specified node id, including actors which are scheduled or have been
+  /// created on this node. Actors whose owners have died (possibly due to this
+  /// node being removed) will not be restarted. If any workers on this node
+  /// owned an actor, those actors will be destroyed.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeDead(const ClientID &node_id);
+
+  /// Handle a worker failure. This will restart the associated actor, if any,
+  /// which may be pending or already created. If the worker owned other
+  /// actors, those actors will be destroyed.
+  ///
+  /// \param node_id ID of the node where the dead worker was located.
+  /// \param worker_id ID of the dead worker.
+  /// \param intentional_exit Whether the death was intentional. If yes and the
+  /// worker was an actor, we should not attempt to restart the actor.
+  void OnWorkerDead(const ClientID &node_id, const WorkerID &worker_id,
+                    bool intentional_exit = false);
+
+  /// Handle actor creation task failure. This should be called when scheduling
+  /// an actor creation task is infeasible.
+  ///
+  /// \param actor The actor whose creation task is infeasible.
+  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor);
+
+  /// Handle actor creation task success. This should be called when the actor
+  /// creation task has been scheduled successfully.
+  ///
+  /// \param actor The actor that has been created.
+  void OnActorCreationSuccess(std::shared_ptr<GcsActor> actor);
+
+ private:
+  /// A data structure representing an actor's owner.
+  struct Owner {
+    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+        : client(std::move(client)) {}
+    /// A client that can be used to contact the owner.
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+    /// The IDs of actors owned by this worker.
+    absl::flat_hash_set<ActorID> children_actor_ids;
+  };
+
+  /// Poll an actor's owner so that we will receive a notification when the
+  /// actor has gone out of scope, or the owner has died. This should not be
+  /// called for detached actors.
+  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+
+  /// Destroy an actor that has gone out of scope. This cleans up all local
+  /// state associated with the actor and marks the actor as dead. For owned
+  /// actors, this should be called when all actor handles have gone out of
+  /// scope or the owner has died.
+  /// TODO: For detached actors, this should be called when the application
+  /// deregisters the actor.
+  void DestroyActor(const ActorID &actor_id);
+
+ private:
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  void ReconstructActor(std::shared_ptr<GcsActor> actor, bool need_reschedule = true);
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
-  /// This method is a callback of gcs_actor_scheduler when actor is created successfully.
-  /// It will update the state of actor as well as the worker_to_created_actor_ and
-  /// node_to_created_actors_ and flush the actor data to the storage.
-  void OnActorCreateSuccess(std::shared_ptr<GcsActor> actor);
-
- protected:
   /// Callbacks of actor registration requests that are not yet flushed.
   /// This map is used to filter duplicated messages from a Driver/Worker caused by some
   /// network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
   /// All registered actors (pending actors are also included).
+  /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
+  /// Maps detached actor names to their actor ID for lookups by name.
+  absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
-  /// Map contains the relationship of worker and created actor.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<GcsActor>> worker_to_created_actor_;
-  /// Map contains the relationship of node and created actors.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>>
-      node_to_created_actors_;
-  /// The access info accessor.
-  gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// Map contains the relationship of node and created actors. Each node ID
+  /// maps to a map from worker ID to the actor created on that worker.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
+  /// Map from worker ID to a client and the IDs of the actors owned by that
+  /// worker. An owned actor should be destroyed once it has gone out of scope,
+  /// according to its owner, or the owner dies.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, Owner>> owners_;
+
   /// The scheduler to schedule all registered actors.
-  std::unique_ptr<gcs::GcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  /// Actor table. Used to update actor information upon creation, deletion, etc.
+  gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Factory to produce clients to workers. This is used to communicate with
+  /// actors and their owners.
+  rpc::ClientFactoryFn worker_client_factory_;
 };
 
 }  // namespace gcs
