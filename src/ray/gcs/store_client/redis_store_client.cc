@@ -110,7 +110,7 @@ Status RedisStoreClient::AsyncGetAll(
                      const std::vector<std::pair<std::string, std::string>> &result) {
     callback(status, result);
   };
-  return scanner->ScanRows(on_done);
+  return scanner->ScanKeysAndValues(on_done);
 }
 
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
@@ -180,11 +180,11 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
   }
 }
 
-Status RedisStoreClient::RedisScanner::ScanRows(
+Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
-    ReadRows(result, callback);
+    ScanValues(result, callback);
   };
   return ScanKeys(on_done);
 }
@@ -271,7 +271,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
-void RedisStoreClient::RedisScanner::ReadRows(
+void RedisStoreClient::RedisScanner::ScanValues(
     const std::vector<std::string> &keys,
     const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
   for (const auto &key : keys) {
