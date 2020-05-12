@@ -194,11 +194,9 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (callable(model_creator) and callable(optimizer_creator)
-                and callable(data_creator)):
+        if not (callable(model_creator) and callable(optimizer_creator)):
             raise ValueError(
-                "Must provide a callable model_creator, optimizer_creator, "
-                "and data_creator.")
+                "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(

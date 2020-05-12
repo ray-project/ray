@@ -38,3 +38,11 @@ Sharding and Sampling
 Datasets use ParallelIterator actors for sharding. In order to handle datasets which do not shard evenly, and streaming datasets (which may not have a defined size), shards are represented as repeated sequences of data. As a result, num_steps should always be specified when training and some data may be oversampled if the data cannot be evenly sharded.
 
 If the dataset is of a known length (and can be evenly sharded), training for an epoch is eqivalent to setting ``num_steps = len(data) / (num_workers * batch_size)``. 
+
+Complete dataset example
+------------------------
+
+Below is an example of training a network with a single hidden layer to learn the identity function.
+
+.. literalinclude:: ../../../python/ray/util/sgd/data/examples/mlp_identity.py
+   :language: python
