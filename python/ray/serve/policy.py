@@ -12,7 +12,8 @@ class RoutingPolicy:
 
     To add a new routing policy, a class should be defined that provides this
     interface. The class may be stateful, in which case it may also want to
-    provide a non-default constructor.
+    provide a non-default constructor. However, this state will be lost when
+    the policy is updated (e.g., a new backend is added).
     """
     __metaclass__ = ABCMeta
 

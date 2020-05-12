@@ -267,10 +267,9 @@ class Router:
     async def set_traffic(self, endpoint, traffic_dict):
         logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
-        self.traffic[endpoint] = self.policy(traffic_dict,
-                                             **self.policy_kwargs)
-
         async with self.flush_lock:
+            self.traffic[endpoint] = self.policy(traffic_dict,
+                                                 **self.policy_kwargs)
             await self.flush_endpoint_queue(endpoint)
 
     async def remove_endpoint(self, endpoint):
