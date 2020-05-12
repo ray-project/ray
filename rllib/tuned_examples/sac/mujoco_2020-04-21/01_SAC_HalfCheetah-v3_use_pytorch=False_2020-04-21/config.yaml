@@ -1,0 +1,34 @@
+Q_model:
+  fcnet_activation: relu
+  fcnet_hiddens:
+  - 256
+  - 256
+clip_actions: false
+env: HalfCheetah-v3
+evaluation_interval: 1
+horizon: 1000
+learning_starts: 10003
+metrics_smoothing_episodes: 5
+n_step: 1
+no_done_at_end: true
+normalize_actions: true
+num_gpus: 0
+num_workers: 0
+optimization:
+  actor_learning_rate: 0.0003
+  critic_learning_rate: 0.0003
+  entropy_learning_rate: 0.0003
+policy_model:
+  fcnet_activation: relu
+  fcnet_hiddens:
+  - 256
+  - 256
+prioritized_replay: true
+rollout_fragment_length: 1
+soft_horizon: false
+target_entropy: auto
+target_network_update_freq: 1
+tau: 0.005
+timesteps_per_iteration: 1000
+train_batch_size: 256
+use_pytorch: false

@@ -1,0 +1,25 @@
+adam_epsilon: 0.00015
+buffer_size: 1000000
+double_q: false
+dueling: false
+env: BreakoutNoFrameskip-v4
+exploration_config:
+  epsilon_timesteps: 200000
+  final_epsilon: 0.01
+final_prioritized_replay_beta: 1.0
+hiddens:
+- 512
+learning_starts: 20000
+lr: 6.25e-05
+n_step: 1
+noisy: false
+num_atoms: 1
+num_gpus: 1
+prioritized_replay: false
+prioritized_replay_alpha: 0.5
+prioritized_replay_beta_annealing_timesteps: 2000000
+rollout_fragment_length: 4
+target_network_update_freq: 8000
+timesteps_per_iteration: 10000
+train_batch_size: 32
+use_pytorch: true

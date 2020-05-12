@@ -1,0 +1,38 @@
+actor_hiddens:
+- 256
+- 256
+actor_lr: 0.0003
+buffer_size: 10000
+clip_rewards: false
+critic_hiddens:
+- 256
+- 256
+critic_lr: 0.0003
+env: HalfCheetah-v2
+evaluation_interval: 5
+evaluation_num_episodes: 10
+exploration_config:
+  final_scale: 0.02
+  initial_scale: 1.0
+  ou_base_scale: 0.1
+  ou_sigma: 0.2
+  ou_theta: 0.15
+  random_timesteps: 10000
+  scale_timesteps: 10000
+gamma: 0.99
+huber_threshold: 1.0
+l2_reg: 1.0e-06
+learning_starts: 504
+num_gpus_per_worker: 0
+num_workers: 0
+prioritized_replay: true
+prioritized_replay_alpha: 0.6
+prioritized_replay_beta: 0.4
+prioritized_replay_eps: 1.0e-06
+rollout_fragment_length: 1
+target_network_update_freq: 0
+tau: 0.005
+timesteps_per_iteration: 1000
+train_batch_size: 64
+use_huber: true
+worker_side_prioritization: false

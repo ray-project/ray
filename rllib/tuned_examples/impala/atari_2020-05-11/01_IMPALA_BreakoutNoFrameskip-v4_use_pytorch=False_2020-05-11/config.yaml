@@ -1,0 +1,12 @@
+clip_rewards: true
+env: BreakoutNoFrameskip-v4
+lr_schedule:
+- - 0
+  - 0.0005
+- - 20000000
+  - 1.0e-12
+num_envs_per_worker: 5
+num_workers: 15
+rollout_fragment_length: 50
+train_batch_size: 500
+use_pytorch: false

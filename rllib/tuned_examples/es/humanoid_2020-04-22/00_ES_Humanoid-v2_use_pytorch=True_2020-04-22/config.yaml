@@ -1,0 +1,3 @@
+env: Humanoid-v2
+num_workers: 95
+use_pytorch: true
