@@ -62,7 +62,7 @@ def main():
         model = trainer.get_model()
         print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
 
+
 if __name__ == "__main__":
     ray.init()
     main()
-
