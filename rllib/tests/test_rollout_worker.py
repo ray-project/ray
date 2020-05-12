@@ -13,13 +13,13 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.policy.tests.test_policy import TestPolicy
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
-class MockPolicy(TestPolicy):
+class MockPolicy(RandomPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -40,7 +40,7 @@ class MockPolicy(TestPolicy):
             batch, 100.0, 0.9, use_gae=False, use_critic=False)
 
 
-class BadPolicy(MockPolicy):
+class BadPolicy(RandomPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,

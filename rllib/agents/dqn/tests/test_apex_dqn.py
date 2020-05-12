@@ -14,6 +14,17 @@ class TestApexDQN(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
+    def test_apex_zero_workers(self):
+        config = apex.APEX_DEFAULT_CONFIG.copy()
+        config["num_workers"] = 0
+        config["prioritized_replay"] = True
+        config["timesteps_per_iteration"] = 100
+        config["min_iter_time_s"] = 1
+        config["optimizer"]["num_replay_buffer_shards"] = 1
+        trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
+        trainer.train()
+        trainer.stop()
+
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()

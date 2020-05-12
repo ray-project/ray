@@ -10,64 +10,24 @@ modifies the policy to add a centralized value function.
 """
 
 import numpy as np
-from gym.spaces import Box, Dict, Discrete
+from gym.spaces import Dict, Discrete
 import argparse
 
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.examples.twostep_game import TwoStepGame
+from ray.rllib.examples.models.centralized_critic_models import \
+    YetAnotherCentralizedCriticModel, YetAnotherTorchCentralizedCriticModel
+from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop", type=int, default=100000)
-
-
-class CentralizedCriticModel(TFModelV2):
-    """Multi-agent model that implements a centralized VF.
-
-    It assumes the observation is a dict with 'own_obs' and 'opponent_obs', the
-    former of which can be used for computing actions (i.e., decentralized
-    execution), and the latter for optimization (i.e., centralized learning).
-
-    This model has two parts:
-    - An action model that looks at just 'own_obs' to compute actions
-    - A value model that also looks at the 'opponent_obs' / 'opponent_action'
-      to compute the value (it does this by using the 'obs_flat' tensor).
-    """
-
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super(CentralizedCriticModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
-
-        self.action_model = FullyConnectedNetwork(
-            Box(low=0, high=1, shape=(6, )),  # one-hot encoded Discrete(6)
-            action_space,
-            num_outputs,
-            model_config,
-            name + "_action")
-        self.register_variables(self.action_model.variables())
-
-        self.value_model = FullyConnectedNetwork(obs_space, action_space, 1,
-                                                 model_config, name + "_vf")
-        self.register_variables(self.value_model.variables())
-
-    def forward(self, input_dict, state, seq_lens):
-        self._value_out, _ = self.value_model({
-            "obs": input_dict["obs_flat"]
-        }, state, seq_lens)
-        return self.action_model({
-            "obs": input_dict["obs"]["own_obs"]
-        }, state, seq_lens)
-
-    def value_function(self):
-        return tf.reshape(self._value_out, [-1])
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=100)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=float, default=7.99)
 
 
 class FillInActions(DefaultCallbacks):
@@ -109,7 +69,11 @@ def central_critic_observer(agent_obs, **kw):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ModelCatalog.register_custom_model("cc_model", CentralizedCriticModel)
+
+    ModelCatalog.register_custom_model(
+        "cc_model", YetAnotherTorchCentralizedCriticModel
+        if args.torch else YetAnotherCentralizedCriticModel)
+
     action_space = Discrete(2)
     observer_space = Dict({
         "own_obs": Discrete(6),
@@ -118,26 +82,33 @@ if __name__ == "__main__":
         "opponent_obs": Discrete(6),
         "opponent_action": Discrete(2),
     })
-    tune.run(
-        "PPO",
-        stop={
-            "timesteps_total": args.stop,
-            "episode_reward_mean": 7.99,
+
+    config = {
+        "env": TwoStepGame,
+        "batch_mode": "complete_episodes",
+        "callbacks": FillInActions,
+        "num_workers": 0,
+        "multiagent": {
+            "policies": {
+                "pol1": (None, observer_space, action_space, {}),
+                "pol2": (None, observer_space, action_space, {}),
+            },
+            "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+            "observation_fn": central_critic_observer,
         },
-        config={
-            "env": TwoStepGame,
-            "batch_mode": "complete_episodes",
-            "callbacks": FillInActions,
-            "num_workers": 0,
-            "multiagent": {
-                "policies": {
-                    "pol1": (None, observer_space, action_space, {}),
-                    "pol2": (None, observer_space, action_space, {}),
-                },
-                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
-                "observation_fn": central_critic_observer,
-            },
-            "model": {
-                "custom_model": "cc_model",
-            },
-        })
+        "model": {
+            "custom_model": "cc_model",
+        },
+        "use_pytorch": args.torch,
+    }
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run("PPO", config=config, stop=stop)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)

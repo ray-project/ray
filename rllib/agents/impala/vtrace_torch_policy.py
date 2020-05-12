@@ -77,6 +77,7 @@ class VTraceLoss:
 
         # Compute vtrace on the CPU for better perf
         # (devices handled inside `vtrace.multi_from_logits`).
+        device = behaviour_action_logp[0].device
         self.vtrace_returns = vtrace.multi_from_logits(
             behaviour_action_log_probs=behaviour_action_logp,
             behaviour_policy_logits=behaviour_logits,
@@ -90,14 +91,16 @@ class VTraceLoss:
             model=model,
             clip_rho_threshold=clip_rho_threshold,
             clip_pg_rho_threshold=clip_pg_rho_threshold)
-        self.value_targets = self.vtrace_returns.vs
+        # Move v-trace results back to GPU for actual loss computing.
+        self.value_targets = self.vtrace_returns.vs.to(device)
 
         # The policy gradients loss
         self.pi_loss = -torch.sum(
-            actions_logp * self.vtrace_returns.pg_advantages * valid_mask)
+            actions_logp * self.vtrace_returns.pg_advantages.to(device) *
+            valid_mask)
 
         # The baseline loss
-        delta = (values - self.vtrace_returns.vs) * valid_mask
+        delta = (values - self.value_targets) * valid_mask
         self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
         # The entropy loss
