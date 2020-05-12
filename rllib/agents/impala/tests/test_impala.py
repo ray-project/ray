@@ -32,6 +32,7 @@ class TestIMPALA(unittest.TestCase):
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_action(trainer)
+                trainer.stop()
 
                 # Test w/ LSTM.
                 print("w/o LSTM")
@@ -40,6 +41,7 @@ class TestIMPALA(unittest.TestCase):
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_action(trainer)
+                trainer.stop()
 
 
 if __name__ == "__main__":

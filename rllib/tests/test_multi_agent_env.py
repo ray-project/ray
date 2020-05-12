@@ -7,16 +7,16 @@ from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
 from ray.rllib.tests.test_rollout_worker import MockPolicy
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.tests.test_policy import TestPolicy
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 
 
 def one_hot(i, n):
@@ -297,7 +297,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_custom_rnn_state_values(self):
         h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
 
-        class StatefulPolicy(TestPolicy):
+        class StatefulPolicy(RandomPolicy):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches=None,
