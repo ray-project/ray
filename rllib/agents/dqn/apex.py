@@ -4,7 +4,7 @@ import copy
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    SampleBatchType, _get_shared_metrics
+    SampleBatchType, _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -105,7 +105,7 @@ class UpdateWorkerWeights:
                 self.learner_thread.weights_updated = False
                 self.weights = ray.put(
                     self.workers.local_worker().get_weights())
-            actor.set_weights.remote(self.weights)
+            actor.set_weights.remote(self.weights, _get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
             metrics = LocalIterator.get_metrics()
@@ -148,12 +148,15 @@ def execution_plan(workers: WorkerSet, config: dict):
     # the weights of the worker that generated the batch.
     rollouts = ParallelRollouts(workers, mode="async", num_async=2)
     store_op = rollouts \
-        .for_each(StoreToReplayBuffer(actors=replay_actors)) \
-        .zip_with_source_actor() \
-        .for_each(UpdateWorkerWeights(
-            learner_thread, workers,
-            max_weight_sync_delay=config["optimizer"]["max_weight_sync_delay"])
-        )
+        .for_each(StoreToReplayBuffer(actors=replay_actors))
+    # Only need to update workers if there are remote workers.
+    if workers.remote_workers():
+        store_op = store_op.zip_with_source_actor() \
+            .for_each(UpdateWorkerWeights(
+                learner_thread, workers,
+                max_weight_sync_delay=(
+                    config["optimizer"]["max_weight_sync_delay"])
+            ))
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.

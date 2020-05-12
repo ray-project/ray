@@ -1,188 +1,168 @@
+from abc import ABCMeta, abstractmethod
 from enum import Enum
 import itertools
 
 import numpy as np
 
-import ray
-from ray.serve.router import Router
 from ray.serve.utils import logger
 
 
-class RandomPolicyQueue(Router):
+class RoutingPolicy:
+    """Defines the interface for a routing policy for a single endpoint.
+
+    To add a new routing policy, a class should be defined that provides this
+    interface. The class may be stateful, in which case it may also want to
+    provide a non-default constructor. However, this state will be lost when
+    the policy is updated (e.g., a new backend is added).
     """
-    A wrapper class for Random policy.This backend selection policy is
-    `Stateless` meaning the current decisions of selecting backend are
-    not dependent on previous decisions. Random policy (randomly) samples
-    backends based on backend weights for every query. This policy uses the
-    weights assigned to backends.
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    async def flush(self, endpoint_queue, backend_queues):
+        """Flush the endpoint queue into the given backend queues.
+
+        This method should assign each query in the endpoint_queue to a
+        backend in the backend_queues. Queries are assigned by popping them
+        from the endpoint queue and pushing them onto a backend queue. The
+        method must also return a set of all backend tags so that the caller
+        knows which backend_queues to flush.
+
+        Arguments:
+            endpoint_queue: asyncio.Queue containing queries to assign.
+            backend_queues: Dict(str, asyncio.Queue) mapping backend tags to
+            their corresponding query queues.
+
+        Returns:
+            Set of backend tags that had queries added to their queues.
+        """
+        assigned_backends = set()
+        return assigned_backends
+
+
+class RandomPolicy(RoutingPolicy):
     """
-
-    async def _flush_endpoint_queues(self):
-        # perform traffic splitting for requests
-        for endpoint, queue in self.endpoint_queues.items():
-            # while there are incoming requests and there are backends
-            while queue.qsize() and len(self.traffic[endpoint]):
-                backend_names = list(self.traffic[endpoint].keys())
-                backend_weights = list(self.traffic[endpoint].values())
-                # randomly choose a backend for every query
-                chosen_backend = np.random.choice(
-                    backend_names, replace=False, p=backend_weights).squeeze()
-                logger.debug("Matching endpoint {} to backend {}".format(
-                    endpoint, chosen_backend))
-
-                request = await queue.get()
-                self.buffer_queues[chosen_backend].add(request)
-
-
-@ray.remote
-class RandomPolicyQueueActor(RandomPolicyQueue):
-    pass
-
-
-class RoundRobinPolicyQueue(Router):
-    """
-    A wrapper class for RoundRobin policy. This backend selection policy
-    is `Stateful` meaning the current decisions of selecting backend are
-    dependent on previous decisions. RoundRobinPolicy assigns queries in
-    an interleaved manner to every backend serving for an endpoint. Consider
-    backend A,B linked to a endpoint. Now queries will be assigned to backends
-    in the following order - [ A, B, A, B ... ] . This policy doesn't use the
-    weights assigned to backends.
+    A stateless policy that makes a weighted random decision to map each query
+    to a backend using the specified weights.
     """
 
-    # Saves the information about last assigned backend for every endpoint.
-    round_robin_iterator_map = {}
+    def __init__(self, traffic_dict):
+        self.backend_names = list(traffic_dict.keys())
+        self.backend_weights = list(traffic_dict.values())
 
-    async def set_traffic(self, endpoint, traffic_dict):
-        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
-                     traffic_dict)
-        self.traffic[endpoint] = traffic_dict
-        backend_names = list(self.traffic[endpoint].keys())
-        self.round_robin_iterator_map[endpoint] = itertools.cycle(
-            backend_names)
-        await self.flush()
+    async def flush(self, endpoint_queue, backend_queues):
+        if len(self.backend_names) == 0:
+            logger.info("No backends to assign traffic to.")
+            return set()
 
-    async def _flush_endpoint_queues(self):
-        # perform traffic splitting for requests
-        for endpoint, queue in self.endpoint_queues.items():
-            # if there are incoming requests and there are backends
-            if queue.qsize() and len(self.traffic[endpoint]):
-                while queue.qsize():
-                    # choose the next backend available from persistent
-                    # information
-                    chosen_backend = next(
-                        self.round_robin_iterator_map[endpoint])
-                    request = await queue.get()
-                    self.buffer_queues[chosen_backend].add(request)
+        assigned_backends = set()
+        while endpoint_queue.qsize():
+            chosen_backend = np.random.choice(
+                self.backend_names, replace=False,
+                p=self.backend_weights).squeeze()
+            assigned_backends.add(chosen_backend)
+            backend_queues[chosen_backend].add(await endpoint_queue.get())
+
+        return assigned_backends
 
 
-@ray.remote
-class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue):
-    pass
+class RoundRobinPolicy(RoutingPolicy):
+    """A stateful policy that assigns queries in round-robin order."""
+
+    def __init__(self, traffic_dict):
+        # NOTE(edoakes): the backend weights are not used.
+        self.backend_names = list(traffic_dict.keys())
+        # Saves the information about last assigned backend for every endpoint.
+        self.round_robin_iterator = itertools.cycle(self.backend_names)
+
+    async def flush(self, endpoint_queue, backend_queues):
+        if len(self.backend_names) == 0:
+            logger.info("No backends to assign traffic to.")
+            return set()
+
+        assigned_backends = set()
+        while endpoint_queue.qsize():
+            chosen_backend = next(self.round_robin_iterator)
+            assigned_backends.add(chosen_backend)
+            backend_queues[chosen_backend].add(await endpoint_queue.get())
+
+        return assigned_backends
 
 
-class PowerOfTwoPolicyQueue(Router):
+class PowerOfTwoPolicy(RoutingPolicy):
+    """A stateless policy that uses the "power of two" policy.
+
+    For each query, two random backends are chosen. Of those two, the query is
+    assigned to the backend whose queue length is shorter.
     """
-    A wrapper class for powerOfTwo policy. This backend selection policy is
-    `Stateless` meaning the current decisions of selecting backend are
-    dependent on previous decisions. PowerOfTwo policy (randomly) samples two
-    backends (say Backend A,B among A,B,C) based on the backend weights
-    specified and chooses the backend which is less loaded. This policy uses
-    the weights assigned to backends.
-    """
 
-    async def _flush_endpoint_queues(self):
-        # perform traffic splitting for requests
-        for endpoint, queue in self.endpoint_queues.items():
-            # while there are incoming requests and there are backends
-            while queue.qsize() and len(self.traffic[endpoint]):
-                backend_names = list(self.traffic[endpoint].keys())
-                backend_weights = list(self.traffic[endpoint].values())
-                if len(self.traffic[endpoint]) >= 2:
-                    # randomly pick 2 backends
-                    backend1, backend2 = np.random.choice(
-                        backend_names, 2, replace=False, p=backend_weights)
+    def __init__(self, traffic_dict):
+        self.backend_names = list(traffic_dict.keys())
+        self.backend_weights = list(traffic_dict.values())
 
-                    # see the length of buffer queues of the two backends
-                    # and pick the one which has less no. of queries
-                    # in the buffer
-                    if (len(self.buffer_queues[backend1]) <= len(
-                            self.buffer_queues[backend2])):
-                        chosen_backend = backend1
-                    else:
-                        chosen_backend = backend2
-                    logger.debug("[Power of two chocies] found two backends "
-                                 "{} and {}: choosing {}.".format(
-                                     backend1, backend2, chosen_backend))
+    async def flush(self, endpoint_queue, backend_queues):
+        if len(self.backend_names) == 0:
+            logger.info("No backends to assign traffic to.")
+            return set()
+
+        assigned_backends = set()
+        while endpoint_queue.qsize():
+            if len(self.backend_names) >= 2:
+                backend1, backend2 = np.random.choice(
+                    self.backend_names,
+                    2,
+                    replace=False,
+                    p=self.backend_weights)
+
+                # Choose the backend that has a shorter queue.
+                if (len(backend_queues[backend1]) <= len(
+                        backend_queues[backend2])):
+                    chosen_backend = backend1
                 else:
-                    chosen_backend = np.random.choice(
-                        backend_names, replace=False,
-                        p=backend_weights).squeeze()
-                request = await queue.get()
-                self.buffer_queues[chosen_backend].add(request)
+                    chosen_backend = backend2
+            else:
+                chosen_backend = np.random.choice(
+                    self.backend_names, replace=False,
+                    p=self.backend_weights).squeeze()
+            backend_queues[chosen_backend].add(await endpoint_queue.get())
+            assigned_backends.add(chosen_backend)
+
+        return assigned_backends
 
 
-@ray.remote
-class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue):
-    pass
+class FixedPackingPolicy(RoutingPolicy):
+    """A stateful policy that uses a "fixed packing" policy.
 
-
-class FixedPackingPolicyQueue(Router):
-    """
-    A wrapper class for FixedPacking policy. This backend selection policy is
-    `Stateful` meaning the current decisions of selecting backend are dependent
-    on previous decisions. FixedPackingPolicy is k RoundRobin policy where
-    first packing_num queries are handled by 'backend-1' and next k queries are
-    handled by 'backend-2' and so on ... where 'backend-1' and 'backend-2' are
-    served by the same endpoint. This policy doesn't use the weights assigned
-    to backends.
-
+    The policy round-robins groups of packing_num queries across backends. For
+    example, the first packing_num queries are handled by backend-1, then the
+    next packing_num queries are handled by backend-2, etc.
     """
 
-    async def __init__(self, packing_num=3):
-        # Saves the information about last assigned
-        # backend for every endpoint
-        self.fixed_packing_iterator_map = {}
-        self.packing_num = packing_num
-        await super().__init__()
-
-    async def set_traffic(self, endpoint, traffic_dict):
-        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
-                     traffic_dict)
-        self.traffic[endpoint] = traffic_dict
-        backend_names = list(self.traffic[endpoint].keys())
-        self.fixed_packing_iterator_map[endpoint] = itertools.cycle(
+    def __init__(self, traffic_dict, packing_num=3):
+        # NOTE(edoakes): the backend weights are not used.
+        self.backend_names = list(traffic_dict.keys())
+        self.fixed_packing_iterator = itertools.cycle(
             itertools.chain.from_iterable(
-                itertools.repeat(x, self.packing_num) for x in backend_names))
-        await self.flush()
+                itertools.repeat(x, self.packing_num)
+                for x in self.backend_names))
+        self.packing_num = packing_num
 
-    async def _flush_endpoint_queues(self):
-        # perform traffic splitting for requests
-        for endpoint, queue in self.endpoint_queues.items():
-            # if there are incoming requests and there are backends
-            if queue.qsize() and len(self.traffic[endpoint]):
-                while queue.qsize():
-                    # choose the next backend available from persistent
-                    # information
-                    chosen_backend = next(
-                        self.fixed_packing_iterator_map[endpoint])
-                    request = await queue.get()
-                    self.buffer_queues[chosen_backend].add(request)
+    async def flush(self, endpoint_queue, backend_queues):
+        if len(self.backend_names) == 0:
+            logger.info("No backends to assign traffic to.")
+            return set()
 
+        assigned_backends = set()
+        while endpoint_queue.qsize():
+            chosen_backend = next(self.fixed_packing_iterator)
+            backend_queues[chosen_backend].add(await endpoint_queue.get())
+            assigned_backends.add(chosen_backend)
 
-@ray.remote
-class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue):
-    pass
+        return assigned_backends
 
 
 class RoutePolicy(Enum):
-    """
-    A class for registering the backend selection policy.
-    Add a name and the corresponding class.
-    Serve will support the added policy and policy can be accessed
-    in `serve.init` method through name provided here.
-    """
-    Random = RandomPolicyQueueActor
-    RoundRobin = RoundRobinPolicyQueueActor
-    PowerOfTwo = PowerOfTwoPolicyQueueActor
-    FixedPacking = FixedPackingPolicyQueueActor
+    """All builtin routing policies."""
+    Random = RandomPolicy
+    RoundRobin = RoundRobinPolicy
+    PowerOfTwo = PowerOfTwoPolicy
+    FixedPacking = FixedPackingPolicy

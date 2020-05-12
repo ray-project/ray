@@ -54,6 +54,9 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+
+    # TODO: impl update target.
+    "use_exec_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable

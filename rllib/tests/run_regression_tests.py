@@ -22,11 +22,11 @@ import yaml
 
 import ray
 from ray.tune import run_experiments
+from ray.rllib import _register_all
 
 if __name__ == "__main__":
     # Bazel regression test mode: Get path to look for yaml files from argv[2].
     if sys.argv[1] == "BAZEL":
-        ray.init(num_cpus=5)
         # Get the path to use.
         rllib_dir = Path(__file__).parent.parent
         print("rllib dir={}".format(rllib_dir))
@@ -35,7 +35,6 @@ if __name__ == "__main__":
             map(lambda path: str(path.absolute()), yaml_files), reverse=True)
     # Normal mode: Get yaml files to run from command line.
     else:
-        ray.init()
         yaml_files = sys.argv[1:]
 
     print("Will run the following regression files:")
@@ -51,7 +50,12 @@ if __name__ == "__main__":
 
         passed = False
         for i in range(3):
-            trials = run_experiments(experiments, resume=False, verbose=0)
+            try:
+                ray.init(num_cpus=5)
+                trials = run_experiments(experiments, resume=False, verbose=1)
+            finally:
+                ray.shutdown()
+                _register_all()
 
             for t in trials:
                 if (t.last_result["episode_reward_mean"] >=
