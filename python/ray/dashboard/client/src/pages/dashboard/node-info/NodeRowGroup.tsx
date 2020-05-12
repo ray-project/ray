@@ -50,6 +50,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type Props = {
   node: Node;
+  clusterWorkerPids: Set<number>;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
@@ -93,7 +94,6 @@ class NodeRowGroup extends React.Component<
       setErrorDialog,
     } = this.props;
     const { expanded } = this.state;
-
     const features = [
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
       { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },

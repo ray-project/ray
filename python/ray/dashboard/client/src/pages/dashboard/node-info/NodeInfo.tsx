@@ -17,6 +17,22 @@ import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
+import { RayletInfoResponse } from '../../../../../../../../bazel-ray/python/ray/dashboard/client/src/api';
+
+function clusterWorkerPids(rayletInfo: RayletInfoResponse): Map<string, Set<number>> {
+  // Given a Raylet response, this extracts, per node, all the worker pids registered
+  // with the Raylet. It returns these in a Map from node ip to set of process ids.
+  const nodeMap = new Map();
+  const workerPids = new Set();
+  for (const [nodeIp, {workersStats}] of Object.entries(rayletInfo.nodes)) {
+    console.log('nodeIp', nodeIp);
+    for (const worker of workersStats) {
+      workerPids.add(worker.pid);
+    }
+    nodeMap.set(nodeIp, workerPids);
+  }
+  return nodeMap;
+}
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -73,6 +89,7 @@ class NodeInfo extends React.Component<
     if (nodeInfo === null || rayletInfo === null) {
       return <Typography color="textSecondary">Loading...</Typography>;
     }
+    const workerPidsByNode = clusterWorkerPids(rayletInfo)
 
     const logCounts: {
       [ip: string]: {
@@ -142,6 +159,7 @@ class NodeInfo extends React.Component<
               <NodeRowGroup
                 key={client.ip}
                 node={client}
+                clusterWorkerPids={workerPidsByNode.get(client.ip) || new Set()}
                 raylet={
                   client.ip in rayletInfo.nodes
                     ? rayletInfo.nodes[client.ip]
