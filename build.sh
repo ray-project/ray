@@ -132,9 +132,12 @@ if [ "$RAY_BUILD_JAVA" == "YES" ]; then
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  if [[ ! -d "$ROOT_DIR/python/ray/pickle5_files/pickle5" ]]; then
-    # Install pickle5 if it's not installed.
-    TEMP_DIR=`mktemp -d`
+  need_pickle5_backport=1
+  if PYTHONPATH="$ROOT_DIR/python/ray/pickle5_files:$PATHPATH" "$PYTHON_EXECUTABLE" -s -c "import pickle5" 2>/dev/null; then
+    need_pickle5_backport=0
+  fi
+  if [ 1 -eq "${need_pickle5_backport}" ]; then
+    TEMP_DIR="$(mktemp -d)"
     pushd "$TEMP_DIR"
     wget --quiet -O pickle5-backport.zip https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip
     unzip pickle5-backport.zip
