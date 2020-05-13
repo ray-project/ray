@@ -54,8 +54,8 @@ void StoreBasedServiceDiscoveryClient<ServiceInfo>::RegisterServiceWatcher(
     const std::string &service_name, const ItemCallback<ServiceInfo> &callback) {
   RAY_CHECK(callback);
 
-  RAY_CHECK(!service_name_.empty());
-  RAY_CHECK(!service_watcher_callback_);
+  RAY_CHECK(service_name_.empty() && !service_name.empty());
+  RAY_CHECK(!service_watcher_callback_ && callback);
 
   service_name_ = service_name;
   service_watcher_callback_ = callback;
