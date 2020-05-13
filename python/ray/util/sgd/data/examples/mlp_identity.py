@@ -1,5 +1,5 @@
 import ray
-from ray.util import iter
+# from ray.util import iter
 from ray.util.sgd.torch.torch_trainer import TorchTrainer
 from ray.util.sgd.data.dataset import Dataset
 
