@@ -245,7 +245,11 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
-    ScanValues(result, callback);
+    if (result.empty()) {
+      callback(std::unordered_map<std::string, std::string>());
+    } else {
+      ScanValues(result, callback);
+    }
   };
   return ScanKeys(on_done);
 }
