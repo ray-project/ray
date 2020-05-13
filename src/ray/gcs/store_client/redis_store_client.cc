@@ -24,7 +24,8 @@ namespace ray {
 
 namespace gcs {
 
-std::string RedisStoreClient::separator_ = "&";
+std::string RedisStoreClient::table_separator_ = "&";
+std::string RedisStoreClient::index_table_separator_ = "@";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &data,
@@ -198,34 +199,34 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
 
 std::string RedisStoreClient::GenTableKey(const std::string &table_name,
                                           const std::string &key) {
-  return table_name + separator_ + key;
+  return table_name + table_separator_ + key;
 }
 
 std::string RedisStoreClient::GenTableMatchPattern(const std::string &table_name) {
-  return table_name + separator_ + "*";
+  return table_name + table_separator_ + "*";
 }
 
 std::string RedisStoreClient::GetKeyFromTableKey(const std::string &full_key,
                                                  const std::string &table_name) {
-  auto pos = table_name.size() + separator_.size();
+  auto pos = table_name.size() + table_separator_.size();
   return full_key.substr(pos, full_key.size() - pos);
 }
 
 std::string RedisStoreClient::GenIndexTableKey(const std::string &table_name,
                                                const std::string &key,
                                                const std::string &index_key) {
-  return index_key + table_name + separator_ + key;
+  return table_name + index_table_separator_ + index_key + key;
 }
 
 std::string RedisStoreClient::GenIndexTableMatchPattern(const std::string &index_key,
                                                         const std::string &table_name) {
-  return index_key + table_name + separator_ + "*";
+  return table_name + index_table_separator_ + index_key + "*";
 }
 
 std::string RedisStoreClient::GetKeyFromIndexTableKey(const std::string &full_key,
                                                       const std::string &table_name,
                                                       const std::string &index_key) {
-  auto pos = index_key.size() + table_name.size() + separator_.size();
+  auto pos = table_name.size() + index_table_separator_.size() + index_key.size();
   return full_key.substr(pos, full_key.size() - pos);
 }
 

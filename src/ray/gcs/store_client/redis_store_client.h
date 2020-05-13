@@ -115,7 +115,8 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
 
-  static std::string separator_;
+  static std::string table_separator_;
+  static std::string index_table_separator_;
 
   static std::string GenTableKey(const std::string &table_name, const std::string &key);
 
