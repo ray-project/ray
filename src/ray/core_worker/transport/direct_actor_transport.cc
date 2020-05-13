@@ -118,6 +118,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   RAY_CHECK(!queue->second.rpc_client);
   queue->second.rpc_client =
       std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
+  // TODO(swang): This assumes that replies from the previous incarnation of
+  // the actor have been received. Fix this by setting an epoch for each actor
+  // task, so we can ignore completed tasks from old epochs.
   queue->second.caller_starts_at = queue->second.num_completed_tasks;
   SendPendingTasks(actor_id);
 }

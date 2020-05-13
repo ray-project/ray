@@ -119,6 +119,9 @@ class CoreWorkerDirectActorTaskSubmitter {
     /// instance of the actor knows from which task to start executing. This
     /// increases monotonically.
     uint64_t caller_starts_at = 0;
+    /// The number of tasks sent to this actor by this worker that will never
+    /// be submitted again. This is used to reset caller_starts_at if the actor
+    /// dies and is restarted.
     uint64_t num_completed_tasks = 0;
 
     /// A force-kill request that should be sent to the actor once an RPC
