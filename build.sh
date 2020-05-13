@@ -127,8 +127,15 @@ fi
 pushd "$BUILD_DIR"
 
 
-WORK_DIR=`mktemp -d`
-pushd $WORK_DIR
+need_pickle5_backport=0
+PYTHON_REVISION="$("$PYTHON_EXECUTABLE" -s -c "import sys; print('{}.{}.{}'.format(*sys.version_info))")"
+case "${PYTHON_REVISION}.0" in
+3\.[5-7].*|3.8.[0-1].*) need_pickle5_backport=1;;
+esac
+
+if [ 0 -ne "${need_pickle5_backport}" ]; then
+WORK_DIR="$(mktemp -d)"
+pushd "${WORK_DIR}"
 git clone https://github.com/suquark/pickle5-backport
 pushd pickle5-backport
   git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
@@ -136,6 +143,7 @@ pushd pickle5-backport
   unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
 popd
 popd
+fi
 
 
 if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
