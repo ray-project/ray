@@ -41,6 +41,7 @@ fi
 RAY_BUILD_PYTHON="YES"
 RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
+BUILD_DIR=""
 
 # Parse options
 while [[ $# -gt 0 ]]; do
@@ -116,6 +117,15 @@ else
   echo "Bazel not found: BAZEL_EXECUTABLE=\"${BAZEL_EXECUTABLE}\""
   exit 1
 fi
+
+# Now we build everything.
+BUILD_DIR="$ROOT_DIR/build/"
+if [ ! -d "${BUILD_DIR}" ]; then
+  mkdir -p "${BUILD_DIR}"
+fi
+
+pushd "$BUILD_DIR"
+
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
