@@ -79,9 +79,9 @@ You can experiment with this behavior by running the following code.
     actor = Actor.remote()
 
     # The actor will be reconstructed up to 5 times. After that, methods will
-    # raise exceptions. The actor is reconstructed by rerunning its
-    # constructor. Methods that were executing when the actor died will also
-    # raise exceptions.
+    # always raise a `RayActorError` exception. The actor is reconstructed by
+    # rerunning its constructor. Methods that were sent or executing when the
+    # actor died will also raise a `RayActorError` exception.
     for _ in range(100):
         try:
             counter = ray.get(actor.increment_and_possibly_fail.remote())
@@ -90,23 +90,23 @@ You can experiment with this behavior by running the following code.
             print('FAILURE')
 
 By default, actor tasks execute with at-most-once semantics
-(`max_task_retries=0` in the `@ray.remote` decorator). This means that if an
+(``max_task_retries=0`` in the ``@ray.remote`` decorator). This means that if an
 actor task is submitted to an actor that is unreachable, Ray will report the
-error with `RayActorError`, a Python-level exception that is thrown when
-`ray.get` is called on the future returned by the task. Note that this
+error with ``RayActorError``, a Python-level exception that is thrown when
+``ray.get`` is called on the future returned by the task. Note that this
 exception may be thrown even though the task did indeed execute successfully.
 For example, this can happen if the actor dies immediately after executing the
 task.
 
 Ray also offers at-least-once execution semantics for actor tasks
-(`max_task_retries=-1` or `max_task_retries > 0`). This means that if an actor
-task is submitted to an actor that is unreachable, the system will
+(``max_task_retries=-1`` or ``max_task_retries > 0``). This means that if an
+actor task is submitted to an actor that is unreachable, the system will
 automatically retry the task until it receives a reply from the actor. With
-this option, the system will only throw a `RayActorError` to the application if
-one of the following occurs: The actor’s `max_restarts` limit has been exceeded
-and the actor cannot be restarted anymore.  The `max_task_retries` limit has
-been exceeded for this particular task. This limit can be set to infinity with
-`max_task_retries = -1`.
+this option, the system will only throw a ``RayActorError`` to the application
+if one of the following occurs: (1) the actor’s ``max_restarts`` limit has been
+exceeded and the actor cannot be restarted anymore, or (2) the
+``max_task_retries`` limit has been exceeded for this particular task. The
+limit can be set to infinity with ``max_task_retries = -1``.
 
 You can experiment with this behavior by running the following code.
 
@@ -153,7 +153,7 @@ For at-least-once actors, the system will still guarantee execution ordering
 according to the initial submission order. For example, any tasks submitted
 after a failed actor task will not execute on the actor until the failed actor
 task has been successfully retried. The system also will not attempt to
-re-execute any tasks that were executed before the failure.
+re-execute any tasks that executed successfully before the failure.
 
 At-least-once execution is best suited for read-only actors or actors with
 ephemeral state that does not need to be rebuilt after a failure. For actors
