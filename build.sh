@@ -41,7 +41,6 @@ fi
 RAY_BUILD_PYTHON="YES"
 RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
-BUILD_DIR=""
 
 # Parse options
 while [[ $# -gt 0 ]]; do
@@ -118,38 +117,32 @@ else
   exit 1
 fi
 
-# Now we build everything.
-BUILD_DIR="$ROOT_DIR/build/"
-if [ ! -d "${BUILD_DIR}" ]; then
-mkdir -p "${BUILD_DIR}"
-fi
-
-pushd "$BUILD_DIR"
-
-
-WORK_DIR=`mktemp -d`
-pushd $WORK_DIR
-git clone https://github.com/suquark/pickle5-backport
-pushd pickle5-backport
-  git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
-  CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
-  unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
-popd
-popd
-
-
-if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-            --target="$ROOT_DIR/python/ray/thirdparty_files"
-fi
-
-export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
-
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
+  if [[ ! -d "$ROOT_DIR/python/ray/pickle5_files/pickle5" ]]; then
+    # Install pickle5 if it's not installed.
+    TEMP_DIR=`mktemp -d`
+    pushd $TEMP_DIR
+    wget --quiet -O pickle5-backport.zip https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip
+    unzip pickle5-backport.zip
+    pushd pickle5-backport-8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
+      CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
+      unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+    popd
+    popd
+    rm -rf $TEMP_DIR
+  fi
+
+  if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+      CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+              --target="$ROOT_DIR/python/ray/thirdparty_files"
+  fi
+
+  export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+
   "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
 fi
 
