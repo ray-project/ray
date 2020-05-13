@@ -172,12 +172,6 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
-  /// Timestamp when the caller is created.
-  /// - if this worker is an actor, this is set to the time that the actor creation
-  ///   task starts execution;
-  /// - otherwise, it's set to the time that the current task starts execution.
-  int64_t caller_creation_timestamp_ms_ = 0;
-
   friend class CoreWorkerTest;
 };
 

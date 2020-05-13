@@ -205,7 +205,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  // request.set_caller_version(caller_creation_timestamp_ms_);
 
   request->set_intended_worker_id(queue.worker_id);
   RAY_CHECK(task_spec.ActorCounter() >= queue.caller_starts_at)
@@ -246,10 +245,6 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
   auto iter = client_queues_.find(actor_id);
   return (iter != client_queues_.end() && iter->second.rpc_client);
-}
-
-void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t timestamp) {
-  caller_creation_timestamp_ms_ = timestamp;
 }
 
 void CoreWorkerDirectTaskReceiver::Init(

@@ -1531,16 +1531,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    // For an actor, set the timestamp as the time its creation task starts execution.
-    SetCallerCreationTimestamp();
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
-  } else {
-    // For a non-actor task, set the timestamp as the time it starts execution.
-    SetCallerCreationTimestamp();
   }
 
   // Because we support concurrent actor calls, we need to update the
@@ -2054,11 +2049,6 @@ void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &mess
 void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
-}
-
-void CoreWorker::SetCallerCreationTimestamp() {
-  absl::MutexLock lock(&mutex_);
-  direct_actor_submitter_->SetCallerCreationTimestamp(current_sys_time_ms());
 }
 
 }  // namespace ray
