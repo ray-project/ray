@@ -70,9 +70,8 @@ class StoreClient {
   /// \param table_name The name of the table to be read.
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  virtual Status AsyncGetAll(
-      const std::string &table_name,
-      const ItemCallback<std::unordered_map<std::string, std::string>> &callback) = 0;
+  virtual Status AsyncGetAll(const std::string &table_name,
+                             const MapCallback<std::string, std::string> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

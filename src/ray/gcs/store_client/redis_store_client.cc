@@ -358,7 +358,7 @@ void RedisStoreClient::RedisScanner::MGetValues(
         auto value = reply->ReadAsStringArray();
         {
           absl::MutexLock lock(&mutex_);
-          // The 0 th element of mget_keys is MGET, so we start from the 1 th element.
+          // The 0 th element of mget_keys is "MGET", so we start from the 1 th element.
           for (int index = 0; index < value.size(); ++index) {
             key_value_map_[GetKeyFromRedisKey(mget_keys[index + 1], table_name_)] =
                 value[index];

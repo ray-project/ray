@@ -58,7 +58,7 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const MapCallback<std::string, std::string> &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   std::unordered_map<std::string, std::string> result;

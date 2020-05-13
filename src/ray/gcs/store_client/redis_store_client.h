@@ -41,8 +41,7 @@ class RedisStoreClient : public StoreClient {
                   const OptionalItemCallback<std::string> &callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const ItemCallback<std::unordered_map<std::string, std::string>>
-                         &callback) override;
+                     const MapCallback<std::string, std::string> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
@@ -65,8 +64,7 @@ class RedisStoreClient : public StoreClient {
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
                           std::string table_name, std::string match_pattern);
 
-    Status ScanKeysAndValues(
-        const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
+    Status ScanKeysAndValues(const MapCallback<std::string, std::string> &callback);
 
     Status ScanKeys(const MultiItemCallback<std::string> &callback);
 
@@ -76,9 +74,8 @@ class RedisStoreClient : public StoreClient {
     void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
-    void MGetValues(
-        const std::vector<std::string> &keys,
-        const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
+    void MGetValues(const std::vector<std::string> &keys,
+                    const MapCallback<std::string, std::string> &callback);
 
     std::string table_name_;
 

@@ -53,6 +53,11 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
 
+/// This callback is used to receive multiple key-value items from GCS.
+/// \param result The key-value items returned by GCS.
+template <typename Key, typename Value>
+using MapCallback = std::function<void(const std::unordered_map<Key, Value> &result)>;
+
 }  // namespace gcs
 
 }  // namespace ray
