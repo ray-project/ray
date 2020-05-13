@@ -10,7 +10,7 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse, RayletInfoResponse } from "../../../api";
+import { NodeInfoResponse, RayletInfoResponse, NodeInfoResponseWorker } from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
@@ -50,7 +50,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type Props = {
   node: Node;
-  clusterWorkerPids: Set<number>;
+  clusterWorkers: Array<NodeInfoResponseWorker>;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
@@ -88,6 +88,7 @@ class NodeRowGroup extends React.Component<
       classes,
       node,
       raylet,
+      clusterWorkers,
       logCounts,
       errorCounts,
       setLogDialog,
@@ -145,7 +146,7 @@ class NodeRowGroup extends React.Component<
                 </TableCell>
               </TableRow>
             )}
-            {node.workers.map((worker, index: number) => (
+            {clusterWorkers.map((worker, index: number) => (
               <TableRow hover key={index}>
                 <TableCell className={classes.cell} />
                 {features.map(({ WorkerFeature }, index) => (

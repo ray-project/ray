@@ -17,7 +17,7 @@ import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
-import { RayletInfoResponse, NodeInfoResponse } from '../../../../../../../../bazel-ray/python/ray/dashboard/client/src/api';
+import { RayletInfoResponse, NodeInfoResponse, NodeInfoResponseWorker } from '../../../../../../../../bazel-ray/python/ray/dashboard/client/src/api';
 
 function clusterWorkerPids(rayletInfo: RayletInfoResponse): Map<string, Set<number>> {
   // Given a Raylet response, this extracts, per node, all the worker pids registered
@@ -31,19 +31,6 @@ function clusterWorkerPids(rayletInfo: RayletInfoResponse): Map<string, Set<numb
     nodeMap.set(nodeIp, workerPids);
   }
   return nodeMap;
-}
-
-function filterDataFromOtherClusters(rayletInfo: RayletInfoResponse, nodeInfo: NodeInfoResponse) {
-  // In our current state, the NodeInfoResponse does not filter out data from workers that do not
-  // belong to the cluster that this dashboard is reporting for. Thus, we use the data from the
-  // Raylet to filter out workers whose process ids are not part of this cluster.
-  const nodeIpToWorkerPids = clusterWorkerPids(rayletInfo);
-  nodeInfo.clients = nodeInfo.clients.map(client => {
-    const allowedPids = nodeIpToWorkerPids.get(client.ip)
-    const filtered_workers = client.workers.filter(worker => worker.pid in allowedPids)
-    client.workers = filtered_workers
-    return client
-  })
 }
 
 const styles = (theme: Theme) =>
@@ -101,7 +88,6 @@ class NodeInfo extends React.Component<
     if (nodeInfo === null || rayletInfo === null) {
       return <Typography color="textSecondary">Loading...</Typography>;
     }
-    const workerPidsByNode: Map<string, Set<number>> = clusterWorkerPids(rayletInfo);
 
     const logCounts: {
       [ip: string]: {
@@ -120,36 +106,25 @@ class NodeInfo extends React.Component<
         total: number;
       };
     } = {};
-    console.log('len', nodeInfo.clients.length)
+
+    const clusterWorkerPidsByIp = clusterWorkerPids(rayletInfo)
+
     // Initialize inner structure of the count objects
     for (const client of nodeInfo.clients) {
-      const allowedPids = workerPidsByNode.get(client.ip) || new Set();
-      logCounts[client.ip] = { perWorker: {}, total: 0 };
-      errorCounts[client.ip] = { perWorker: {}, total: 0 };
-      for (const worker of client.workers) {
-        if (worker.pid in allowedPids) {
-          logCounts[client.ip].perWorker[worker.pid] = 0;
-          errorCounts[client.ip].perWorker[worker.pid] = 0;
-        }
+      const clusterWorkerPids = clusterWorkerPidsByIp.get(client.ip);
+      if (!clusterWorkerPids) continue;
+      const filteredLogEntries = Object.entries(nodeInfo.log_counts[client.ip] || {})
+          .filter(([pid, _]) => pid in clusterWorkerPids)
+      const totalLogEntries = filteredLogEntries.reduce((acc, [_, count]) => acc + count, 0)
+      if (filteredLogEntries.length) {
+        logCounts[client.ip] = { perWorker: Object.fromEntries(filteredLogEntries), total: totalLogEntries };
       }
-    }
 
-
-    for (const ip of Object.keys(nodeInfo.log_counts)) {
-      if (ip in logCounts) {
-        for (const [pid, count] of Object.entries(nodeInfo.log_counts[ip])) {
-          logCounts[ip].perWorker[pid] = count;
-          logCounts[ip].total += count;
-        }
-      }
-    }
-
-    for (const ip of Object.keys(nodeInfo.error_counts)) {
-      if (ip in errorCounts) {
-        for (const [pid, count] of Object.entries(nodeInfo.error_counts[ip])) {
-          errorCounts[ip].perWorker[pid] = count;
-          errorCounts[ip].total += count;
-        }
+      const filteredErrEntries = Object.entries(nodeInfo.error_counts[client.ip] || {})
+          .filter(([pid, _]) => pid in clusterWorkerPids)
+      const totalErrEntries = filteredErrEntries.reduce((acc, [_, count]) => acc + count, 0)
+      if (filteredErrEntries.length) {
+        errorCounts[client.ip] = { perWorker: Object.fromEntries(filteredErrEntries), total: totalErrEntries };
       }
     }
 
@@ -175,8 +150,8 @@ class NodeInfo extends React.Component<
             {nodeInfo.clients.map((client) => (
               <NodeRowGroup
                 key={client.ip}
+                clusterWorkers={client.workers.filter(worker => worker.pid in (clusterWorkerPidsByIp.get(client.ip) || new Set()))}
                 node={client}
-                clusterWorkerPids={workerPidsByNode.get(client.ip) || new Set()}
                 raylet={
                   client.ip in rayletInfo.nodes
                     ? rayletInfo.nodes[client.ip]
