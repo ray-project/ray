@@ -402,6 +402,10 @@ void RedisStoreClient::RedisScanner::MGetValues(
   }
 }
 
+std::string RedisStoreClient::RedisScanner::GetKey(const std::string &full_key) const {
+  return full_key.substr(table_name_.size(), full_key.size() - table_name_.size());
+}
+
 }  // namespace gcs
 
 }  // namespace ray
