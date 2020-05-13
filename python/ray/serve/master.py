@@ -127,7 +127,7 @@ class ServeMaster:
                 detached=True,
                 name=SERVE_ROUTER_NAME,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_restarts=-1).remote(**router_kwargs)
+                max_restarts=-1).remote(policy, policy_kwargs)
 
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
