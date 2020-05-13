@@ -46,16 +46,14 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(
     const MultiItemCallback<std::pair<Key, Data>> &callback) {
-  auto on_done = [callback](
-                     const Status &status,
-                     const std::vector<std::pair<std::string, std::string>> &result) {
+  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
     std::vector<std::pair<Key, Data>> values;
     for (auto &item : result) {
       Data data;
       data.ParseFromString(item.second);
       values.emplace_back(std::move(std::make_pair(Key::FromBinary(item.first), data)));
     }
-    callback(status, values);
+    callback(Status::OK(), values);
   };
   return store_client_->AsyncGetAll(table_name_, on_done);
 }
