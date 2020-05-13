@@ -156,7 +156,7 @@ class MixInReplay:
 
     def __call__(self, sample_batch):
         # Put in replay buffer if enabled.
-        self.buffer.add_batch(sample_batch)
+        self.replay_buffer.add_batch(sample_batch)
 
         # Proportional replay.
         output_batches = [sample_batch]
