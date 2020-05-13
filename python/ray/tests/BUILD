@@ -56,9 +56,25 @@ py_test(
 )
 
 py_test(
+    name = "test_serialization",
+    size = "small",
+    srcs = ["test_serialization.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_basic",
     size = "medium",
     srcs = ["test_basic.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_basic_2",
+    size = "medium",
+    srcs = ["test_basic_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -199,6 +215,14 @@ py_test(
     name = "test_failure",
     size = "medium",
     srcs = ["test_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_reconstruction",
+    size = "medium",
+    srcs = ["test_reconstruction.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -403,6 +427,14 @@ py_test(
     name = "test_numba",
     size = "small",
     srcs = ["test_numba.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_cancel",
+    size = "medium",
+    srcs = ["test_cancel.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

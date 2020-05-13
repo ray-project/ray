@@ -5,10 +5,10 @@ import ray.cloudpickle as pickle
 
 class RequestMetadata:
     """
-    Request Arguments required for enqueuing a request to the service
-    queue.
+    Request arguments required for enqueuing a request to the endpoint queue.
+
     Args:
-        service(str): A registered service endpoint.
+        endpoint(str): A registered endpoint.
         request_context(TaskContext): Context of a request.
         request_slo_ms(float): Expected time for the query to get
             completed.
@@ -17,20 +17,20 @@ class RequestMetadata:
     """
 
     def __init__(self,
-                 service,
+                 endpoint,
                  request_context,
                  relative_slo_ms=None,
                  absolute_slo_ms=None,
                  call_method="__call__"):
 
-        self.service = service
+        self.endpoint = endpoint
         self.request_context = request_context
         self.relative_slo_ms = relative_slo_ms
         self.absolute_slo_ms = absolute_slo_ms
         self.call_method = call_method
 
     def adjust_relative_slo_ms(self) -> float:
-        """Normalize the input latency objective to absoluate timestamp.
+        """Normalize the input latency objective to absolute timestamp.
 
         """
         slo_ms = self.relative_slo_ms

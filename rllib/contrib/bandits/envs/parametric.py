@@ -17,10 +17,10 @@ DEFAULT_RECO_CONFIG = {
 class ParametricItemRecoEnv(gym.Env):
     """A recommendation environment which generates items with visible features
      randomly (parametric actions).
-    The environment can be configured to be multi-user, i.e. different model
+    The environment can be configured to be multi-user, i.e. different models
     will be learned independently for each user.
     To enable slate recommendation, the `slate_size` config parameter can be
-    set as > 1 .
+    set as > 1.
     """
 
     def __init__(self, config=None):

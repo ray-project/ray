@@ -70,10 +70,11 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   args.emplace_back(TaskArg::PassByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-  ActorCreationOptions actor_options{max_reconstructions,
-                                     /*max_concurrency*/ 1, resources, resources, {},
-                                     /*is_detached*/ false,
-                                     /*is_asyncio*/ false};
+  std::string name = "";
+  ActorCreationOptions actor_options{
+      max_reconstructions,
+      /*max_concurrency*/ 1, resources, resources,           {},
+      /*is_detached=*/false, name,      /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
@@ -263,6 +264,7 @@ class CoreWorkerTest : public ::testing::Test {
           true,                           // install_failure_signal_handler
           "127.0.0.1",                    // node_ip_address
           node_manager_port,              // node_manager_port
+          "127.0.0.1",                    // raylet_ip_address
           "core_worker_test",             // driver_name
           "",                             // stdout_file
           "",                             // stderr_file
@@ -270,6 +272,7 @@ class CoreWorkerTest : public ::testing::Test {
           nullptr,                        // check_signals
           nullptr,                        // gc_collect
           nullptr,                        // get_lang_stack
+          nullptr,                        // kill_main
           true,                           // ref_counting_enabled
           false,                          // is_local_mode
           1,                              // num_workers
@@ -375,8 +378,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(
-          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0);
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -640,13 +642,15 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
+  std::string name = "";
   ActorCreationOptions actor_options{0,
                                      1,
                                      resources,
                                      resources,
                                      {},
-                                     /*is_detached*/ false,
-                                     /*is_asyncio*/ false};
+                                     /*is_detached=*/false,
+                                     name,
+                                     /*is_asyncio=*/false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),

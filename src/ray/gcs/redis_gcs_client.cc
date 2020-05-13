@@ -70,7 +70,11 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_failure_table_.reset(new WorkerFailureTable(shard_contexts, this));
 
-  actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
+  if (RayConfig::instance().gcs_service_enabled()) {
+    actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  } else {
+    actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
+  }
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));

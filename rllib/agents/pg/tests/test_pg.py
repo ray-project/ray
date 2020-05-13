@@ -7,7 +7,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import check, fc, framework_iterator
+from ray.rllib.utils import check, fc, framework_iterator, check_compute_action
 
 
 class TestPG(unittest.TestCase):
@@ -25,6 +25,7 @@ class TestPG(unittest.TestCase):
                 "use_exec_api": True
             })
         assert isinstance(trainer.train(), dict)
+        check_compute_action(trainer)
 
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with both frameworks."""
@@ -36,6 +37,7 @@ class TestPG(unittest.TestCase):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+            check_compute_action(trainer, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -91,14 +93,24 @@ class TestPG(unittest.TestCase):
                                train_batch=train_batch)
 
             # Calculate expected results.
-            expected_logits = fc(
-                fc(train_batch[SampleBatch.CUR_OBS],
-                   vars[0],
-                   vars[1],
-                   framework=fw),
-                vars[2],
-                vars[3],
-                framework=fw)
+            if fw != "torch":
+                expected_logits = fc(
+                    fc(train_batch[SampleBatch.CUR_OBS],
+                       vars[0],
+                       vars[1],
+                       framework=fw),
+                    vars[2],
+                    vars[3],
+                    framework=fw)
+            else:
+                expected_logits = fc(
+                    fc(train_batch[SampleBatch.CUR_OBS],
+                       vars[2],
+                       vars[3],
+                       framework=fw),
+                    vars[0],
+                    vars[1],
+                    framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
                 train_batch[SampleBatch.ACTIONS])
             if sess:

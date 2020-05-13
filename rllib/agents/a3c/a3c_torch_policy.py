@@ -55,12 +55,17 @@ def model_value_predictions(policy, input_dict, state_batches, model,
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 
-def apply_grad_clipping(policy):
+def apply_grad_clipping(policy, optimizer, loss):
     info = {}
     if policy.config["grad_clip"]:
-        total_norm = nn.utils.clip_grad_norm_(policy.model.parameters(),
-                                              policy.config["grad_clip"])
-        info["grad_gnorm"] = total_norm
+        for param_group in optimizer.param_groups:
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                info["grad_gnorm"] = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
     return info
 
 

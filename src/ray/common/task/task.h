@@ -17,6 +17,8 @@ typedef std::function<void(const std::shared_ptr<void>, const std::string &, int
 typedef std::function<void(const ClientID &, const std::string &, int)>
     SpillbackTaskCallback;
 
+typedef std::function<void()> CancelTaskCallback;
+
 /// \class Task
 ///
 /// A Task represents a Ray task and a specification of its execution (e.g.,
@@ -56,6 +58,11 @@ class Task {
     on_spillback_ = callback;
   }
 
+  /// Override cancellation behaviour.
+  void OnCancellationInstead(const CancelTaskCallback &callback) {
+    on_cancellation_ = callback;
+  }
+
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
   ///
@@ -86,6 +93,9 @@ class Task {
   /// Returns the override spillback task callback, or nullptr.
   const SpillbackTaskCallback &OnSpillback() const { return on_spillback_; }
 
+  /// Returns the cancellation task callback, or nullptr.
+  const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
+
   std::string DebugString() const;
 
  private:
@@ -109,6 +119,9 @@ class Task {
   /// For direct task calls, overrides the spillback behaviour to send an RPC
   /// back to the submitting worker.
   mutable SpillbackTaskCallback on_spillback_ = nullptr;
+  /// For direct task calls, overrides the cancellation behaviour to send an
+  /// RPC back to the submitting worker.
+  mutable CancelTaskCallback on_cancellation_ = nullptr;
 };
 
 }  // namespace ray

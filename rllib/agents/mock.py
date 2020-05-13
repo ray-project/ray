@@ -61,7 +61,7 @@ class _MockTrainer(Trainer):
         self.info = info
         return info
 
-    def get_info(self):
+    def get_info(self, sess=None):
         return self.info
 
 

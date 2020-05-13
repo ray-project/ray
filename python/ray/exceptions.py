@@ -16,6 +16,23 @@ class RayConnectionError(RayError):
     pass
 
 
+class RayCancellationError(RayError):
+    """Raised when this task is cancelled.
+
+    Attributes:
+        task_id (TaskID): The TaskID of the function that was directly
+            cancelled.
+    """
+
+    def __init__(self, task_id=None):
+        self.task_id = task_id
+
+    def __str__(self):
+        if self.task_id is None:
+            return "This task or its dependency was cancelled by"
+        return "Task: " + str(self.task_id) + " was cancelled"
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
@@ -142,7 +159,7 @@ class ObjectStoreFullError(RayError):
             "You can also try setting an option to fallback to LRU eviction "
             "when the object store is full by calling "
             "ray.init(lru_evict=True). See also: "
-            "https://ray.readthedocs.io/en/latest/memory-management.html.")
+            "https://docs.ray.io/en/latest/memory-management.html.")
 
 
 class UnreconstructableError(RayError):
@@ -167,7 +184,7 @@ class UnreconstructableError(RayError):
             "or setting object store limits with "
             "ray.remote(object_store_memory=<bytes>). See also: {}".format(
                 self.object_id.hex(),
-                "https://ray.readthedocs.io/en/latest/memory-management.html"))
+                "https://docs.ray.io/en/latest/memory-management.html"))
 
 
 class RayTimeoutError(RayError):

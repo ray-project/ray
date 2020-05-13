@@ -150,6 +150,34 @@ the dashboard. For example,
   ======================================================================
 
 
+
+Installing Ray on Arch Linux
+----------------------------
+
+Note: Installing Ray on Arch Linux is not tested by the Project Ray developers.
+
+Ray is available on Arch Linux via the Arch User Repository (`AUR`_) as
+``python-ray``.
+
+You can manually install the package by following the instructions on the
+`Arch Wiki`_ or use an `AUR helper`_ like `yay`_ (recommended for ease of install)
+as follows:
+
+.. code-block:: bash
+
+  yay -S python-ray
+
+To discuss any issues related to this package refer to the comments section
+on the AUR page of ``python-ray`` `here`_.
+
+.. _`AUR`: https://wiki.archlinux.org/index.php/Arch_User_Repository
+.. _`Arch Wiki`: https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages
+.. _`AUR helper`: https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages
+.. _`yay`: https://aur.archlinux.org/packages/yay
+.. _`here`: https://aur.archlinux.org/packages/python-ray
+
+
+
 Installing Ray with Anaconda
 ----------------------------
 

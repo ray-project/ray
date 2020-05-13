@@ -1,5 +1,7 @@
-Schedulers (tune.schedulers)
-============================
+.. _schedulers-ref:
+
+Trial Schedulers (tune.schedulers)
+==================================
 
 FIFOScheduler
 ~~~~~~~~~~~~~

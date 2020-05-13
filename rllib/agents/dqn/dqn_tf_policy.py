@@ -184,16 +184,16 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(policy,
-                                      q_model,
+                                      model,
                                       obs_batch,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = compute_q_values(policy, q_model, obs_batch, explore)
+    q_vals = compute_q_values(policy, model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = q_model.variables()
+    policy.q_func_vars = model.variables()
     return policy.q_values, Categorical, []  # state-out
 
 

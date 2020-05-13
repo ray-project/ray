@@ -31,6 +31,8 @@ if [[ "$unamestr" == "Linux" ]]; then
   PARALLEL=1
 elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
+elif [[ "${OSTYPE}" == "msys" ]]; then
+  PARALLEL="${NUMBER_OF_PROCESSORS-1}"
 else
   echo "Unrecognized platform."
   exit 1
@@ -106,8 +108,15 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 
 # Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
 # always put the bazel executable on the PATH.
-BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
-echo "Using Bazel executable $BAZEL_EXECUTABLE."
+if [ -z "${BAZEL_EXECUTABLE-}" ]; then
+  BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
+fi
+if [ -f "${BAZEL_EXECUTABLE}" ]; then
+  echo "Using Bazel executable $BAZEL_EXECUTABLE."
+else
+  echo "Bazel not found: BAZEL_EXECUTABLE=\"${BAZEL_EXECUTABLE}\""
+  exit 1
+fi
 
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
@@ -118,19 +127,27 @@ fi
 pushd "$BUILD_DIR"
 
 
-WORK_DIR=`mktemp -d`
-pushd $WORK_DIR
+need_pickle5_backport=0
+PYTHON_REVISION="$("$PYTHON_EXECUTABLE" -s -c "import sys; print('{}.{}.{}'.format(*sys.version_info))")"
+case "${PYTHON_REVISION}.0" in
+3\.[5-7].*|3.8.[0-1].*) need_pickle5_backport=1;;
+esac
+
+if [ 0 -ne "${need_pickle5_backport}" ]; then
+WORK_DIR="$(mktemp -d)"
+pushd "${WORK_DIR}"
 git clone https://github.com/suquark/pickle5-backport
 pushd pickle5-backport
   git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
-  "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-  unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+  CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
+  unzip -q -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
 popd
 popd
+fi
 
 
 if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+    CC=gcc "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
             --target="$ROOT_DIR/python/ray/thirdparty_files"
 fi
 

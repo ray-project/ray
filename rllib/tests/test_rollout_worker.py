@@ -1,6 +1,7 @@
 from collections import Counter
 import gym
 import numpy as np
+import os
 import random
 import time
 import unittest
@@ -12,13 +13,13 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.policy.tests.test_policy import TestPolicy
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
-class MockPolicy(TestPolicy):
+class MockPolicy(RandomPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -28,7 +29,7 @@ class MockPolicy(TestPolicy):
                         explore=None,
                         timestep=None,
                         **kwargs):
-        return [random.choice([0, 1])] * len(obs_batch), [], {}
+        return np.array([random.choice([0, 1])] * len(obs_batch)), [], {}
 
     def postprocess_trajectory(self,
                                batch,
@@ -39,7 +40,7 @@ class MockPolicy(TestPolicy):
             batch, 100.0, 0.9, use_gae=False, use_critic=False)
 
 
-class BadPolicy(MockPolicy):
+class BadPolicy(RandomPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -487,6 +488,21 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
+
+    def test_extra_python_envs(self):
+        extra_envs = {"env_key_1": "env_value_1", "env_key_2": "env_value_2"}
+        self.assertFalse("env_key_1" in os.environ)
+        self.assertFalse("env_key_2" in os.environ)
+        RolloutWorker(
+            env_creator=lambda _: MockEnv(10),
+            policy=MockPolicy,
+            extra_python_environs=extra_envs)
+        self.assertTrue("env_key_1" in os.environ)
+        self.assertTrue("env_key_2" in os.environ)
+
+        # reset to original
+        del os.environ["env_key_1"]
+        del os.environ["env_key_2"]
 
 
 if __name__ == "__main__":

@@ -5,12 +5,15 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer
+from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,11 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # In multi-agent mode, whether to replay experiences from the same time
+    # step for all policies. This is required for MADDPG.
+    "multiagent_sync_replay": False,
+    # Callback to run before learning on a multi-agent batch of experiences.
+    "before_learn_on_batch": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -157,7 +165,7 @@ def make_policy_optimizer(workers, config):
         **kwargs)
 
 
-def validate_config_and_setup_param_noise(config):
+def validate_config(config):
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -295,24 +303,62 @@ def update_target_if_needed(trainer, fetches):
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
-    local_replay_buffer = ReplayBuffer(config["buffer_size"])
+    if config.get("prioritized_replay"):
+        prio_args = {
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        }
+    else:
+        prio_args = {}
+
+    local_replay_buffer = LocalReplayBuffer(
+        num_shards=1,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        replay_batch_size=config["train_batch_size"],
+        multiagent_sync_replay=config.get("multiagent_sync_replay"),
+        **prio_args)
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our local replay buffer. Calling
     # next() on store_op drives this.
-    store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
+    store_op = rollouts.for_each(
+        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+
+    def update_prio(item):
+        samples, info_dict = item
+        if config.get("prioritized_replay"):
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error",
+                                    info[LEARNER_STATS_KEY].get("td_error"))
+                prio_dict[policy_id] = (samples.policy_batches[policy_id]
+                                        .data.get("batch_indexes"), td_error)
+            local_replay_buffer.update_priorities(prio_dict)
+        return info_dict
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
-    replay_op = LocalReplay(local_replay_buffer, config["train_batch_size"]) \
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+    replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
         .for_each(TrainOneStep(workers)) \
+        .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently([store_op, replay_op], mode="round_robin")
+    # Alternate deterministically between (1) and (2). Only return the output
+    # of (2) since training metrics are not available until (2) runs.
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 
@@ -339,7 +385,7 @@ GenericOffPolicyTrainer = build_trainer(
     default_policy=None,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config_and_setup_param_noise,
+    validate_config=validate_config,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,

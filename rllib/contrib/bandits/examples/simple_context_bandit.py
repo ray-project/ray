@@ -1,16 +1,20 @@
 """A very simple contextual bandit example with 3 arms."""
 
 import argparse
-import random
-import numpy as np
 import gym
 from gym.spaces import Discrete, Box
+import numpy as np
+import random
 
 from ray import tune
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop-at-reward", type=float, default=10)
 parser.add_argument("--run", type=str, default="contrib/LinUCB")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=float, default=10.0)
 
 
 class SimpleContextualBandit(gym.Env):
@@ -37,11 +41,18 @@ class SimpleContextualBandit(gym.Env):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    tune.run(
-        args.run,
-        stop={
-            "episode_reward_mean": args.stop_at_reward,
-        },
-        config={
-            "env": SimpleContextualBandit,
-        })
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    config = {
+        "env": SimpleContextualBandit,
+    }
+
+    results = tune.run(args.run, config=config, stop=stop)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)

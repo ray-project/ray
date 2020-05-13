@@ -125,18 +125,6 @@ class RayServeHandle:
                         backend_tag, list(traffic_policy.keys()))
             return backend_tag
 
-    def scale(self, new_num_replicas, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.num_replicas = new_num_replicas
-        serve.set_backend_config(backend_tag, config)
-
-    def set_max_batch_size(self, new_max_batch_size, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.max_batch_size = new_max_batch_size
-        serve.set_backend_config(backend_tag, config)
-
     def __repr__(self):
         return """
 RayServeHandle(

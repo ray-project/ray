@@ -87,9 +87,9 @@ class DQNTorchModel(TorchModelV2):
             advantage_module.add_module("A", nn.Linear(ins, action_space.n))
             value_module.add_module("V", nn.Linear(ins, 1))
         # Non-dueling:
-        # Q-value layer (use Advantage module's outputs as Q-values).
+        # Q-value layer (use main module's outputs as Q-values).
         else:
-            advantage_module.add_module("Q", nn.Linear(ins, action_space.n))
+            pass
 
         self.advantage_module = advantage_module
         self.value_module = value_module
@@ -125,8 +125,10 @@ class DQNTorchModel(TorchModelV2):
         """
         in_size = int(action_in.shape[1])
 
-        epsilon_in = torch.normal(size=[in_size])
-        epsilon_out = torch.normal(size=[out_size])
+        epsilon_in = torch.normal(
+            mean=torch.zeros([in_size]), std=torch.ones([in_size]))
+        epsilon_out = torch.normal(
+            mean=torch.zeros([out_size]), std=torch.ones([out_size]))
         epsilon_in = self._f_epsilon(epsilon_in)
         epsilon_out = self._f_epsilon(epsilon_out)
         epsilon_w = torch.matmul(

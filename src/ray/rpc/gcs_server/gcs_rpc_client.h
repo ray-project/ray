@@ -96,8 +96,19 @@ class GcsRpcClient {
   /// Mark job as finished to gcs server.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_, )
 
+  /// Create actor via GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
+
   /// Get actor data from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_, )
+
+  /// Get actor data from GCS Service by name.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetNamedActorInfo,
+                             actor_info_grpc_client_, )
+
+  /// Get all actor data from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
+                             actor_info_grpc_client_, )
 
   /// Register an actor to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
@@ -166,6 +177,9 @@ class GcsRpcClient {
 
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
+
+  /// Get task lease information from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTaskLease, task_info_grpc_client_, )
 
   /// Attempt task reconstruction to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AttemptTaskReconstruction,

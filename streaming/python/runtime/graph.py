@@ -53,7 +53,9 @@ class ExecutionEdge:
         self.src_node_id = edge_pb.src_node_id
         self.target_node_id = edge_pb.target_node_id
         partition_bytes = edge_pb.partition
-        if language == Language.PYTHON:
+        # Sink node doesn't have partition function,
+        # so we only deserialize partition_bytes when it's not None or empty
+        if language == Language.PYTHON and partition_bytes:
             self.partition = partition.load_partition(partition_bytes)
 
 

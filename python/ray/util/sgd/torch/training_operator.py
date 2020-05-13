@@ -1,4 +1,3 @@
-import collections
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -7,6 +6,11 @@ from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
+
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 try:
     from apex import amp
@@ -25,7 +29,7 @@ except ImportError:
 
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
-    return isinstance(component, collections.Iterable) and len(component) > 1
+    return isinstance(component, Iterable) and len(component) > 1
 
 
 class TrainingOperator:
@@ -66,19 +70,24 @@ class TrainingOperator:
                  use_tqdm=False):
         # You are not expected to override this method.
         self._models = models  # List of models
-        assert isinstance(models, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(models)))
+        assert isinstance(
+            models,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(models)))
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(optimizers)))
+        assert isinstance(
+            optimizers,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(optimizers)))
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(schedulers, collections.Iterable), (
-                "Components need to be iterable. Got: {}".format(
+            assert isinstance(
+                schedulers,
+                Iterable), ("Components need to be iterable. Got: {}".format(
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
@@ -203,8 +212,9 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (features, labels) format. If using amp/fp16
-        training, it will also scale the loss automatically.
+        are in (\*features, labels) format. So we also support multiple inputs
+        model. If using amp/fp16 training, it will also scale the loss
+        automatically.
 
         You can provide custom loss metrics and training operations if you
         override this method. If overriding this method, you can access model,
@@ -228,15 +238,18 @@ class TrainingOperator:
                 calculate averages.
 
         """
-        features, target = batch
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
         # Create non_blocking tensors for distributed training
-        if torch.cuda.is_available():
-            features = features.cuda(non_blocking=True)
+        if self.use_gpu:
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = self.model(features)
+            output = self.model(*features)
             loss = self.criterion(output, target)
 
         # Compute gradients in a backward pass.
@@ -252,7 +265,7 @@ class TrainingOperator:
         with self.timers.record("apply"):
             self.optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
@@ -295,6 +308,10 @@ class TrainingOperator:
 
         You can override this method to provide arbitrary metrics.
 
+        Same as ``train_batch``, this method implementation assumes that
+        batches are in (\*features, labels) format by default. So we also
+        support multiple inputs model.
+
         Args:
             batch: One item of the validation iterator.
             batch_info (dict): Contains information per batch from
@@ -308,15 +325,18 @@ class TrainingOperator:
                 by default, ``validate`` uses "num_samples" to
                 calculate averages.
         """
-        features, target = batch
-        if torch.cuda.is_available():
-            features = features.cuda(non_blocking=True)
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
+        if self.use_gpu:
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = self.model(features)
+            output = self.model(*features)
             loss = self.criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
@@ -403,6 +423,11 @@ class TrainingOperator:
     def schedulers(self):
         """List of schedulers created by the ``scheduler_creator``."""
         return self._schedulers
+
+    @property
+    def use_gpu(self):
+        """Returns True if cuda is available and use_gpu is True."""
+        return self._use_gpu
 
     @property
     def use_fp16(self):

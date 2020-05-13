@@ -1,4 +1,3 @@
-blist
 click
 colorama
 filelock
@@ -20,6 +19,7 @@ sphinx-click
 sphinx-copybutton
 sphinx-gallery
 sphinx-jsonschema
+sphinx-version-warning
 sphinx_rtd_theme
 tabulate
 uvicorn

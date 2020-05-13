@@ -7,13 +7,13 @@ import logging
 import numpy as np
 
 from ray.util.debug import log_once
-from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.space_utils import flatten_to_single_ndarray
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -241,7 +241,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(action_space.sample())]),
+                    [flatten_to_single_ndarray(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
 
@@ -580,8 +580,6 @@ def build_eager_tf_policy(name,
 
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
-            action_dtype, action_shape = ModelCatalog.get_action_shape(
-                self.action_space)
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
                     [self.observation_space.sample()]),

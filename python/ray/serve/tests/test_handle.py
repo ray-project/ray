@@ -19,11 +19,11 @@ def test_handle_in_endpoint(serve_instance):
             return ray.get(self.handle.remote())
 
     serve.create_endpoint("endpoint1", "/endpoint1", methods=["GET", "POST"])
-    serve.create_backend(Endpoint1, "endpoint1:v0")
-    serve.link("endpoint1", "endpoint1:v0")
+    serve.create_backend("endpoint1:v0", Endpoint1)
+    serve.set_traffic("endpoint1", {"endpoint1:v0": 1.0})
 
     serve.create_endpoint("endpoint2", "/endpoint2", methods=["GET", "POST"])
-    serve.create_backend(Endpoint2, "endpoint2:v0")
-    serve.link("endpoint2", "endpoint2:v0")
+    serve.create_backend("endpoint2:v0", Endpoint2)
+    serve.set_traffic("endpoint2", {"endpoint2:v0": 1.0})
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"

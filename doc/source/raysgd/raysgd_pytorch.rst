@@ -610,8 +610,8 @@ You can see more details in the `benchmarking README <https://github.com/ray-pro
 DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
 
 
-Debugging
----------
+Debugging/Tips
+--------------
 
 Here's some simple tips on how to debug the TorchTrainer.
 
@@ -657,6 +657,32 @@ Try using a profiler. Either use:
 
 or use `Python profiling <https://docs.python.org/3/library/debug.html>`_.
 
+**My creator functions download data, and I don't want multiple processes downloading to the same path at once.**
+
+Use ``filelock`` within the creator functions to create locks for critical regions. For example:
+
+.. code-block:: python
+
+    import os
+    import tempfile
+    from filelock import FileLock
+
+    def create_dataset(config):
+        dataset_path = config["dataset_path"]
+
+        # Create a critical region of the code
+        # This will take a longer amount of time to download the data at first.
+        # Other processes will block at the ``with`` statement.
+        # After downloading, this code block becomes very fast.
+        with FileLock(os.path.join(tempfile.gettempdir(), "download_data.lock")):
+            if not os.path.exists(dataset_path):
+                download_data(dataset_path)
+
+        # load_data is assumed to safely support concurrent reads.
+        data = load_data(dataset_path)
+        return DataLoader(data)
+
+
 **I get a 'socket timeout' error during training.**
 
 Try increasing the length of the NCCL timeout. The current timeout is 10 seconds.
@@ -682,17 +708,26 @@ TorchTrainer Examples
 Here are some examples of using RaySGD for training PyTorch models. If you'd like
 to contribute an example, feel free to create a `pull request here <https://github.com/ray-project/ray/>`_.
 
-- `Torch training example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/train_example.py>`__:
+- `Torch training example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/train_example.py>`__
    Simple example of using Ray's TorchTrainer.
 
-- `TorchTrainer and RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`__:
+- `TorchTrainer and RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`__
    Simple example of hyperparameter tuning with Ray's TorchTrainer.
 
-- `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__:
+- `Semantic Segmentation example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/segmentation/train_segmentation.py>`__
+   Fine-tuning a ResNet50 model on VOC with Batch Norm.
+
+- `Huggingface Transformer GLUE fine tuning example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/transformers/transformers_example.py>`__
+   Fine-tuning a pre-trained Transformer model on GLUE tasks. Based off of the `huggingface/transformers <https://github.com/huggingface/transformers/blob/master/examples/>`_ ``run_glue.py`` example.
+
+- `ImageNet Models example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/image_models/train.py>`__
+   Training state-of-the-art ImageNet models.
+
+- `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py>`__
    Training a ResNet18 model on CIFAR10.
 
-- `CIFAR10 RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_pbt.py>`__:
+- `CIFAR10 RayTune example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/cifar_pytorch_pbt.py>`__
    Tuning a ResNet18 model on CIFAR10 with Population-based training on RayTune.
 
-- `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__:
+- `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.

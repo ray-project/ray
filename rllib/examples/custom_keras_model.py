@@ -17,7 +17,7 @@ tf = try_import_tf()
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
-parser.add_argument("--use_vision_network", action="store_true")
+parser.add_argument("--use-vision-network", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 
 

@@ -1,8 +1,9 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, ConcatBatches, TrainOneStep, StandardMetricsReporting)
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -11,8 +12,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Learning rate.
     "lr": 0.0004,
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

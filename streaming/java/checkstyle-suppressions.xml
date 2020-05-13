@@ -10,5 +10,5 @@
   <suppress checks="ClassTypeParameterName" files="OneInputStreamTask.java"/>
   <suppress checks="ClassTypeParameterName" files="StreamTask.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
-  <suppress checks=".*" files="org[\\/]ray[\\/]streaming[\\/]runtime[\\/]generated[\\/]" />
+  <suppress checks=".*" files="io[\\/]ray[\\/]streaming[\\/]runtime[\\/]generated[\\/]" />
 </suppressions>

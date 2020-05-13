@@ -20,7 +20,7 @@
 #include <iostream>
 
 #include "ray/common/status.h"
-#include "ray/util/url.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -68,7 +68,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service, parse_url_endpoint(socket_name)),
+      acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);

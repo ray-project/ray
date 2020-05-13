@@ -108,7 +108,7 @@ class TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
-        trial_name (str): String name of the currernt trial.
+        trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
     """
 
@@ -191,8 +191,7 @@ class Trial:
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls and hasattr(trainable_cls,
-                                     "default_resource_request"):
+        if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
             if default_resources:

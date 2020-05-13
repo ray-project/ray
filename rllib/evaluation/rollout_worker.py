@@ -3,6 +3,7 @@ import numpy as np
 import gym
 import logging
 import pickle
+import os
 
 import ray
 from ray.util.debug import log_once, disable_log_once_globally, \
@@ -126,6 +127,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  sample_async=False,
                  compress_observations=False,
                  num_envs=1,
+                 observation_fn=None,
                  observation_filter="NoFilter",
                  clip_rewards=None,
                  clip_actions=True,
@@ -146,7 +148,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  soft_horizon=False,
                  no_done_at_end=False,
                  seed=None,
-                 _fake_sampler=False):
+                 extra_python_environs=None,
+                 fake_sampler=False):
         """Initialize a rollout worker.
 
         Arguments:
@@ -192,6 +195,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             num_envs (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
+            observation_fn (ObservationFunction): Optional multi-agent
+                observation function.
             observation_filter (str): Name of observation filter to use.
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
@@ -212,7 +217,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (dict): Dict of custom debug callbacks.
+            callbacks (DefaultCallbacks): Custom training callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
             input_evaluation (list): How to evaluate the policy performance.
@@ -238,13 +243,20 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 episode and instead record done=False.
             seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique exploration behavior.
-            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
+            extra_python_environs (dict): Extra python environments need to
+                be set.
+            fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
         self._original_kwargs = locals().copy()
         del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
+
+        # set extra environs first
+        if extra_python_environs:
+            for key, value in extra_python_environs.items():
+                os.environ[key] = str(value)
 
         def gen_rollouts():
             while True:
@@ -254,11 +266,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         policy_config = policy_config or {}
         if (tf and policy_config.get("eager")
-                and not policy_config.get("no_eager_on_workers")):
-            # This check is necessary for certain all-framework tests that
-            # use tf's eager_mode() context generator.
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
+                and not policy_config.get("no_eager_on_workers")
+                # This eager check is necessary for certain all-framework tests
+                # that use tf's eager_mode() context generator.
+                and not tf.executing_eagerly()):
+            tf.enable_eager_execution()
 
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
@@ -270,7 +282,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         env_context = EnvContext(env_config or {}, worker_index)
         self.policy_config = policy_config
-        self.callbacks = callbacks or {}
+        if callbacks:
+            self.callbacks = callbacks()
+        else:
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks = DefaultCallbacks()
         self.worker_index = worker_index
         self.num_workers = num_workers
         model_config = model_config or {}
@@ -285,7 +301,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.preprocessing_enabled = True
         self.last_batch = None
         self.global_vars = None
-        self._fake_sampler = _fake_sampler
+        self.fake_sampler = fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
@@ -435,6 +451,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         if sample_async:
             self.sampler = AsyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
@@ -449,10 +466,12 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
-                no_done_at_end=no_done_at_end)
+                no_done_at_end=no_done_at_end,
+                observation_fn=observation_fn)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
+                self,
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
@@ -466,7 +485,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
-                no_done_at_end=no_done_at_end)
+                no_done_at_end=no_done_at_end,
+                observation_fn=observation_fn)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
@@ -485,7 +505,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
-        if self._fake_sampler and self.last_batch is not None:
+        if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
 
         if log_once("sample_start"):
@@ -509,8 +529,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             batches.append(batch)
         batch = batches[0].concat_samples(batches)
 
-        if self.callbacks.get("on_sample_end"):
-            self.callbacks["on_sample_end"]({"worker": self, "samples": batch})
+        self.callbacks.on_sample_end(worker=self, samples=batch)
 
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
@@ -531,7 +550,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         elif self.compress_observations:
             batch.compress()
 
-        if self._fake_sampler:
+        if self.fake_sampler:
             self.last_batch = batch
         return batch
 

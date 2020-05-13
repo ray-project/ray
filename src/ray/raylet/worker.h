@@ -38,7 +38,8 @@ class Worker {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language, int port,
+  Worker(const WorkerID &worker_id, const Language &language,
+         const std::string &ip_address, int port,
          std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
@@ -54,6 +55,7 @@ class Worker {
   Process GetProcess() const;
   void SetProcess(Process proc);
   Language GetLanguage() const;
+  const std::string IpAddress() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
@@ -131,6 +133,8 @@ class Worker {
   Process proc_;
   /// The language type of this worker.
   Language language_;
+  /// IP address of this worker.
+  std::string ip_address_;
   /// Port that this worker listens on.
   /// If port <= 0, this indicates that the worker will not listen to a port.
   int port_;
