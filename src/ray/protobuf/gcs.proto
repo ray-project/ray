@@ -18,7 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-option java_package = "org.ray.runtime.generated";
+option java_package = "io.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
@@ -99,13 +99,15 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
+    // Actor is pending.
+    PENDING = 0;
     // Actor is alive.
-    ALIVE = 0;
+    ALIVE = 1;
     // Actor is dead, now being reconstructed.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 1;
+    RECONSTRUCTING = 2;
     // Actor is already dead and won't be reconstructed.
-    DEAD = 2;
+    DEAD = 3;
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
@@ -129,8 +131,12 @@ message ActorTableData {
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
+  // Name of the actor. Only populated if is_detached is true.
+  string name = 12;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 12;
+  double timestamp = 13;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 14;
 }
 
 message ErrorTableData {
@@ -252,8 +258,8 @@ message JobTableData {
   bool is_dead = 2;
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
-  // IP of the node this job was started on.
-  string node_manager_address = 4;
+  // IP address of the driver that started this job.
+  string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
 }
@@ -295,6 +301,37 @@ message WorkerFailureData {
   Address worker_address = 1;
   // The UNIX timestamp at which the worker failed.
   int64 timestamp = 3;
+  // Is intentional disconnect
+  bool intentional_disconnect = 4;
+}
+
+message ResourceMap {
+  map<string, ResourceTableData> items = 1;
+}
+
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
+
+// A notification message about one object's locations being changed.
+message ObjectLocationChange {
+  bool is_add = 1;
+  ObjectTableData data = 2;
+}
+
+// A notification message about one node's resources being changed.
+message NodeResourceChange {
+  // ID of the node whose resources have changed.
+  bytes node_id = 1;
+  // Labels of the updated resources and their latest capacities.
+  map<string, double> updated_resources = 2;
+  // Labels of the resources that were deleted.
+  repeated string deleted_resources = 3;
+}
+
+message PubSubMessage {
+  bytes id = 1;
+  bytes data = 2;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating
@@ -321,6 +358,10 @@ enum ErrorType {
   // exposed to user code; it is only used internally to indicate the result of a direct
   // call has been placed in plasma.
   OBJECT_IN_PLASMA = 4;
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
 }
 
 message GcsServerInfo {

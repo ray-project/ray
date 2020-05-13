@@ -111,7 +111,8 @@ message PushTaskRequest {
   // caller, which might happen theoretically when network has issues.
   // - For an actor, this is set to the timestamp when the actor is created,
   //   so it can be used to differentiate which is the new reconstructed actor.
-  // - For a non-actor task, it's set to the timestamp the task starts execution.
+  // - For a non-actor task, it's set to the timestamp the task starts
+  // execution.
   int64 caller_version = 7;
 }
 
@@ -121,9 +122,11 @@ message PushTaskReply {
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
   // The references that the worker borrowed during the task execution. A
-  // borrower is a process that is currently using the object ID, in one of 3 ways:
+  // borrower is a process that is currently using the object ID, in one of 3
+  // ways:
   // 1. Has an ObjectID copy in Python.
-  // 2. Has submitted a task that depends on the object and that is still pending.
+  // 2. Has submitted a task that depends on the object and that is still
+  // pending.
   // 3. Owns another object that is in scope and whose value contains the
   // ObjectID.
   // This list includes the reference counts for any IDs that were passed to
@@ -156,10 +159,18 @@ message GetObjectStatusRequest {
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus {
-    CREATED = 0;
-  }
+  enum ObjectStatus { CREATED = 0; }
   ObjectStatus status = 1;
+}
+
+message WaitForActorOutOfScopeRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ActorID of the actor in scope.
+  bytes actor_id = 2;
+}
+
+message WaitForActorOutOfScopeReply {
 }
 
 message WaitForObjectEvictionRequest {
@@ -182,6 +193,28 @@ message KillActorRequest {
 }
 
 message KillActorReply {
+}
+
+message CancelTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+}
+
+message CancelTaskReply {
+  // Whether the requested task is the currently running task.
+  bool attempt_succeeded = 1;
+}
+
+message RemoteCancelTaskRequest {
+  // Object ID of the remote task that should be killed.
+  bytes remote_object_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+}
+
+message RemoteCancelTaskReply {
 }
 
 message GetCoreWorkerStatsRequest {
@@ -275,12 +308,21 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Wait for the actor's owner to decide that the actor has gone out of scope.
+  // Replying to this message indicates that the client should force-kill the
+  // actor process, if still alive.
+  rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
+      returns (WaitForActorOutOfScopeReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Request that a worker cancels a task.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
+  // Request for a worker to issue a cancelation.
+  rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.

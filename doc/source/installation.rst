@@ -31,15 +31,18 @@ master branch). To install these wheels, run the following command:
 ===================  ===================
        Linux                MacOS
 ===================  ===================
+`Linux Python 3.8`_  `MacOS Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_
 `Linux Python 3.5`_  `MacOS Python 3.5`_
 ===================  ===================
 
 
+.. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-manylinux1_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 .. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
@@ -145,6 +148,34 @@ the dashboard. For example,
   <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
+
+
+
+Installing Ray on Arch Linux
+----------------------------
+
+Note: Installing Ray on Arch Linux is not tested by the Project Ray developers.
+
+Ray is available on Arch Linux via the Arch User Repository (`AUR`_) as
+``python-ray``.
+
+You can manually install the package by following the instructions on the
+`Arch Wiki`_ or use an `AUR helper`_ like `yay`_ (recommended for ease of install)
+as follows:
+
+.. code-block:: bash
+
+  yay -S python-ray
+
+To discuss any issues related to this package refer to the comments section
+on the AUR page of ``python-ray`` `here`_.
+
+.. _`AUR`: https://wiki.archlinux.org/index.php/Arch_User_Repository
+.. _`Arch Wiki`: https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages
+.. _`AUR helper`: https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages
+.. _`yay`: https://aur.archlinux.org/packages/yay
+.. _`here`: https://aur.archlinux.org/packages/python-ray
+
 
 
 Installing Ray with Anaconda

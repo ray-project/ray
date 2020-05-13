@@ -18,11 +18,14 @@ def reduce_mean_ignore_inf(x, axis):
         tf.cast(mask, tf.float32), axis))
 
 
-def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
+def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
     """Minimized `objective` using `optimizer` w.r.t. variables in
     `var_list` while ensure the norm of the gradients for each
     variable is clipped to `clip_val`
     """
+    # Accidentally passing values < 0.0 will break all gradients.
+    assert clip_val > 0.0, clip_val
+
     gradients = optimizer.compute_gradients(objective, var_list=var_list)
     for i, (grad, var) in enumerate(gradients):
         if grad is not None:
@@ -83,7 +86,8 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     name="arg_{}".format(i)))
                         symbolic_out[0] = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))
-                return session_or_none.run(symbolic_out[0], feed_dict)
+                ret = session_or_none.run(symbolic_out[0], feed_dict)
+                return ret
 
             return call
         else:

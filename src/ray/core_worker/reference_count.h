@@ -86,6 +86,14 @@ class ReferenceCounter {
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
+  /// Add references for the object dependencies of a resubmitted task. This
+  /// does not increment the arguments' lineage ref counts because we should
+  /// have already incremented them when the task was first submitted.
+  ///
+  /// \param[in] argument_ids The arguments of the task to add references for.
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
   /// arguments. This should be called when inlined dependencies are inlined or
@@ -129,15 +137,20 @@ class ReferenceCounter {
   /// possible to have leftover references after a task has finished.
   ///
   /// \param[in] object_id The ID of the object that we own.
-  /// \param[in] inner_ids ObjectIDs that are contained in the object's value.
+  /// \param[in] contained_ids ObjectIDs that are contained in the object's value.
   /// As long as the object_id is in scope, the inner objects should not be GC'ed.
   /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
-  /// \param[in] dependencies The objects that the object depends on.
-  void AddOwnedObject(const ObjectID &object_id,
-                      const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
-                      const rpc::Address &owner_address, const std::string &call_site,
-                      const int64_t object_size) LOCKS_EXCLUDED(mutex_);
+  /// \param[in] call_site Description of the call site where the reference was created.
+  /// \param[in] object_size Object size if known, otherwise -1;
+  /// \param[in] is_reconstructable Whether the object can be reconstructed
+  /// through lineage re-execution.
+  void AddOwnedObject(
+      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
+      const TaskID &owner_id, const rpc::Address &owner_address,
+      const std::string &call_site, const int64_t object_size, bool is_reconstructable,
+      const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
+      LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
@@ -165,8 +178,8 @@ class ReferenceCounter {
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_id The TaskID of the object owner.
   /// \param[out] owner_address The address of the object owner.
-  bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
-                rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);
+  bool GetOwner(const ObjectID &object_id, TaskID *owner_id = nullptr,
+                rpc::Address *owner_address = nullptr) const LOCKS_EXCLUDED(mutex_);
 
   /// Manually delete the objects from the reference counter.
   void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
@@ -175,6 +188,9 @@ class ReferenceCounter {
   /// Returns true if the object was in scope and the callback was added, else false.
   bool SetDeleteCallback(const ObjectID &object_id,
                          const std::function<void(const ObjectID &)> callback)
+      LOCKS_EXCLUDED(mutex_);
+
+  void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
@@ -267,6 +283,33 @@ class ReferenceCounter {
                           const std::vector<ObjectID> &inner_ids,
                           const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
 
+  /// Update the pinned location of an object stored in plasma.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] raylet_id The raylet that is now pinning the object ID.
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const ClientID &raylet_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Check whether the object is pinned at a remote plasma store node.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \param[out] pinned Whether the object was pinned at a remote plasma store
+  /// node.
+  /// \return True if the object exists and is owned by us, false otherwise. We
+  /// return false here because a borrower should not know the pinned location
+  /// for an object.
+  bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) const
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get and reset the objects that were pinned on the given node.  This
+  /// method should be called upon a node failure, to determine which plasma
+  /// objects were lost. If a deletion callback was set for a lost object, it
+  /// will be invoked and reset.
+  ///
+  /// \param[in] node_id The node whose object store has been removed.
+  /// \return The set of objects that were pinned on the given node.
+  std::vector<ObjectID> ResetObjectsOnRemovedNode(const ClientID &raylet_id);
+
   /// Whether we have a reference to a particular ObjectID.
   ///
   /// \param[in] object_id The object ID to check for.
@@ -288,11 +331,14 @@ class ReferenceCounter {
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address,
-              std::string call_site, const int64_t object_size)
+              std::string call_site, const int64_t object_size, bool is_reconstructable,
+              const absl::optional<ClientID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
-          owner({owner_id, owner_address}) {}
+          owner({owner_id, owner_address}),
+          is_reconstructable(is_reconstructable),
+          pinned_at_raylet_id(pinned_at_raylet_id) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -315,13 +361,19 @@ class ReferenceCounter {
     /// - The reference was contained in another ID that we were borrowing, and
     ///   we haven't told the process that gave us that ID yet.
     /// - We gave the reference to at least one other process.
-    bool OutOfScope() const {
+    bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
       bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
+
+      bool has_lineage_references = false;
+      if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
+        has_lineage_references = lineage_ref_count > 0;
+      }
+
       return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
-               was_stored_in_objects);
+               was_stored_in_objects || has_lineage_references);
     }
 
     /// Whether the Reference can be deleted. A Reference can only be deleted
@@ -331,9 +383,9 @@ class ReferenceCounter {
     /// the object that may be retried in the future.
     bool ShouldDelete(bool lineage_pinning_enabled) const {
       if (lineage_pinning_enabled) {
-        return OutOfScope() && (lineage_ref_count == 0);
+        return OutOfScope(lineage_pinning_enabled) && (lineage_ref_count == 0);
       } else {
-        return OutOfScope();
+        return OutOfScope(lineage_pinning_enabled);
       }
     }
 
@@ -350,6 +402,14 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    // If this object is owned by us and stored in plasma, and reference
+    // counting is enabled, then some raylet must be pinning the object value.
+    // This is the address of that raylet.
+    absl::optional<ClientID> pinned_at_raylet_id;
+    // Whether this object can be reconstructed via lineage. If false, then the
+    // object's value will be pinned as long as it is referenced by any other
+    // object's lineage.
+    const bool is_reconstructable = false;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;

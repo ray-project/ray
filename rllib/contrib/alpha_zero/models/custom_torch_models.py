@@ -1,5 +1,4 @@
 from abc import ABC
-
 import numpy as np
 
 from ray.rllib.models.model import restore_original_dimensions

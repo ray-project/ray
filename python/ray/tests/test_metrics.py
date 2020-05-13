@@ -102,7 +102,6 @@ def test_worker_stats(shutdown_only):
         # Check that the rest of the processes are workers, 1 for each CPU.
         assert len(reply.workers_stats) == num_cpus + 1
         views = [view.view_name for view in reply.view_data]
-        assert "redis_latency" in views
         assert "local_available_resource" in views
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.workers_stats]
@@ -112,8 +111,9 @@ def test_worker_stats(shutdown_only):
         ]
         for process in processes:
             # TODO(ekl) why does travis/mi end up in the process list
-            assert ("python" in process or "ray" in process
-                    or "travis" in process)
+            assert ("python" in process or "conda" in process
+                    or "travis" in process or "runner" in process
+                    or "ray" in process)
         break
 
     # Test kill_actor.
@@ -227,7 +227,7 @@ def test_raylet_info_endpoint(shutdown_only):
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
         else:
-            assert child_actor_info["state"] == 0
+            assert child_actor_info["state"] == 1
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 

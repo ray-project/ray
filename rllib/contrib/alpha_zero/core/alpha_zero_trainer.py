@@ -1,6 +1,7 @@
 import logging
 
 from ray.rllib.agents import with_common_config
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
@@ -21,12 +22,18 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def on_episode_start(info):
-    # save env state when an episode starts
-    env = info["env"].get_unwrapped()[0]
-    state = env.get_state()
-    episode = info["episode"]
-    episode.user_data["initial_state"] = state
+class AlphaZeroDefaultCallbacks(DefaultCallbacks):
+    """AlphaZero callbacks.
+
+    If you use custom callbacks, you must extend this class and call super()
+    for on_episode_start.
+    """
+
+    def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
+        # save env state when an episode starts
+        env = base_env.get_unwrapped()[0]
+        state = env.get_state()
+        episode.user_data["initial_state"] = state
 
 
 # yapf: disable
@@ -94,9 +101,7 @@ DEFAULT_CONFIG = with_common_config({
     },
 
     # === Callbacks ===
-    "callbacks": {
-        "on_episode_start": on_episode_start,
-    },
+    "callbacks": AlphaZeroDefaultCallbacks,
 
     "use_pytorch": True,
 })

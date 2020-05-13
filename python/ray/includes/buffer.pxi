@@ -44,7 +44,7 @@ cdef class Buffer:
     def __getbuffer__(self, Py_buffer* buffer, int flags):
         buffer.readonly = 0
         buffer.buf = <char *>self.buffer.get().Data()
-        buffer.format = 'b'
+        buffer.format = 'B'
         buffer.internal = NULL
         buffer.itemsize = 1
         buffer.len = self.size

@@ -30,10 +30,9 @@ namespace gcs {
 
 /// \class StoreClient
 /// Abstract interface of the storage client.
-template <typename Data>
 class StoreClient {
  public:
-  virtual ~StoreClient() {}
+  virtual ~StoreClient() = default;
 
   /// Write data to the given table asynchronously.
   ///
@@ -43,7 +42,7 @@ class StoreClient {
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPut(const std::string &table_name, const std::string &key,
-                          const Data &data, const StatusCallback &callback) = 0;
+                          const std::string &data, const StatusCallback &callback) = 0;
 
   /// Write data to the given table asynchronously.
   ///
@@ -54,7 +53,7 @@ class StoreClient {
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                                   const std::string &index_key, const Data &data,
+                                   const std::string &index_key, const std::string &data,
                                    const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
@@ -64,7 +63,7 @@ class StoreClient {
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
   virtual Status AsyncGet(const std::string &table_name, const std::string &key,
-                          const OptionalItemCallback<Data> &callback) = 0;
+                          const OptionalItemCallback<std::string> &callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -74,7 +73,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGetAll(
       const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, Data>> &callback) = 0;
+      const SegmentedCallback<std::pair<std::string, std::string>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

@@ -263,6 +263,10 @@ RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
 /// The interval at which the gcs server will check if redis has gone down.
 /// When this happens, gcs server will kill itself.
 RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
+/// Duration to wait between retries for leasing worker in gcs server.
+RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
+/// Duration to wait between retries for creating actor in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -274,6 +278,9 @@ RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
+/// Duration to wait between retrying to kill a task.
+RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
 /// Whether to enable gcs service.
 /// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
 /// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
@@ -282,3 +289,7 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 RAY_CONFIG(bool, gcs_service_enabled,
            getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
                getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))
+
+RAY_CONFIG(bool, gcs_actor_service_enabled,
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))

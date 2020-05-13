@@ -48,40 +48,35 @@ def valid_padding(in_size, filter_size, stride_size):
     return padding, output
 
 
-def _get_activation_fn(name):
-    if name == "tanh":
-        return nn.Tanh
-    elif name == "relu":
-        return nn.ReLU
-    elif name == "linear":
-        return None
-    else:
-        raise ValueError("Unknown activation: {}".format(name))
-
-
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel,
-                 stride,
-                 padding,
-                 initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU,
-                 bias_init=0):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel,
+            stride,
+            padding,
+            # Defaulting these to nn.[..] will break soft torch import.
+            initializer="default",
+            activation_fn="default",
+            bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
             layers.append(nn.ZeroPad2d(padding))
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
+            if initializer == "default":
+                initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:
+            if activation_fn == "default":
+                activation_fn = nn.ReLU
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 
@@ -97,7 +92,7 @@ class SlimFC(nn.Module):
                  out_size,
                  initializer=None,
                  activation_fn=None,
-                 bias_init=0):
+                 bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size)
@@ -111,3 +106,18 @@ class SlimFC(nn.Module):
 
     def forward(self, x):
         return self._model(x)
+
+
+class AppendBiasLayer(nn.Module):
+    """Simple bias appending layer for free_log_std."""
+
+    def __init__(self, num_bias_vars):
+        super().__init__()
+        self.log_std = torch.nn.Parameter(
+            torch.as_tensor([0.0] * num_bias_vars))
+        self.register_parameter("log_std", self.log_std)
+
+    def forward(self, x):
+        out = torch.cat(
+            [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
+        return out

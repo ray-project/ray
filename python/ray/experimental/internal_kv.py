@@ -12,8 +12,6 @@ def _internal_kv_get(key):
     """Fetch the value of a binary key."""
 
     worker = ray.worker.global_worker
-    if worker.mode == ray.worker.LOCAL_MODE:
-        return _local.get(key)
 
     return worker.redis_client.hget(key, "value")
 
@@ -28,11 +26,6 @@ def _internal_kv_put(key, value, overwrite=False):
     """
 
     worker = ray.worker.global_worker
-    if worker.mode == ray.worker.LOCAL_MODE:
-        exists = key in _local
-        if not exists or overwrite:
-            _local[key] = value
-        return exists
 
     if overwrite:
         updated = worker.redis_client.hset(key, "value", value)

@@ -1,5 +1,7 @@
 import itertools
+import os
 import random
+import uuid
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -50,6 +52,14 @@ class BasicVariantGenerator(SearchAlgorithm):
         self._finished = False
         self._shuffle = shuffle
 
+        # Unique prefix for all trials generated, e.g., trial ids start as
+        # 2f1e_00001, 2f1ef_00002, 2f1ef_0003, etc. Overridable for testing.
+        force_test_uuid = os.environ.get("_TEST_TUNE_TRIAL_UUID")
+        if force_test_uuid:
+            self._uuid_prefix = force_test_uuid + "_"
+        else:
+            self._uuid_prefix = str(uuid.uuid1().hex)[:5] + "_"
+
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
 
@@ -92,7 +102,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
         for _ in range(num_samples):
             for resolved_vars, spec in generate_variants(unresolved_spec):
-                trial_id = "%05d" % self._counter
+                trial_id = self._uuid_prefix + ("%05d" % self._counter)
                 experiment_tag = str(self._counter)
                 if resolved_vars:
                     experiment_tag += "_{}".format(format_vars(resolved_vars))

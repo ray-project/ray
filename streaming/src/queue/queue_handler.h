@@ -24,16 +24,9 @@ namespace streaming {
 class QueueMessageHandler {
  public:
   /// Construct a QueueMessageHandler instance.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor, used to call Core
-  /// Worker's api.
-  ///            For Python worker, the pointer can be obtained from
-  ///            ray.worker.global_worker.core_worker; For Java worker, obtained from
-  ///            RayNativeRuntime object through java reflection.
   /// \param[in] actor_id actor id of current actor.
-  QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : core_worker_(core_worker),
-        actor_id_(actor_id),
-        queue_dummy_work_(queue_service_) {
+  QueueMessageHandler(const ActorID &actor_id)
+      : actor_id_(actor_id), queue_dummy_work_(queue_service_) {
     Start();
   }
 
@@ -69,7 +62,8 @@ class QueueMessageHandler {
   /// downstream queue with same queue_id, and vice versa.
   /// \param[in] queue_id queue id of current queue.
   /// \param[in] actor_id actor_id actor id of corresponded peer actor.
-  void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id);
+  void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id,
+                      RayFunction &async_func, RayFunction &sync_func);
 
   /// Obtain the actor id of the peer actor specified by queue_id.
   /// \return actor id
@@ -87,8 +81,6 @@ class QueueMessageHandler {
   void QueueThreadCallback() { queue_service_.run(); }
 
  protected:
-  /// CoreWorker C++ pointer of current actor
-  CoreWorker *core_worker_;
   /// actor_id actor id of current actor
   ActorID actor_id_;
   /// Helper function, parse message buffer to Message object.
@@ -111,8 +103,7 @@ class QueueMessageHandler {
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id) {}
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -140,11 +131,8 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) override;
 
   static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(
-      CoreWorker *core_worker, const ActorID &actor_id);
+      const ActorID &actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
-
-  static RayFunction peer_sync_function_;
-  static RayFunction peer_async_function_;
 
  private:
   bool CheckQueueSync(const ObjectID &queue_ids);
@@ -157,8 +145,8 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
 /// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  DownstreamQueueMessageHandler(const ActorID &actor_id)
+      : QueueMessageHandler(actor_id) {}
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
   bool DownstreamQueueExists(const ObjectID &queue_id);
@@ -178,10 +166,8 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
 
   static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
-      CoreWorker *core_worker, const ActorID &actor_id);
+      const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
-  static RayFunction peer_sync_function_;
-  static RayFunction peer_async_function_;
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>>

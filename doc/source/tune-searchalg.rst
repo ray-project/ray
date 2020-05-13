@@ -1,3 +1,5 @@
+.. _tune-search-alg:
+
 Tune Search Algorithms
 ======================
 
@@ -24,14 +26,15 @@ Currently, Tune offers the following search algorithms (and library integrations
 Variant Generation (Grid Search/Random Search)
 ----------------------------------------------
 
-By default, Tune uses the `default search space and variant generation process <tune-usage.html#tune-search-space-default>`__ to create and queue trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
+By default, Tune uses a BasicVariantGenerator to sample trials. This supports random search and grid search as specified by the ``config`` parameter of ``tune.run``.
 
 .. autoclass:: ray.tune.suggest.BasicVariantGenerator
     :show-inheritance:
     :noindex:
 
+Read about this in the :ref:`Grid/Random Search API <tune-grid-random>`.
 
-Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
+Note that other search algorithms will require a different search space declaration than the default Tune format.
 
 
 Repeated Evaluations
@@ -54,7 +57,9 @@ See the API documentation (:ref:`repeater-doc`) for more details.
 
     search_alg = BayesOpt(...)
     re_search_alg = Repeater(search_alg, repeat=10)
-    tune.run(trainable, search_alg=re_search_alg)
+
+    # Repeat 2 samples 10 times each.
+    tune.run(trainable, num_samples=20, search_alg=re_search_alg)
 
 .. note:: This does not apply for grid search and random search.
 .. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
@@ -84,6 +89,8 @@ An example of this can be found in `bayesopt_example.py <https://github.com/ray-
     :show-inheritance:
     :noindex:
 
+.. _tune-hyperopt:
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
@@ -106,6 +113,7 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
     :show-inheritance:
     :noindex:
+
 
 SigOpt Search
 -------------
@@ -135,6 +143,8 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
 .. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
     :show-inheritance:
     :noindex:
+
+.. _tune-nevergrad:
 
 Nevergrad Search
 ----------------
@@ -192,7 +202,7 @@ The ``DragonflySearch`` is a SearchAlgorithm that is backed by `Dragonfly <https
 
 .. code-block:: bash
 
-    $ pip install dragonfly
+    $ pip install dragonfly-opt
 
 This algorithm requires using the `Dragonfly ask and tell interface <https://dragonfly-opt.readthedocs.io/en/master/getting_started_ask_tell/>`__. This interface requires using FunctionCallers and optimizers provided by Dragonfly. You can use `DragonflySearch` like follows:
 
@@ -211,6 +221,8 @@ An example of this can be found in `dragonfly_example.py <https://github.com/ray
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
     :show-inheritance:
     :noindex:
+
+.. _tune-ax:
 
 Ax Search
 ---------
@@ -284,6 +296,59 @@ Take a look at `an example here <https://github.com/ray-project/ray/blob/master/
     :show-inheritance:
     :noindex:
 
+ZOOpt Search
+------------
+
+The ``ZOOptSearch`` is a SearchAlgorithm for derivative-free optimization. It is backed by the `ZOOpt <https://github.com/polixir/ZOOpt>`__ package. Currently, Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos) algorithm is implemented in Tune. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune’s default variant generation/search space declaration when using ZOOptSearch.
+
+In order to use this search algorithm, you will need to install the ZOOpt package **(>=0.4.0)** via the following command:
+
+.. code-block:: bash
+
+    $ pip install -U zoopt
+
+Keep in mind that zoopt only supports Python 3.
+
+This algorithm allows users to mix continuous dimensions and discrete dimensions, for example:
+
+.. code-block:: python
+
+    dim_dict = {
+        # for continuous dimensions: (continuous, search_range, precision)
+        "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
+        # for discrete dimensions: (discrete, search_range, has_order)
+        "width": (ValueType.DISCRETE, [-10, 10], False)
+    }
+
+    config = {
+        "num_samples": 200 if args.smoke_test else 1000,
+        "config": {
+            "iterations": 10,  # evaluation times
+        },
+        "stop": {
+            "timesteps_total": 10  # cumstom stop rules
+        }
+    }
+
+    zoopt_search = ZOOptSearch(
+        algo="Asracos",  # only support ASRacos currently
+        budget=config["num_samples"],
+        dim_dict=dim_dict,
+        max_concurrent=4,
+        metric="mean_loss",
+        mode="min")
+
+    run(my_objective,
+        search_alg=zoopt_search,
+        name="zoopt_search",
+        **config)
+
+An example of this can be found in `zoopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/zoopt_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+    :show-inheritance:
+    :noindex:
+
 Contributing a New Algorithm
 ----------------------------
 
@@ -296,11 +361,8 @@ If you are interested in implementing or contributing a new Search Algorithm, th
 Model-Based Suggestion Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
+Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_complete``, and ``suggest``.
 
-.. autoclass:: ray.tune.suggest.SuggestionAlgorithm
+.. autoclass:: ray.tune.suggest.Searcher
     :show-inheritance:
     :noindex:
-
-    .. automethod:: ray.tune.suggest.SuggestionAlgorithm.suggest
-        :noindex:

@@ -159,7 +159,7 @@ def test_global_state_api(shutdown_only):
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+    assert job_table[0]["DriverIPAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
@@ -659,6 +659,60 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()
+
+
+def test_lease_request_leak(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
+    assert len(ray.objects()) == 0
+
+    @ray.remote
+    def f(x):
+        time.sleep(0.1)
+        return
+
+    # Submit pairs of tasks. Tasks in a pair can reuse the same worker leased
+    # from the raylet.
+    tasks = []
+    for _ in range(10):
+        oid = ray.put(1)
+        for _ in range(2):
+            tasks.append(f.remote(oid))
+        del oid
+    ray.get(tasks)
+
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
+def test_ray_address_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+    # In this test we use zero CPUs to distinguish between starting a local
+    # ray cluster and connecting to an existing one.
+
+    # Make sure we connect to an existing cluster if
+    # RAY_ADDRESS is set.
+    os.environ["RAY_ADDRESS"] = address
+    ray.init()
+    assert "CPU" not in ray.state.cluster_resources()
+    del os.environ["RAY_ADDRESS"]
+    ray.shutdown()
+
+    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    ray.init()
+    assert "CPU" in ray.state.cluster_resources()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

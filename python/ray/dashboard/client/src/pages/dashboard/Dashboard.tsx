@@ -56,7 +56,7 @@ class Dashboard extends React.Component<
         getTuneAvailability(),
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
-      this.props.setTuneAvailability({ tuneAvailability });
+      this.props.setTuneAvailability(tuneAvailability);
       this.props.setError(null);
     } catch (error) {
       this.props.setError(error.toString());
@@ -87,7 +87,7 @@ class Dashboard extends React.Component<
     ];
 
     // if Tune information is not available, remove Tune tab from the dashboard
-    if (!tuneAvailability) {
+    if (tuneAvailability === null || !tuneAvailability.available) {
       tabs.splice(3);
     }
 

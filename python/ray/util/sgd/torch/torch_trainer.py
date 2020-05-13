@@ -23,11 +23,16 @@ RESIZE_COOLDOWN_S = 10
 
 
 def _validate_scheduler_step_freq(scheduler_step_freq):
-    if scheduler_step_freq:
-        if scheduler_step_freq not in VALID_SCHEDULER_STEP:
-            raise ValueError(
-                "Scheduler step freq must be in {}. Got {}".format(
-                    VALID_SCHEDULER_STEP, scheduler_step_freq))
+    """This validation check only happens if a scheduler is passed in."""
+    if scheduler_step_freq not in VALID_SCHEDULER_STEP:
+        raise ValueError("Scheduler step freq must be in {}. Got {}".format(
+            VALID_SCHEDULER_STEP, scheduler_step_freq))
+
+
+def _remind_gpu_usage(use_gpu):
+    if not use_gpu and torch.cuda.is_available():
+        logger.info("GPUs detected but not using them. Set `use_gpu` to "
+                    "enable GPU usage. ")
 
 
 class TorchTrainer:
@@ -69,6 +74,14 @@ class TorchTrainer:
         for i in range(4):
             trainer.train()
 
+    The creator functions will execute before distributed coordination and
+    training is setup. This is so that creator functions that download
+    large datasets will not trigger any timeouts.
+
+    The order of operations for creator functions are:
+
+    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
+    ``scheduler_creator`` -> ``loss_creator``.
 
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
@@ -117,6 +130,12 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        serialize_data_creation (bool): A filelock will be used
+            to ensure no race conditions in data downloading among
+            different workers on the same node (using the local file system).
+            Defaults to True.
+        wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
+            over each model. If False, you are expected to call it yourself.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
@@ -128,10 +147,13 @@ class TorchTrainer:
             See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
             default, the models and optimizers are passed in. Consider using
             "num_losses" if operating over multiple models and optimizers.
-        scheduler_step_freq: "batch", "epoch", or None. This will
+        scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
-            ``step`` will be called after one pass of the DataLoader.
+            ``step`` will be called after one pass of the DataLoader. If
+            "manual", the scheduler will not be incremented automatically -
+            you are expected to call ``trainer.update_schedulers`` manually.
+            If a scheduler is passed in, this value is expected to not be None.
 
     """
 
@@ -154,11 +176,13 @@ class TorchTrainer:
             num_workers=1,
             use_gpu="auto",
             backend="auto",
+            wrap_ddp=True,
+            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
             add_dist_sampler=True,
-            scheduler_step_freq="batch",
+            scheduler_step_freq=None,
             num_replicas=None,
             batch_size=None,
             data_loader_args=None,
@@ -210,6 +234,8 @@ class TorchTrainer:
         if use_gpu == "auto":
             use_gpu = torch.cuda.is_available()
 
+        _remind_gpu_usage(use_gpu)
+
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
@@ -218,6 +244,8 @@ class TorchTrainer:
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
+        self.serialize_data_creation = serialize_data_creation
+        self.wrap_ddp = wrap_ddp
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
@@ -233,7 +261,9 @@ class TorchTrainer:
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
-        _validate_scheduler_step_freq(scheduler_step_freq)
+        if scheduler_creator:
+            _validate_scheduler_step_freq(scheduler_step_freq)
+
         self.scheduler_step_freq = scheduler_step_freq
 
         if not ray.is_initialized() and self.max_replicas > 1:
@@ -278,6 +308,7 @@ class TorchTrainer:
             scheduler_creator=self.scheduler_creator,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
+            serialize_data_creation=self.serialize_data_creation,
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,
@@ -292,7 +323,9 @@ class TorchTrainer:
             self.local_worker.setup()
         else:
             params.update(
-                backend=self.backend, add_dist_sampler=self.add_dist_sampler)
+                backend=self.backend,
+                add_dist_sampler=self.add_dist_sampler,
+                wrap_ddp=self.wrap_ddp)
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
@@ -314,13 +347,32 @@ class TorchTrainer:
 
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
-            remote_setups = [
-                worker.setup.remote(address, i + 1, num_workers)
+            # Runs the creator functions.
+            remote_component_setup = [
+                worker.setup_components.remote()
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup(address, 0, num_workers)
+            self.local_worker.setup_components()
             # Get setup tasks in order to throw errors on failure
-            ray.get(remote_setups)
+            ray.get(remote_component_setup)
+
+            # Setup the process group among all workers.
+            remote_pgroup_setups = [
+                worker.setup_process_group.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
+            ]
+            self.local_worker.setup_process_group(address, 0, num_workers)
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_pgroup_setups)
+
+            # Runs code that requires all creator functions to have run.
+            remote_operator_setups = [
+                worker.setup_ddp_and_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_ddp_and_operator()
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,

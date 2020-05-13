@@ -20,9 +20,8 @@ class StoreBasedServiceDiscoveryClient : public ServiceDiscoveryClient<ServiceIn
   /// \param options Options of this client.
   /// \param io_service_pool The event loops for this client.
   /// \param store_client The storage client to access service information from.
-  StoreBasedServiceDiscoveryClient(
-      std::shared_ptr<IOServicePool> io_service_pool,
-      std::shared_ptr<StoreClient<ServiceInfo>> store_client);
+  StoreBasedServiceDiscoveryClient(std::shared_ptr<IOServicePool> io_service_pool,
+                                   std::shared_ptr<StoreClient> store_client);
 
   virtual ~StoreBasedServiceDiscoveryClient();
 
@@ -41,7 +40,7 @@ class StoreBasedServiceDiscoveryClient : public ServiceDiscoveryClient<ServiceIn
   /// Process the service information that received from storage.
   ///
   /// \param new_service_info_str The information that received from storage.
-  void OnReceiveServiceInfo(const ServiceInfo &new_service_info);
+  void OnReceiveServiceInfo(const std::string &new_service_info_str);
 
   /// Start timer to poll service information from storage.
   void RunQueryStoreTimer();
@@ -49,7 +48,7 @@ class StoreBasedServiceDiscoveryClient : public ServiceDiscoveryClient<ServiceIn
  private:
   std::shared_ptr<IOServicePool> io_service_pool_;
 
-  std::shared_ptr<StoreClient<ServiceInfo>> store_client_;
+  std::shared_ptr<StoreClient> store_client_;
   std::string service_table_name_;
 
   /// A timer that ticks every fixed milliseconds.

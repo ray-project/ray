@@ -56,10 +56,10 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       boost::asio::detail::socket_error_retval) {
     switch (pi.iAddressFamily) {
     case AF_INET:
-      socket_.assign(local_stream_protocol::v4(), c_socket, ec);
+      socket_.assign(boost::asio::ip::tcp::v4(), c_socket, ec);
       break;
     case AF_INET6:
-      socket_.assign(local_stream_protocol::v6(), c_socket, ec);
+      socket_.assign(boost::asio::ip::tcp::v6(), c_socket, ec);
       break;
     default:
       ec = boost::system::errc::make_error_code(
@@ -68,7 +68,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
     }
   }
 #else
-  socket_.assign(local_stream_protocol(), fd, ec);
+  socket_.assign(boost::asio::local::stream_protocol(), fd, ec);
 #endif
   RAY_CHECK(!ec);
   NotificationWait();

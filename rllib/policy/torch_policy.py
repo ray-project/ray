@@ -4,10 +4,12 @@ import time
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
+    convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
@@ -78,7 +80,7 @@ class TorchPolicy(Policy):
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
-        self._optimizer = self.optimizer()
+        self._optimizers = force_list(self.optimizer())
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -106,20 +108,23 @@ class TorchPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
         with torch.no_grad():
+            seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
+                "is_training": False,
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            state_batches = [self._convert_to_tensor(s) for s in state_batches]
+            state_batches = [
+                self._convert_to_tensor(s) for s in (state_batches or [])
+            ]
 
             if self.action_sampler_fn:
-                dist_class = dist_inputs = None
+                action_dist = dist_inputs = None
                 state_out = []
                 actions, logp = self.action_sampler_fn(
                     self,
@@ -129,12 +134,17 @@ class TorchPolicy(Policy):
                     timestep=timestep)
             else:
                 # Call the exploration before_compute_actions hook.
-                self.exploration.before_compute_actions(timestep=timestep)
+                self.exploration.before_compute_actions(
+                    explore=explore, timestep=timestep)
                 if self.action_distribution_fn:
                     dist_inputs, dist_class, state_out = \
                         self.action_distribution_fn(
-                            self, self.model, input_dict[SampleBatch.CUR_OBS],
-                            explore=explore, timestep=timestep)
+                            self,
+                            self.model,
+                            input_dict[SampleBatch.CUR_OBS],
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
                 else:
                     dist_class = self.dist_class
                     dist_inputs, state_out = self.model(
@@ -182,9 +192,9 @@ class TorchPolicy(Policy):
                 SampleBatch.CUR_OBS: obs_batch,
                 SampleBatch.ACTIONS: actions
             })
-            if prev_action_batch:
+            if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch:
+            if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
@@ -194,7 +204,11 @@ class TorchPolicy(Policy):
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
                 dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+                    policy=self,
+                    model=self.model,
+                    obs_batch=input_dict[SampleBatch.CUR_OBS],
+                    explore=False,
+                    is_training=False)
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -215,55 +229,73 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        loss_out.backward()
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
+        assert len(loss_out) == len(self._optimizers)
+        # assert not any(np.isnan(l.detach().numpy()) for l in loss_out)
 
-        info = {}
-        info.update(self.extra_grad_process())
+        # Loop through all optimizers.
+        grad_info = {"allreduce_latency": 0.0}
+        for i, opt in enumerate(self._optimizers):
+            # Erase gradients in all vars of this optimizer.
+            opt.zero_grad()
+            # Recompute gradients of loss over all variables.
+            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
+            grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
-        if self.distributed_world_size:
-            grads = []
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    grads.append(p.grad)
-            start = time.time()
-            if torch.cuda.is_available():
-                # Sadly, allreduce_coalesced does not work with CUDA yet.
-                for g in grads:
-                    torch.distributed.all_reduce(
-                        g, op=torch.distributed.ReduceOp.SUM)
-            else:
-                torch.distributed.all_reduce_coalesced(
-                    grads, op=torch.distributed.ReduceOp.SUM)
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    p.grad /= self.distributed_world_size
-            info["allreduce_latency"] = time.time() - start
+            if self.distributed_world_size:
+                grads = []
+                for param_group in opt.param_groups:
+                    for p in param_group["params"]:
+                        if p.grad is not None:
+                            grads.append(p.grad)
 
-        self._optimizer.step()
-        info.update(self.extra_grad_info(train_batch))
+                start = time.time()
+                if torch.cuda.is_available():
+                    # Sadly, allreduce_coalesced does not work with CUDA yet.
+                    for g in grads:
+                        torch.distributed.all_reduce(
+                            g, op=torch.distributed.ReduceOp.SUM)
+                else:
+                    torch.distributed.all_reduce_coalesced(
+                        grads, op=torch.distributed.ReduceOp.SUM)
 
-        return {LEARNER_STATS_KEY: info}
+                for param_group in opt.param_groups:
+                    for p in param_group["params"]:
+                        if p.grad is not None:
+                            p.grad /= self.distributed_world_size
+
+                grad_info["allreduce_latency"] += time.time() - start
+
+            # Step the optimizer.
+            opt.step()
+
+        grad_info["allreduce_latency"] /= len(self._optimizers)
+        grad_info.update(self.extra_grad_info(train_batch))
+        return {LEARNER_STATS_KEY: grad_info}
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        loss_out = force_list(
+            self._loss(self, self.model, self.dist_class, train_batch))
+        assert len(loss_out) == len(self._optimizers)
 
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        loss_out.backward()
-
-        grad_process_info = self.extra_grad_process()
-
-        # Note that return values are just references;
-        # calling zero_grad will modify the values
+        grad_process_info = {}
         grads = []
-        for p in self.model.parameters():
-            if p.grad is not None:
-                grads.append(p.grad.data.cpu().numpy())
-            else:
-                grads.append(None)
+        for i, opt in enumerate(self._optimizers):
+            opt.zero_grad()
+            loss_out[i].backward()
+            grad_process_info = self.extra_grad_process(opt, loss_out[i])
+
+            # Note that return values are just references;
+            # calling zero_grad will modify the values
+            for param_group in opt.param_groups:
+                for p in param_group["params"]:
+                    if p.grad is not None:
+                        grads.append(p.grad.data.cpu().numpy())
+                    else:
+                        grads.append(None)
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)
@@ -271,17 +303,24 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def apply_gradients(self, gradients):
+        # TODO(sven): Not supported for multiple optimizers yet.
+        assert len(self._optimizers) == 1
         for g, p in zip(gradients, self.model.parameters()):
             if g is not None:
                 p.grad = torch.from_numpy(g).to(self.device)
-        self._optimizer.step()
+
+        self._optimizers[0].step()
 
     @override(Policy)
     def get_weights(self):
-        return {k: v.cpu() for k, v in self.model.state_dict().items()}
+        return {
+            k: v.cpu().detach().numpy()
+            for k, v in self.model.state_dict().items()
+        }
 
     @override(Policy)
     def set_weights(self, weights):
+        weights = convert_to_torch_tensor(weights, device=self.device)
         self.model.load_state_dict(weights)
 
     @override(Policy)
@@ -294,26 +333,35 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def get_initial_state(self):
-        return [s.numpy() for s in self.model.get_initial_state()]
+        return [
+            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+        ]
 
-    def extra_grad_process(self):
-        """Allow subclass to do extra processing on gradients and
-           return processing info."""
+    def extra_grad_process(self, optimizer, loss):
+        """Called after each optimizer.zero_grad() + loss.backward() call.
+
+        Called for each self._optimizers/loss-value pair.
+        Allows for gradient processing before optimizer.step() is called.
+        E.g. for gradient clipping.
+
+        Args:
+            optimizer (torch.optim.Optimizer): A torch optimizer object.
+            loss (torch.Tensor): The loss tensor associated with the optimizer.
+
+        Returns:
+            dict: An info dict.
+        """
         return {}
 
-    def extra_action_out(self,
-                         input_dict,
-                         state_batches,
-                         model,
-                         action_dist=None):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
         """Returns dict of extra info to include in experience batch.
 
-        Arguments:
+        Args:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
             model (TorchModelV2): Reference to the model.
-            action_dist (Distribution): Torch Distribution object to get
-                log-probs (e.g. for already sampled actions).
+            action_dist (TorchActionDistribution): Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
         """
         return {}
 
@@ -380,9 +428,10 @@ class LearningRateSchedule:
 
     @override(TorchPolicy)
     def optimizer(self):
-        for p in self._optimizer.param_groups:
-            p["lr"] = self.cur_lr
-        return self._optimizer
+        for opt in self._optimizers:
+            for p in opt.param_groups:
+                p["lr"] = self.cur_lr
+        return self._optimizers
 
 
 @DeveloperAPI

@@ -1,4 +1,5 @@
 from distutils.version import StrictVersion
+from functools import partial
 import json
 import os
 import time
@@ -19,31 +20,39 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V26.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 1/20/2020.
+# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 4/25/2020.
 DEFAULT_AMI = {
-    "us-east-2": "ami-0bb99846db2df6e38",  # US East (Ohio)
-    "us-east-1": "ami-0698bcaf8bd9ef56d",  # US East (N. Virginia)
-    "us-west-1": "ami-074c29e29c500f623",  # US West (N. California)
-    "us-west-2": "ami-010a96c958f9ee5cf",  # US West (Oregon)
-    "ca-central-1": "ami-086b864eabf2da9b1",  # Canada (Central)
-    "eu-central-1": "ami-0dcdcc4bc9e75005f",  # EU (Frankfurt)
-    "eu-west-1": "ami-071e6d171b20431fb",  # EU (Ireland)
-    "eu-west-2": "ami-0470e741c969b62fc",  # EU (London)
-    "eu-west-3": "ami-064f884d98b90a453",  # EU (Paris)
-    "sa-east-1": "ami-054e94fd9b444491d",  # SA (Sao Paulo)
+    "us-east-1": "ami-0dbb717f493016a1a",  # US East (N. Virginia)
+    "us-east-2": "ami-0d6808451e868a339",  # US East (Ohio)
+    "us-west-1": "ami-09f2f73141c83d4fe",  # US West (N. California)
+    "us-west-2": "ami-008d8ed4bd7dc2485",  # US West (Oregon)
+    "ca-central-1": "ami-0142046278ba71f25",  # Canada (Central)
+    "eu-central-1": "ami-09633db638556dc39",  # EU (Frankfurt)
+    "eu-west-1": "ami-0c265211f000802b0",  # EU (Ireland)
+    "eu-west-2": "ami-0f532395ff8544941",  # EU (London)
+    "eu-west-3": "ami-03dbbdf69bbb06b29",  # EU (Paris)
+    "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
 }
 
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
     "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
 
-def key_pair(i, region):
-    """Returns the ith default (aws_key_pair_name, key_pair_path)."""
+def key_pair(i, region, key_name):
+    """
+    If key_name is not None, key_pair will be named after key_name.
+    Returns the ith default (aws_key_pair_name, key_pair_path).
+    """
     if i == 0:
-        return ("{}_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        key_pair_name = ("{}_{}".format(RAY, region)
+                         if key_name is None else key_name)
+        return (key_pair_name,
+                os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+
+    key_pair_name = ("{}_{}_{}".format(RAY, i, region)
+                     if key_name is None else key_name + "_key-{}".format(i))
+    return (key_pair_name,
+            os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
 
 
 # Suppress excessive connection dropped logs from boto
@@ -136,7 +145,11 @@ def _configure_key_pair(config):
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
-        key_name, key_path = key_pair(i, config["provider"]["region"])
+
+        key_name = config["provider"].get("key_pair", {}).get("key_name")
+
+        key_name, key_path = key_pair(i, config["provider"]["region"],
+                                      key_name)
         key = _get_key(key_name, config)
 
         # Found a good key.
@@ -148,9 +161,12 @@ def _configure_key_pair(config):
             logger.info("_configure_key_pair: "
                         "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
-            with open(key_path, "w") as f:
+
+            # We need to make sure to _create_ the file with the right
+            # permissions. In order to do that we need to change the default
+            # os.open behavior to include the mode we want.
+            with open(key_path, "w", opener=partial(os.open, mode=0o600)) as f:
                 f.write(key.key_material)
-            os.chmod(key_path, 0o600)
             break
 
     if not key:
@@ -236,7 +252,7 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
+        IpPermissions = [{
             "FromPort": -1,
             "ToPort": -1,
             "IpProtocol": "-1",
@@ -250,7 +266,13 @@ def _configure_security_group(config):
             "IpRanges": [{
                 "CidrIp": "0.0.0.0/0"
             }]
-        }])
+        }]
+
+        additional_IpPermissions = config["provider"].get(
+            "security_group", {}).get("IpPermissions", [])
+        IpPermissions.extend(additional_IpPermissions)
+
+        security_group.authorize_ingress(IpPermissions=IpPermissions)
 
     if "SecurityGroupIds" not in config["head_node"]:
         logger.info(
@@ -359,10 +381,19 @@ def _get_key(key_name, config):
 
 def _client(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.client(name, config["provider"]["region"], config=boto_config)
+    aws_credentials = config["provider"].get("aws_credentials", {})
+    return boto3.client(
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)
 
 
 def _resource(name, config):
     boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = config["provider"].get("aws_credentials", {})
     return boto3.resource(
-        name, config["provider"]["region"], config=boto_config)
+        name,
+        config["provider"]["region"],
+        config=boto_config,
+        **aws_credentials)

@@ -1,4 +1,3 @@
-import collections
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -7,6 +6,11 @@ from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
+
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 try:
     from apex import amp
@@ -25,7 +29,7 @@ except ImportError:
 
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
-    return isinstance(component, collections.Iterable) and len(component) > 1
+    return isinstance(component, Iterable) and len(component) > 1
 
 
 class TrainingOperator:
@@ -60,27 +64,34 @@ class TrainingOperator:
                  world_rank,
                  criterion=None,
                  schedulers=None,
+                 device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False):
         # You are not expected to override this method.
         self._models = models  # List of models
-        assert isinstance(models, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(models)))
+        assert isinstance(
+            models,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(models)))
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, collections.Iterable), (
-            "Components need to be iterable. Got: {}".format(type(optimizers)))
+        assert isinstance(
+            optimizers,
+            Iterable), ("Components need to be iterable. Got: {}".format(
+                type(optimizers)))
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(schedulers, collections.Iterable), (
-                "Components need to be iterable. Got: {}".format(
+            assert isinstance(
+                schedulers,
+                Iterable), ("Components need to be iterable. Got: {}".format(
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
+        self._device_ids = device_ids
         self._use_gpu = use_gpu and torch.cuda.is_available()
         self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
@@ -201,8 +212,9 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (features, labels) format. If using amp/fp16
-        training, it will also scale the loss automatically.
+        are in (\*features, labels) format. So we also support multiple inputs
+        model. If using amp/fp16 training, it will also scale the loss
+        automatically.
 
         You can provide custom loss metrics and training operations if you
         override this method. If overriding this method, you can access model,
@@ -226,15 +238,18 @@ class TrainingOperator:
                 calculate averages.
 
         """
-        features, target = batch
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
         # Create non_blocking tensors for distributed training
-        if torch.cuda.is_available():
-            features = features.cuda(non_blocking=True)
+        if self.use_gpu:
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = self.model(features)
+            output = self.model(*features)
             loss = self.criterion(output, target)
 
         # Compute gradients in a backward pass.
@@ -250,7 +265,7 @@ class TrainingOperator:
         with self.timers.record("apply"):
             self.optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
@@ -293,6 +308,10 @@ class TrainingOperator:
 
         You can override this method to provide arbitrary metrics.
 
+        Same as ``train_batch``, this method implementation assumes that
+        batches are in (\*features, labels) format by default. So we also
+        support multiple inputs model.
+
         Args:
             batch: One item of the validation iterator.
             batch_info (dict): Contains information per batch from
@@ -306,15 +325,18 @@ class TrainingOperator:
                 by default, ``validate`` uses "num_samples" to
                 calculate averages.
         """
-        features, target = batch
-        if torch.cuda.is_available():
-            features = features.cuda(non_blocking=True)
+        # unpack features into list to support multiple inputs model
+        *features, target = batch
+        if self.use_gpu:
+            features = [
+                feature.cuda(non_blocking=True) for feature in features
+            ]
             target = target.cuda(non_blocking=True)
 
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = self.model(features)
+            output = self.model(*features)
             loss = self.criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
@@ -327,21 +349,27 @@ class TrainingOperator:
         }
 
     def state_dict(self):
-        """Override this to return a representation of the operator state."""
+        """Override this to return a representation of the operator state.
+
+        Returns:
+            dict: The state dict of the operator."""
         pass
 
     def load_state_dict(self, state_dict):
-        """Override this to load the representation of the operator state."""
+        """Override this to load the representation of the operator state.
+
+        Args:
+            state_dict (dict): State dict as returned by the operator. """
         pass
 
     @property
     def device(self):
-        """The torch device, at your convenience."""
+        """torch.device: The appropriate torch device, at your convenience."""
         return self._device
 
     @property
     def config(self):
-        """Dictionary as provided into TorchTrainer."""
+        """dict: Provided into TorchTrainer."""
         return self._config
 
     @property
@@ -366,21 +394,18 @@ class TrainingOperator:
 
     @property
     def train_loader(self):
-        """
-        Data loader for the validation dataset created by the ``data_creator``.
+        """Iterable: 1st Dataloader from ``data_creator``.
         """
         return self._train_loader
 
     @property
     def validation_loader(self):
-        """
-        Data loader for the train dataset created by the ``data_creator``.
-        """
+        """Iterable: 2nd Dataloader from ``data_creator``."""
         return self._validation_loader
 
     @property
     def world_rank(self):
-        """The rank of the parent runner. Always 0 if not distributed."""
+        """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
 
     @property
@@ -400,14 +425,27 @@ class TrainingOperator:
         return self._schedulers
 
     @property
+    def use_gpu(self):
+        """Returns True if cuda is available and use_gpu is True."""
+        return self._use_gpu
+
+    @property
     def use_fp16(self):
-        """Whether the model and optimizer have been FP16 enabled."""
+        """bool: Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
 
     @property
     def use_tqdm(self):
-        """Whether tqdm progress bars are enabled."""
+        """bool: Whether tqdm progress bars are enabled."""
         return self._use_tqdm
+
+    @property
+    def device_ids(self):
+        """List[int]: Device IDs for the model.
+
+        This is useful for using batch norm with DistributedDataParallel.
+        """
+        return self._device_ids
 
 
 class _TestingOperator(TrainingOperator):

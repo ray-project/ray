@@ -141,9 +141,6 @@ extern jclass java_task_executor_class;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
 
-/// The `get` method in TaskExecutor class
-extern jmethodID java_task_executor_get;
-
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 extern JavaVM *jvm;

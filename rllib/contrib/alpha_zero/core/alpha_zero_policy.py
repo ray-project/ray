@@ -89,7 +89,7 @@ class AlphaZeroPolicy(TorchPolicy):
                     episode.user_data["mcts_policies"].append(mcts_policy)
 
             return np.array(actions), [], self.extra_action_out(
-                input_dict, state_batches, self.model)
+                input_dict, state_batches, self.model, None)
 
     @override(Policy)
     def postprocess_trajectory(self,
@@ -116,11 +116,12 @@ class AlphaZeroPolicy(TorchPolicy):
 
         loss_out, policy_loss, value_loss = self._loss(
             self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
+        self._optimizers[0].zero_grad()
         loss_out.backward()
 
-        grad_process_info = self.extra_grad_process()
-        self._optimizer.step()
+        grad_process_info = self.extra_grad_process(self._optimizers[0],
+                                                    loss_out)
+        self._optimizers[0].step()
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)

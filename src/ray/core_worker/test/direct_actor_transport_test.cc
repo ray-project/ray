@@ -64,6 +64,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD2(OnTaskDependenciesInlined,
                void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
+
+  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -233,7 +235,7 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id, int64_t count
 class MockWorkerContext : public WorkerContext {
  public:
   MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, job_id) {
+      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
     current_actor_is_direct_call_ = true;
   }
 };

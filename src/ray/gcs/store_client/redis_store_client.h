@@ -26,27 +26,24 @@ namespace ray {
 
 namespace gcs {
 
-template <typename Data>
-class RedisStoreClient : public StoreClient<Data> {
+class RedisStoreClient : public StoreClient {
  public:
   RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
-  virtual ~RedisStoreClient() {}
-
-  Status AsyncPut(const std::string &table_name, const std::string &key, const Data &data,
-                  const StatusCallback &callback) override;
+  Status AsyncPut(const std::string &table_name, const std::string &key,
+                  const std::string &data, const StatusCallback &callback) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const Data &data,
+                           const std::string &index_key, const std::string &data,
                            const StatusCallback &callback) override;
 
   Status AsyncGet(const std::string &table_name, const std::string &key,
-                  const OptionalItemCallback<Data> &callback) override;
+                  const OptionalItemCallback<std::string> &callback) override;
 
   Status AsyncGetAll(
       const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, Data>> &callback) override;
+      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;

@@ -58,7 +58,7 @@
             "type": "object",
             "description": "Cloud-provider specific configuration.",
             "required": [ "type" ],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "properties": {
                 "type": {
                     "type": "string",
@@ -127,10 +127,6 @@
                 "autoscaler_role_binding": {
                     "type": "object",
                     "description": "k8s autoscaler permissions, if using k8s"
-                },
-                "extra_config": {
-                    "type": "object",
-                    "description": "provider-specific config"
                 },
                 "cache_stopped_nodes": {
                     "type": "boolean",

@@ -137,7 +137,7 @@ class TFPolicy(Policy):
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
-        self._distr_inputs = dist_inputs
+        self._dist_inputs = dist_inputs
         self.dist_class = dist_class
         self._log_likelihood = log_likelihood
         self._state_inputs = state_inputs or []
@@ -148,7 +148,6 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-        self.exploration_info = self.exploration.get_info()
         self._timestep = timestep if timestep is not None else \
             tf.placeholder(tf.int32, (), name="timestep")
 
@@ -172,9 +171,9 @@ class TFPolicy(Policy):
 
         # The log-likelihood calculator op.
         self._log_likelihood = None
-        if self._distr_inputs is not None and self.dist_class is not None:
+        if self._dist_inputs is not None and self.dist_class is not None:
             self._log_likelihood = self.dist_class(
-                self._distr_inputs, self.model).logp(self._action_input)
+                self._dist_inputs, self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -346,7 +345,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_exploration_info(self):
-        return self._sess.run(self.exploration_info)
+        return self.exploration.get_info(sess=self.get_session())
 
     @override(Policy)
     def get_weights(self):
@@ -424,8 +423,8 @@ class TFPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_PROB] = self._sampled_action_prob
             extra_fetches[SampleBatch.ACTION_LOGP] = self._sampled_action_logp
         # Action-dist inputs.
-        if self._distr_inputs is not None:
-            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._distr_inputs
+        if self._dist_inputs is not None:
+            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._dist_inputs
         return extra_fetches
 
     @DeveloperAPI
@@ -577,9 +576,13 @@ class TFPolicy(Policy):
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([self._sampled_action] +
-                                      self._state_outputs +
-                                      [self.extra_compute_action_fetches()])
+
+        # Determine, what exactly to fetch from the graph.
+        to_fetch = [self._sampled_action] + self._state_outputs + \
+                   [self.extra_compute_action_fetches()]
+
+        # Perform the session call.
+        fetches = builder.add_fetches(to_fetch)
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):

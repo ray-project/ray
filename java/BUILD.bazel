@@ -17,17 +17,17 @@ all_modules = [
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_" + module + ".jar"
+        "libio_ray_ray_" + module + ".jar"
         for module in all_modules
     ] + [
-        "liborg_ray_ray_" + module + "-src.jar"
+        "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules
     ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_" + module
+        ":io_ray_ray_" + module
         for module in all_modules
     ] + [
         ":all_tests",
@@ -56,11 +56,11 @@ define_java_module(
     ],
     define_test_lib = True,
     exclude_srcs = [
-        "runtime/src/main/java/org/ray/runtime/generated/*.java",
+        "runtime/src/main/java/io/ray/runtime/generated/*.java",
     ],
     test_deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:com_beust_jcommander",
         "@maven//:org_testng_testng",
@@ -68,7 +68,7 @@ define_java_module(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":org_ray_ray_api",
+        ":io_ray_ray_api",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_config",
@@ -76,9 +76,11 @@ define_java_module(
         "@maven//:de_ruedigermoeller_fst",
         "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_msgpack_msgpack_core",
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:org_testng_testng",
         "@maven//:redis_clients_jedis",
     ],
 )
@@ -86,8 +88,8 @@ define_java_module(
 define_java_module(
     name = "tutorial",
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         "@maven//:com_google_guava_guava",
     ],
 )
@@ -95,8 +97,8 @@ define_java_module(
 define_java_module(
     name = "test",
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
@@ -115,8 +117,8 @@ java_binary(
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_runtime_test",
-        ":org_ray_ray_test",
+        ":io_ray_ray_runtime_test",
+        ":io_ray_ray_test",
     ],
 )
 
@@ -163,7 +165,7 @@ filegroup(
     ],
 )
 
-# Generates the depedencies needed by maven.
+# Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
@@ -173,10 +175,9 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
         # Copy protobuf-generated files.
-        rm -rf "$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated"
+        rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
         done
@@ -197,17 +198,16 @@ genrule(
 genrule(
     name = "copy_pom_file",
     srcs = [
-        "//java:org_ray_ray_" + module + "_pom"
+        "//java:io_ray_ray_" + module + "_pom"
         for module in all_modules
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
-        set -x
         WORK_DIR="$$(pwd)"
-        cp -f $(location //java:org_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
-        cp -f $(location //java:org_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:org_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
-        cp -f $(location //java:org_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
+        cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
+        cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
+        cp -f $(location //java:io_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
+        cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@
     """,
     local = 1,
@@ -220,10 +220,10 @@ java_binary(
     # fat jar file. It's not really an executable jar. So we set its `main_class` to empty.
     main_class = "",
     runtime_deps = [
-        "//java:org_ray_ray_api",
-        "//java:org_ray_ray_runtime",
-        "//streaming/java:org_ray_ray_streaming-api",
-        "//streaming/java:org_ray_ray_streaming-runtime",
+        "//java:io_ray_ray_api",
+        "//java:io_ray_ray_runtime",
+        "//streaming/java:io_ray_ray_streaming-api",
+        "//streaming/java:io_ray_ray_streaming-runtime",
     ],
 )
 

@@ -7,7 +7,7 @@ namespace gcs {
 template <typename ServiceInfo>
 StoreBasedServiceDiscoveryClient<ServiceInfo>::StoreBasedServiceDiscoveryClient(
     std::shared_ptr<IOServicePool> io_service_pool,
-    std::shared_ptr<StoreClient<ServiceInfo>> store_client)
+    std::shared_ptr<StoreClient> store_client)
     : io_service_pool_(std::move(io_service_pool)),
       store_client_(std::move(store_client)) {
   RAY_CHECK(io_service_pool_);
@@ -54,7 +54,7 @@ void StoreBasedServiceDiscoveryClient<ServiceInfo>::RegisterServiceWatcher(
     const std::string &service_name, const ItemCallback<ServiceInfo> &callback) {
   RAY_CHECK(callback);
 
-  RAY_CHECK(service_name_.empty());
+  RAY_CHECK(!service_name_.empty());
   RAY_CHECK(!service_watcher_callback_);
 
   service_name_ = service_name;
@@ -66,26 +66,23 @@ void StoreBasedServiceDiscoveryClient<ServiceInfo>::RegisterServiceWatcher(
 
 template <typename ServiceInfo>
 void StoreBasedServiceDiscoveryClient<ServiceInfo>::OnReceiveServiceInfo(
-    const ServiceInfo &new_service_info) {
-  bool changed = false;
-
-  std::string new_service_info_str = new_service_info.SerializeAsString();
+    const std::string &new_service_info_str) {
   std::string service_info_str = received_service_info_.SerializeAsString();
   if (new_service_info_str != service_info_str) {
-    received_service_info_ = new_service_info;
-    changed = true;
-  }
-
-  if (changed) {
-    RAY_LOG(INFO) << "Receive new service info " << new_service_info.ShortDebugString();
-    service_watcher_callback_(new_service_info);
+    bool ret = received_service_info_.ParseFromString(new_service_info_str);
+    RAY_DCHECK(ret);
+    if (ret) {
+      RAY_LOG(INFO) << "Receive new service info "
+                    << received_service_info_.ShortDebugString();
+      service_watcher_callback_(received_service_info_);
+    }
   }
 }
 
 template <typename ServiceInfo>
 void StoreBasedServiceDiscoveryClient<ServiceInfo>::RunQueryStoreTimer() {
   auto on_get_callback = [this](Status status,
-                                const boost::optional<ServiceInfo> &result) {
+                                const boost::optional<std::string> &result) {
     if (status.ok() && result) {
       OnReceiveServiceInfo(*result);
     }

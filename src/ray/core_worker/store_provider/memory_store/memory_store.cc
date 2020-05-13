@@ -455,7 +455,9 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   absl::MutexLock lock(&mu_);
   MemoryStoreStats item;
   for (const auto &it : objects_) {
-    if (!it.second->IsInPlasmaError()) {
+    if (it.second->IsInPlasmaError()) {
+      item.num_in_plasma += 1;
+    } else {
       item.num_local_objects += 1;
       item.used_object_store_memory += it.second->GetSize();
     }

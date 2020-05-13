@@ -46,4 +46,8 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 /// Prefix of the service discovery table name.
 constexpr char kServiceDiscoveryTableNamePrefix[] = "ServiceDiscoveryTable";
 
+/// Public DNS address which is is used to connect and get local IP.
+constexpr char kPublicDNSServerIp[] = "8.8.8.8";
+constexpr int kPublicDNSServerPort = 53;
+
 #endif  // RAY_CONSTANTS_H_

@@ -1,5 +1,5 @@
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils import try_import_torch
 
 _, nn = try_import_torch()
@@ -30,7 +30,7 @@ class TorchModelV2(ModelV2):
         if not isinstance(self, nn.Module):
             raise ValueError(
                 "Subclasses of TorchModelV2 must also inherit from "
-                "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
+                "nn.Module, e.g., MyModel(TorchModel, nn.Module)")
 
         ModelV2.__init__(
             self,
@@ -41,49 +41,18 @@ class TorchModelV2(ModelV2):
             name,
             framework="torch")
 
-    def forward(self, input_dict, state, seq_lens):
-        """Call the model with the given input tensors and state.
+    @override(ModelV2)
+    def variables(self, as_dict=False):
+        if as_dict:
+            return self.state_dict()
+        return list(self.parameters())
 
-        Any complex observations (dicts, tuples, etc.) will be unpacked by
-        __call__ before being passed to forward(). To access the flattened
-        observation tensor, refer to input_dict["obs_flat"].
-
-        This method can be called any number of times. In eager execution,
-        each call to forward() will eagerly evaluate the model. In symbolic
-        execution, each call to forward creates a computation graph that
-        operates over the variables of this model (i.e., shares weights).
-
-        Custom models should override this instead of __call__.
-
-        Arguments:
-            input_dict (dict): dictionary of input tensors, including "obs",
-                "obs_flat", "prev_action", "prev_reward", "is_training"
-            state (list): list of state tensors with sizes matching those
-                returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths
-
-        Returns:
-            (outputs, state): The model output tensor of size
-                [BATCH, num_outputs]
-
-        Sample implementation for the ``MyModelClass`` example::
-
-            def forward(self, input_dict, state, seq_lens):
-                features = self._hidden_layers(input_dict["obs"])
-                self._value_out = self._value_branch(features)
-                return self._logits(features), state
-        """
-        raise NotImplementedError
-
-    def value_function(self):
-        """Return the value function estimate for the most recent forward pass.
-
-        Returns:
-            value estimate tensor of shape [BATCH].
-
-        Sample implementation for the ``MyModelClass`` example::
-
-            def value_function(self):
-                return self._value_out
-        """
-        raise NotImplementedError
+    @override(ModelV2)
+    def trainable_variables(self, as_dict=False):
+        if as_dict:
+            return {
+                k: v
+                for k, v in self.variables(as_dict=True).items()
+                if v.requires_grad
+            }
+        return [v for v in self.variables() if v.requires_grad]

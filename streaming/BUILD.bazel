@@ -268,7 +268,6 @@ genrule(
     ],
     cmd = """
         set -e
-        set -x
         WORK_DIR="$$(pwd)"
         # Copy generated files.
         GENERATED_DIR="$$WORK_DIR/streaming/python/generated"

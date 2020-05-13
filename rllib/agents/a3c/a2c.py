@@ -5,10 +5,11 @@ from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
 from ray.rllib.optimizers import SyncSamplesOptimizer, MicrobatchOptimizer
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
+    ApplyGradients, TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, ConcatBatches, ComputeGradients, AverageGradients,
-    ApplyGradients, TrainOneStep, StandardMetricsReporting)
 
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,

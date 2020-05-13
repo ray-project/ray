@@ -71,6 +71,10 @@ class GaussianNoise(Exploration):
         self.last_timestep = get_variable(
             0, framework=self.framework, tf_name="timestep")
 
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
+
     @override(Exploration)
     def get_exploration_action(self,
                                *,
@@ -136,31 +140,34 @@ class GaussianNoise(Exploration):
             if self.last_timestep <= self.random_timesteps:
                 action, _ = \
                     self.random_exploration.get_torch_exploration_action(
-                        action_dist, True)
+                        action_dist, explore=True)
             # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
             else:
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=0.0, stddev=self.stddev, size=det_actions.size())
-                action = torch.clamp(
-                    det_actions + gaussian_sample,
-                    self.action_space.low * torch.ones_like(det_actions),
-                    self.action_space.high * torch.ones_like(det_actions))
+                    mean=torch.zeros(det_actions.size()), std=self.stddev)
+                action = torch.clamp(det_actions + gaussian_sample,
+                                     self.action_space.low.item(0),
+                                     self.action_space.high.item(0))
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()
 
         # Logp=always zero.
-        logp = torch.zeros(shape=(action.size()[0], ), dtype=torch.float32)
+        logp = torch.zeros(
+            (action.size()[0], ), dtype=torch.float32, device=self.device)
 
         return action, logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns the current scale value.
 
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
-        return self.scale_schedule(self.last_timestep)
+        if sess:
+            return sess.run(self._tf_info_op)
+        scale = self.scale_schedule(self.last_timestep)
+        return {"cur_scale": scale}

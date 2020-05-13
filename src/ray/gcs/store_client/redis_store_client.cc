@@ -23,26 +23,19 @@ namespace ray {
 
 namespace gcs {
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncPut(const std::string &table_name,
-                                        const std::string &key, const Data &data,
-                                        const StatusCallback &callback) {
+Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
+                                  const std::string &data,
+                                  const StatusCallback &callback) {
   std::string full_key = table_name + key;
-  std::string data_str = data.SerializeAsString();
-  RAY_CHECK(!data_str.empty());
-  return DoPut(full_key, data_str, callback);
+  return DoPut(full_key, data, callback);
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncPutWithIndex(const std::string &table_name,
-                                                 const std::string &key,
-                                                 const std::string &index_key,
-                                                 const Data &data,
-                                                 const StatusCallback &callback) {
-  std::string data_str = data.SerializeAsString();
-  RAY_CHECK(!data_str.empty());
-
-  auto write_callback = [this, table_name, key, data_str, callback](Status status) {
+Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
+                                           const std::string &key,
+                                           const std::string &index_key,
+                                           const std::string &data,
+                                           const StatusCallback &callback) {
+  auto write_callback = [this, table_name, key, data, callback](Status status) {
     if (!status.ok()) {
       // Run callback if failed.
       if (callback != nullptr) {
@@ -53,7 +46,7 @@ Status RedisStoreClient<Data>::AsyncPutWithIndex(const std::string &table_name,
 
     // Write data to Redis.
     std::string full_key = table_name + key;
-    status = DoPut(full_key, data_str, callback);
+    status = DoPut(full_key, data, callback);
 
     if (!status.ok()) {
       // Run callback if failed.
@@ -68,13 +61,12 @@ Status RedisStoreClient<Data>::AsyncPutWithIndex(const std::string &table_name,
   return DoPut(index_table_key, key, write_callback);
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::DoPut(const std::string &key, const std::string &data,
-                                     const StatusCallback &callback) {
+Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
+                               const StatusCallback &callback) {
   std::vector<std::string> args = {"SET", key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
-    write_callback = [callback](std::shared_ptr<CallbackReply> reply) {
+    write_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
       auto status = reply->ReadAsStatus();
       callback(status);
     };
@@ -84,19 +76,15 @@ Status RedisStoreClient<Data>::DoPut(const std::string &key, const std::string &
   return shard_context->RunArgvAsync(args, write_callback);
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncGet(const std::string &table_name,
-                                        const std::string &key,
-                                        const OptionalItemCallback<Data> &callback) {
+Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::string &key,
+                                  const OptionalItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
-  auto redis_callback = [callback](std::shared_ptr<CallbackReply> reply) {
-    boost::optional<Data> result;
+  auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
+    boost::optional<std::string> result;
     if (!reply->IsNil()) {
-      std::string data_str = reply->ReadAsString();
-      if (!data_str.empty()) {
-        Data data;
-        RAY_CHECK(data.ParseFromString(data_str));
+      std::string data = reply->ReadAsString();
+      if (!data.empty()) {
         result = std::move(data);
       }
     }
@@ -110,18 +98,16 @@ Status RedisStoreClient<Data>::AsyncGet(const std::string &table_name,
   return shard_context->RunArgvAsync(args, redis_callback);
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncGetAll(
+Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const SegmentedCallback<std::pair<std::string, Data>> &callback) {
+    const SegmentedCallback<std::pair<std::string, std::string>> &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncDelete(const std::string &table_name,
-                                           const std::string &key,
-                                           const StatusCallback &callback) {
+Status RedisStoreClient::AsyncDelete(const std::string &table_name,
+                                     const std::string &key,
+                                     const StatusCallback &callback) {
   RedisCallback delete_callback = nullptr;
   if (callback) {
     delete_callback = [callback](std::shared_ptr<CallbackReply> reply) {
@@ -138,15 +124,12 @@ Status RedisStoreClient<Data>::AsyncDelete(const std::string &table_name,
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
-template <typename Data>
-Status RedisStoreClient<Data>::AsyncDeleteByIndex(const std::string &table_name,
-                                                  const std::string &index_key,
-                                                  const StatusCallback &callback) {
+Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
+                                            const std::string &index_key,
+                                            const StatusCallback &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
 }
-
-template class RedisStoreClient<rpc::ActorTableData>;
 
 }  // namespace gcs
 

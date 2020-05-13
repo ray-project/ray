@@ -1,30 +1,25 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
-from torch.optim import RMSprop
-from torch.distributions import Categorical
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
+from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import _unpack_obs
+from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.tuple_actions import TupleActions
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
-
-# if the obs space is Dict type, look for the global state under this key
-ENV_STATE = "state"
 
 
 class QMixLoss(nn.Module):
@@ -244,6 +239,7 @@ class QMixTorchPolicy(Policy):
         self.loss = QMixLoss(self.model, self.target_model, self.mixer,
                              self.target_mixer, self.n_agents, self.n_actions,
                              self.config["double_q"], self.config["gamma"])
+        from torch.optim import RMSprop
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -283,13 +279,14 @@ class QMixTorchPolicy(Policy):
             random_numbers = torch.rand_like(q_values[:, :, 0])
             pick_random = (random_numbers < (self.cur_epsilon
                                              if explore else 0.0)).long()
+            from torch.distributions import Categorical
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.argmax(dim=2))
             actions = actions.cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
-        return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
+        return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(Policy)
     def compute_log_likelihoods(self,

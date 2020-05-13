@@ -11,7 +11,7 @@ torch, nn = try_import_torch()
 
 @DeveloperAPI
 class RecurrentTorchModel(TorchModelV2, nn.Module):
-    """Helper class to simplify implementing RNN models with TFModelV2.
+    """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.
@@ -31,7 +31,7 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
 
         @override(ModelV2)
         def get_initial_state(self):
-            # make hidden states on same device as model
+            # Place hidden states on same device as model.
             h = [self.fc1.weight.new(
                 1, self.rnn_hidden_dim).zero_().squeeze(0)]
             return h

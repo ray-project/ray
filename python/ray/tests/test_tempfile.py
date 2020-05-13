@@ -72,6 +72,12 @@ def test_tempdir_commandline():
         ignore_errors=True)
 
 
+def test_tempdir_long_path():
+    temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * 108)
+    with pytest.raises(OSError):
+        ray.init(temp_dir=temp_dir)  # path should be too long
+
+
 def test_raylet_socket_name(shutdown_only):
     ray.init(
         raylet_socket_name=os.path.join(ray.utils.get_user_temp_dir(),
