@@ -1805,12 +1805,14 @@ def remote(*args, **kwargs):
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
       value is ray.ray_constants.INFINITE_RECONSTRUCTION.
-    * **max_task_retries**: Only for *actors*. This specifies the maximum
-      number of times that the remote function should be rerun when the actor
-      process executing it crashes unexpectedly. Once this limit is reached,
-      the task will no longer be retried and will instead return a
-      `RayActorError` exception that will be thrown if `ray.get` is called. The
-      default value is 0, and -1 means infinite retries.
+    * **max_task_retries**: Only for *actors*. How many times to retry an actor
+      task if the task fails due to a system error, e.g., the actor has died.
+      If set to -1, the system will retry the failed task until the task
+      succeeds, or the actor has reached its max_restarts limit. If set to n >
+      0, the system will retry the failed task up to n times, after which the
+      task will throw a `RayActorError` exception upon `ray.get`. Note that
+      Python exceptions are not considered system errors and will not trigger
+      retries.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
