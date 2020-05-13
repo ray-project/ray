@@ -41,15 +41,18 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
 
       ASSERT_EQ("current_worker", descriptor.name());
       ASSERT_EQ(opencensus::stats::ViewData::Type::kDouble, view_data.type());
-
+      bool tag_node_address_reported = false;
       for (const auto row : view_data.double_data()) {
         for (size_t i = 0; i < descriptor.columns().size(); ++i) {
           if (descriptor.columns()[i].name() == "NodeAddress") {
+            tag_node_address_reported = true;
             ASSERT_EQ("Localhost", row.first[i]);
           }
         }
         // row.second store the data of this metric.
         ASSERT_EQ(2345, row.second);
+        // Assume node address will be updated at least once.
+        ASSERT_TRUE(tag_node_address_reported);
       }
     }
   }

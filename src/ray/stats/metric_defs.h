@@ -28,7 +28,7 @@
 static Gauge CurrentWorker("current_worker",
                            "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
-                           "1 pcs", {LanguageKey, WorkerPidKey});
+                           "1 pcs", {LanguageKey, WorkerPidKey, NodeAddressKey});
 
 static Gauge CurrentDriver("current_driver",
                            "This metric is used for reporting states of drivers.",
