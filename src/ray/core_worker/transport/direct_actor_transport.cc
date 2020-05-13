@@ -63,6 +63,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   RAY_CHECK(task_spec.IsActorTask());
 
   bool task_queued = false;
+  uint64_t send_pos = 0;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(task_spec.ActorId());
@@ -75,7 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                                     rpc::ErrorType::ACTOR_DIED, &status));
     } else {
-      const auto send_pos = task_spec.ActorCounter();
+      send_pos = task_spec.ActorCounter();
       if (send_pos < queue->second.next_send_position) {
         // No need to resolve the dependencies again because this task has
         // already been sent before.
@@ -85,7 +86,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
         // may complete out of order. This ensures that we will not deadlock
         // due to backpressure.  The receiving actor will execute the tasks
         // according to this sequence number.
-        auto inserted = queue->second.requests.emplace(send_pos, task_spec);
+        auto inserted =
+            queue->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
         RAY_CHECK(inserted.second);
         task_queued = true;
       }
@@ -94,9 +96,17 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
   if (task_queued) {
     const auto actor_id = task_spec.ActorId();
-    resolver_.ResolveDependencies(task_spec, [this, actor_id]() {
+    resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id]() {
       absl::MutexLock lock(&mu_);
-      SendPendingTasks(actor_id);
+      auto queue = client_queues_.find(actor_id);
+      RAY_CHECK(queue != client_queues_.end());
+      auto it = queue->second.requests.find(send_pos);
+      // Only dispatch tasks if the submitted task is still queued. The task
+      // may have been dequeued if the actor has since failed.
+      if (it != queue->second.requests.end()) {
+        it->second.second = true;
+        SendPendingTasks(actor_id);
+      }
     });
   }
 
@@ -118,9 +128,12 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   RAY_CHECK(!queue->second.rpc_client);
   queue->second.rpc_client =
       std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
-  // TODO(swang): This assumes that replies from the previous incarnation of
-  // the actor have been received. Fix this by setting an epoch for each actor
-  // task, so we can ignore completed tasks from old epochs.
+  // TODO(swang): This assumes that all replies from the previous incarnation
+  // of the actor have been received. Fix this by setting an epoch for each
+  // actor task, so we can ignore completed tasks from old epochs.
+  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
+                 << queue->second.caller_starts_at << " to "
+                 << queue->second.num_completed_tasks;
   queue->second.caller_starts_at = queue->second.num_completed_tasks;
   SendPendingTasks(actor_id);
 }
@@ -150,7 +163,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     auto &requests = queue->second.requests;
     auto head = requests.begin();
     while (head != requests.end()) {
-      const auto &task_spec = head->second;
+      const auto &task_spec = head->second.first;
       task_finisher_->MarkTaskCanceled(task_spec.TaskId());
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
       // No need to increment the number of completed tasks since the actor is
@@ -186,8 +199,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Submit all pending requests.
   auto &requests = it->second.requests;
   auto head = requests.begin();
-  while (head != requests.end() && head->first == it->second.next_send_position) {
-    auto task_spec = std::move(head->second);
+  while (head != requests.end() && head->first == it->second.next_send_position &&
+         head->second.second) {
+    auto task_spec = std::move(head->second.first);
     head = requests.erase(head);
 
     RAY_CHECK(!it->second.worker_id.empty());
@@ -200,7 +214,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest());
-  request->mutable_caller_address()->CopyFrom(rpc_address_);
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
@@ -213,13 +226,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
 
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
+  const auto counter = task_spec.ActorCounter();
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
-                 << " actor counter " << task_spec.ActorCounter() << " seq no "
+                 << " actor counter " << counter << " seq no "
                  << request->sequence_number();
   rpc::Address addr(queue.rpc_client->Addr());
   RAY_UNUSED(queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
-      [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id, actor_id, counter](Status status,
+                                               const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
         if (!status.ok()) {
           bool will_retry = task_finisher_->PendingTaskFailed(

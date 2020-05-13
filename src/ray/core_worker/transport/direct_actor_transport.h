@@ -50,12 +50,10 @@ const int kMaxReorderWaitSeconds = 30;
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::Address rpc_address,
-                                     rpc::ClientFactoryFn client_factory,
+  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
-      : rpc_address_(rpc_address),
-        client_factory_(client_factory),
+      : client_factory_(client_factory),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
@@ -108,20 +106,54 @@ class CoreWorkerDirectActorTaskSubmitter {
     /// The intended worker ID of the actor.
     std::string worker_id = "";
 
-    /// The actor's pending requests, ordered by the task number in the
-    /// request.
-    std::map<uint64_t, TaskSpecification> requests;
+    /// The actor's pending requests, ordered by the task number (see below
+    /// diagram) in the request. The bool indicates whether the dependencies
+    /// for that task have been resolved yet. A task will be sent after its
+    /// dependencies have been resolved and its task nunmber matches
+    /// next_send_position.
+    std::map<uint64_t, std::pair<TaskSpecification, bool>> requests;
+
+    /// Diagram of the sequence numbers assigned to actor tasks during actor
+    /// crash and restart:
+    ///
+    /// The actor starts, and 10 tasks are submitted. We have sent 6 tasks
+    /// (0-5) so far, and have received a successful reply for 4 tasks (0-3).
+    /// 0 1 2 3 4 5 6 7 8 9
+    ///             ^ next_send_position
+    ///         ^ num_completed_tasks
+    /// ^ caller_starts_at
+    ///
+    /// Suppose the actor crashes and recovers. Then, caller_starts_at is reset
+    /// to the current num_completed_tasks, and this amount is subtracted from
+    /// each task's counter. Therefore, the recovered actor will restart
+    /// execution from task 4.
+    /// 0 1 2 3 4 5 6 7 8 9
+    ///             ^ next_send_position
+    ///         ^ num_completed_tasks
+    ///         ^ caller_starts_at
+    ///
+    /// New actor tasks will continue to be sent even while tasks are being
+    /// resubmitted, but the receiving worker will only execute them after the
+    /// resent tasks. For example, this diagram shows what happens if task 6 is
+    /// sent for the first time, tasks 4 and 5 have been resent, and we have
+    /// received a successful reply for task 4.
+    /// 0 1 2 3 4 5 6 7 8 9
+    ///               ^ next_send_position
+    ///           ^ num_completed_tasks
+    ///         ^ caller_starts_at
+    ///
     /// The send position of the next task to send to this actor. This sequence
     /// number increases monotonically.
     uint64_t next_send_position = 0;
     /// The offset at which the the actor should start its counter for this
     /// caller. This is used for actors that can be restarted, so that the new
-    /// instance of the actor knows from which task to start executing. This
-    /// increases monotonically.
+    /// instance of the actor knows from which task to start executing.
     uint64_t caller_starts_at = 0;
-    /// The number of tasks sent to this actor by this worker that will never
-    /// be submitted again. This is used to reset caller_starts_at if the actor
-    /// dies and is restarted.
+    /// Out of the tasks sent by this worker to the actor, the number of tasks
+    /// that we wil never send to the actor again.  This is used to reset
+    /// caller_starts_at if the actor dies and is restarted. We only include
+    /// tasks that will not be sent again, to support automatic task retry on
+    /// actor failure.
     uint64_t num_completed_tasks = 0;
 
     /// A force-kill request that should be sent to the actor once an RPC
@@ -160,9 +192,6 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Mutex to proect the various maps below.
   mutable absl::Mutex mu_;
-
-  /// Address of our RPC server.
-  rpc::Address rpc_address_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
 
