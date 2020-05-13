@@ -187,5 +187,5 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def value_function(self):
-        assert self._hidden_out, "must call forward first!"
+        assert self._hidden_out is not None, "must call forward first!"
         return torch.reshape(self._value_branch(self._hidden_out), [-1])

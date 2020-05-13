@@ -121,5 +121,5 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def value_function(self):
-        assert self._output, "must call forward first!"
+        assert self._output is not None, "must call forward first!"
         return torch.reshape(self.vf(self._output), [-1])
