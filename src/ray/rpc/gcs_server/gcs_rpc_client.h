@@ -265,6 +265,7 @@ class GcsRpcClient {
 
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
+  std::function<void()> reconnected_callback_;
 
   /// The callback that will be called when we reconnect to GCS server.
   /// Currently, we use this function to reestablish subscription to GCS.
