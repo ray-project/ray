@@ -126,14 +126,13 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   auto finished_count = std::make_shared<int>(0);
   int size = keys.size();
   for (auto &key : keys) {
-    std::string full_key = table_name + key;
-    auto shard_context = redis_client_->GetShardContext(full_key).get();
+    auto shard_context = redis_client_->GetShardContext(key).get();
     auto it = shards.find(shard_context);
     if (it == shards.end()) {
       shards[shard_context].push_back("DEL");
-      shards[shard_context].push_back(full_key);
+      shards[shard_context].push_back(key);
     } else {
-      it->second.push_back(full_key);
+      it->second.push_back(key);
     }
   }
 
@@ -400,10 +399,6 @@ void RedisStoreClient::RedisScanner::MGetValues(
     };
     RAY_CHECK_OK(item.first->RunArgvAsync(item.second, mget_callback));
   }
-}
-
-std::string RedisStoreClient::RedisScanner::GetKey(const std::string &full_key) const {
-  return full_key.substr(table_name_.size(), full_key.size() - table_name_.size());
 }
 
 }  // namespace gcs
