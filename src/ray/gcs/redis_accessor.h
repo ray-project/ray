@@ -181,6 +181,10 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
+  Status AsyncReSubscribe() override {
+    return Status::NotImplemented("AsyncReSubscribe not implemented");
+  }
+
  private:
   /// Append job information to GCS asynchronously.
   ///

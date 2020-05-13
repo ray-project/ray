@@ -802,6 +802,16 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(add_job_id);
 
+  std::promise<bool> promise;
+  std::promise<bool> promise4;
+  auto subscribe = [&promise4](const JobID &id, const rpc::JobTableData &result) {
+    RAY_LOG(INFO) << "Hello world..........................";
+    promise4.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(
+      subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+  promise.get_future().get();
+
   RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
   gcs_server_->Stop();
   thread_gcs_server_->join();
@@ -815,10 +825,17 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   }
   RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
 
-  std::promise<bool> promise;
+  std::promise<bool> promise2;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-  promise.get_future().get();
+      job_table_data, [&promise2](Status status) { promise2.set_value(status.ok()); }));
+  promise2.get_future().get();
+
+  std::promise<bool> promise3;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
+      add_job_id, [&promise3](Status status) { promise3.set_value(status.ok()); }));
+  promise3.get_future().get();
+
+  promise4.get_future().get();
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {

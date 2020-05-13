@@ -84,9 +84,11 @@ class GcsRpcClient {
   /// rpc server.
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager,
-               std::function<std::pair<std::string, int>()> get_server_address = nullptr)
+               std::function<std::pair<std::string, int>()> get_server_address = nullptr,
+               std::function<void()> reconnected_callback = nullptr)
       : client_call_manager_(client_call_manager),
-        get_server_address_(std::move(get_server_address)) {
+        get_server_address_(std::move(get_server_address)),
+        reconnected_callback_(std::move(reconnected_callback)) {
     Init(address, port, client_call_manager);
   };
 
@@ -228,11 +230,16 @@ class GcsRpcClient {
     if (get_server_address_) {
       auto address = get_server_address_();
       Init(address.first, address.second, client_call_manager_);
+
+      if (reconnected_callback_) {
+        reconnected_callback_();
+      }
     }
   }
 
   ClientCallManager &client_call_manager_;
   std::function<std::pair<std::string, int>()> get_server_address_;
+  std::function<void()> reconnected_callback_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

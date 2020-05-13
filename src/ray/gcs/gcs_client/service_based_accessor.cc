@@ -61,19 +61,29 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
 
 Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing finished job.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    JobTableData job_data;
-    job_data.ParseFromString(data);
-    if (job_data.is_dead()) {
-      subscribe(JobID::FromBinary(id), job_data);
-    }
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
+    RAY_LOG(DEBUG) << "Subscribing finished job.";
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      JobTableData job_data;
+      job_data.ParseFromString(data);
+      if (job_data.is_dead()) {
+        subscribe(JobID::FromBinary(id), job_data);
+      }
+    };
+    Status status =
+        client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
+    RAY_LOG(DEBUG) << "Finished subscribing finished job.";
+    return status;
   };
-  Status status =
-      client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing finished job.";
-  return status;
+  return subscribe_operation_(done);
+}
+
+Status ServiceBasedJobInfoAccessor::AsyncReSubscribe() {
+  if (nullptr == subscribe_operation_) {
+    RAY_LOG(INFO) << "Re subscribe once, subscribe_operation_ = null......";
+  }
+  return subscribe_operation_(nullptr);
 }
 
 Status ServiceBasedJobInfoAccessor::AsyncGetAll(

@@ -45,7 +45,11 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
+  std::function<Status(const StatusCallback &done)> subscribe_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 };
 
@@ -101,6 +105,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
+  std::function<Status(const StatusCallback &done)> subscribe_all_operation_;
+
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<ActorID> sequencer_;
