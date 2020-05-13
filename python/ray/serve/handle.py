@@ -2,7 +2,6 @@ import ray
 from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.exceptions import RayServeException
-from ray.serve.constants import DEFAULT_HTTP_ADDRESS
 from ray.serve.request_params import RequestMetadata
 
 
@@ -103,40 +102,18 @@ class RayServeHandle:
             method_name=method_name,
         )
 
-    def get_http_endpoint(self):
-        return DEFAULT_HTTP_ADDRESS
-
     def get_traffic_policy(self):
         master_actor = serve.api._get_master_actor()
         return ray.get(
             master_actor.get_traffic_policy.remote(self.endpoint_name))
 
-    def _ensure_backend_unique(self, backend_tag=None):
-        traffic_policy = self.get_traffic_policy()
-        if backend_tag is None:
-            assert len(traffic_policy) == 1, (
-                "Multiple backends detected. "
-                "Please pass in backend_tag=... argument to specify backend.")
-            backends = set(traffic_policy.keys())
-            return backends.pop()
-        else:
-            assert (backend_tag in traffic_policy
-                    ), "Backend {} not found in avaiable backends: {}.".format(
-                        backend_tag, list(traffic_policy.keys()))
-            return backend_tag
-
     def __repr__(self):
         return """
 RayServeHandle(
     Endpoint="{endpoint_name}",
-    URL="{http_endpoint}/{endpoint_name}",
     Traffic={traffic_policy}
 )
 """.format(
             endpoint_name=self.endpoint_name,
-            http_endpoint=self.get_http_endpoint(),
             traffic_policy=self.get_traffic_policy(),
         )
-
-    # TODO(simon): a convenience function that dumps equivalent requests
-    # code for a given call.
