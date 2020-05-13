@@ -81,8 +81,6 @@ class RedisStoreClient : public StoreClient {
         const std::vector<std::string> &keys,
         const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
-    std::string GetKey(const std::string &full_key) const;
-
     std::string table_name_;
 
     /// The scan match pattern.
@@ -113,6 +111,29 @@ class RedisStoreClient : public StoreClient {
 
   Status DoPut(const std::string &key, const std::string &data,
                const StatusCallback &callback);
+
+  Status DeleteByKeys(const std::vector<std::string> &keys,
+                      const StatusCallback &callback);
+
+  static std::string separator_;
+
+  static std::string GenTableKey(const std::string &table_name, const std::string &key);
+
+  static std::string GenTableMatchPattern(const std::string &table_name);
+
+  static std::string GetKeyFromTableKey(const std::string &full_key,
+                                        const std::string &table_name);
+
+  static std::string GenIndexTableKey(const std::string &table_name,
+                                      const std::string &key,
+                                      const std::string &index_key);
+
+  static std::string GenIndexTableMatchPattern(const std::string &index_key,
+                                               const std::string &table_name);
+
+  static std::string GetKeyFromIndexTableKey(const std::string &full_key,
+                                             const std::string &table_name,
+                                             const std::string &index_key);
 
   std::shared_ptr<RedisClient> redis_client_;
 };
