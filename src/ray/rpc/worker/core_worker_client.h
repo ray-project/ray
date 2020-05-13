@@ -296,7 +296,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         {
           std::lock_guard<std::mutex> lock(mutex_);
           if (seq_no > max_finished_seq_no_) {
-            RAY_LOG(DEBUG) << "Setting max finished seq no " << seq_no;
             max_finished_seq_no_ = seq_no;
           }
           rpc_bytes_in_flight_ -= task_size;
@@ -306,7 +305,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RAY_LOG(DEBUG) << "Push task " << seq_no;
       INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback, grpc_client_);
     }
 
