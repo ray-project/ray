@@ -59,6 +59,14 @@ class CoreWorkerDirectActorTaskSubmitter {
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
+  /// Add an actor queue. This should be called whenever a reference to an
+  /// actor is created in the language frontend.
+  /// TODO(swang): Remove the actor queue once it is sure that this worker will
+  /// not receive another reference to the same actor.
+  ///
+  /// \param[in] actor_id The actor for whom to add a queue.
+  void AddActorQueue(const ActorID &actor_id);
+
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
@@ -89,20 +97,46 @@ class CoreWorkerDirectActorTaskSubmitter {
   void SetCallerCreationTimestamp(int64_t timestamp);
 
  private:
+  struct ClientQueue {
+    /// The current state of the actor. If this is ALIVE, then we should have
+    /// an RPC client to the actor. If this is DEAD, then all tasks in the
+    /// queue will be marked failed and all other ClientQueue state is ignored.
+    rpc::ActorTableData::ActorState state = rpc::ActorTableData::PENDING;
+    /// The RPC client. We use shared_ptr to enable shared_from_this for
+    /// pending client callbacks.
+    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
+    /// The intended worker ID of the actor.
+    std::string worker_id = "";
+
+    /// The actor's pending requests, ordered by the task number in the
+    /// request.
+    std::map<uint64_t, TaskSpecification> requests;
+    /// The send position of the next task to send to this actor. This sequence
+    /// number increases monotonically.
+    uint64_t next_send_position = 0;
+    /// The offset at which the the actor should start its counter for this
+    /// caller. This is used for actors that can be restarted, so that the new
+    /// instance of the actor knows from which task to start executing. This
+    /// increases monotonically.
+    uint64_t caller_starts_at = 0;
+    uint64_t num_completed_tasks = 0;
+
+    /// A force-kill request that should be sent to the actor once an RPC
+    /// client to the actor is available.
+    absl::optional<rpc::KillActorRequest> pending_force_kill;
+  };
+
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
   ///
-  /// \param[in] client The RPC client to send tasks to an actor.
-  /// \param[in] request The request to send.
-  /// \param[in] actor_id Actor ID.
-  /// \param[in] task_id The ID of a task.
-  /// \param[in] num_returns Number of return objects.
+  /// \param[in] queue The actor queue. Contains the RPC client state.
+  /// \param[in] task_spec The task to send.
+  /// \param[in] skip_queue Whether to skip the task queue. This will send the
+  /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(rpc::CoreWorkerClientInterface &client,
-                     std::unique_ptr<rpc::PushTaskRequest> request,
-                     const ActorID &actor_id, const TaskID &task_id, int num_returns)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void PushActorTask(const ClientQueue &queue, const TaskSpecification &task_spec,
+                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -127,36 +161,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Map from actor id to rpc client. This only includes actors that we send tasks to.
-  /// We use shared_ptr to enable shared_from_this for pending client callbacks.
-  ///
-  /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
-  /// subscribe updates for a specific actor.
-  absl::flat_hash_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      rpc_clients_ GUARDED_BY(mu_);
-
-  /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
-  /// rpc_clients_ map.
-  absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
-
-  /// Map from actor ids that should be force killed once a client is available to the
-  /// pending kill actor requests.
-  absl::flat_hash_map<ActorID, rpc::KillActorRequest> pending_force_kills_
-      GUARDED_BY(mu_);
-
-  /// Map from actor id to the actor's pending requests. Each actor's requests
-  /// are ordered by the task number in the request.
-  absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
-      pending_requests_ GUARDED_BY(mu_);
-
-  /// Map from actor id to the send position of the next task to queue for send
-  /// for that actor. This is always greater than or equal to next_send_position_.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
-
-  /// Map from actor id to the send position of the next task to send to that actor.
-  /// Note that this differs from the PushTaskRequest's sequence number in that it
-  /// increases monotonically in this process independently of CallerId changes.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
@@ -260,13 +265,6 @@ class BoundedExecutor {
   const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
-};
-
-struct SchedulingQueueTag {
-  /// Worker ID for the caller.
-  WorkerID caller_worker_id;
-  /// Timestamp for the caller, which is used as a version.
-  int64_t caller_creation_timestamp_ms = 0;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -475,9 +473,7 @@ class CoreWorkerDirectTaskReceiver {
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<TaskID,
-                     std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>>
-      scheduling_queue_;
+  std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;
 };
 
 }  // namespace ray

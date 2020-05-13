@@ -376,7 +376,9 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
             })) for _ in range(num_nodes)
     ]
 
-    @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
+    @ray.remote(
+        max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        max_task_retries=-1)
     class SlowCounter:
         def __init__(self):
             self.x = 0
@@ -418,8 +420,12 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():
-        results = list(range(1, len(result_id_list) + 1))
-        assert ray.get(result_id_list) == results
+        results = ray.get(result_id_list)
+        for i, result in enumerate(results):
+            if i == 0:
+                assert result == 1
+            else:
+                assert result == results[i - 1] + 1 or result == 1
 
 
 def kill_actor(actor):

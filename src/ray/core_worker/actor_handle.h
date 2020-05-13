@@ -37,7 +37,7 @@ class ActorHandle {
               const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data);
+              const std::string &extension_data, int64_t max_task_retries);
 
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized);
@@ -76,25 +76,11 @@ class ActorHandle {
   /// ActorHandle and reset them in this method.
   void Reset();
 
-  // Mark the actor handle as dead.
-  void MarkDead() {
-    absl::MutexLock lock(&mutex_);
-    state_ = rpc::ActorTableData::DEAD;
-  }
-
-  // Returns whether the actor is known to be dead.
-  bool IsDead() const {
-    absl::MutexLock lock(&mutex_);
-    return state_ == rpc::ActorTableData::DEAD;
-  }
+  int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
-
-  /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
-  /// DEAD, the actor handle can never go back to being ALIVE.
-  rpc::ActorTableData::ActorState state_ GUARDED_BY(mutex_) = rpc::ActorTableData::ALIVE;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
