@@ -72,7 +72,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGetAll(
       const std::string &table_name,
-      const MultiItemCallback<std::pair<std::string, std::string>> &callback) = 0;
+      const ItemCallback<std::unordered_map<std::string, std::string>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

@@ -58,14 +58,14 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
+    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  std::vector<std::pair<std::string, std::string>> result;
+  std::unordered_map<std::string, std::string> result;
   for (auto &record : table->records_) {
-    result.emplace_back(std::make_pair(record.first, record.second));
+    result[record.first] = record.second;
   }
-  main_io_service_.post([result, callback]() { callback(Status::OK(), result); });
+  main_io_service_.post([result, callback]() { callback(result); });
   return Status::OK();
 }
 

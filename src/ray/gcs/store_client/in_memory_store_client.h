@@ -42,9 +42,9 @@ class InMemoryStoreClient : public StoreClient {
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetAll(
-      const std::string &table_name,
-      const MultiItemCallback<std::pair<std::string, std::string>> &callback) override;
+  Status AsyncGetAll(const std::string &table_name,
+                     const ItemCallback<std::unordered_map<std::string, std::string>>
+                         &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;

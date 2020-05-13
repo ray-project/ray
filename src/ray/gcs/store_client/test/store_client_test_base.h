@@ -146,9 +146,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetAll() {
     auto get_all_callback =
-        [this](const Status &status,
-               const std::vector<std::pair<std::string, std::string>> &result) {
-          RAY_CHECK_OK(status);
+        [this](const std::unordered_map<std::string, std::string> &result) {
           static std::unordered_set<ActorID> received_keys;
           for (const auto &item : result) {
             const ActorID &actor_id = ActorID::FromBinary(item.first);

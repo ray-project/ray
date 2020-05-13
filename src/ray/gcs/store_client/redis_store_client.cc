@@ -101,14 +101,13 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
+    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   RAY_CHECK(callback);
   std::string match_pattern = table_name + "*";
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
-  auto on_done = [callback, scanner](
-                     const Status &status,
-                     const std::vector<std::pair<std::string, std::string>> &result) {
-    callback(status, result);
+  auto on_done = [callback,
+                  scanner](const std::unordered_map<std::string, std::string> &result) {
+    callback(result);
   };
   return scanner->ScanKeysAndValues(on_done);
 }
@@ -180,6 +179,8 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
       callback(status);
     }
   };
+
+  // TODO(FFBIN): delete index -> keys
   return scanner->ScanKeys(on_done);
 }
 
@@ -195,7 +196,7 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
-    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
+    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
     ScanValues(result, callback);
@@ -216,7 +217,7 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
 
 void RedisStoreClient::RedisScanner::Scan(const StatusCallback &callback) {
   if (shard_to_cursor_.empty()) {
-    OnScanDone(callback);
+    callback(Status::OK());
     return;
   }
 
@@ -240,21 +241,8 @@ void RedisStoreClient::RedisScanner::Scan(const StatusCallback &callback) {
     Status status = shard_context->RunArgvAsync(args, scan_callback);
 
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Scan failed, status " << status.ToString();
-      is_failed_ = true;
-      if (--pending_request_count_ == 0) {
-        OnScanDone(callback);
-      }
-      return;
+      RAY_LOG(FATAL) << "Scan failed, status " << status.ToString();
     }
-  }
-}
-
-void RedisStoreClient::RedisScanner::OnScanDone(const StatusCallback &callback) {
-  if (is_failed_) {
-    callback(Status::RedisError("Redis Error."));
-  } else {
-    callback(Status::OK());
   }
 }
 
@@ -287,7 +275,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
 
 void RedisStoreClient::RedisScanner::ScanValues(
     const std::vector<std::string> &keys,
-    const MultiItemCallback<std::pair<std::string, std::string>> &callback) {
+    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   for (const auto &key : keys) {
     ++pending_read_count_;
 
@@ -299,28 +287,25 @@ void RedisStoreClient::RedisScanner::ScanValues(
         value = reply->ReadAsString();
         {
           absl::MutexLock lock(&mutex_);
-          rows_.emplace_back(
-              key.substr(table_name_.size(), key.size() - table_name_.size()), value);
+          rows_[GetKey(key)] = value;
         }
       }
 
       if (--pending_read_count_ == 0) {
-        if (!is_failed_) {
-          callback(Status::OK(), rows_);
-        } else {
-          callback(Status::RedisError("Redis return failed."), rows_);
-        }
+        callback(rows_);
       }
     };
 
     auto shard_context = redis_client_->GetShardContext(key);
     Status status = shard_context->RunArgvAsync(args, read_callback);
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Read key " << key << " failed, status " << status.ToString();
-      is_failed_ = true;
-      break;
+      RAY_LOG(FATAL) << "Read key " << key << " failed, status " << status.ToString();
     }
   }
+}
+
+std::string RedisStoreClient::RedisScanner::GetKey(const std::string &full_key) const {
+  return full_key.substr(table_name_.size(), full_key.size() - table_name_.size());
 }
 
 }  // namespace gcs

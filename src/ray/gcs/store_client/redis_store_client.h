@@ -41,9 +41,9 @@ class RedisStoreClient : public StoreClient {
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetAll(
-      const std::string &table_name,
-      const MultiItemCallback<std::pair<std::string, std::string>> &callback) override;
+  Status AsyncGetAll(const std::string &table_name,
+                     const ItemCallback<std::unordered_map<std::string, std::string>>
+                         &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
@@ -67,21 +67,21 @@ class RedisStoreClient : public StoreClient {
                           std::string table_name, std::string match_pattern);
 
     Status ScanKeysAndValues(
-        const MultiItemCallback<std::pair<std::string, std::string>> &callback);
+        const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
     Status ScanKeys(const MultiItemCallback<std::string> &callback);
 
    private:
     void Scan(const StatusCallback &callback);
 
-    void OnScanDone(const StatusCallback &callback);
-
     void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
     void ScanValues(
         const std::vector<std::string> &keys,
-        const MultiItemCallback<std::pair<std::string, std::string>> &callback);
+        const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
+
+    std::string GetKey(const std::string &full_key) const;
 
     std::string table_name_;
 
@@ -95,15 +95,12 @@ class RedisStoreClient : public StoreClient {
     /// If the scan type is kScanPartialRows, partial scan result will be saved in this
     /// variable. If the scan type is kScanAllRows, all scan result will be saved in this
     /// variable.
-    std::vector<std::pair<std::string, std::string>> rows_;
+    std::unordered_map<std::string, std::string> rows_;
 
     absl::Mutex mutex_;
 
     /// The scan cursor for each shard.
     absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
-
-    /// Whether the scan is failed.
-    std::atomic<bool> is_failed_{false};
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
