@@ -60,7 +60,6 @@ class VisionNetwork(TorchModelV2, nn.Module):
             out_channels, 1, initializer=normc_initializer())
         # Holds the current "base" output (before logits layer).
         self._features = None
-        #self._cur_value = None
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):

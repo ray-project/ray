@@ -98,7 +98,6 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             activation_fn=None)
         # Holds the current "base" output (before logits layer).
         self._features = None
-        #self._cur_value = None
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
