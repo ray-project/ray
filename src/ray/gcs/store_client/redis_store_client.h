@@ -77,7 +77,7 @@ class RedisStoreClient : public StoreClient {
     void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
-    void ScanValues(
+    void MGetValues(
         const std::vector<std::string> &keys,
         const ItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
@@ -114,6 +114,10 @@ class RedisStoreClient : public StoreClient {
 
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
+
+  static std::unordered_map<RedisContext *, std::vector<std::string>> GenCommandsByShards(
+      const std::shared_ptr<RedisClient> &redis_client, const std::string &command,
+      const std::vector<std::string> &keys);
 
   static std::string table_separator_;
   static std::string index_table_separator_;

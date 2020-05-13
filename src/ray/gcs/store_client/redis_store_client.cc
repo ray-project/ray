@@ -170,21 +170,12 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       const StatusCallback &callback) {
-  std::unordered_map<RedisContext *, std::vector<std::string>> shards;
-  for (auto &key : keys) {
-    auto shard_context = redis_client_->GetShardContext(key).get();
-    auto it = shards.find(shard_context);
-    if (it == shards.end()) {
-      shards[shard_context].push_back("DEL");
-      shards[shard_context].push_back(key);
-    } else {
-      it->second.push_back(key);
-    }
-  }
+  // The `DEL` command for each shard.
+  auto del_commands_by_shards = GenCommandsByShards(redis_client_, "DEL", keys);
 
   auto finished_count = std::make_shared<int>(0);
-  int size = shards.size();
-  for (auto &item : shards) {
+  int size = del_commands_by_shards.size();
+  for (auto &item : del_commands_by_shards) {
     auto delete_callback = [finished_count, size,
                             callback](const std::shared_ptr<CallbackReply> &reply) {
       ++(*finished_count);
@@ -195,6 +186,24 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
     RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));
   }
   return Status::OK();
+}
+
+std::unordered_map<RedisContext *, std::vector<std::string>>
+RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                                      const std::string &command,
+                                      const std::vector<std::string> &keys) {
+  std::unordered_map<RedisContext *, std::vector<std::string>> commands_by_shards;
+  for (auto &key : keys) {
+    auto shard_context = redis_client->GetShardContext(key).get();
+    auto it = commands_by_shards.find(shard_context);
+    if (it == commands_by_shards.end()) {
+      commands_by_shards[shard_context].push_back(command);
+      commands_by_shards[shard_context].push_back(key);
+    } else {
+      it->second.push_back(key);
+    }
+  }
+  return commands_by_shards;
 }
 
 std::string RedisStoreClient::GenTableKey(const std::string &table_name,
@@ -248,7 +257,7 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     if (result.empty()) {
       callback(std::unordered_map<std::string, std::string>());
     } else {
-      ScanValues(result, callback);
+      MGetValues(result, callback);
     }
   };
   return ScanKeys(on_done);
@@ -323,34 +332,35 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
-void RedisStoreClient::RedisScanner::ScanValues(
+void RedisStoreClient::RedisScanner::MGetValues(
     const std::vector<std::string> &keys,
     const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
-  for (const auto &key : keys) {
-    ++pending_read_count_;
+  // The `MGET` command for each shard.
+  auto mget_commands_by_shards = GenCommandsByShards(redis_client_, "MGET", keys);
 
-    std::vector<std::string> args = {"GET", key};
-    auto read_callback = [this, key,
+  auto finished_count = std::make_shared<int>(0);
+  int size = mget_commands_by_shards.size();
+  for (auto &item : mget_commands_by_shards) {
+    auto mget_keys = item.second;
+    auto mget_callback = [this, finished_count, size, mget_keys,
                           callback](const std::shared_ptr<CallbackReply> &reply) {
-      std::string value;
       if (!reply->IsNil()) {
-        value = reply->ReadAsString();
+        auto value = reply->ReadAsStringArray();
         {
           absl::MutexLock lock(&mutex_);
-          rows_[GetKeyFromTableKey(key, table_name_)] = value;
+          // The 0 th element of mget_keys is MGET, so we start from the 1 th element.
+          for (int index = 0; index < value.size(); ++index) {
+            rows_[GetKeyFromTableKey(mget_keys[index + 1], table_name_)] = value[index];
+          }
         }
       }
 
-      if (--pending_read_count_ == 0) {
+      ++(*finished_count);
+      if (*finished_count == size) {
         callback(rows_);
       }
     };
-
-    auto shard_context = redis_client_->GetShardContext(key);
-    Status status = shard_context->RunArgvAsync(args, read_callback);
-    if (!status.ok()) {
-      RAY_LOG(FATAL) << "Read key " << key << " failed, status " << status.ToString();
-    }
+    RAY_CHECK_OK(item.first->RunArgvAsync(item.second, mget_callback));
   }
 }
 
