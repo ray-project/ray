@@ -135,7 +135,7 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
   pickle5_available=0
   pickle5_path="$ROOT_DIR/python/ray/pickle5_files"
   # Check if the current Python alrady has pickle5 (either comes with newer Python versions, or has been installed by us before).
-  if PYTHONPATH="$pickle5_path:$PATHPATH" "$PYTHON_EXECUTABLE" -s -c "import pickle5" 2>/dev/null; then
+  if PYTHONPATH="$pickle5_path:$PYTHONPATH" "$PYTHON_EXECUTABLE" -s -c "import pickle5" 2>/dev/null; then
     pickle5_available=1
   fi
   if [ 1 -ne "${pickle5_available}" ]; then
