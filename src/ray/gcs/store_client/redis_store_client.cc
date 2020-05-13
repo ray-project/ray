@@ -24,13 +24,12 @@ namespace ray {
 
 namespace gcs {
 
-std::string RedisStoreClient::table_separator_ = "&";
-std::string RedisStoreClient::index_table_separator_ = "@";
+std::string RedisStoreClient::separator_ = ":";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &data,
                                   const StatusCallback &callback) {
-  return DoPut(GenTableKey(table_name, key), data, callback);
+  return DoPut(GenRedisKey(table_name, key), data, callback);
 }
 
 Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
@@ -48,7 +47,7 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
     }
 
     // Write data to Redis.
-    status = DoPut(GenTableKey(table_name, key), data, callback);
+    status = DoPut(GenRedisKey(table_name, key), data, callback);
 
     if (!status.ok()) {
       // Run callback if failed.
@@ -59,7 +58,7 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
   };
 
   // Write index to Redis.
-  std::string index_table_key = GenIndexTableKey(table_name, key, index_key);
+  std::string index_table_key = GenRedisKey(table_name, key, index_key);
   return DoPut(index_table_key, key, write_callback);
 }
 
@@ -78,10 +77,10 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
     callback(Status::OK(), result);
   };
 
-  std::string full_key = GenTableKey(table_name, key);
-  std::vector<std::string> args = {"GET", full_key};
+  std::string redis_key = GenRedisKey(table_name, key);
+  std::vector<std::string> args = {"GET", redis_key};
 
-  auto shard_context = redis_client_->GetShardContext(full_key);
+  auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, redis_callback);
 }
 
@@ -89,7 +88,7 @@ Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
     const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   RAY_CHECK(callback);
-  std::string match_pattern = GenTableMatchPattern(table_name);
+  std::string match_pattern = GenRedisMatchPattern(table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
   auto on_done = [callback,
                   scanner](const std::unordered_map<std::string, std::string> &result) {
@@ -108,28 +107,28 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
     };
   }
 
-  std::string full_key = GenTableKey(table_name, key);
-  std::vector<std::string> args = {"DEL", full_key};
+  std::string redis_key = GenRedisKey(table_name, key);
+  std::vector<std::string> args = {"DEL", redis_key};
 
-  auto shard_context = redis_client_->GetShardContext(full_key);
+  auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           const StatusCallback &callback) {
-  std::vector<std::string> table_keys;
-  table_keys.reserve(keys.size());
+  std::vector<std::string> redis_keys;
+  redis_keys.reserve(keys.size());
   for (auto &key : keys) {
-    table_keys.push_back(GenTableKey(table_name, key));
+    redis_keys.push_back(GenRedisKey(table_name, key));
   }
-  return DeleteByKeys(table_keys, callback);
+  return DeleteByKeys(redis_keys, callback);
 }
 
 Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
                                             const std::string &index_key,
                                             const StatusCallback &callback) {
-  std::string match_pattern = GenIndexTableMatchPattern(index_key, table_name);
+  std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);
   auto on_done = [this, table_name, index_key, callback, scanner](
                      const Status &status, const std::vector<std::string> &result) {
@@ -137,14 +136,14 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
       std::vector<std::string> keys;
       keys.reserve(result.size());
       for (auto &item : result) {
-        keys.push_back(GetKeyFromIndexTableKey(item, table_name, index_key));
+        keys.push_back(GetKeyFromRedisKey(item, table_name, index_key));
       }
-      auto on_done = [this, result, callback](const Status &status) {
+      auto batch_delete_callback = [this, result, callback](const Status &status) {
         RAY_CHECK_OK(status);
         // Delete index keys.
         RAY_CHECK_OK(DeleteByKeys(result, callback));
       };
-      RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, callback));
+      RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, batch_delete_callback));
     } else {
       callback(status);
     }
@@ -206,37 +205,45 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
   return commands_by_shards;
 }
 
-std::string RedisStoreClient::GenTableKey(const std::string &table_name,
+std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key) {
-  return table_name + table_separator_ + key;
+  std::stringstream ss;
+  ss << table_name << separator_ << key;
+  return ss.str();
 }
 
-std::string RedisStoreClient::GenTableMatchPattern(const std::string &table_name) {
-  return table_name + table_separator_ + "*";
+std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
+                                          const std::string &key,
+                                          const std::string &index_key) {
+  std::stringstream ss;
+  ss << table_name << separator_ << index_key << separator_ << key;
+  return ss.str();
 }
 
-std::string RedisStoreClient::GetKeyFromTableKey(const std::string &full_key,
+std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name) {
+  std::stringstream ss;
+  ss << table_name << separator_ << "*";
+  return ss.str();
+}
+
+std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name,
+                                                   const std::string &index_key) {
+  std::stringstream ss;
+  ss << table_name << separator_ << index_key << separator_ << "*";
+  return ss.str();
+}
+
+std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name) {
-  auto pos = table_name.size() + table_separator_.size();
-  return full_key.substr(pos, full_key.size() - pos);
+  auto pos = table_name.size() + separator_.size();
+  return redis_key.substr(pos, redis_key.size() - pos);
 }
 
-std::string RedisStoreClient::GenIndexTableKey(const std::string &table_name,
-                                               const std::string &key,
-                                               const std::string &index_key) {
-  return table_name + index_table_separator_ + index_key + key;
-}
-
-std::string RedisStoreClient::GenIndexTableMatchPattern(const std::string &index_key,
-                                                        const std::string &table_name) {
-  return table_name + index_table_separator_ + index_key + "*";
-}
-
-std::string RedisStoreClient::GetKeyFromIndexTableKey(const std::string &full_key,
-                                                      const std::string &table_name,
-                                                      const std::string &index_key) {
-  auto pos = table_name.size() + index_table_separator_.size() + index_key.size();
-  return full_key.substr(pos, full_key.size() - pos);
+std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
+                                                 const std::string &table_name,
+                                                 const std::string &index_key) {
+  auto pos = table_name.size() + separator_.size() * 2 + index_key.size();
+  return redis_key.substr(pos, redis_key.size() - pos);
 }
 
 RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
@@ -317,6 +324,8 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
     absl::MutexLock lock(&mutex_);
     auto shard_it = shard_to_cursor_.find(shard_index);
     RAY_CHECK(shard_it != shard_to_cursor_.end());
+    // If cursor is equal to 0, it means that the scan of this shard is finished, so we
+    // erase it from shard_to_cursor_.
     if (cursor == 0) {
       shard_to_cursor_.erase(shard_it);
     } else {
@@ -326,7 +335,8 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
     keys_.insert(scan_result.begin(), scan_result.end());
   }
 
-  // Scan result is empty, continue scan.
+  // If pending_request_count_ is equal to 0, it means that the scan of this batch is
+  // completed and the next batch is started if any.
   if (--pending_request_count_ == 0) {
     Scan(callback);
   }
@@ -350,14 +360,15 @@ void RedisStoreClient::RedisScanner::MGetValues(
           absl::MutexLock lock(&mutex_);
           // The 0 th element of mget_keys is MGET, so we start from the 1 th element.
           for (int index = 0; index < value.size(); ++index) {
-            rows_[GetKeyFromTableKey(mget_keys[index + 1], table_name_)] = value[index];
+            key_value_map_[GetKeyFromRedisKey(mget_keys[index + 1], table_name_)] =
+                value[index];
           }
         }
       }
 
       ++(*finished_count);
       if (*finished_count == size) {
-        callback(rows_);
+        callback(key_value_map_);
       }
     };
     RAY_CHECK_OK(item.first->RunArgvAsync(item.second, mget_callback));

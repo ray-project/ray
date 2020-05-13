@@ -15,7 +15,6 @@
 #ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -86,25 +85,21 @@ class RedisStoreClient : public StoreClient {
     /// The scan match pattern.
     std::string match_pattern_;
 
-    /// All keys that received from redis.
-    absl::flat_hash_set<std::string> keys_;
-
-    /// The scan result in rows.
-    /// If the scan type is kScanPartialRows, partial scan result will be saved in this
-    /// variable. If the scan type is kScanAllRows, all scan result will be saved in this
-    /// variable.
-    std::unordered_map<std::string, std::string> rows_;
-
+    /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
+    /// key_value_map_ field.
     absl::Mutex mutex_;
 
+    /// All keys that scanned from redis.
+    absl::flat_hash_set<std::string> keys_;
+
+    /// Key-Value pairs that scanned from redis.
+    std::unordered_map<std::string, std::string> key_value_map_;
+
     /// The scan cursor for each shard.
-    absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
+    std::unordered_map<size_t, size_t> shard_to_cursor_;
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
-
-    /// Total pending read request count.
-    std::atomic<size_t> pending_read_count_{0};
 
     std::shared_ptr<RedisClient> redis_client_;
   };
@@ -119,26 +114,25 @@ class RedisStoreClient : public StoreClient {
       const std::shared_ptr<RedisClient> &redis_client, const std::string &command,
       const std::vector<std::string> &keys);
 
-  static std::string table_separator_;
-  static std::string index_table_separator_;
+  /// The separator is used when building redis key.
+  static std::string separator_;
 
-  static std::string GenTableKey(const std::string &table_name, const std::string &key);
+  static std::string GenRedisKey(const std::string &table_name, const std::string &key);
 
-  static std::string GenTableMatchPattern(const std::string &table_name);
+  static std::string GenRedisKey(const std::string &table_name, const std::string &key,
+                                 const std::string &index_key);
 
-  static std::string GetKeyFromTableKey(const std::string &full_key,
+  static std::string GenRedisMatchPattern(const std::string &table_name);
+
+  static std::string GenRedisMatchPattern(const std::string &table_name,
+                                          const std::string &index_key);
+
+  static std::string GetKeyFromRedisKey(const std::string &redis_key,
                                         const std::string &table_name);
 
-  static std::string GenIndexTableKey(const std::string &table_name,
-                                      const std::string &key,
-                                      const std::string &index_key);
-
-  static std::string GenIndexTableMatchPattern(const std::string &index_key,
-                                               const std::string &table_name);
-
-  static std::string GetKeyFromIndexTableKey(const std::string &full_key,
-                                             const std::string &table_name,
-                                             const std::string &index_key);
+  static std::string GetKeyFromRedisKey(const std::string &redis_key,
+                                        const std::string &table_name,
+                                        const std::string &index_key);
 
   std::shared_ptr<RedisClient> redis_client_;
 };
