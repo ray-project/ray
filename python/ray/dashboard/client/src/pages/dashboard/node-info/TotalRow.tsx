@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
-import { NodeInfoResponse } from "../../../api";
+import { NodeInfoResponse, NodeInfoResponseWorker } from "../../../api";
 import { ClusterCPU } from "./features/CPU";
 import { ClusterDisk } from "./features/Disk";
 import { makeClusterErrors } from "./features/Errors";
@@ -41,6 +41,7 @@ const styles = (theme: Theme) =>
 
 type Props = {
   nodes: NodeInfoResponse["clients"];
+  clusterTotalWorkers: number;
   logCounts: {
     [ip: string]: {
       perWorker: { [pid: string]: number };
@@ -57,11 +58,11 @@ type Props = {
 
 class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
-    const { classes, nodes, logCounts, errorCounts } = this.props;
+    const { classes, nodes, clusterTotalWorkers, logCounts, errorCounts } = this.props;
 
     const features = [
       { ClusterFeature: ClusterHost },
-      { ClusterFeature: ClusterWorkers },
+      { ClusterFeature: ClusterWorkers(clusterTotalWorkers) },
       { ClusterFeature: ClusterUptime },
       { ClusterFeature: ClusterCPU },
       { ClusterFeature: ClusterRAM },

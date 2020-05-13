@@ -97,7 +97,7 @@ class NodeRowGroup extends React.Component<
     const { expanded } = this.state;
     const features = [
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-      { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },
+      { NodeFeature: NodeWorkers(clusterWorkers.length), WorkerFeature: WorkerWorkers },
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
