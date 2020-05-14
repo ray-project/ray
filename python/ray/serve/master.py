@@ -144,7 +144,8 @@ class ServeMaster:
             self.http_proxy = ray.util.get_actor(SERVE_PROXY_NAME)
         except ValueError:
             logger.info(
-                "Starting HTTP proxy with name '{}'".format(SERVE_PROXY_NAME))
+                "Starting HTTP proxy with name '{}' on node '{}'".format(
+                    SERVE_PROXY_NAME, node_id))
             self.http_proxy = async_retryable(HTTPProxyActor).options(
                 detached=True,
                 name=SERVE_PROXY_NAME,
