@@ -3,10 +3,6 @@ import json
 import numpy as np
 import os
 import pytest
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 import signal
 import sys
 import time
@@ -820,10 +816,6 @@ def test_decorated_method(ray_start_regular):
     assert ray.get(object_id) == 7  # 2 * 3 + 1
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -849,53 +841,45 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     actors = [Actor.remote() for _ in range(num_nodes)]
     ray.get([actor.ping.remote() for actor in actors])
 
-    # Ping the actors and make sure the tasks complete.
-    ping_ids = [actor.ping.remote() for actor in actors]
-    ray.get(ping_ids)
-    # Evict the result from the node that we're about to kill.
-    remote_node = cluster.list_all_nodes()[-1]
-    remote_ping_id = None
-    for i, actor in enumerate(actors):
-        if ray.get(actor.node_id.remote()) == remote_node.unique_id:
-            remote_ping_id = ping_ids[i]
-    ray.internal.free([remote_ping_id], local_only=True)
-    cluster.remove_node(remote_node)
+    def actor_dead():
+        # Ping the actors and make sure the tasks complete.
+        ping_ids = [actor.ping.remote() for actor in actors]
+        unready = ping_ids[:]
+        while unready:
+            _, unready = ray.wait(unready, timeout=0)
+            time.sleep(1)
 
-    # Repeatedly call ray.wait until the exception for the dead actor is
-    # received.
-    unready = ping_ids[:]
-    while unready:
-        _, unready = ray.wait(unready, timeout=0)
-        time.sleep(1)
+        try:
+            ray.get(ping_ids)
+            return False
+        except ray.exceptions.RayActorError:
+            return True
 
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(ping_ids)
+    # Kill a node.
+    cluster.remove_node(cluster.list_all_nodes()[-1])
+    # Repeatedly submit tasks and call ray.wait until the exception for the
+    # dead actor is received.
+    assert wait_for_condition(actor_dead)
 
-    # Evict the result from the dead node.
-    ray.internal.free([remote_ping_id], local_only=True)
     # Create an actor on the local node that will call ray.wait in a loop.
     head_node_resource = "HEAD_NODE"
     ray.experimental.set_resource(head_node_resource, 1)
 
     @ray.remote(num_cpus=0, resources={head_node_resource: 1})
     class ParentActor:
-        def __init__(self, ping_ids):
-            self.unready = ping_ids
+        def __init__(self):
+            pass
 
         def wait(self):
-            _, self.unready = ray.wait(self.unready, timeout=0)
-            return len(self.unready) == 0
+            return actor_dead()
 
         def ping(self):
             return
 
     # Repeatedly call ray.wait through the local actor until the exception for
     # the dead actor is received.
-    parent_actor = ParentActor.remote(ping_ids)
-    ray.get(parent_actor.ping.remote())
-    failure_detected = False
-    while not failure_detected:
-        failure_detected = ray.get(parent_actor.wait.remote())
+    parent_actor = ParentActor.remote()
+    assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
 
 
 if __name__ == "__main__":
