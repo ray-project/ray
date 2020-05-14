@@ -332,32 +332,32 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
+
+        async def create_one_replica(backend_tag, replica_tag):
+            # NOTE(edoakes): the replicas may already be created if we
+            # failed after creating them but before writing a
+            # checkpoint.
+            try:
+                worker_handle = ray.util.get_actor(replica_tag)
+            except ValueError:
+                worker_handle = await self._start_backend_worker(
+                    backend_tag, replica_tag)
+
+            self.replicas[backend_tag].append(replica_tag)
+            self.workers[backend_tag][replica_tag] = worker_handle
+
+            # Register the worker with the router.
+            await self.router.add_new_worker.remote(backend_tag, replica_tag,
+                                                    worker_handle)
+
         # We collect all creation coroutines in this list and await on them
         # at the same time. We do this because actor instantiation can take
         # a long time.
         create_actions = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
-
-                async def create_one_replica():
-                    # NOTE(edoakes): the replicas may already be created if we
-                    # failed after creating them but before writing a
-                    # checkpoint.
-                    try:
-                        worker_handle = ray.util.get_actor(replica_tag)
-                    except ValueError:
-                        worker_handle = await self._start_backend_worker(
-                            backend_tag, replica_tag)
-
-                    self.replicas[backend_tag].append(replica_tag)
-                    self.workers[backend_tag][replica_tag] = worker_handle
-
-                    # Register the worker with the router.
-                    await self.router.add_new_worker.remote(
-                        backend_tag, replica_tag, worker_handle)
-
-                create_actions.append(create_one_replica())
-
+                create_actions.append(
+                    create_one_replica(backend_tag, replica_tag))
         await asyncio.gather(*create_actions)
 
         self.replicas_to_start.clear()

@@ -1,4 +1,6 @@
 import time
+import asyncio
+
 import pytest
 import requests
 
@@ -386,3 +388,36 @@ def test_cluster_name():
     serve.init(cluster_name="cluster1")
     serve.delete_endpoint(endpoint)
     serve.delete_backend(backend)
+
+
+def test_parallel_start(serve_instance):
+    @ray.remote
+    class Barrier:
+        def __init__(self, release_on):
+            self.release_on = release_on
+            self.current_waiters = 0
+            self.event = asyncio.Event()
+
+        async def wait(self):
+            self.current_waiters += 1
+            if self.current_waiters == self.release_on:
+                self.event.set()
+            else:
+                await self.event.wait()
+
+    barrier = Barrier.remote(release_on=2)
+
+    class LongStartingServable:
+        def __init__(self):
+            ray.get(barrier.wait.remote(), timeout=10)
+
+        def __call__(self, _):
+            return "Ready"
+
+    serve.create_endpoint("test-parallel")
+    serve.create_backend(
+        "p:v0", LongStartingServable, config={"num_replicas": 2})
+    serve.set_traffic("test-parallel", {"p:v0": 1})
+    handle = serve.get_handle("test-parallel")
+
+    ray.get(handle.remote(), timeout=10)
