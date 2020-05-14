@@ -70,7 +70,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             assert len(ready) == len(children_out)
 
         # Remove a node. Any actor creation tasks that were forwarded to this
-        # node must be reconstructed.
+        # node must be restarted.
         cluster.remove_node(cluster.list_all_nodes()[-1])
 
 

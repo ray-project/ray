@@ -127,8 +127,7 @@ class ServeMaster:
                 detached=True,
                 name=SERVE_ROUTER_NAME,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
-            ).remote(policy, policy_kwargs)
+                max_restarts=-1).remote(policy, policy_kwargs)
 
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
@@ -148,7 +147,7 @@ class ServeMaster:
                 detached=True,
                 name=SERVE_PROXY_NAME,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+                max_restarts=-1,
             ).remote(host, port)
 
     def get_http_proxy(self):
@@ -295,7 +294,7 @@ class ServeMaster:
         worker_handle = async_retryable(ray.remote(backend_worker)).options(
             detached=True,
             name=replica_tag,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            max_restarts=-1,
             **replica_config.ray_actor_options).remote(
                 backend_tag, replica_tag, replica_config.actor_init_args)
         # TODO(edoakes): we should probably have a timeout here.
