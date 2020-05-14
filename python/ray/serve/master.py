@@ -298,8 +298,6 @@ class ServeMaster:
             max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
             **replica_config.ray_actor_options).remote(
                 backend_tag, replica_tag, replica_config.actor_init_args)
-        # TODO(edoakes): we should probably have a timeout here.
-        await worker_handle.ready.remote()
         return worker_handle
 
     async def _start_pending_replicas(self):
@@ -311,6 +309,7 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
+        ready_futures = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
                 # NOTE(edoakes): the replicas may already be created if we
@@ -321,6 +320,7 @@ class ServeMaster:
                     worker_handle = await self._start_backend_worker(
                         backend_tag, replica_tag)
 
+                ready_futures.append(worker_handle.ready.remote().as_future())
                 self.replicas[backend_tag].append(replica_tag)
                 self.workers[backend_tag][replica_tag] = worker_handle
 
@@ -329,6 +329,10 @@ class ServeMaster:
                     backend_tag, replica_tag, worker_handle)
 
         self.replicas_to_start.clear()
+        # Wait for the replicas to start up.
+        # TODO(edoakes): we should have a timeout here - what happens if there
+        # aren't enough resources?
+        asyncio.wait(ready_futures)
 
     async def _stop_pending_replicas(self):
         """Stops the pending backend replicas in self.replicas_to_stop.
