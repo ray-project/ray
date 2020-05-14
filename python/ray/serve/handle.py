@@ -34,6 +34,7 @@ class RayServeHandle:
             relative_slo_ms=None,
             absolute_slo_ms=None,
             method_name=None,
+            shard_key=None,
     ):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
@@ -44,6 +45,7 @@ class RayServeHandle:
         self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
         self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
         self.method_name = method_name
+        self.shard_key = shard_key
 
     def _check_slo_ms(self, slo_value):
         if slo_value is not None:
@@ -74,12 +76,14 @@ class RayServeHandle:
             self.relative_slo_ms,
             self.absolute_slo_ms,
             call_method=method_name,
+            shard_key=self.shard_key,
         )
         return self.router_handle.enqueue_request.remote(
             request_in_object, **kwargs)
 
     def options(self,
                 method_name=None,
+                shard_key=None,
                 relative_slo_ms=None,
                 absolute_slo_ms=None):
         # If both the slo's are None then then we use a high default
@@ -94,12 +98,16 @@ class RayServeHandle:
         if method_name is None and self.method_name is not None:
             method_name = self.method_name
 
+        if shard_key is None and self.shard_key is not None:
+            shard_key = self.shard_key
+
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,
             relative_slo_ms,
             absolute_slo_ms,
             method_name=method_name,
+            shard_key=shard_key,
         )
 
     def get_traffic_policy(self):

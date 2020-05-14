@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from hashlib import sha256
-import random
+
+import numpy as np
 
 from ray.serve.utils import logger
 
@@ -47,7 +48,6 @@ class RandomEndpointPolicy(EndpointPolicy):
     """
 
     def __init__(self, traffic_dict):
-        # XXX
         self.backend_names, self.backend_weights = zip(
             *sorted(traffic_dict.items()))
 
@@ -60,11 +60,15 @@ class RandomEndpointPolicy(EndpointPolicy):
         while endpoint_queue.qsize():
             query = await endpoint_queue.get()
             if query.shard_key is None:
-                seed = None
+                rstate = np.random
             else:
-                seed = sha256(query.shard_key.encode("utf-8"))
-            [chosen_backend] = random.Random(seed).choices(
-                self.backend_names, weights=self.backend_weights)
+                sha256_seed = sha256(query.shard_key.encode("utf-8"))
+                seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
+                rstate = np.random.RandomState(seed)
+
+            chosen_backend = rstate.choice(
+                self.backend_names, replace=False,
+                p=self.backend_weights).squeeze()
 
             assigned_backends.add(chosen_backend)
             backend_queues[chosen_backend].add(query)

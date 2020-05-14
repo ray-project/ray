@@ -2,8 +2,9 @@ import time
 import pytest
 import requests
 
-from ray import serve
 import ray
+from ray import serve
+from ray.serve.utils import get_random_letters
 
 
 def test_e2e(serve_instance):
@@ -302,3 +303,42 @@ def test_delete_endpoint(serve_instance, route):
     else:
         handle = serve.get_handle(endpoint_name)
         assert ray.get(handle.remote()) == "hello"
+
+
+@pytest.mark.parametrize("route", [None, "/shard"])
+def test_shard_key(serve_instance, route):
+    serve.create_endpoint("endpoint", route=route)
+
+    # Create five backends that return different integers.
+    num_backends = 5
+    traffic_dict = {}
+    for i in range(num_backends):
+
+        def function():
+            return i
+
+        backend_name = "backend-split-" + str(i)
+        traffic_dict[backend_name] = 1.0 / num_backends
+        serve.create_backend(backend_name, function)
+
+    serve.set_traffic("endpoint", traffic_dict)
+
+    def do_request(shard_key):
+        if route is not None:
+            url = "http://127.0.0.1:8000" + route
+            headers = {"X-SERVE-SHARD-KEY": shard_key}
+            result = requests.get(url, headers=headers).text
+        else:
+            handle = serve.get_handle("endpoint").options(shard_key=shard_key)
+            result = ray.get(handle.options(shard_key=shard_key).remote())
+        return result
+
+    # Send requests with different shard keys and log the backends they go to.
+    shard_keys = [get_random_letters() for _ in range(20)]
+    results = {}
+    for shard_key in shard_keys:
+        results[shard_key] = do_request(shard_key)
+
+    # Check that the shard keys are mapped to the same backends.
+    for shard_key in shard_keys:
+        assert do_request(shard_key) == results[shard_key]
