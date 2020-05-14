@@ -31,7 +31,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
   static void TearDownTestCase() { RedisServiceManagerForTest::TearDownTestCase(); }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 

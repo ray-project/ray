@@ -1026,7 +1026,6 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_LOG(ERROR) << "wangtao argc" << std::to_string(argc);
   RAY_CHECK(argc == 9);
   store_executable = std::string(argv[1]);
   raylet_executable = std::string(argv[2]);

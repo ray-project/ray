@@ -24,8 +24,12 @@ namespace ray {
 
 void RedisServiceManagerForTest::SetUpTestCase() {
   std::vector<int> ACTUAL_REDIS_SERVER_PORTS;
-  for (const auto &port : REDIS_SERVER_PORTS) {
-    ACTUAL_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(port));
+  if (REDIS_SERVER_PORTS.empty()) {
+    ACTUAL_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(0));
+  } else {
+    for (const auto &port : REDIS_SERVER_PORTS) {
+      ACTUAL_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(port));
+    }
   }
   REDIS_SERVER_PORTS = ACTUAL_REDIS_SERVER_PORTS;
 }
