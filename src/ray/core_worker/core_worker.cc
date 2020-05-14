@@ -1284,7 +1284,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
-  direct_actor_submitter_->AddActorQueue(actor_id);
+  direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
   bool inserted;
   {

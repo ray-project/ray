@@ -117,7 +117,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
 
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
@@ -144,7 +144,7 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -176,7 +176,7 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -209,7 +209,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -242,7 +242,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -283,7 +283,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueue(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);

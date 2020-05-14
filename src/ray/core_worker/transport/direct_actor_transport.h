@@ -63,7 +63,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// not receive another reference to the same actor.
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
-  void AddActorQueue(const ActorID &actor_id);
+  void AddActorQueueIfNotExists(const ActorID &actor_id);
 
   /// Submit a task to an actor for execution.
   ///
