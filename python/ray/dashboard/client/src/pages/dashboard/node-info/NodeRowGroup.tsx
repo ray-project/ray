@@ -12,8 +12,8 @@ import classNames from "classnames";
 import React from "react";
 import {
   NodeInfoResponse,
-  RayletInfoResponse,
   NodeInfoResponseWorker,
+  RayletInfoResponse,
 } from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";

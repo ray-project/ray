@@ -12,16 +12,16 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
+import { RayletInfoResponse } from "../../../api";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
-import { RayletInfoResponse } from "../../../api";
 
-function clusterWorkerPids(
+const clusterWorkerPids = (
   rayletInfo: RayletInfoResponse,
-): Map<string, Set<string>> {
+): Map<string, Set<string>> => {
   // Given a Raylet response, this extracts, per node, all the worker pids registered
   // with the Raylet. It returns these in a Map from node ip to set of process ids.
   const nodeMap = new Map();
@@ -116,7 +116,7 @@ class NodeInfo extends React.Component<
     // Initialize inner structure of the count objects
     for (const client of nodeInfo.clients) {
       const clusterWorkerPids = clusterWorkerPidsByIp.get(client.ip);
-      if (!clusterWorkerPids) continue;
+      if (!clusterWorkerPids) {continue;}
       const filteredLogEntries = Object.entries(
         nodeInfo.log_counts[client.ip] || {},
       ).filter(([pid, _]) => clusterWorkerPids.has(pid));
