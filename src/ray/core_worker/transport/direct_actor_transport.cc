@@ -77,21 +77,15 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                                     rpc::ErrorType::ACTOR_DIED, &status));
     } else {
+      // We must fix the send order prior to resolving dependencies, which may
+      // complete out of order. This ensures that we will not deadlock due to
+      // backpressure. The receiving actor will execute the tasks according to
+      // this sequence number.
       send_pos = task_spec.ActorCounter();
-      if (send_pos < queue->second.next_send_position) {
-        // No need to resolve the dependencies again because this task has
-        // already been sent before.
-        PushActorTask(queue->second, task_spec, /*skip_queue=*/true);
-      } else {
-        // We must fix the send order prior to resolving dependencies, which
-        // may complete out of order. This ensures that we will not deadlock
-        // due to backpressure.  The receiving actor will execute the tasks
-        // according to this sequence number.
-        auto inserted =
-            queue->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
-        RAY_CHECK(inserted.second);
-        task_queued = true;
-      }
+      auto inserted =
+          queue->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
+      RAY_CHECK(inserted.second);
+      task_queued = true;
     }
   }
 
@@ -200,13 +194,16 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Submit all pending requests.
   auto &requests = it->second.requests;
   auto head = requests.begin();
-  while (head != requests.end() && head->first == it->second.next_send_position &&
+  while (head != requests.end() && head->first <= it->second.next_send_position &&
          head->second.second) {
+    // If the task has been sent before, skip the other tasks in the send
+    // queue.
+    bool skip_queue = head->first < it->second.next_send_position;
     auto task_spec = std::move(head->second.first);
     head = requests.erase(head);
 
     RAY_CHECK(!it->second.worker_id.empty());
-    PushActorTask(it->second, task_spec, /*skip_queue=*/false);
+    PushActorTask(it->second, task_spec, skip_queue);
     it->second.next_send_position++;
   }
 }

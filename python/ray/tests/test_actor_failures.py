@@ -197,13 +197,14 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
+        "initial_reconstruction_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the actor.
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -226,7 +227,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(cluster.list_all_nodes()[-1])
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1, _internal_config=config)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
