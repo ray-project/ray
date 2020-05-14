@@ -71,21 +71,16 @@ void DefaultJobInfoHandler::HandleGetAllJobInfo(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
-                     const Status &status,
-                     const std::vector<std::pair<JobID, JobTableData>> &result) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to get all job info.";
-    } else {
-      for (auto &data : result) {
-        reply->add_job_info_list()->CopyFrom(data.second);
-      }
-      RAY_LOG(INFO) << "Finished getting all job info.";
+                     const std::unordered_map<JobID, JobTableData> &result) {
+    for (auto &data : result) {
+      reply->add_job_info_list()->CopyFrom(data.second);
     }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    RAY_LOG(INFO) << "Finished getting all job info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(status, std::vector<std::pair<JobID, JobTableData>>());
+    on_done(std::unordered_map<JobID, JobTableData>());
   }
 }
 

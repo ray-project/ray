@@ -15,7 +15,6 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
-#include <utility>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
@@ -123,32 +122,6 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
     redis_keys.push_back(GenRedisKey(table_name, key));
   }
   return DeleteByKeys(redis_keys, callback);
-  auto finished_count = std::make_shared<int>(0);
-  int size = keys.size();
-  for (auto &key : keys) {
-    auto shard_context = redis_client_->GetShardContext(key).get();
-    auto it = shards.find(shard_context);
-    if (it == shards.end()) {
-      shards[shard_context].push_back("DEL");
-      shards[shard_context].push_back(key);
-    } else {
-      it->second.push_back(key);
-    }
-  }
-
-  auto finished_count = std::make_shared<int>(0);
-  int size = shards.size();
-  for (auto &item : shards) {
-    auto delete_callback = [finished_count, size,
-                            callback](const std::shared_ptr<CallbackReply> &reply) {
-      ++(*finished_count);
-      if (*finished_count == size) {
-        callback(Status::OK());
-      }
-    };
-    RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));
-  }
-  return Status::OK();
 }
 
 Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
