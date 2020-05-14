@@ -273,7 +273,7 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
+            scope (str): One of [all, last, avg]. If `scope=last`, only look at
                 each trial's final step for `metric`, and compare across
                 trials based on `mode=[min,max]`. If `scope=avg`, consider the
                 simple average over all steps for `metric` and compare across
@@ -292,7 +292,7 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
+            scope (str): One of [all, last, avg]. If `scope=last`, only look at
                 each trial's final step for `metric`, and compare across
                 trials based on `mode=[min,max]`. If `scope=avg`, consider the
                 simple average over all steps for `metric` and compare across
