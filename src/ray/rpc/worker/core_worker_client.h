@@ -250,7 +250,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                             const ClientCallback<PushTaskReply> &callback) override {
     if (skip_queue) {
-      // Reset to the minimum to avoid taking the lock.
+      // Set this value so that the actor does not skip any tasks when
+      // processing this request. We could also set it to max_finished_seq_no_,
+      // but we just set it to the default of -1 to avoid taking the lock.
       request->set_client_processed_up_to(-1);
       return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback,
                              grpc_client_);

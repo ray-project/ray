@@ -124,9 +124,10 @@ class CoreWorkerDirectActorTaskSubmitter {
     /// ^ caller_starts_at
     ///
     /// Suppose the actor crashes and recovers. Then, caller_starts_at is reset
-    /// to the current num_completed_tasks, and this amount is subtracted from
-    /// each task's counter. Therefore, the recovered actor will restart
-    /// execution from task 4.
+    /// to the current num_completed_tasks. caller_starts_at is then subtracted
+    /// from each task's counter, so the recovered actor will receive the
+    /// sequence numbers 0, 1, 2 (and so on) for tasks 4, 5, 6, respectively.
+    /// Therefore, the recovered actor will restart execution from task 4.
     /// 0 1 2 3 4 5 6 7 8 9
     ///             ^ next_send_position
     ///         ^ num_completed_tasks
@@ -150,7 +151,7 @@ class CoreWorkerDirectActorTaskSubmitter {
     /// instance of the actor knows from which task to start executing.
     uint64_t caller_starts_at = 0;
     /// Out of the tasks sent by this worker to the actor, the number of tasks
-    /// that we wil never send to the actor again.  This is used to reset
+    /// that we will never send to the actor again. This is used to reset
     /// caller_starts_at if the actor dies and is restarted. We only include
     /// tasks that will not be sent again, to support automatic task retry on
     /// actor failure.
