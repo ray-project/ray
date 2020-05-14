@@ -233,8 +233,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   rpc::Address addr(queue.rpc_client->Addr());
   RAY_UNUSED(queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
-      [this, addr, task_id, actor_id, counter](Status status,
-                                               const rpc::PushTaskReply &reply) {
+      [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
         if (!status.ok()) {
           bool will_retry = task_finisher_->PendingTaskFailed(

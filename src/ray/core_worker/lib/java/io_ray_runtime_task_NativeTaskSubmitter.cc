@@ -110,6 +110,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string name = "";
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
+      static_cast<uint64_t>(0),  // TODO: Allow setting max_task_retries from Java.
       static_cast<int>(max_concurrency),
       resources,
       resources,
