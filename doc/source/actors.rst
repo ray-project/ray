@@ -89,7 +89,7 @@ If you want to use custom resources, make sure your cluster is configured to
 have these resources (see `configuration instructions
 <configure.html#cluster-resources>`__):
 
-.. important::
+.. note::
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you

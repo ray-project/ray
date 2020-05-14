@@ -699,6 +699,32 @@ def test_use_actor_within_actor(ray_start_10_cpus):
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
 
+def test_use_actor_twice(ray_start_10_cpus):
+    # Make sure we can call the same actor using different refs.
+
+    @ray.remote
+    class Actor1:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+    @ray.remote
+    class Actor2:
+        def __init__(self):
+            pass
+
+        def inc(self, handle):
+            return ray.get(handle.inc.remote())
+
+    a = Actor1.remote()
+    a2 = Actor2.remote()
+    assert ray.get(a2.inc.remote(a)) == 1
+    assert ray.get(a2.inc.remote(a)) == 2
+
+
 def test_define_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can define and actors within remote funtions.
 

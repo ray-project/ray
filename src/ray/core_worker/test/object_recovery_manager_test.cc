@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/object_recovery_manager.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {

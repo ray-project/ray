@@ -121,7 +121,7 @@ def init(blocking=False,
     master_actor = ServeMaster.options(
         detached=True,
         name=SERVE_MASTER_NAME,
-        max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        max_restarts=-1,
     ).remote(start_server, http_host, http_port, metric_exporter)
 
     if start_server and blocking:

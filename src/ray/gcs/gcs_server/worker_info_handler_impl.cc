@@ -34,8 +34,6 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_FAILURE_CHANNEL, worker_id.Binary(),
                                          worker_failure_data->SerializeAsString(),
                                          nullptr));
-      RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                     << worker_address.DebugString();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

@@ -48,7 +48,8 @@ class RandomEndpointPolicy(EndpointPolicy):
 
     def __init__(self, traffic_dict):
         # XXX
-        self.backend_names, self.backend_weights = zip(*sorted(traffic_dict.items()))
+        self.backend_names, self.backend_weights = zip(
+            *sorted(traffic_dict.items()))
 
     async def flush(self, endpoint_queue, backend_queues):
         if len(self.backend_names) == 0:
@@ -63,7 +64,7 @@ class RandomEndpointPolicy(EndpointPolicy):
             else:
                 seed = sha256(query.shard_key.encode("utf-8"))
             [chosen_backend] = random.Random(seed).choices(
-                    self.backend_names, weights=self.backend_weights)
+                self.backend_names, weights=self.backend_weights)
 
             assigned_backends.add(chosen_backend)
             backend_queues[chosen_backend].add(query)

@@ -58,7 +58,7 @@ static void flushall_redis(void) {
 }
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
-                          uint64_t max_reconstructions) {
+                          int64_t max_restarts) {
   std::unique_ptr<ActorHandle> actor_handle;
 
   uint8_t array[] = {1, 2, 3};
@@ -70,10 +70,11 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   args.emplace_back(TaskArg::PassByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-  ActorCreationOptions actor_options{max_reconstructions,
-                                     /*max_concurrency*/ 1, resources, resources, {},
-                                     /*is_detached*/ false,
-                                     /*is_asyncio*/ false};
+  std::string name = "";
+  ActorCreationOptions actor_options{
+      max_restarts,
+      /*max_concurrency*/ 1, resources, resources,           {},
+      /*is_detached=*/false, name,      /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
@@ -300,7 +301,7 @@ class CoreWorkerTest : public ::testing::Test {
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(std::unordered_map<std::string, double> &resources);
+  void TestActorRestart(std::unordered_map<std::string, double> &resources);
 
  protected:
   bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
@@ -480,7 +481,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
   }
 }
 
-void CoreWorkerTest::TestActorReconstruction(
+void CoreWorkerTest::TestActorRestart(
     std::unordered_map<std::string, double> &resources) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
@@ -511,10 +512,10 @@ void CoreWorkerTest::TestActorReconstruction(
         };
         ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
 
-        RAY_LOG(INFO) << "actor has been reconstructed";
+        RAY_LOG(INFO) << "actor has been restarted";
       }
 
-      // wait for actor being reconstructed.
+      // wait for actor being restarted.
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByValue.
@@ -557,7 +558,7 @@ void CoreWorkerTest::TestActorFailure(
         ASSERT_EQ(system("pkill mock_worker"), 0);
       }
 
-      // wait for actor being reconstructed.
+      // wait for actor being restarted.
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByRef and PassByValue.
@@ -641,13 +642,15 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
+  std::string name = "";
   ActorCreationOptions actor_options{0,
                                      1,
                                      resources,
                                      resources,
                                      {},
-                                     /*is_detached*/ false,
-                                     /*is_asyncio*/ false};
+                                     /*is_detached=*/false,
+                                     name,
+                                     /*is_asyncio=*/false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
@@ -696,7 +699,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   // Create an actor.
   std::unordered_map<std::string, double> resources;
   auto actor_id = CreateActorHelper(resources,
-                                    /*max_reconstructions=*/0);
+                                    /*max_restarts=*/0);
   // wait for actor creation finish.
   ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
@@ -999,13 +1002,13 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestActorTaskLocalReconstruction) {
   std::unordered_map<std::string, double> resources;
-  TestActorReconstruction(resources);
+  TestActorRestart(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodesReconstruction) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorReconstruction(resources);
+  TestActorRestart(resources);
 }
 
 TEST_F(SingleNodeTest, TestActorTaskLocalFailure) {

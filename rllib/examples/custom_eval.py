@@ -74,9 +74,9 @@ from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--custom-eval", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--no-custom-eval", action="store_true")
 
 
 def custom_eval_function(trainer, eval_workers):
@@ -124,48 +124,51 @@ def custom_eval_function(trainer, eval_workers):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    if args.custom_eval:
-        eval_fn = custom_eval_function
-    else:
+    if args.no_custom_eval:
         eval_fn = None
+    else:
+        eval_fn = custom_eval_function
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    tune.run(
-        "PG",
-        stop={
-            "training_iteration": 10,
+    config = {
+        "env": SimpleCorridor,
+        "env_config": {
+            "corridor_length": 10,
         },
-        config={
-            "env": SimpleCorridor,
+        "horizon": 20,
+        "log_level": "INFO",
+
+        # Training rollouts will be collected using just the learner
+        # process, but evaluation will be done in parallel with two
+        # workers. Hence, this run will use 3 CPUs total (1 for the
+        # learner + 2 more for evaluation workers).
+        "num_workers": 0,
+        "evaluation_num_workers": 2,
+
+        # Optional custom eval function.
+        "custom_eval_function": eval_fn,
+
+        # Enable evaluation, once per training iteration.
+        "evaluation_interval": 1,
+
+        # Run 10 episodes each time evaluation runs.
+        "evaluation_num_episodes": 10,
+
+        # Override the env config for evaluation.
+        "evaluation_config": {
             "env_config": {
-                "corridor_length": 10,
+                # Evaluate using LONGER corridor than trained on.
+                "corridor_length": 5,
             },
-            "horizon": 20,
-            "log_level": "INFO",
+        },
+        "use_pytorch": args.torch,
+    }
 
-            # Training rollouts will be collected using just the learner
-            # process, but evaluation will be done in parallel with two
-            # workers. Hence, this run will use 3 CPUs total (1 for the
-            # learner + 2 more for evaluation workers).
-            "num_workers": 0,
-            "evaluation_num_workers": 2,
+    stop = {
+        "training_iteration": 10,
+    }
 
-            # Optional custom eval function.
-            "custom_eval_function": eval_fn,
+    tune.run("PG", config=config, stop=stop)
 
-            # Enable evaluation, once per training iteration.
-            "evaluation_interval": 1,
-
-            # Run 10 episodes each time evaluation runs.
-            "evaluation_num_episodes": 10,
-
-            # Override the env config for evaluation.
-            "evaluation_config": {
-                "env_config": {
-                    # Evaluate using LONGER corridor than trained on.
-                    "corridor_length": 5,
-                },
-            },
-            "use_pytorch": args.torch,
-        })
+    ray.shutdown()

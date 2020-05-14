@@ -146,7 +146,8 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
     # assume 50% split, the probability of all 20 requests goes to a
     # single queue is 0.5^20 ~ 1-6
     for _ in range(20):
-        await q.enqueue_request.remote(RequestMetadata("svc", None, shard_key=get_random_letters()), 1)
+        await q.enqueue_request.remote(
+            RequestMetadata("svc", None, shard_key=get_random_letters()), 1)
 
     got_work = [
         await runner.get_recent_call.remote()
