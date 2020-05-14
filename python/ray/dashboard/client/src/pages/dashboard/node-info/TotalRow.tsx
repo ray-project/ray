@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
-import { NodeInfoResponse, NodeInfoResponseWorker } from "../../../api";
+import { NodeInfoResponse } from "../../../api";
 import { ClusterCPU } from "./features/CPU";
 import { ClusterDisk } from "./features/Disk";
 import { makeClusterErrors } from "./features/Errors";

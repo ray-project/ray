@@ -17,7 +17,7 @@ import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
-import { RayletInfoResponse, NodeInfoResponse, NodeInfoResponseWorker } from '../../../../../../../../bazel-ray/python/ray/dashboard/client/src/api';
+import { RayletInfoResponse } from '../../../api';
 
 function clusterWorkerPids(rayletInfo: RayletInfoResponse): Map<string, Set<string>> {
   // Given a Raylet response, this extracts, per node, all the worker pids registered
