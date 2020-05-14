@@ -869,24 +869,10 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
 
   RestartGcsServer();
 
-<<<<<<< HEAD
   ASSERT_TRUE(UpdateActor(actor1_id, actor1_table_data));
   ASSERT_TRUE(UpdateActor(actor2_id, actor2_table_data));
   WaitPendingDone(actor1_update_count, 3);
   WaitPendingDone(actor2_update_count, 1);
-=======
-  std::promise<bool> promise2;
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-      job_table_data, [&promise2](Status status) { promise2.set_value(status.ok()); }));
-  promise2.get_future().get();
-
-  std::promise<bool> promise3;
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
-      add_job_id, [&promise3](Status status) { promise3.set_value(status.ok()); }));
-  promise3.get_future().get();
-
-  promise4.get_future().get();
->>>>>>> add part code
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
