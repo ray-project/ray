@@ -109,7 +109,7 @@ class CoreWorkerDirectActorTaskSubmitter {
     /// The actor's pending requests, ordered by the task number (see below
     /// diagram) in the request. The bool indicates whether the dependencies
     /// for that task have been resolved yet. A task will be sent after its
-    /// dependencies have been resolved and its task nunmber matches
+    /// dependencies have been resolved and its task number matches
     /// next_send_position.
     std::map<uint64_t, std::pair<TaskSpecification, bool>> requests;
 
