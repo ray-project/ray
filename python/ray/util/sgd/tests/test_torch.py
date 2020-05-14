@@ -147,25 +147,18 @@ def test_multi_model(ray_start_2_cpus, num_workers):
 
             train_loss += loss.item()
             _, predicted = outputs.max(1)
-            # print("targets---------------", targets)
-            # print("predicted-------------", predicted)
-            # print("targets size:", targets.size(0))
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-        print("Correct: ", correct)
-        print("Total: ", total)
         return {
             "accuracy": correct / total,
             "train_loss": train_loss / (batch_idx + 1)
         }
 
     def train_epoch(self, iterator, info):
-        print("In train_epoch")
         result = {}
         data = list(iterator)
         for i, (model, optimizer) in enumerate(
                 zip(self.models, self.optimizers)):
-            print("Training model")
             result["model_{}".format(i)] = train(
                 model=model,
                 criterion=self.criterion,
@@ -650,10 +643,10 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
 
 def gen_step_with_fail(num_fails):
     def step_with_fail(self,
-                     num_steps=None,
-                     profile=False,
-                     info=None,
-                     dataset=None):
+                       num_steps=None,
+                       profile=False,
+                       info=None,
+                       dataset=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
         if dataset:
@@ -688,6 +681,7 @@ def gen_step_with_fail(num_fails):
             return a, b
 
         return success, None
+
     return step_with_fail
 
 

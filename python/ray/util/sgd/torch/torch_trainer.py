@@ -379,7 +379,6 @@ class TorchTrainer:
               max_retries=3,
               info=None,
               dataset=None):
-        print("trainer.train()")
         """Runs a training epoch.
 
         Calls `operator.train_epoch()` on N parallel workers simultaneously
@@ -421,7 +420,6 @@ class TorchTrainer:
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
-            print("Retry?")
             if success:
                 break
             else:
@@ -461,7 +459,6 @@ class TorchTrainer:
                      profile=False,
                      info=None,
                      dataset=None):
-        print("trainer._train_epoch()")
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
         if dataset:
@@ -470,7 +467,6 @@ class TorchTrainer:
             params = dict(num_steps=num_steps, profile=profile, info=info)
             if dataset:
                 params["iterator"] = dataset.get_shard(i)
-            print("remote train")
             stats = w.train_epoch.remote(**params)
             remote_worker_stats.append(stats)
 
@@ -478,7 +474,6 @@ class TorchTrainer:
             if dataset:
                 params["iterator"] = dataset.get_shard(
                     len(self.remote_workers))
-            print("local train")
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:

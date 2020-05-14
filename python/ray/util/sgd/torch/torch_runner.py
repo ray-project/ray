@@ -211,7 +211,6 @@ class TorchRunner:
                 iterator = map(format_batch, iterator)
             if num_steps:
                 iterator = itertools.islice(iterator, num_steps)
-            print("calling operator.train_epoch")
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
