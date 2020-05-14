@@ -127,7 +127,8 @@ class GlobalState:
     Attributes:
         redis_client: The Redis client used to query the primary redis server.
         redis_clients: Redis clients for each of the Redis shards.
-        global_state_accessor: The client used to query gcs table from gcs server.
+        global_state_accessor: The client used to query gcs table from gcs
+            server.
     """
 
     def __init__(self):
@@ -182,7 +183,8 @@ class GlobalState:
         """
         self.redis_client = services.create_redis_client(
             redis_address, redis_password)
-        self.global_state_accessor = GlobalStateAccessor(redis_address, redis_password, False)
+        self.global_state_accessor = GlobalStateAccessor(redis_address,
+                                                         redis_password, False)
         self.global_state_accessor.connect()
         start_time = time.time()
 
