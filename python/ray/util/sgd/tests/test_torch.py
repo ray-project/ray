@@ -9,6 +9,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
+import ray.util.sgd.data.examples.mlp_identity
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
@@ -345,7 +346,8 @@ def test_dataset(ray_start_4_cpus):
     for i in range(5):
         trainer.train(dataset=dataset, num_steps=100)
 
-    prediction = float(trainer.get_model(0.5)[0][0])
+    input = ray.util.sgd.data.examples.mlp_identity.to_mat(0.5)
+    prediction = float(trainer.get_model()(input)[0][0])
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
