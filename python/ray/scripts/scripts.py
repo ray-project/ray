@@ -298,8 +298,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
     if redis_port is not None:
-        raise DeprecationWarning("The --redis-port argument is deprecated "
-                                 "Please use --port instead.")
+        logger.warn("The --redis-port argument will be deprecated soon. "
+                    "Please use --port instead.")
         if port is not None and port != redis_port:
             raise ValueError('Cannot specify both --port and --redis-port '
                              'as port is a rename of deprecated redis-port')
