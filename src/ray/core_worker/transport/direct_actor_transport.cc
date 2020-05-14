@@ -22,7 +22,7 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-void CoreWorkerDirectActorTaskSubmitter::AddActorQueue(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
