@@ -24,6 +24,7 @@ matrix:
       env:
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
       install:
@@ -36,6 +37,7 @@ matrix:
       env:
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
       install:
@@ -47,6 +49,7 @@ matrix:
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
@@ -63,6 +66,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
@@ -78,6 +82,7 @@ matrix:
         - TESTSUITE=gcs_service_disabled
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
@@ -95,6 +100,7 @@ matrix:
         - TESTSUITE=gcs_service_disabled_python_testcase
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_SERVICE_ENABLED=false
         - RAY_CYTHON_EXAMPLES=1
@@ -109,6 +115,7 @@ matrix:
       env:
         - LINT=1
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init
       before_script:
@@ -122,6 +129,7 @@ matrix:
       env:
         - LINUX_WHEELS=1
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
@@ -138,6 +146,7 @@ matrix:
       env:
         - MAC_WHEELS=1
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
@@ -156,6 +165,7 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
       before_script:
@@ -173,6 +183,7 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       before_script:
@@ -189,6 +200,7 @@ matrix:
         - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
       before_script:
@@ -206,6 +218,7 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       before_script:
@@ -226,6 +239,7 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       before_script:
@@ -245,6 +259,7 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       before_script:
@@ -261,6 +276,7 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
+        - ENABLE_ASAN=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
       before_script:
