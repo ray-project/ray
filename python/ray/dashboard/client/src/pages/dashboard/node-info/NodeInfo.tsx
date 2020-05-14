@@ -33,7 +33,7 @@ const clusterWorkerPids = (
     nodeMap.set(nodeIp, workerPids);
   }
   return nodeMap;
-}
+};
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -116,7 +116,9 @@ class NodeInfo extends React.Component<
     // Initialize inner structure of the count objects
     for (const client of nodeInfo.clients) {
       const clusterWorkerPids = clusterWorkerPidsByIp.get(client.ip);
-      if (!clusterWorkerPids) {continue;}
+      if (!clusterWorkerPids) {
+        continue;
+      }
       const filteredLogEntries = Object.entries(
         nodeInfo.log_counts[client.ip] || {},
       ).filter(([pid, _]) => clusterWorkerPids.has(pid));
