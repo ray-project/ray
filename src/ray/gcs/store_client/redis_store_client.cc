@@ -15,7 +15,6 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
-#include <utility>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
@@ -86,7 +85,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name, match_pattern);

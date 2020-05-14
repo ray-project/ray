@@ -62,9 +62,7 @@ Status InMemoryStoreClient::AsyncGetAll(
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   std::unordered_map<std::string, std::string> result;
-  for (auto &record : table->records_) {
-    result[record.first] = record.second;
-  }
+  result.insert(table->records_.begin(), table->records_.end());
   main_io_service_.post([result, callback]() { callback(result); });
   return Status::OK();
 }
