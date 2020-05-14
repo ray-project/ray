@@ -50,8 +50,8 @@ class ServeMaster:
     """
 
     async def __init__(self, router_policy, router_policy_kwargs,
-                       start_http_proxy, http_proxy_host, http_proxy_port,
-                       metric_exporter_class):
+                       start_http_proxy, http_node_id, http_proxy_host,
+                       http_proxy_port, metric_exporter_class):
         # Used to read/write checkpoints.
         # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store = RayInternalKVStore()
@@ -91,7 +91,8 @@ class ServeMaster:
         self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_router(router_policy, router_policy_kwargs)
         if start_http_proxy:
-            self._get_or_start_http_proxy(http_proxy_host, http_proxy_port)
+            self._get_or_start_http_proxy(http_node_id, http_proxy_host,
+                                          http_proxy_port)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -134,7 +135,7 @@ class ServeMaster:
         """Returns a handle to the router managed by this actor."""
         return [self.router]
 
-    def _get_or_start_http_proxy(self, host, port):
+    def _get_or_start_http_proxy(self, node_id, host, port):
         """Get the HTTP proxy belonging to this serve cluster.
 
         If the HTTP proxy does not already exist, it will be started.
@@ -149,6 +150,9 @@ class ServeMaster:
                 name=SERVE_PROXY_NAME,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+                resources={
+                    node_id: 0.01
+                },
             ).remote(host, port)
 
     def get_http_proxy(self):
