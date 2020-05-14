@@ -1146,7 +1146,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources, &return_ids);
   builder.SetActorCreationTaskSpec(
-      actor_id, actor_creation_options.max_reconstructions,
+      actor_id, actor_creation_options.max_restarts,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_creation_options.name, actor_creation_options.is_asyncio, extension_data);
@@ -1167,10 +1167,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
   } else {
-    task_manager_->AddPendingTask(
-        GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
-        std::max(RayConfig::instance().actor_creation_min_retries(),
-                 actor_creation_options.max_reconstructions));
+    int max_retries;
+    if (actor_creation_options.max_restarts == -1) {
+      max_retries = -1;
+    } else {
+      max_retries = std::max((int64_t)RayConfig::instance().actor_creation_min_retries(),
+                             actor_creation_options.max_restarts);
+    }
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite(), max_retries);
     status = direct_task_submitter_->SubmitTask(task_spec);
   }
   return status;
@@ -1243,11 +1248,10 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
   return Status::OK();
 }
 
-Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
-                             bool no_reconstruction) {
+Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_reconstruction);
+  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
   return Status::OK();
 }
 
@@ -1308,7 +1312,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                               const gcs::ActorTableData &actor_data) {
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
-      } else if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+      } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
@@ -1355,7 +1359,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
               RAY_CHECK_OK(
-                  KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
+                  KillActor(actor_id, /*force_kill=*/false, /*no_restart=*/false));
             }
           }
 
@@ -1941,7 +1945,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
-    if (request.no_reconstruction()) {
+    if (request.no_restart()) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
     if (options_.num_workers > 1) {

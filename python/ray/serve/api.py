@@ -135,7 +135,7 @@ def init(cluster_name=None,
     master_actor = ServeMaster.options(
         detached=True,
         name=master_actor_name,
-        max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+        max_restarts=-1,
     ).remote(cluster_name, queueing_policy.value, policy_kwargs, start_server,
              http_host, http_port, metric_exporter)
 

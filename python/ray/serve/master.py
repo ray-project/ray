@@ -133,7 +133,7 @@ class ServeMaster:
                 detached=True,
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+                max_restarts=-1,
             ).remote(
                 policy, policy_kwargs, cluster_name=self.cluster_name)
 
@@ -156,7 +156,7 @@ class ServeMaster:
                 detached=True,
                 name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+                max_restarts=-1,
             ).remote(
                 host, port, cluster_name=self.cluster_name)
 
@@ -309,7 +309,7 @@ class ServeMaster:
         worker_handle = async_retryable(ray.remote(backend_worker)).options(
             detached=True,
             name=replica_name,
-            max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION,
+            max_restarts=-1,
             **replica_config.ray_actor_options).remote(
                 backend_tag,
                 replica_tag,
