@@ -183,8 +183,8 @@ class GlobalState:
         """
         self.redis_client = services.create_redis_client(
             redis_address, redis_password)
-        self.global_state_accessor = GlobalStateAccessor(redis_address,
-                                                         redis_password, False)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
         self.global_state_accessor.connect()
         start_time = time.time()
 
