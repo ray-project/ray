@@ -209,7 +209,12 @@ install_dependencies() {
       msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.1.0}" cython==0.29.0 gym \
+    local tf_version
+    case "${OSTYPE}" in
+      msys) tf_version="${TF_VERSION:-2.2.0}";;
+      *) tf_version="${TF_VERSION:-2.1.0}";;
+    esac
+    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
       opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
