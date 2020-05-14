@@ -17,6 +17,7 @@ from ray.util.sgd.torch.distributed_torch_runner import (
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -413,7 +414,8 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        assert dataset is not None or self.data_creator, \
+        assert isinstance(dataset, Dataset) is not None \
+            or self.data_creator, \
             "Must specify either a data creator or a dataset"
         if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")

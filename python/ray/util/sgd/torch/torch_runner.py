@@ -138,7 +138,7 @@ class TorchRunner:
     def setup_components(self):
         """Runs the creator functions without any distributed coordination."""
         logger.debug("Loading data.")
-        if self.data_creator:
+        if self.data_creator and callable(self.data_creator):
             self._initialize_dataloaders()
 
         logger.debug("Creating model")
