@@ -13,17 +13,8 @@
 // limitations under the License.
 
 #include "network_util.h"
-//#include "ray/util/logging.h"
+#include "ray/util/logging.h"
 
-/// A helper function to get a valid local ip.
-/// We will connect google public dns server and get local ip from socket.
-/// If dns server is unreachable, try to resolve hostname and get a valid ip by ping the
-/// port of the local ip is listening on. If there is no valid local ip, `127.0.0.1` is
-/// returned.
-///
-/// \param port The port that the local ip is listening on.
-/// \param timeout_ms The maximum wait time in milliseconds.
-/// \return A valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   AsyncClient async_client;
   boost::system::error_code error_code;
@@ -61,8 +52,8 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
           iter++;
         }
       } else {
-        //        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
-        //                         << strerror(error_code.value());
+        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
+                         << strerror(error_code.value());
         iter = end;
       }
 

@@ -63,6 +63,21 @@ class ServiceBasedGcsClientTest : public RedisServiceManagerForTest {
     FlushAll();
   }
 
+  void RestartGcsServer() {
+    RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
+    gcs_server_->Stop();
+    thread_gcs_server_->join();
+
+    gcs_server_.reset(new gcs::GcsServer(config));
+    thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+
+    // Wait until server starts listening.
+    while (gcs_server_->GetPort() == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
+  }
+
   bool SubscribeToFinishedJobs(
       const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
@@ -797,14 +812,9 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
+TEST_F(ServiceBasedGcsClientTest, TestJobTableReSubscribe) {
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  auto actor1_table_data = Mocker::GenActorTableData(job_id);
-  auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
-  auto actor2_table_data = Mocker::GenActorTableData(job_id);
-
-  ASSERT_TRUE(RegisterActor(actor1_table_data));
 
   // Subscribe to finished jobs.
   std::atomic<int> job_update_count(0);
@@ -813,47 +823,55 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   };
   ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
 
-  std::atomic<int> actor_all_update_count(0);
-  auto subscribe_all = [&actor_all_update_count](const ActorID &id,
-                                                 const rpc::ActorTableData &result) {
-    RAY_LOG(INFO) << "MY............subscribe_all ++++++++++++++++";
-    ++actor_all_update_count;
-  };
-  ASSERT_TRUE(SubscribeAllActors(subscribe_all));
-
-  // Subscribe to any update operations of an actor.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    RAY_LOG(INFO) << "MY............on_subscribe ++++++actor_update_count";
-    ++actor_update_count;
-  };
-  ASSERT_TRUE(SubscribeActor(actor1_id, on_subscribe));
-
-  RAY_LOG(INFO) << "MY............actor_update_count = " << actor_update_count;
-
-  RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
-  gcs_server_->Stop();
-  thread_gcs_server_->join();
-
-  gcs_server_.reset(new gcs::GcsServer(config));
-  thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
-
-  // Wait until server starts listening.
-  while (gcs_server_->GetPort() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
+  RestartGcsServer();
 
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
-  ASSERT_TRUE(RegisterActor(actor2_table_data));
-
-  RAY_LOG(INFO) << "job_update_count = " << job_update_count
-                << ", actor_update_count = " << actor_update_count;
   WaitPendingDone(job_update_count, 1);
-  WaitPendingDone(actor_update_count, 2);
-  WaitPendingDone(actor_all_update_count, 3);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestActorTableReSubscribe) {
+  JobID job_id = JobID::FromInt(1);
+  auto actor1_table_data = Mocker::GenActorTableData(job_id);
+  auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
+  auto actor2_table_data = Mocker::GenActorTableData(job_id);
+  auto actor2_id = ActorID::FromBinary(actor2_table_data->actor_id());
+
+  // Subscribe to any register or update operations of actors.
+  std::atomic<int> actors_update_count(0);
+  auto subscribe_all = [&actors_update_count](const ActorID &id,
+                                              const rpc::ActorTableData &result) {
+    ++actors_update_count;
+  };
+  ASSERT_TRUE(SubscribeAllActors(subscribe_all));
+
+  // Subscribe to any update operations of actor1.
+  std::atomic<int> actor1_update_count(0);
+  auto actor1_subscribe = [&actor1_update_count](const ActorID &actor_id,
+                                                 const gcs::ActorTableData &data) {
+    ++actor1_update_count;
+  };
+  ASSERT_TRUE(SubscribeActor(actor1_id, actor1_subscribe));
+
+  // Subscribe to any update operations of actor2.
+  std::atomic<int> actor2_update_count(0);
+  auto actor2_subscribe = [&actor2_update_count](const ActorID &actor_id,
+                                                 const gcs::ActorTableData &data) {
+    ++actor2_update_count;
+  };
+  ASSERT_TRUE(SubscribeActor(actor2_id, actor2_subscribe));
+
+  ASSERT_TRUE(RegisterActor(actor1_table_data));
+  ASSERT_TRUE(RegisterActor(actor2_table_data));
+  WaitPendingDone(actor2_update_count, 1);
+  UnsubscribeActor(actor2_id);
+
+  RestartGcsServer();
+
+  ASSERT_TRUE(UpdateActor(actor1_id, actor1_table_data));
+  ASSERT_TRUE(UpdateActor(actor2_id, actor2_table_data));
+  WaitPendingDone(actor1_update_count, 3);
+  WaitPendingDone(actor2_update_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {

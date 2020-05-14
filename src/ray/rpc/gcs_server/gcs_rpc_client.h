@@ -233,7 +233,8 @@ class GcsRpcClient {
       Init(address.first, address.second, client_call_manager_);
 
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(INFO) << "Ping Ping Ping Ping.....................success.....";
+        RAY_LOG(INFO) << "Target rpc server " << address.first << ":" << address.second
+                      << " is valid.";
         if (reconnected_callback_) {
           reconnected_callback_();
         }
