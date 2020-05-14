@@ -474,9 +474,7 @@ class TorchTrainer:
             if dataset:
                 params["iterator"] = dataset.get_shard(
                     len(self.remote_workers))
-            print("LOCAL TRAIN STARTED")
             local_worker_stats = self.local_worker.train_epoch(**params)
-            print("LOCAL TRAIN ENDED")
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:
                 logger.warning(err)

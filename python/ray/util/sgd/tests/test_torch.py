@@ -20,10 +20,20 @@ from ray.util.sgd.utils import (check_for_failure, NUM_SAMPLES, BATCH_COUNT,
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
-
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    # Ensure that tests don't ALL fail
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -307,6 +317,33 @@ def test_profiling(ray_start_2_cpus):  # noqa: F811
     assert "profile" in stats
     stats = trainer.validate(profile=True)
     assert "profile" in stats
+    trainer.shutdown()
+
+
+def test_dataset(ray_start_4_cpus):
+    '''This test tries training the mlp_identity example. We check the accuracy of
+    the model as an all inclusive way of ensuring that we are properly sharding
+    and iterating over the entire dataset (instead of repeating the first set
+    of points for example).
+
+    '''
+    model_creator = ray.util.sgd.data.examples.mlp_identity.model_creator
+    optimizer_creator = ray.util.sgd.data.examples.mlp_identity.optimizer_creator
+    dataset_creator = ray.util.sgd.data.examples.mlp_identity.dataset_creator
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=None,
+        optimizer_creator=optimizer_creator,
+        loss_creator=torch.nn.MSELoss,
+        num_workers=2,
+    )
+
+    dataset = dataset_creator()
+    for i in range(5):
+        trainer.train(dataset=dataset, num_steps=100)
+
+    prediction = float(trainger.get_model(0.5)[0][0])
+    assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
 

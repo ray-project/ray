@@ -33,31 +33,32 @@ def to_mat(x):
     return torch.tensor([[x]]).float()
 
 
-def main():
-    data = [i * 0.001 for i in range(1000)]
+def dataset_creator():
+    num_points = 32 * 100 * 2
+    data = [i * (1/num_points) for i in range(num_points)]
     dataset = Dataset(
         data,
         batch_size=32,
-        max_concurrency=4,
+        max_concurrency=2,
         download_func=lambda x: (to_mat(x), to_mat(x)))
+    return dataset
 
+
+def main():
+    dataset = dataset_creator()
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=None,
         optimizer_creator=optimizer_creator,
         loss_creator=torch.nn.MSELoss,
-        config={
-            "batch_size": 32,
-            "epoch": 10
-        },
-        num_workers=5,
+        num_workers=2,
     )
 
     for i in range(10):
         # Train a full epoch using the data_creator
         # trainer.train()
         # Train for another epoch using the dataset
-        trainer.train(dataset=dataset, num_steps=200)
+        trainer.train(dataset=dataset, num_steps=100)
 
         model = trainer.get_model()
         print("f(0.5)=", float(model(to_mat(0.5))[0][0]))

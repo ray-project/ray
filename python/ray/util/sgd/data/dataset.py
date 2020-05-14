@@ -61,7 +61,7 @@ class Dataset():
         if isinstance(data, ParallelIterator):
             par_iter = data.repartition(1)
         else:
-            par_iter = from_iterators([iter(data)], repeat=True)
+            par_iter = from_iterators([data], repeat=True)
         if download_func:
             par_iter = par_iter.for_each(
                 download_func, max_concurrency=max_concurrency)
