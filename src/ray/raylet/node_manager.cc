@@ -1148,14 +1148,15 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
+  auto remainingRestarts = actor_registration.GetRemainingRestarts();
   RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died "
                  << (intentional_disconnect ? "intentionally" : "unintentionally")
                  << ", remaining restarts = "
-                 << actor_registration.GetRemainingRestarts();
+                 << remainingRestarts;
 
   // Check if this actor needs to be restarted.
   ActorState new_state =
-      actor_registration.GetRemainingRestarts() > 0 && !intentional_disconnect
+      (remainingRestarts == -1 || remainingRestarts > 0) && !intentional_disconnect
           ? ActorTableData::RESTARTING
           : ActorTableData::DEAD;
   if (was_local) {
