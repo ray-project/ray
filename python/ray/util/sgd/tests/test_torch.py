@@ -133,6 +133,7 @@ def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_multi_model(ray_start_2_cpus, num_workers):
     def train(*, model=None, criterion=None, optimizer=None, dataloader=None):
+        print("Train called")
         model.train()
         train_loss = 0
         correct = 0
@@ -146,22 +147,30 @@ def test_multi_model(ray_start_2_cpus, num_workers):
 
             train_loss += loss.item()
             _, predicted = outputs.max(1)
+            # print("targets---------------", targets)
+            # print("predicted-------------", predicted)
+            # print("targets size:", targets.size(0))
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
+        print("Correct: ", correct)
+        print("Total: ", total)
         return {
             "accuracy": correct / total,
             "train_loss": train_loss / (batch_idx + 1)
         }
 
     def train_epoch(self, iterator, info):
+        print("In train_epoch")
         result = {}
+        data = list(iterator)
         for i, (model, optimizer) in enumerate(
                 zip(self.models, self.optimizers)):
+            print("Training model")
             result["model_{}".format(i)] = train(
                 model=model,
                 criterion=self.criterion,
                 optimizer=optimizer,
-                dataloader=iterator)
+                dataloader=data)
         return result
 
     def multi_model_creator(config):
@@ -181,12 +190,17 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
+    print("train 1")
     trainer1.train()
+    print("1")
     state = trainer1.state_dict()
+    print("2")
 
     models1 = trainer1.get_model()
+    print("3")
 
     trainer1.shutdown()
+    print("4")
 
     trainer2 = TorchTrainer(
         model_creator=multi_model_creator,
@@ -196,6 +210,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
+    print("GETS HERE")
     trainer2.load_state_dict(state)
 
     models2 = trainer2.get_model()
@@ -633,6 +648,49 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     trainer2.shutdown()
 
 
+def gen_step_with_fail(num_fails):
+    def step_with_fail(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
+                     dataset=None):
+        params = dict(num_steps=num_steps, profile=profile, info=info)
+        remote_worker_stats = []
+        if dataset:
+            dataset.set_num_shards(self.max_replicas)
+        for i, w in enumerate(self.remote_workers):
+            params = dict(num_steps=num_steps, profile=profile, info=info)
+            if dataset:
+                params["iterator"] = dataset.get_shard(i)
+            stats = w.train_epoch.remote(**params)
+            remote_worker_stats.append(stats)
+
+        if self._num_failures < num_fails:
+            time.sleep(1)  # Make the batch will fail correctly.
+            self.remote_workers[0].__ray_kill__()
+
+        try:
+            if dataset:
+                params["iterator"] = dataset.get_shard(
+                    len(self.remote_workers))
+            local_worker_stats = self.local_worker.train_epoch(**params)
+        except RuntimeError as err:
+            if "gloo" in err.args[0] and "Timed out" in err.args[0]:
+                return False, None
+            if "NCCL" in err.args[0]:  # there is no specific error message
+                return False, None
+
+            raise err
+
+        success = check_for_failure(remote_worker_stats)
+        if success:
+            a, b = success, [local_worker_stats] + ray.get(remote_worker_stats)
+            return a, b
+
+        return success, None
+    return step_with_fail
+
+
 def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
@@ -641,25 +699,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    def step_with_fail(self, **params):
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
-
-        if self._num_failures < 3:
-            time.sleep(1)  # Make the batch will fail correctly.
-            ray.kill(self.remote_workers[0])
-
-        try:
-            local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError:
-            return False, None
-
-        success = check_for_failure(remote_worker_stats)
-        if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
-
-        return success, None
+    step_with_fail = gen_step_with_fail(3)
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
@@ -684,25 +724,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    def step_with_fail(self, **params):
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
-
-        if self._num_failures < 1:
-            time.sleep(1)  # Make the batch will fail correctly.
-            self.remote_workers[0].__ray_kill__()
-
-        try:
-            local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError:
-            return False, None
-
-        success = check_for_failure(remote_worker_stats)
-        if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
-
-        return success, None
+    step_with_fail = gen_step_with_fail(1)
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
@@ -733,25 +755,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    def step_with_fail(self, **params):
-        remote_worker_stats = [
-            w.train_epoch.remote(**params) for w in self.remote_workers
-        ]
-
-        if self._num_failures < 2:
-            time.sleep(1)  # Make the batch will fail correctly.
-            self.remote_workers[0].__ray_kill__()
-
-        try:
-            local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError:
-            return False, None
-
-        success = check_for_failure(remote_worker_stats)
-        if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
-
-        return success, None
+    step_with_fail = gen_step_with_fail(2)
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
