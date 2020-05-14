@@ -243,9 +243,9 @@ class ActorClassMetadata:
     """
 
     def __init__(self, language, modified_class,
-                 actor_creation_function_descriptor, class_id,
-                 max_reconstructions, max_task_retries, num_cpus, num_gpus,
-                 memory, object_store_memory, resources):
+                 actor_creation_function_descriptor, class_id, max_restarts,
+                 max_task_retries, num_cpus, num_gpus, memory,
+                 object_store_memory, resources):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -253,7 +253,7 @@ class ActorClassMetadata:
         self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
-        self.max_reconstructions = max_reconstructions
+        self.max_restarts = max_restarts
         self.max_task_retries = max_task_retries
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -315,9 +315,8 @@ class ActorClass:
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_reconstructions, max_task_retries,
-                                 num_cpus, num_gpus, memory,
+    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
+                                 max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
@@ -346,7 +345,7 @@ class ActorClass:
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
-            actor_creation_function_descriptor, class_id, max_reconstructions,
+            actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
             resources)
 
@@ -354,14 +353,14 @@ class ActorClass:
 
     @classmethod
     def _ray_from_function_descriptor(
-            cls, language, actor_creation_function_descriptor,
-            max_reconstructions, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources):
+            cls, language, actor_creation_function_descriptor, max_restarts,
+            max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
+            resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
-            max_reconstructions, max_task_retries, num_cpus, num_gpus, memory,
+            max_restarts, max_task_retries, num_cpus, num_gpus, memory,
             object_store_memory, resources)
 
         return self
@@ -410,7 +409,7 @@ class ActorClass:
                 resources=None,
                 is_direct_call=None,
                 max_concurrency=None,
-                max_reconstructions=None,
+                max_restarts=None,
                 max_task_retries=None,
                 name=None,
                 detached=False):
@@ -562,7 +561,7 @@ class ActorClass:
             meta.language,
             meta.actor_creation_function_descriptor,
             creation_args,
-            max_reconstructions or meta.max_reconstructions,
+            max_restarts or meta.max_restarts,
             max_task_retries or meta.max_task_retries,
             resources,
             actor_placement_resources,
@@ -898,27 +897,31 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions, max_task_retries):
+               max_restarts, max_task_retries):
     Class = modify_class(cls)
 
-    if max_reconstructions is None:
-        max_reconstructions = 0
+    if max_restarts is None:
+        max_restarts = 0
     if max_task_retries is None:
         max_task_retries = 0
 
-    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
-            ray_constants.INFINITE_RECONSTRUCTION):
-        raise ValueError("max_reconstructions must be in range [%d, %d]." %
-                         (ray_constants.NO_RECONSTRUCTION,
-                          ray_constants.INFINITE_RECONSTRUCTION))
-    if max_reconstructions == 0 and max_task_retries != 0:
+    infinite_restart = max_restarts == -1
+    if not infinite_restart:
+        if max_restarts < 0:
+            raise ValueError("max_restarts must be an integer >= -1 "
+                             "-1 indicates infinite restarts")
+        else:
+            # Make sure we don't pass too big of an int to C++, causing
+            # an overflow.
+            max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
+
+    if max_restarts == 0 and max_task_retries != 0:
         raise ValueError(
-            "max_task_retries cannot be set if max_reconstructions is 0.")
+            "max_task_retries cannot be set if max_restarts is 0.")
 
     return ActorClass._ray_from_modified_class(
-        Class, ActorClassID.from_random(), max_reconstructions,
-        max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-        resources)
+        Class, ActorClassID.from_random(), max_restarts, max_task_retries,
+        num_cpus, num_gpus, memory, object_store_memory, resources)
 
 
 def exit_actor():
@@ -1016,7 +1019,7 @@ class Checkpointable(metaclass=ABCMeta):
     def load_checkpoint(self, actor_id, available_checkpoints):
         """Load actor's previous checkpoint, and restore actor's state.
 
-        This method will be called when an actor is reconstructed, after
+        This method will be called when an actor is restarted, after
         actor's constructor.
         If the actor needs to restore from previous checkpoint, this function
         should restore actor's state and return the checkpoint ID. Otherwise,

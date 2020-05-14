@@ -284,12 +284,11 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
+    } else if (num_retries_left == -1) {
+      release_lineage = false;
     } else {
-      if (it->second.num_retries_left > 0) {
-        it->second.num_retries_left--;
-      } else {
-        RAY_CHECK(it->second.num_retries_left == -1);
-      }
+      RAY_CHECK(num_retries_left > 0);
+      it->second.num_retries_left--;
       release_lineage = false;
     }
   }
@@ -298,7 +297,9 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
   if (num_retries_left != 0) {
-    RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
+    auto retries_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     will_retry = true;

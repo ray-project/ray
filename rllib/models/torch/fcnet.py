@@ -96,20 +96,20 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
-        # Holds the current value output.
-        self._cur_value = None
+        # Holds the current "base" output (before logits layer).
+        self._features = None
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         obs = input_dict["obs_flat"].float()
-        features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
-        logits = self._logits(features) if self._logits else features
+        self._features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
+        logits = self._logits(self._features) if self._logits else \
+            self._features
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
-        self._cur_value = self._value_branch(features).squeeze(1)
         return logits, state
 
     @override(TorchModelV2)
     def value_function(self):
-        assert self._cur_value is not None, "must call forward() first"
-        return self._cur_value
+        assert self._features is not None, "must call forward() first"
+        return self._value_branch(self._features).squeeze(1)

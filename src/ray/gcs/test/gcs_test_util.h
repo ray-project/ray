@@ -17,21 +17,19 @@
 
 #include <memory>
 #include <utility>
-#include "gmock/gmock.h"
 
+#include "gmock/gmock.h"
 #include "src/ray/common/task/task.h"
 #include "src/ray/common/task/task_util.h"
 #include "src/ray/common/test_util.h"
-#include "src/ray/util/asio_util.h"
-
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/util/asio_util.h"
 
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_reconstructions, bool detached,
-                                                const std::string &name,
+  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
+                                                bool detached, const std::string &name,
                                                 const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
@@ -41,13 +39,12 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions, {}, 1, detached,
-                                     name);
+    builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
-                                                       int max_reconstructions = 0,
+                                                       int max_restarts = 0,
                                                        bool detached = false,
                                                        const std::string name = "") {
     rpc::CreateActorRequest request;
@@ -59,7 +56,7 @@ struct Mocker {
       owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     }
     auto actor_creation_task_spec =
-        GenActorCreationTask(job_id, max_reconstructions, detached, name, owner_address);
+        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
@@ -89,8 +86,8 @@ struct Mocker {
     actor_table_data->set_job_id(job_id.Binary());
     actor_table_data->set_state(
         rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-    actor_table_data->set_max_reconstructions(1);
-    actor_table_data->set_remaining_reconstructions(1);
+    actor_table_data->set_max_restarts(1);
+    actor_table_data->set_num_restarts(0);
     return actor_table_data;
   }
 

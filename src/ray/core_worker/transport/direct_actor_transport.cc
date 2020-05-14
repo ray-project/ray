@@ -31,13 +31,12 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill,
-                                                   bool no_reconstruction) {
+                                                   bool force_kill, bool no_restart) {
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(force_kill);
-  request.set_no_reconstruction(no_reconstruction);
+  request.set_no_restart(no_restart);
 
   auto it = client_queues_.find(actor_id);
   // The language frontend can only kill actors that it has a reference to.
@@ -49,10 +48,10 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
     // Overwrite the previous request to kill the actor if the new request is a
     // force kill.
     it->second.pending_force_kill->set_force_kill(true);
-    if (no_reconstruction) {
-      // Overwrite the previous request to disable reconstruction if the new request's
-      // no_reconstruction flag is set to true.
-      it->second.pending_force_kill->set_no_reconstruction(true);
+    if (no_restart) {
+      // Overwrite the previous request to disable restart if the new request's
+      // no_restart flag is set to true.
+      it->second.pending_force_kill->set_no_restart(true);
     }
   }
 
@@ -142,12 +141,12 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
   } else {
-    queue->second.state = rpc::ActorTableData::RECONSTRUCTING;
+    queue->second.state = rpc::ActorTableData::RESTARTING;
   }
 
-  // We're reconstructing the actor, so erase the client for now. The new client
-  // will be inserted once actor reconstruction completes. We don't erase the
-  // client when the actor is DEAD, so that all further tasks will be failed.
+  // The actor failed, so erase the client for now. Either the actor is
+  // permanently dead or the new client will be inserted once the actor is
+  // restarted.
   queue->second.rpc_client = nullptr;
   queue->second.worker_id.clear();
   queue->second.pending_force_kill.reset();
@@ -338,7 +337,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                       << ", actor_id: " << task_spec.ActorCreationId();
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
-        // actor, thus if this worker dies later raylet will reconstruct the actor.
+        // actor, thus if this worker dies later raylet will restart the actor.
         RAY_CHECK_OK(task_done_());
       }
     }
