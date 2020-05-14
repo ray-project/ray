@@ -244,8 +244,14 @@ install_dependencies() {
     install_linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    local python_version
+    python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+    if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
+      { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
+    else
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    fi
   fi
 
   # Install modules needed in all jobs.
