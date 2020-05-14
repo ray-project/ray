@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -221,8 +222,8 @@ class StoreClientTestBase : public ::testing::Test {
   void GenTestData() {
     for (size_t i = 0; i < key_count_; i++) {
       rpc::ActorTableData actor;
-      actor.set_max_reconstructions(1);
-      actor.set_remaining_reconstructions(1);
+      actor.set_max_restarts(1);
+      actor.set_num_restarts(0);
       JobID job_id = JobID::FromInt(i % index_count_);
       actor.set_job_id(job_id.Binary());
       actor.set_state(rpc::ActorTableData::ALIVE);

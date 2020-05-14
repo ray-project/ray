@@ -1729,14 +1729,14 @@ def make_decorator(num_return_vals=None,
                    resources=None,
                    max_calls=None,
                    max_retries=None,
-                   max_reconstructions=None,
+                   max_restarts=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
-            if max_reconstructions is not None:
-                raise ValueError("The keyword 'max_reconstructions' is not "
+            if max_restarts is not None:
+                raise ValueError("The keyword 'max_restarts' is not "
                                  "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -1754,7 +1754,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_reconstructions)
+                                        max_restarts)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1796,16 +1796,15 @@ def remote(*args, **kwargs):
       third-party libraries or to reclaim resources that cannot easily be
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
-    * **max_reconstructions**: Only for *actors*. This specifies the maximum
-      number of times that the actor should be reconstructed when it dies
+    * **max_restarts**: Only for *actors*. This specifies the maximum
+      number of times that the actor should be restarted when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
-      that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+      that the actor doesn't need to be restarted. A value of -1
+      indicates that an actor should be restarted indefinitely.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
-      the default is 4 (default), and the maximum valid value is
-      ray.ray_constants.INFINITE_RECONSTRUCTION.
+      the default is 4 (default), and a value of -1 indicates infinite retries.
 
     This can be done as follows:
 
@@ -1854,7 +1853,7 @@ def remote(*args, **kwargs):
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
-                    "'max_calls', or 'max_reconstructions', like "
+                    "'max_calls', or 'max_restarts', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
@@ -1867,7 +1866,7 @@ def remote(*args, **kwargs):
             "object_store_memory",
             "resources",
             "max_calls",
-            "max_reconstructions",
+            "max_restarts",
             "max_retries",
         ], error_string
 
@@ -1885,7 +1884,7 @@ def remote(*args, **kwargs):
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
-    max_reconstructions = kwargs.get("max_reconstructions")
+    max_restarts = kwargs.get("max_restarts")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
@@ -1898,6 +1897,6 @@ def remote(*args, **kwargs):
         object_store_memory=object_store_memory,
         resources=resources,
         max_calls=max_calls,
-        max_reconstructions=max_reconstructions,
+        max_restarts=max_restarts,
         max_retries=max_retries,
         worker=worker)
