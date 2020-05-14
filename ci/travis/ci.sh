@@ -115,7 +115,7 @@ test_python() {
 }
 
 test_cpp() {
-  bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+  bazel test --config=asan //cpp:all --build_tests_only --test_output=streamed
 }
 
 test_wheels() {
@@ -403,7 +403,7 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build -k "//:*"   # Do a full build first to ensure everything passes
+    bazel build --config=asan -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

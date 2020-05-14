@@ -53,6 +53,16 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 
+# Memory sanitizer configuration:
+build:asan --strip=never
+build:asan --copt -g
+build:asan --copt -fsanitize=address
+build:asan --copt -fno-sanitize=vptr
+build:asan --copt -DADDRESS_SANITIZER
+build:asan --copt -fno-omit-frame-pointer
+build:asan --linkopt -fsanitize=address
+build:asan --linkopt -fno-sanitize=vptr
+
 test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --progress_report_interval=100

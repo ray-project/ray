@@ -22,7 +22,7 @@ fi
 set -e
 set -x
 
-bazel build -c dbg $RAY_BAZEL_CONFIG "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:raylet_monitor" "//:gcs_server" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
+bazel build -c dbg --config=asan $RAY_BAZEL_CONFIG "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:raylet_monitor" "//:gcs_server" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"

@@ -153,12 +153,18 @@ fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
+if [ -n "$ENABLE_ASAN" ]; then
+  ASAN_OPTIONS="--config=asan"
+else
+  ASAN_OPTIONS=""
+fi
+
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build $ASAN_OPTIONS //java:ray_java_pkg --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build $ASAN_OPTIONS //:ray_pkg --verbose_failures
 fi
 
 popd
