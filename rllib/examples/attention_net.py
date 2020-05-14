@@ -51,9 +51,10 @@ if __name__ == "__main__":
             "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,
             "max_seq_len": 10,
             "custom_options": {
-                "num_layers": 1,
-                "attn_dim": 10,
+                "num_transformer_units": 1,
+                "attn_dim": 11,
                 "num_heads": 1,
+                "memory_tau": 3,
                 "head_dim": 10,
                 "ff_hidden_dim": 20,
             },

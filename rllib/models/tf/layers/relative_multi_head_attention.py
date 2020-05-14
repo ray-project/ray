@@ -61,9 +61,9 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
-        Tau = memory.shape[0] if memory is not None else 0
+        Tau = memory.shape.as_list()[1] if memory is not None else 0
         if memory is not None:
-            inputs = np.concatenate(
+            inputs = tf.concat(
                 (tf.stop_gradient(memory), inputs), axis=1)
 
         # Apply the Layer-Norm.
@@ -73,17 +73,22 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
-        queries = queries[:, -T:]  # only query based on the segment
+        # Cut out Tau memory timesteps from query.
+        queries = queries[:, -T:]
 
         queries = tf.reshape(queries, [-1, T, H, d])
         keys = tf.reshape(keys, [-1, T + Tau, H, d])
         values = tf.reshape(values, [-1, T + Tau, H, d])
 
-        rel = self._pos_proj(self._rel_pos_encoder)
-        rel = tf.reshape(rel, [T, H, d])
+        R = self._pos_proj(self._rel_pos_encoder)
+        R = tf.reshape(R, [T + Tau, H, d])
 
+        # b=batch
+        # i and j=time indices (i=max-timesteps (inputs); j=Tau memory space)
+        # h=head
+        # d=head-dim (over which we will reduce-sum)
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
-        pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, rel)
+        pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
 

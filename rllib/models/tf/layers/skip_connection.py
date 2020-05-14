@@ -24,15 +24,14 @@ class SkipConnection(tf.keras.layers.Layer):
         self._fan_in_layer = fan_in_layer
 
     def call(self, inputs, **kwargs):
-        del kwargs
-        outputs = self._layer(inputs)
+        #del kwargs
+        outputs = self._layer(inputs, **kwargs)
         # Residual case, just add inputs to outputs.
         if self._fan_in_layer is None:
             outputs = outputs + inputs
         # Fan-in e.g. RNN: Call fan-in with `inputs` and `outputs`.
         else:
-            # NOTE: In the GRU case, `inputs` is the prev. hidden state.
+            # NOTE: In the GRU case, `inputs` is the state input.
             outputs = self._fan_in_layer((inputs, outputs))
 
         return outputs
-
