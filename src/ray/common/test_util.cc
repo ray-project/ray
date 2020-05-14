@@ -19,7 +19,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/util/logging.h"
-#include "test_util.h"
 
 namespace ray {
 

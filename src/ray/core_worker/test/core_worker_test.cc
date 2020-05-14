@@ -44,7 +44,6 @@ int node_manager_port = 0;
 std::string raylet_monitor_executable;
 std::string mock_worker_executable;
 std::string gcs_server_executable;
-std::string redis_client_executable;
 
 }  // namespace
 
@@ -1040,7 +1039,6 @@ int main(int argc, char **argv) {
   raylet_monitor_executable = std::string(argv[3]);
   mock_worker_executable = std::string(argv[4]);
   gcs_server_executable = std::string(argv[5]);
-  redis_client_executable = std::string(argv[6]);
 
   ray::REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
   ray::REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
