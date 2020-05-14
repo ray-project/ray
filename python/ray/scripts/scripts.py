@@ -405,8 +405,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     else:
         # Start Ray on a non-head node.
         if not (redis_port is None and port is None):
-            raise Exception("If --head is not passed in, --port and --redis-port are not "
-                            "allowed.")
+            raise Exception(
+                "If --head is not passed in, --port and --redis-port are not "
+                "allowed.")
         if redis_shard_ports is not None:
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
