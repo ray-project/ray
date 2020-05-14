@@ -28,7 +28,9 @@ const clusterWorkerPids = (
   const workerPids = new Set();
   for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
     for (const worker of workersStats) {
-      workerPids.add(worker.pid.toString());
+      if (!worker.isDriver) {
+        workerPids.add(worker.pid.toString());
+      }
     }
     nodeMap.set(nodeIp, workerPids);
   }
