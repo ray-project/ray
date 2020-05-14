@@ -197,9 +197,14 @@ install_dependencies() {
   install_nvm
   install_pip
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+  fi
 
+  # Install modules needed in all jobs.
+  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+
+  if [ -n "${PYTHON-}" ]; then
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
     local torch_url="https://download.pytorch.org/whl/torch_stable.html"
@@ -240,7 +245,6 @@ install_dependencies() {
   fi
 
   if [ "${LINT-}" = 1 ]; then
-    install_miniconda
     install_linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
@@ -253,9 +257,6 @@ install_dependencies() {
       pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
-
-  # Install modules needed in all jobs.
-  pip install dm-tree
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
