@@ -10,7 +10,11 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse, RayletInfoResponse, NodeInfoResponseWorker } from "../../../api";
+import {
+  NodeInfoResponse,
+  RayletInfoResponse,
+  NodeInfoResponseWorker,
+} from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
@@ -97,7 +101,10 @@ class NodeRowGroup extends React.Component<
     const { expanded } = this.state;
     const features = [
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-      { NodeFeature: NodeWorkers(clusterWorkers.length), WorkerFeature: WorkerWorkers },
+      {
+        NodeFeature: NodeWorkers(clusterWorkers.length),
+        WorkerFeature: WorkerWorkers,
+      },
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },

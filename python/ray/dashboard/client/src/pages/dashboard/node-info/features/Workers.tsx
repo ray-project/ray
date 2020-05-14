@@ -5,7 +5,9 @@ import {
   WorkerFeatureComponent,
 } from "./types";
 
-export const ClusterWorkers = (totalWorkers: number): ClusterFeatureComponent => ({ nodes }) => {
+export const ClusterWorkers = (
+  totalWorkers: number,
+): ClusterFeatureComponent => ({ nodes }) => {
   let totalCpus = 0;
   for (const node of nodes) {
     totalCpus += node.cpus[0];
@@ -19,12 +21,15 @@ export const ClusterWorkers = (totalWorkers: number): ClusterFeatureComponent =>
   );
 };
 
-export const NodeWorkers = (totalWorkers: number): NodeFeatureComponent => ({ node }) => {
+export const NodeWorkers = (totalWorkers: number): NodeFeatureComponent => ({
+  node,
+}) => {
   const cpus = node.cpus[0];
   return (
     <React.Fragment>
-      {totalWorkers.toLocaleString()} {totalWorkers === 1 ? "worker" : "workers"} /{" "}
-      {cpus.toLocaleString()} {cpus === 1 ? "core" : "cores"}
+      {totalWorkers.toLocaleString()}{" "}
+      {totalWorkers === 1 ? "worker" : "workers"} / {cpus.toLocaleString()}{" "}
+      {cpus === 1 ? "core" : "cores"}
     </React.Fragment>
   );
 };

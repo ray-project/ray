@@ -72,7 +72,7 @@ export type NodeInfoResponseWorker = {
     vms: number;
     rss: number;
   };
-}
+};
 
 export type NodeInfoResponse = {
   clients: Array<{
