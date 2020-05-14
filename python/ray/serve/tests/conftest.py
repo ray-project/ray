@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+import ray
 from ray import serve
 from ray.serve.utils import retry_actor_failures
 
@@ -24,3 +25,9 @@ def serve_instance(_shared_serve_instance):
         serve.delete_endpoint(endpoint)
     for backend in retry_actor_failures(master.get_all_backends):
         serve.delete_backend(backend)
+
+
+@pytest.fixture
+def shutdown_only():
+    yield
+    ray.shutdown()

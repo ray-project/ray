@@ -102,10 +102,6 @@ def init(cluster_name=None,
             services. RayServe has two options built in: InMemoryExporter and
             PrometheusExporter
     """
-    global master_actor
-    if master_actor is not None:
-        return
-
     if cluster_name is not None and not isinstance(cluster_name, str):
         raise TypeError("cluster_name must be a string.")
 
@@ -113,11 +109,8 @@ def init(cluster_name=None,
     if not ray.is_initialized():
         ray.init(**ray_init_kwargs)
 
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     # Try to get serve master actor if it exists
+    global master_actor
     master_actor_name = format_actor_name(SERVE_MASTER_NAME, cluster_name)
     try:
         master_actor = ray.util.get_actor(master_actor_name)
