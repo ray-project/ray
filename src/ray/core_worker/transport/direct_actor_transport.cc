@@ -115,11 +115,17 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
+  if (queue->second.rpc_client) {
+    // Skip reconnection if we already have a client to this actor.
+    // NOTE(swang): This seems to only trigger in multithreaded Java tests.
+    RAY_CHECK(queue->second.worker_id == address.worker_id());
+    return;
+  }
+
   queue->second.state = rpc::ActorTableData::ALIVE;
   // Update the mapping so new RPCs go out with the right intended worker id.
   queue->second.worker_id = address.worker_id();
   // Create a new connection to the actor.
-  RAY_CHECK(!queue->second.rpc_client);
   queue->second.rpc_client =
       std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   // TODO(swang): This assumes that all replies from the previous incarnation
