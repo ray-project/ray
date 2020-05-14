@@ -162,6 +162,8 @@ class NodeInfo extends React.Component<
               <TableCell className={classes.cell}>Uptime</TableCell>
               <TableCell className={classes.cell}>CPU</TableCell>
               <TableCell className={classes.cell}>RAM</TableCell>
+              <TableCell className={classes.cell}>GPU</TableCell>
+              <TableCell className={classes.cell}>GRAM</TableCell>
               <TableCell className={classes.cell}>Disk</TableCell>
               <TableCell className={classes.cell}>Sent</TableCell>
               <TableCell className={classes.cell}>Received</TableCell>

@@ -10,6 +10,7 @@ import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
 import { NodeInfoResponse } from "../../../api";
 import { ClusterCPU } from "./features/CPU";
+import { ClusterGRAM, ClusterGPU } from "./features/GPU";
 import { ClusterDisk } from "./features/Disk";
 import { makeClusterErrors } from "./features/Errors";
 import { ClusterHost } from "./features/Host";
@@ -72,6 +73,8 @@ class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
       { ClusterFeature: ClusterUptime },
       { ClusterFeature: ClusterCPU },
       { ClusterFeature: ClusterRAM },
+      { ClusterFeature: ClusterGPU },
+      { ClusterFeature: ClusterGRAM },
       { ClusterFeature: ClusterDisk },
       { ClusterFeature: ClusterSent },
       { ClusterFeature: ClusterReceived },
