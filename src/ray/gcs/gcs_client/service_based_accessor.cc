@@ -80,10 +80,11 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 }
 
 Status ServiceBasedJobInfoAccessor::AsyncReSubscribe() {
-  if (nullptr == subscribe_operation_) {
-    RAY_LOG(INFO) << "Re subscribe once, subscribe_operation_ = null......";
+  RAY_LOG(INFO) << "Re subscribe once.";
+  if (subscribe_operation_ != nullptr) {
+    return subscribe_operation_(nullptr);
   }
-  return subscribe_operation_(nullptr);
+  return Status::OK();
 }
 
 Status ServiceBasedJobInfoAccessor::AsyncGetAll(
@@ -381,6 +382,17 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
         RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
                        << ", actor id = " << actor_id;
       });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncReSubscribe() {
+  RAY_LOG(INFO) << "Re subscribe once.";
+  if (subscribe_all_operation_ != nullptr) {
+    RAY_CHECK_OK(subscribe_all_operation_(nullptr));
+  }
+  for (auto &item : subscribe_operations_) {
+    RAY_CHECK_OK(item.second(nullptr));
+  }
   return Status::OK();
 }
 

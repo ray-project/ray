@@ -106,6 +106,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
+  Status AsyncReSubscribe() override;
+
  private:
   SubscribeOperation subscribe_all_operation_;
   std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;

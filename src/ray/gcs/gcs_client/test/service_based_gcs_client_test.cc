@@ -800,13 +800,17 @@ TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
 TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-  auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+  auto actor1_table_data = Mocker::GenActorTableData(job_id);
+  auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
+  //  auto actor2_table_data = Mocker::GenActorTableData(job_id);
+  //  auto actor2_id = ActorID::FromBinary(actor2_table_data->actor_id());
 
-  std::promise<bool> promise;
-  auto subscribe = [&promise](const JobID &id, const rpc::JobTableData &result) {
-    RAY_LOG(INFO) << "Hello world..........................";
-    promise.set_value(true);
+  ASSERT_TRUE(RegisterActor(actor1_table_data));
+
+  // Subscribe to finished jobs.
+  std::atomic<int> job_update_count(0);
+  auto subscribe = [&job_update_count](const JobID &id, const rpc::JobTableData &result) {
+    ++job_update_count;
   };
   ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
 
@@ -816,7 +820,9 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
                                             const gcs::ActorTableData &data) {
     ++actor_update_count;
   };
-  ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
+  ASSERT_TRUE(SubscribeActor(actor1_id, on_subscribe));
+
+  RAY_LOG(INFO) << "MY............actor_update_count = " << actor_update_count;
 
   RAY_LOG(INFO) << "Initializing GCS service, port = " << gcs_server_->GetPort();
   gcs_server_->Stop();
@@ -833,8 +839,12 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
 
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
+  //  ASSERT_TRUE(RegisterActor(actor_table_data));
 
-  promise.get_future().get();
+  RAY_LOG(INFO) << "job_update_count = " << job_update_count
+                << ", actor_update_count = " << actor_update_count;
+  WaitPendingDone(job_update_count, 1);
+  WaitPendingDone(actor_update_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {

@@ -151,6 +151,8 @@ class ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
 
+  virtual Status AsyncReSubscribe() = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };

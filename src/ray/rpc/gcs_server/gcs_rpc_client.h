@@ -15,6 +15,7 @@
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
+#include "src/ray/common/network_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/rpc/grpc_client.h"
 
@@ -231,8 +232,11 @@ class GcsRpcClient {
       auto address = get_server_address_();
       Init(address.first, address.second, client_call_manager_);
 
-      if (reconnected_callback_) {
-        reconnected_callback_();
+      if (Ping(address.first, address.second, 100)) {
+        RAY_LOG(INFO) << "Ping Ping Ping Ping.....................success.....";
+        if (reconnected_callback_) {
+          reconnected_callback_();
+        }
       }
     }
   }
