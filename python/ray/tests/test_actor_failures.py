@@ -131,8 +131,89 @@ def test_actor_eviction(ray_start_regular):
     assert num_success > 0
 
 
-# TODO(swang): Test default max_task_retries=0.
 def test_actor_restart():
+    """Test actor restart when actor process is killed."""
+    ray.init(
+        _internal_config=json.dumps({
+            "task_retry_delay_ms": 100,
+        }), )
+
+    @ray.remote(max_restarts=1, max_task_retries=-1)
+    class RestartableActor:
+        """An actor that will be restarted at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self, delay=0):
+            time.sleep(delay)
+            self.value += 1
+            return self.value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    results = [actor.increase.remote() for _ in range(100)]
+    # Kill actor process, while the above task is still being executed.
+    os.kill(pid, signal.SIGKILL)
+    # Make sure that all tasks were executed in order before the actor's death.
+    res = results.pop(0)
+    i = 1
+    while True:
+        try:
+            r = ray.get(res)
+            if r != i:
+                # Actor restarted without any failed tasks.
+                break
+            res = results.pop(0)
+            i += 1
+        except ray.exceptions.RayActorError:
+            # Actor restarted.
+            break
+    # Find the first task to execute after the actor was restarted.
+    while True:
+        try:
+            r = ray.get(res)
+            break
+        except ray.exceptions.RayActorError:
+            res = results.pop(0)
+            pass
+    # Make sure that all tasks were executed in order after the actor's death.
+    i = 1
+    while True:
+        r = ray.get(res)
+        assert r == i
+        if results:
+            res = results.pop(0)
+            i += 1
+        else:
+            break
+
+    # Check that we can still call the actor.
+    result = actor.increase.remote()
+    assert ray.get(result) == r + 1
+
+    # kill actor process one more time.
+    results = [actor.increase.remote() for _ in range(100)]
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    # The actor has exceeded max restarts, and this task should fail.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.increase.remote())
+
+    # Create another actor.
+    actor = RestartableActor.remote()
+    # Intentionlly exit the actor
+    actor.__ray_terminate__.remote()
+    # Check that the actor won't be restarted.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.increase.remote())
+    ray.shutdown()
+
+
+def test_actor_restart_with_retry():
     """Test actor restart when actor process is killed."""
     ray.init(
         _internal_config=json.dumps({
@@ -251,7 +332,7 @@ def test_actor_restart_without_task(ray_start_regular):
 
     @ray.remote(max_restarts=1, resources={"actor": 1})
     class RestartableActor:
-        def __init__(self, obj_ids):
+        def __init__(self):
             pass
 
         def get_pid(self):
