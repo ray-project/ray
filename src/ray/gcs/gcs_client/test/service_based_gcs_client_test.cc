@@ -802,8 +802,7 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   auto job_table_data = Mocker::GenJobTableData(job_id);
   auto actor1_table_data = Mocker::GenActorTableData(job_id);
   auto actor1_id = ActorID::FromBinary(actor1_table_data->actor_id());
-  //  auto actor2_table_data = Mocker::GenActorTableData(job_id);
-  //  auto actor2_id = ActorID::FromBinary(actor2_table_data->actor_id());
+  auto actor2_table_data = Mocker::GenActorTableData(job_id);
 
   ASSERT_TRUE(RegisterActor(actor1_table_data));
 
@@ -814,10 +813,19 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
   };
   ASSERT_TRUE(SubscribeToFinishedJobs(subscribe));
 
+  std::atomic<int> actor_all_update_count(0);
+  auto subscribe_all = [&actor_all_update_count](const ActorID &id,
+                                                 const rpc::ActorTableData &result) {
+    RAY_LOG(INFO) << "MY............subscribe_all ++++++++++++++++";
+    ++actor_all_update_count;
+  };
+  ASSERT_TRUE(SubscribeAllActors(subscribe_all));
+
   // Subscribe to any update operations of an actor.
   std::atomic<int> actor_update_count(0);
   auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
                                             const gcs::ActorTableData &data) {
+    RAY_LOG(INFO) << "MY............on_subscribe ++++++actor_update_count";
     ++actor_update_count;
   };
   ASSERT_TRUE(SubscribeActor(actor1_id, on_subscribe));
@@ -839,12 +847,13 @@ TEST_F(ServiceBasedGcsClientTest, TestDetectGcsAvailability) {
 
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
-  //  ASSERT_TRUE(RegisterActor(actor_table_data));
+  ASSERT_TRUE(RegisterActor(actor2_table_data));
 
   RAY_LOG(INFO) << "job_update_count = " << job_update_count
                 << ", actor_update_count = " << actor_update_count;
   WaitPendingDone(job_update_count, 1);
-  WaitPendingDone(actor_update_count, 3);
+  WaitPendingDone(actor_update_count, 2);
+  WaitPendingDone(actor_all_update_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
