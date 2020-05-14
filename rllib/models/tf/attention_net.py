@@ -45,55 +45,79 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
         return self._output_layer(output)
 
 
+class TrXLNet(RecurrentNetwork):
+    """A TrXL net Model described in [1]."""
 
+    def __init__(self, observation_space, action_space, num_outputs,
+                 model_config, name, num_transformer_units, attn_dim,
+                 num_heads, head_dim, ff_hidden_dim):
+        """Initializes a TfXLNet object.
 
+        Args:
+            num_transformer_units (int): The number of Transformer repeats to
+                use (denoted L in [2]).
+            attn_dim (int): The input and output dimensions of one Transformer
+                unit.
+            num_heads (int): The number of attention heads to use in parallel.
+                Denoted as `H` in [3].
+            head_dim (int): The dimension of a single(!) head.
+                Denoted as `d` in [3].
+            ff_hidden_dim (int): The dimension of the hidden layer within
+                the position-wise MLP (after the multi-head attention block
+                within one Transformer unit). This is the size of the first
+                of the two layers within the PositionwiseFeedforward. The
+                second layer always has size=`attn_dim`.
+        """
 
-#class TrXLNet(TFModelV2):
-#    """A TrXL net Model described in [1]."""
-#
-#    def __init__(self, observation_space, action_space, num_outputs,
-#                 model_config, name, seq_length, num_layers, attn_dim,
-#                 num_heads, head_dim, ff_hidden_dim):
-#        """Initializes a TrXLNet.
-#
-#        Args:
-#            seq_length (int):
-#            num_layers (int): The number of repeats to use (N in the paper).
-#            attn_dim ():
-#            num_heads:
-#            head_dim:
-#            ff_hidden_dim:
-#        """
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
 
-#        super().__init__(observation_space, action_space, num_outputs,
-#                         model_config, name)
+        self.num_transformer_units = num_transformer_units
+        self.attn_dim = attn_dim
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.max_seq_len = model_config["max_seq_len"]
+        self.obs_dim = observation_space.shape[0]
 
-#        pos_embedding = relative_position_embedding(seq_length, attn_dim)
+        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
 
-#        layers = [tf.keras.layers.Dense(attn_dim)]
+        layers = [tf.keras.layers.Dense(attn_dim)]
 
-#        for _ in range(num_layers):
-#            layers.append(
-#                SkipConnection(RelativeMultiHeadAttention(
-#                    attn_dim, num_heads, head_dim, pos_embedding,
-#                    input_layernorm=False,
-#                    output_activation=None),
-#                    fan_in_layer=None))
+        for _ in range(self.num_transformer_units):
+            layers.append(
+                SkipConnection(
+                    RelativeMultiHeadAttention(
+                        out_dim=attn_dim,
+                        num_heads=num_heads,
+                        head_dim=head_dim,
+                        rel_pos_encoder=pos_embedding,
+                        input_layernorm=False,
+                        output_activation=None),
+                    fan_in_layer=None))
+            layers.append(
+                SkipConnection(
+                    PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
+            layers.append(tf.keras.layers.LayerNormalization(axis=-1))
 
-#            layers.append(
-#                SkipConnection(PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
-#            layers.append(tf.keras.layers.LayerNormalization(axis=-1))
-
-#        self.base_model = tf.keras.Sequential(layers)
-#        self.register_variables(self.base_model.variables)
+        self.base_model = tf.keras.Sequential(layers)
+        self.register_variables(self.base_model.variables)
 
 
 class GTrXLNet(RecurrentNetwork):
     """A GTrXL net Model described in [2]."""
 
-    def __init__(self, observation_space, action_space, num_outputs,
-                 model_config, name, num_transformer_units, attn_dim,
-                 num_heads, memory_tau, head_dim, ff_hidden_dim,
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 num_outputs,
+                 model_config,
+                 name,
+                 num_transformer_units,
+                 attn_dim,
+                 num_heads,
+                 memory_tau,
+                 head_dim,
+                 ff_hidden_dim,
                  init_gate_bias=2.0):
         """Initializes a GTrXLNet.
 
@@ -131,15 +155,19 @@ class GTrXLNet(RecurrentNetwork):
         self.obs_dim = observation_space.shape[0]
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
-        Phi = self.relative_position_embedding(self.max_seq_len + self.memory_tau, self.attn_dim)
+        Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
+                                          self.attn_dim)
 
         # Raw observation input.
         input_layer = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
-        memory_ins = [tf.keras.layers.Input(
-            shape=(self.memory_tau, self.attn_dim), dtype=tf.float32,
-            name="memory_in_{}".format(i))
-            for i in range(self.num_transformer_units)]
+        memory_ins = [
+            tf.keras.layers.Input(
+                shape=(self.memory_tau, self.attn_dim),
+                dtype=tf.float32,
+                name="memory_in_{}".format(i))
+            for i in range(self.num_transformer_units)
+        ]
 
         # Map observation dim to input/output transformer (attention) dim.
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
@@ -159,8 +187,8 @@ class GTrXLNet(RecurrentNetwork):
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
-                name="mha_{}".format(i+1)
-            )(E_out, memory=memory_ins[0])
+                name="mha_{}".format(i + 1))(
+                    E_out, memory=memory_ins[0])
             # Position-wise MLP part.
             E_out = SkipConnection(
                 tf.keras.Sequential(
@@ -170,24 +198,11 @@ class GTrXLNet(RecurrentNetwork):
                          hidden_dim=ff_hidden_dim,
                          output_activation=tf.nn.relu))),
                 fan_in_layer=GRUGate(init_gate_bias),
-                name="pos_wise_mlp_{}".format(i + 1)
-            )(MHA_out)
+                name="pos_wise_mlp_{}".format(i + 1))(MHA_out)
             # Output of position-wise MLP == E(l-1), which is concat'd
-            # to the current Mem block (M(l-1)) to yield E~(l-1), which is then used
-            # by the next transformer block.
+            # to the current Mem block (M(l-1)) to yield E~(l-1), which is then
+            # used by the next transformer block.
             memory_outs.append(E_out)
-
-        #trxl_out = E_out  #???self.trxl_core(input_layer)
-        #self.trxl_core = tf.keras.models.Model([input_layer], [trxl_out] + memory_outs)
-
-        #trxl_out = attention.make_GRU_TrXL(
-        #    seq_length=model_config["max_seq_len"],
-        #    num_layers=model_config["custom_options"]["num_layers"],
-        #    attn_dim=model_config["custom_options"]["attn_dim"],
-        #    num_heads=model_config["custom_options"]["num_heads"],
-        #    head_dim=model_config["custom_options"]["head_dim"],
-        #    ff_hidden_dim=model_config["custom_options"]["ff_hidden_dim"],
-        #)(input_layer)
 
         # Postprocess TrXL output with another hidden layer and compute values.
         logits = tf.keras.layers.Dense(
@@ -200,7 +215,8 @@ class GTrXLNet(RecurrentNetwork):
             1, activation=None, name="values")(E_out)
 
         self.trxl_model = tf.keras.Model(
-            inputs=[input_layer] + memory_ins, outputs=[logits, values_out] + memory_outs[:-1])
+            inputs=[input_layer] + memory_ins,
+            outputs=[logits, values_out] + memory_outs[:-1])
 
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
@@ -208,11 +224,11 @@ class GTrXLNet(RecurrentNetwork):
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         # To make Attention work with current RLlib's ModelV2 API:
-        # We assume `state` is the history of L recent observations (
-        # all concatenated into one tensor) and append
-        # the current inputs to the end and only keep the most recent (up to
-        # `max_seq_len`). This allows us to deal with timestep-wise inference
-        # and full sequence training within the same logic.
+        # We assume `state` is the history of L recent observations (all
+        # concatenated into one tensor) and append the current inputs to the
+        # end and only keep the most recent (up to `max_seq_len`). This allows
+        # us to deal with timestep-wise inference and full sequence training
+        # within the same logic.
         observations = state[0]
         memory = state[1:]
 
@@ -221,7 +237,15 @@ class GTrXLNet(RecurrentNetwork):
         all_out = self.trxl_model([observations] + memory)
         logits, self._value_out = all_out[0], all_out[1]
         memory_outs = all_out[2:]
-        memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
+        # If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
+        if self.memory_tau > self.max_seq_len:
+            memory_outs = [
+                tf.concat(
+                    [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
+                    axis=1) for i, m in enumerate(memory_outs)
+            ]
+        else:
+            memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
 
         T = tf.shape(inputs)[1]  # Length of input segment (time).
         logits = logits[:, -T:]
@@ -242,22 +266,22 @@ class GTrXLNet(RecurrentNetwork):
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
 
-    @staticmethod
-    def relative_position_embedding(seq_length, out_dim):
-        """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
 
-        Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
-        matrix.
+def relative_position_embedding(seq_length, out_dim):
+    """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
 
-        Args:
-            seq_length (int): The max. sequence length (time axis).
-            out_dim (int): The number of nodes to go into the first Tranformer
-                layer with.
+    Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
+    matrix.
 
-        Returns:
-            tf.Tensor: The encoding matrix Phi.
-        """
-        inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
-        pos_offsets = tf.range(seq_length - 1., -1., -1.)
-        inputs = pos_offsets[:, None] * inverse_freq[None, :]
-        return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)
+    Args:
+        seq_length (int): The max. sequence length (time axis).
+        out_dim (int): The number of nodes to go into the first Tranformer
+            layer with.
+
+    Returns:
+        tf.Tensor: The encoding matrix Phi.
+    """
+    inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
+    pos_offsets = tf.range(seq_length - 1., -1., -1.)
+    inputs = pos_offsets[:, None] * inverse_freq[None, :]
+    return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)

@@ -4,7 +4,6 @@ tf = try_import_tf()
 
 
 class GRUGate(tf.keras.layers.Layer):
-
     def __init__(self, init_bias=0., **kwargs):
         super().__init__(**kwargs)
         self._init_bias = init_bias
@@ -42,7 +41,7 @@ class GRUGate(tf.keras.layers.Layer):
         z = tf.nn.sigmoid(z)
 
         h_next = tf.tensordot(X, self._w_h, axes=1) + \
-                 tf.tensordot((h * r), self._u_h, axes=1)
+            tf.tensordot((h * r), self._u_h, axes=1)
         h_next = tf.nn.tanh(h_next)
 
         return (1 - z) * h + z * h_next

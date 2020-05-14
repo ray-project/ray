@@ -24,7 +24,7 @@ class SkipConnection(tf.keras.layers.Layer):
         self._fan_in_layer = fan_in_layer
 
     def call(self, inputs, **kwargs):
-        #del kwargs
+        # del kwargs
         outputs = self._layer(inputs, **kwargs)
         # Residual case, just add inputs to outputs.
         if self._fan_in_layer is None:

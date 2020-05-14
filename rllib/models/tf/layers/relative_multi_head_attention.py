@@ -8,6 +8,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
     Uses segment level recurrence with state reuse.
     """
+
     def __init__(self,
                  out_dim,
                  num_heads,
@@ -36,7 +37,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         # No bias or non-linearity.
         self._num_heads = num_heads
         self._head_dim = head_dim
-        #3=Query, key, and value inputs.
+        # 3=Query, key, and value inputs.
         self._qkv_layer = tf.keras.layers.Dense(
             3 * num_heads * head_dim, use_bias=False)
         self._linear_layer = tf.keras.layers.TimeDistributed(
@@ -63,8 +64,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         # Tau (number of (prev) time slices in each memory chunk).
         Tau = memory.shape.as_list()[1] if memory is not None else 0
         if memory is not None:
-            inputs = tf.concat(
-                (tf.stop_gradient(memory), inputs), axis=1)
+            inputs = tf.concat((tf.stop_gradient(memory), inputs), axis=1)
 
         # Apply the Layer-Norm.
         if self._input_layernorm is not None:
@@ -93,7 +93,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         score = score / d**0.5
 
         # causal mask of the same length as the sequence
-        mask = tf.sequence_mask(tf.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
+        mask = tf.sequence_mask(
+            tf.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)

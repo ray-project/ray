@@ -3,11 +3,10 @@ import numpy as np
 
 
 class OneHot(gym.Wrapper):
-
     def __init__(self, env):
         super(OneHot, self).__init__(env)
         self.observation_space = gym.spaces.Box(0., 1.,
-                                                (env.observation_space.n,))
+                                                (env.observation_space.n, ))
 
     def reset(self, **kwargs):
         obs = self.env.reset(**kwargs)
