@@ -23,6 +23,8 @@
 namespace ray {
 namespace gcs {
 
+using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+
 class ServiceBasedGcsClient;
 
 /// \class ServiceBasedJobInfoAccessor
@@ -48,7 +50,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
   Status AsyncReSubscribe() override;
 
  private:
-  std::function<Status(const StatusCallback &done)> subscribe_operation_;
+  SubscribeOperation subscribe_operation_;
 
   ServiceBasedGcsClient *client_impl_;
 };
@@ -105,7 +107,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
-  std::function<Status(const StatusCallback &done)> subscribe_all_operation_;
+  SubscribeOperation subscribe_all_operation_;
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
 
   ServiceBasedGcsClient *client_impl_;
 
