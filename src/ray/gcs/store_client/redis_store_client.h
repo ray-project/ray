@@ -98,9 +98,6 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    /// Total pending read request count.
-    std::atomic<size_t> pending_read_count_{0};
-
     std::shared_ptr<RedisClient> redis_client_;
   };
 

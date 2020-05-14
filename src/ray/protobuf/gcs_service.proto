@@ -40,8 +40,7 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {
-}
+message GetAllJobInfoRequest {}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -83,8 +82,7 @@ message GetNamedActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
-message GetAllActorInfoRequest {
-}
+message GetAllActorInfoRequest {}
 
 message GetAllActorInfoReply {
   GcsStatus status = 1;
@@ -180,8 +178,7 @@ message UnregisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {
-}
+message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
