@@ -1,5 +1,4 @@
 import ray
-# from ray.util import iter
 from ray.util.sgd.torch.torch_trainer import TorchTrainer
 from ray.util.sgd.data.dataset import Dataset
 
@@ -57,6 +56,7 @@ def main():
     for i in range(10):
         # Train a full epoch using the data_creator
         # trainer.train()
+
         # Train for another epoch using the dataset
         trainer.train(dataset=dataset, num_steps=100)
 

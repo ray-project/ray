@@ -132,13 +132,12 @@ def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_multi_model(ray_start_2_cpus, num_workers):
-    def train(*, model=None, criterion=None, optimizer=None, dataloader=None):
-        print("Train called")
+    def train(*, model=None, criterion=None, optimizer=None, iterator=None):
         model.train()
         train_loss = 0
         correct = 0
         total = 0
-        for batch_idx, (inputs, targets) in enumerate(dataloader):
+        for batch_idx, (inputs, targets) in enumerate(iterator):
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -163,7 +162,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
                 model=model,
                 criterion=self.criterion,
                 optimizer=optimizer,
-                dataloader=data)
+                iterator=iter(data))
         return result
 
     def multi_model_creator(config):
@@ -183,17 +182,12 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
-    print("train 1")
     trainer1.train()
-    print("1")
     state = trainer1.state_dict()
-    print("2")
 
     models1 = trainer1.get_model()
-    print("3")
 
     trainer1.shutdown()
-    print("4")
 
     trainer2 = TorchTrainer(
         model_creator=multi_model_creator,
@@ -203,7 +197,6 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
-    print("GETS HERE")
     trainer2.load_state_dict(state)
 
     models2 = trainer2.get_model()
