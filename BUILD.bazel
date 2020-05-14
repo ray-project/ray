@@ -1129,8 +1129,8 @@ cc_library(
         ":gcs_cc_proto",
         ":ray_common",
         ":ray_util",
-        ":redis_client"
-    ]
+        ":redis_client",
+    ],
 )
 
 cc_library(
