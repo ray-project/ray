@@ -117,7 +117,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
 // The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
@@ -247,6 +247,9 @@ RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
+
+/// Maximum number of items in one batch to scan from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
