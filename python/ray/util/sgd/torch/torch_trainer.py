@@ -413,6 +413,8 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
+        assert dataset is not None or self.data_creator, \
+            "Must specify either a data creator or a dataset"
         if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
