@@ -58,19 +58,19 @@ class VisionNetwork(TorchModelV2, nn.Module):
             out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
         self._value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
-        self._cur_value = None
+        # Holds the current "base" output (before logits layer).
+        self._features = None
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
-        features = self._hidden_layers(input_dict["obs"].float())
-        logits = self._logits(features)
-        self._cur_value = self._value_branch(features).squeeze(1)
+        self._features = self._hidden_layers(input_dict["obs"].float())
+        logits = self._logits(self._features)
         return logits, state
 
     @override(TorchModelV2)
     def value_function(self):
-        assert self._cur_value is not None, "must call forward() first"
-        return self._cur_value
+        assert self._features is not None, "must call forward() first"
+        return self._value_branch(self._features).squeeze(1)
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
