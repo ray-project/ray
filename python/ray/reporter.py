@@ -24,6 +24,11 @@ from ray.core.generated import reporter_pb2_grpc
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+try:
+    import GPUtil
+except ImportError:
+    GPUtil = None
+    logger.warning("Install GPUtil with 'pip install gputil' to enable GPU monitoring.")
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
     def __init__(self):
@@ -108,6 +113,22 @@ class Reporter:
         return psutil.cpu_percent()
 
     @staticmethod
+    def get_gpu_usage():
+        if GPUtil is not None:
+            gpus = []
+            try:
+                gpu_list = GPUtil.getGPUs()
+            except Exception:
+                logger.debug("GPUtil failed to retrieve GPUs.")
+            gpu_utilizations = []
+            for gpu in gpus:
+                gpu_utilizations.append = {
+                    'id': gpu.id,
+                    'load': float(gpu.load),
+                    'memory_util': float(gpu.memoryUtil)
+                }
+
+    @staticmethod
     def get_boot_time():
         return psutil.boot_time()
 
@@ -179,6 +200,7 @@ class Reporter:
             "boot_time": self.get_boot_time(),
             "load_avg": self.get_load_avg(),
             "disk": self.get_disk_usage(),
+            'gpu': self.get_gpu_usage(),
             "net": netstats,
         }
 

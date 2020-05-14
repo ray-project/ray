@@ -82,6 +82,11 @@ export type NodeInfoResponse = {
     boot_time: number; // System boot time expressed in seconds since epoch
     cpu: number; // System-wide CPU utilization expressed as a percentage
     cpus: [number, number]; // Number of logical CPUs and physical CPUs
+    gpus: Array<{
+      id: string;
+      load: number;
+      memory_util: number;
+    }>;
     mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
