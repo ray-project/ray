@@ -35,7 +35,7 @@ def to_mat(x):
 
 def dataset_creator():
     num_points = 32 * 100 * 2
-    data = [i * (1/num_points) for i in range(num_points)]
+    data = [i * (1 / num_points) for i in range(num_points)]
     dataset = Dataset(
         data,
         batch_size=32,
