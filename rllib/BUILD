@@ -1453,6 +1453,24 @@ py_test(
 
 
 py_test(
+    name = "examples/attention_net_tf",
+    main = "examples/attention_net.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/attention_net.py"],
+    args = ["--as-test", "--stop-reward=90"]
+)
+
+py_test(
+    name = "examples/attention_net_torch",
+    main = "examples/attention_net.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/attention_net.py"],
+    args = ["--as-test", "--torch", "--stop-reward=90"]
+)
+
+py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],

@@ -3,7 +3,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.utils import try_import_tf
-from ray.rllib.models.catalog import ModelCatalog
+#from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
@@ -17,9 +17,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--stop-reward", type=float, default=90)
-parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=float, default=200)
 
 
 if __name__ == "__main__":
@@ -27,8 +29,8 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
-    ModelCatalog.register_custom_model(
-        "trxl", TorchGTrXLNet if args.torch else GTrXLNet)
+    #ModelCatalog.register_custom_model(
+    #    "trxl", TorchGTrXLNet if args.torch else GTrXLNet)
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env(
         "RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
@@ -46,7 +48,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
         "model": {
-            "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,  #"trxl",
+            "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,
             "max_seq_len": 10,
             "custom_options": {
                 "num_layers": 1,
@@ -60,7 +62,9 @@ if __name__ == "__main__":
     }
 
     stop = {
-        "episode_reward_mean": args.stop_reward
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
     results = tune.run(args.run, config=config, stop=stop)
