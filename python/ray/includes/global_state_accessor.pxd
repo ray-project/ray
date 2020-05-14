@@ -9,5 +9,5 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
                     c_bool is_test)
         c_bool Connect()
         void Disconnect()
-        c_vector[c_string] GetJobTable()
+        c_vector[c_string] GetAllJobInfo()
 

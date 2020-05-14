@@ -93,7 +93,7 @@ class GlobalStateAccessorTest : public RedisServiceManagerForTest {
 
 TEST_F(GlobalStateAccessorTest, TestJobTable) {
   int job_count = 100;
-  ASSERT_EQ(global_state_->GetJobTable().size(), 0);
+  ASSERT_EQ(global_state_->GetAllJobInfo().size(), 0);
   for (int index = 0; index < job_count; ++index) {
     auto job_id = JobID::FromInt(index);
     auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -102,7 +102,7 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  ASSERT_EQ(global_state_->GetJobTable().size(), job_count);
+  ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
 
 }  // namespace ray

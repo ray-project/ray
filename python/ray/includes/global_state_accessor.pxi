@@ -20,6 +20,6 @@ cdef class GlobalStateAccessor:
         self.inner.get().Disconnect()
 
     def get_job_table(self):
-        return self.inner.get().GetJobTable()
+        return self.inner.get().GetAllJobInfo()
 
 

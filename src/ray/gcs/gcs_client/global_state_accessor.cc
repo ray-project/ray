@@ -51,7 +51,7 @@ void GlobalStateAccessor::Disconnect() {
   thread_io_service_->join();
 }
 
-std::vector<std::string> GlobalStateAccessor::GetJobTable() {
+std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   auto on_done = [&job_table_data, &promise](

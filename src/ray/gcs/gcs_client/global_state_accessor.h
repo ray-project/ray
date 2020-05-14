@@ -20,16 +20,32 @@
 namespace ray {
 namespace gcs {
 
+/// \class GlobalStateAccessor
+///
+/// `GlobalStateAccessor` is used to provide synchronous interfaces to access data in GCS
+/// for the language front-end (e.g., Python's `state.py`).
 class GlobalStateAccessor {
  public:
+  /// Constructor of GlobalStateAccessor.
+  ///
+  /// \param redis_address The address of GCS Redis.
+  /// \param redis_password The password of GCS Redis.
+  /// \param is_test Whether this accessor is used for tests.
   explicit GlobalStateAccessor(const std::string &redis_address,
                                const std::string &redis_password, bool is_test = false);
 
+  /// Connect gcs server.
+  ///
+  /// \return Whether the connection is successful.
   bool Connect();
 
+  /// Disconnect from gcs server.
   void Disconnect();
 
-  std::vector<std::string> GetJobTable();
+  /// Get information of all jobs from GCS Service.
+  ///
+  /// \return All job info.
+  std::vector<std::string> GetAllJobInfo();
 
  private:
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
