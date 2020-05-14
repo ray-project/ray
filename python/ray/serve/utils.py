@@ -177,3 +177,10 @@ async def retry_actor_failures_async(f, *args, **kwargs):
     raise RuntimeError("Timed out after {}s waiting for actor "
                        "method '{}' to succeed.".format(
                            ACTOR_FAILURE_RETRY_TIMEOUT_S, f._method_name))
+
+
+def format_actor_name(actor_name, cluster_name=None):
+    if cluster_name is None:
+        return actor_name
+    else:
+        return "{}:{}".format(cluster_name, actor_name)
