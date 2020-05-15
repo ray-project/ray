@@ -3,6 +3,8 @@
 # Push caller's shell options (quietly)
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
+locate libasan
+
 set -eo pipefail
 if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi
 
