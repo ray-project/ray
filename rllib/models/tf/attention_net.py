@@ -188,7 +188,7 @@ class GTrXLNet(RecurrentNetwork):
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
                 name="mha_{}".format(i + 1))(
-                    E_out, memory=memory_ins[0])
+                    E_out, memory=memory_ins[i])
             # Position-wise MLP part.
             E_out = SkipConnection(
                 tf.keras.Sequential(
