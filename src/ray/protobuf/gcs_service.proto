@@ -180,7 +180,8 @@ message UnregisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {}
+message GetAllNodeInfoRequest {
+}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
