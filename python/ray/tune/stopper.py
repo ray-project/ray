@@ -85,7 +85,7 @@ class EarlyStopping(Stopper):
         self._top = top
         self._top_values = []
 
-    def __call__(self, trial_id, result: Dict):
+    def __call__(self, trial_id, result):
         """Return a boolean representing if the tuning has to stop."""
         self._top_values.append(result[self._metric])
         self._top_values = sorted(self._top_values)[:self._top]
