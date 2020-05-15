@@ -14,7 +14,6 @@ import org.testng.annotations.Test;
  * Test Ray.call API
  */
 public class RayCallTest extends BaseTest {
-  private static final Logger LOGGER = LoggerFactory.getLogger(RayCallTest.class);
 
   private static int testInt(int val) {
     return val;
