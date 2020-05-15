@@ -22,16 +22,18 @@ for i in range(num_nodes):
 ray.init(address=cluster.address)
 print(ray.nodes())
 
+
 @ray.remote
 class Actor:
     def __init__(self):
         self.obj = []
-    
+
     def add_object(self):
         obj = 1
         obj = ray.put(np.zeros(100))
         self.obj.append(obj)
         return obj
+
 
 a = Actor.remote()
 a2 = Actor.remote()

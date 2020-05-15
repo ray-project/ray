@@ -6,13 +6,14 @@ from enum import Enum
 
 import ray
 
+
 def decode_object_id_if_needed(object_id: str) -> bytes:
     """Decode gRPC objectID bytes string.
-    
+
     gRPC objectID response is encdoed by Base64.
     Note that not every objectID is encoded by Base64.
     """
-    if object_id.endswith('='):
+    if object_id.endswith("="):
         # If the object id ends with =, that means it is base64 encoded.
         # Object ids will always have = as a padding
         # when it is base64 encoded.
@@ -43,11 +44,7 @@ class ReferenceType:
 
 
 class MemoryTableEntry:
-    def __init__(self, 
-                 *,
-                 object_ref: dict,
-                 node_address: str,
-                 is_driver: bool,
+    def __init__(self, *, object_ref: dict, node_address: str, is_driver: bool,
                  pid: int):
         # worker info
         self.is_driver = is_driver
@@ -67,12 +64,12 @@ class MemoryTableEntry:
             object_ref.get("submittedTaskRefCount", 0))
         self.contained_in_owned = [
             ray.ObjectID(decode_object_id_if_needed(object_id))
-            for object_id in object_ref.get("containedInOwned", [])]
+            for object_id in object_ref.get("containedInOwned", [])
+        ]
         self.reference_type = self._get_reference_type()
 
     def is_valid(self) -> bool:
-        if (not self.pinned_in_memory
-                and self.local_ref_count == 0
+        if (not self.pinned_in_memory and self.local_ref_count == 0
                 and self.submittedd_task_ref_count == 0
                 and len(self.contained_in_owned) == 0):
             return False
@@ -112,8 +109,7 @@ class MemoryTableEntry:
         # If random bytes are all 'f', but ActorRandomBytes
         # are not all 'f', that means it is an actor creation
         # task, which is an actor handle.
-        if (random_bits == 'f' * 16
-                and not actor_random_bits == 'f' * 8):
+        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
             return True
         else:
             return False
@@ -129,30 +125,22 @@ class MemoryTableEntry:
         }
 
     def __str__(self):
-        return (
-            "{}\n"
-            "\ttype: {}\n"
-            "\tpid: {}\n"
-            "\tnode_ip_address: {}\n"
-            "\tobject_size: {}\n"
-            "\tlocal_ref_count: {}\n"
-            "\tpinned_in_memory: {}\n"
-            "\tsubmittedd_task_ref_count: {}\n"
-            "\tcontained_in_owned: {}\n"
-            "\treference_type: {}\n"
-            "\tcall_site: {}\n".format(
-                self.object_id,
-                "driver" if self.is_driver else "worker",
-                self.pid,
-                self.node_address,
-                self.object_size,
-                self.local_ref_count,
-                self.pinned_in_memory,
-                self.submittedd_task_ref_count,
-                self.contained_in_owned,
-                self.reference_type,
-                self.call_site)
-        )
+        return ("{}\n"
+                "\ttype: {}\n"
+                "\tpid: {}\n"
+                "\tnode_ip_address: {}\n"
+                "\tobject_size: {}\n"
+                "\tlocal_ref_count: {}\n"
+                "\tpinned_in_memory: {}\n"
+                "\tsubmittedd_task_ref_count: {}\n"
+                "\tcontained_in_owned: {}\n"
+                "\treference_type: {}\n"
+                "\tcall_site: {}\n".format(
+                    self.object_id, "driver" if self.is_driver else "worker",
+                    self.pid, self.node_address, self.object_size,
+                    self.local_ref_count, self.pinned_in_memory,
+                    self.submittedd_task_ref_count, self.contained_in_owned,
+                    self.reference_type, self.call_site))
 
     def __repr__(self):
         return self.__str__()
@@ -191,9 +179,10 @@ class MemoryTableSummary:
             "total_captured_in_objects": self.total_captured_in_objects,
             "total_actor_handles": self.total_actor_handles
         }
-    
+
     def __str__(self):
         return str(self.__dict__())
+
 
 class MemoryTable:
     def __init__(self):
@@ -204,12 +193,9 @@ class MemoryTable:
     def insert_entry(self, entry: MemoryTableEntry):
         self.table.append(entry)
 
-    def setup(self,
-              *,
-              group_by_type: GroupByType,
-              sort_by_type: SortingType):
+    def setup(self, *, group_by_type: GroupByType, sort_by_type: SortingType):
         """Setup memory table.
-        
+
         This will group the table entries and sort them based on sort_by_type.
         """
         self.group_by(group_by_type)
@@ -239,7 +225,7 @@ class MemoryTable:
 
     def group_by(self, group_by_type: GroupByType):
         """Group entries and summarize the result.
-        
+
         NOTE: Each group is another MemoryTable.
         """
         self.group = self._get_resetted_group()
@@ -256,14 +242,13 @@ class MemoryTable:
                 group_key: {
                     "entries": group_memory_table.get_entries(),
                     "summary": group_memory_table.summary.__dict__()
-                } for group_key, group_memory_table in self.group.items()
+                }
+                for group_key, group_memory_table in self.group.items()
             }
         }
 
     def get_entries(self):
-        return [
-            entry.__dict__() for entry in self.table
-        ]
+        return [entry.__dict__() for entry in self.table]
 
     def _get_resetted_group(self):
         return defaultdict(MemoryTable)
@@ -296,16 +281,15 @@ def construct_memory_table(workers_info_by_node: dict):
             core_worker_stats = worker_info["coreWorkerStats"]
             node_address = core_worker_stats["ipAddress"]
             object_refs = core_worker_stats.get("objectRefs", [])
-            
+
             for object_ref in object_refs:
                 memory_table_entry = MemoryTableEntry(
-                    object_ref=object_ref, 
+                    object_ref=object_ref,
                     node_address=node_address,
-                    is_driver=is_driver, 
+                    is_driver=is_driver,
                     pid=pid)
                 if memory_table_entry.is_valid():
                     memory_table.insert_entry(memory_table_entry)
     memory_table.setup(
-        group_by_type=GroupByType.NODE_ADDRESS,
-        sort_by_type=SortingType.PID)
+        group_by_type=GroupByType.NODE_ADDRESS, sort_by_type=SortingType.PID)
     return memory_table
