@@ -888,7 +888,7 @@ class RayletStats(threading.Thread):
         self._profiling_stats = {}
 
         self._update_nodes()
-        self.include_memory_info = True
+        self.include_memory_info = False
 
         super().__init__()
 
