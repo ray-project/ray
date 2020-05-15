@@ -304,7 +304,7 @@ def test_delete_endpoint(serve_instance, route):
         assert ray.get(handle.remote()) == "hello"
 
 
-def test_cluster_name(shutdown_only):
+def test_cluster_name():
     with pytest.raises(TypeError):
         serve.init(cluster_name=1)
 

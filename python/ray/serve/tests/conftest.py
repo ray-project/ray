@@ -18,6 +18,7 @@ def _shared_serve_instance():
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
+    serve.init()
     yield
     master = serve.api._get_master_actor()
     # Clear all state between tests to avoid naming collisions.
@@ -25,9 +26,3 @@ def serve_instance(_shared_serve_instance):
         serve.delete_endpoint(endpoint)
     for backend in retry_actor_failures(master.get_all_backends):
         serve.delete_backend(backend)
-
-
-@pytest.fixture
-def shutdown_only():
-    yield
-    ray.shutdown()
