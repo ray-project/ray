@@ -81,26 +81,56 @@ class TrXLNet(RecurrentNetwork):
 
         pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
 
-        layers = [tf.keras.layers.Dense(attn_dim)]
+        inputs = tf.keras.layers.Input(
+            shape=(self.max_seq_len, self.obs_dim), name="inputs")
+        E_out = tf.keras.layers.Dense(attn_dim)(inputs)
 
         for _ in range(self.num_transformer_units):
-            layers.append(
-                SkipConnection(
-                    RelativeMultiHeadAttention(
-                        out_dim=attn_dim,
-                        num_heads=num_heads,
-                        head_dim=head_dim,
-                        rel_pos_encoder=pos_embedding,
-                        input_layernorm=False,
-                        output_activation=None),
-                    fan_in_layer=None))
-            layers.append(
-                SkipConnection(
-                    PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
-            layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+            MHA_out = SkipConnection(
+                RelativeMultiHeadAttention(
+                    out_dim=attn_dim,
+                    num_heads=num_heads,
+                    head_dim=head_dim,
+                    rel_pos_encoder=pos_embedding,
+                    input_layernorm=False,
+                    output_activation=None),
+                fan_in_layer=None)(E_out)
+            E_out = SkipConnection(
+                PositionwiseFeedforward(attn_dim, ff_hidden_dim))(MHA_out)
+            E_out = tf.keras.layers.LayerNormalization(axis=-1)(E_out)
 
-        self.base_model = tf.keras.Sequential(layers)
+        # Postprocess TrXL output with another hidden layer and compute values.
+        logits = tf.keras.layers.Dense(
+            self.num_outputs,
+            activation=tf.keras.activations.linear,
+            name="logits")(E_out)
+
+        self.base_model = tf.keras.models.Model([inputs], [logits])
         self.register_variables(self.base_model.variables)
+
+    @override(RecurrentNetwork)
+    def forward_rnn(self, inputs, state, seq_lens):
+        # To make Attention work with current RLlib's ModelV2 API:
+        # We assume `state` is the history of L recent observations (all
+        # concatenated into one tensor) and append the current inputs to the
+        # end and only keep the most recent (up to `max_seq_len`). This allows
+        # us to deal with timestep-wise inference and full sequence training
+        # within the same logic.
+        observations = state[0]
+        observations = tf.concat(
+            (observations, inputs), axis=1)[:, -self.max_seq_len:]
+        logits = self.base_model([observations])
+        T = tf.shape(inputs)[1]  # Length of input segment (time).
+        logits = logits[:, -T:]
+
+        return logits, [observations]
+
+    @override(RecurrentNetwork)
+    def get_initial_state(self):
+        # State is the T last observations concat'd together into one Tensor.
+        # Plus all Transformer blocks' E(l) outputs concat'd together (up to
+        # tau timesteps).
+        return [np.zeros((self.max_seq_len, self.obs_dim), np.float32)]
 
 
 class GTrXLNet(RecurrentNetwork):
