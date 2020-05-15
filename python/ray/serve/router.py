@@ -16,6 +16,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 from ray.serve.metric import MetricClient
+from ray.serve.policy import RandomEndpointPolicy
 from ray.serve.utils import logger, retry_actor_failures
 
 
@@ -26,6 +27,7 @@ class Query:
                  request_context,
                  request_slo_ms,
                  call_method="__call__",
+                 shard_key=None,
                  async_future=None):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
@@ -38,6 +40,7 @@ class Query:
         self.request_slo_ms = request_slo_ms
 
         self.call_method = call_method
+        self.shard_key = shard_key
 
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
@@ -103,7 +106,7 @@ class Router:
     3. When there is only 1 backend ready, we will only use that backend.
     """
 
-    async def __init__(self, policy, policy_kwargs):
+    async def __init__(self):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -113,11 +116,6 @@ class Router:
         # - The worker_queue is used to collect idle actor handle. These
         #   handles are dequed during the second stage of flush operation,
         #   which assign queries in buffer_queue to actor handle.
-
-        # policy.RoutePolicy.
-        self.policy = policy
-        # kwargs to pass into the policy when it's constructed.
-        self.policy_kwargs = policy_kwargs
 
         # -- Queues -- #
 
@@ -211,6 +209,7 @@ class Router:
             request_context,
             request_slo_ms,
             call_method=request_meta.call_method,
+            shard_key=request_meta.shard_key,
             async_future=asyncio.get_event_loop().create_future())
         await self.endpoint_queues[endpoint].put(query)
         async with self.flush_lock:
@@ -268,8 +267,7 @@ class Router:
         logger.debug("Setting traffic for endpoint %s to %s", endpoint,
                      traffic_dict)
         async with self.flush_lock:
-            self.traffic[endpoint] = self.policy(traffic_dict,
-                                                 **self.policy_kwargs)
+            self.traffic[endpoint] = RandomEndpointPolicy(traffic_dict)
             await self.flush_endpoint_queue(endpoint)
 
     async def remove_endpoint(self, endpoint):

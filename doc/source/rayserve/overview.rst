@@ -228,6 +228,24 @@ You can also have RayServe batch requests for performance. You'll configure this
   serve.create_backend("counter1", BatchingExample, config=config)
   serve.set_traffic("counter1", {"counter1": 1.0})
 
+Session Affinity
+++++++++++++++++
+
+In some cases, you may want to ensure that requests from the same client, user, etc. get mapped to the same backend.
+To do this, you can specify a "shard key" that will deterministically map requests to a backend.
+The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or ``handle.options(shard_key="key")``.
+
+.. note:: The mapping from shard key to backend may change when you update the traffic policy for an endpoint.
+
+.. code-block:: python
+
+  # Specifying the shard key via an HTTP header.
+  requests.get("127.0.0.1:8000/api", headers={"X-SERVE-SHARD-KEY": session_id})
+
+  # Specifying the shard key in a call made via serve handle.
+  handle = serve.get_handle("api_endpoint")
+  handler.options(shard_key=session_id).remote(args)
+
 Other Resources
 ---------------
 

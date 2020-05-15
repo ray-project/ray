@@ -168,7 +168,9 @@ class HTTPProxy:
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
             absolute_slo_ms=absolute_slo_ms,
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
+            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
+        )
 
         retries = 0
         while retries <= MAX_ACTOR_DEAD_RETRIES:

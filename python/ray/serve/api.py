@@ -10,7 +10,6 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import block_until_http_ready, retry_actor_failures
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.policy import RoutePolicy
 from ray.serve.router import Query
 from ray.serve.request_params import RequestMetadata
 from ray.serve.metric import InMemoryExporter
@@ -69,8 +68,6 @@ def init(blocking=False,
              "object_store_memory": int(1e8),
              "num_cpus": max(cpu_count(), 8)
          },
-         queueing_policy=RoutePolicy.Random,
-         policy_kwargs={},
          metric_exporter=InMemoryExporter):
     """Initialize a serve cluster.
 
@@ -90,9 +87,6 @@ def init(blocking=False,
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
             connection. Default to {"object_store_memory": int(1e8)} for
             performance stability reason
-        queueing_policy(RoutePolicy): Define the queueing policy for selecting
-            the backend for a service. (Default: RoutePolicy.Random)
-        policy_kwargs: Arguments required to instantiate a queueing policy
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. RayServe has two options built in: InMemoryExporter and
@@ -132,8 +126,7 @@ def init(blocking=False,
         detached=True,
         name=SERVE_MASTER_NAME,
         max_restarts=-1,
-    ).remote(queueing_policy.value, policy_kwargs, start_server, http_node_id,
-             http_host, http_port, metric_exporter)
+    ).remote(start_server, http_node_id, http_host, http_port, metric_exporter)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
