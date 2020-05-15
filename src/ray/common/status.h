@@ -107,6 +107,7 @@ enum class StatusCode : char {
   Interrupted = 13,
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
+  NotFound = 16,
 };
 
 #if defined(__clang__)
@@ -186,6 +187,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
+  static Status NotFound(const std::string &msg) {
+    return Status(StatusCode::NotFound, msg);
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -208,6 +213,7 @@ class RAY_EXPORT Status {
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
+  bool IsNotFound() const { return code() == StatusCode::NotFound; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

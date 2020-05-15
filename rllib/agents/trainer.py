@@ -138,6 +138,8 @@ COMMON_CONFIG = {
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
+    # Use fake (infinite speed) sampler. For testing only.
+    "fake_sampler": False,
 
     # === Framework Settings ===
     # Use PyTorch (instead of tf). If using `rllib train`, this can also be

@@ -535,6 +535,29 @@ class ParallelIterator(Generic[T]):
             "ParallelUnion[{}, {}]".format(self, other),
             parent_iterators=self.parent_iterators + other.parent_iterators)
 
+    def select_shards(self,
+                      shards_to_keep: List[int]) -> "ParallelIterator[T]":
+        """Return a child iterator that only iterates over given shards.
+
+        It is the user's responsibility to ensure child iterators are operating
+        over disjoint sub-sets of this iterator's shards.
+        """
+        if len(self.actor_sets) > 1:
+            raise ValueError("select_shards() is not allowed after union()")
+        if len(shards_to_keep) == 0:
+            raise ValueError("at least one shard must be selected")
+        old_actor_set = self.actor_sets[0]
+        new_actors = [
+            a for (i, a) in enumerate(old_actor_set.actors)
+            if i in shards_to_keep
+        ]
+        assert len(new_actors) == len(shards_to_keep), "Invalid actor index"
+        new_actor_set = _ActorSet(new_actors, old_actor_set.transforms)
+        return ParallelIterator(
+            [new_actor_set],
+            "{}.select_shards({} total)".format(self, len(shards_to_keep)),
+            parent_iterators=self.parent_iterators)
+
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
         return sum(len(a.actors) for a in self.actor_sets)
@@ -870,8 +893,12 @@ class LocalIterator(Generic[T]):
     def duplicate(self, n) -> List["LocalIterator[T]"]:
         """Copy this iterator `n` times, duplicating the data.
 
+        The child iterators will be prioritized by how much of the parent
+        stream they have consumed. That is, we will not allow children to fall
+        behind, since that can cause infinite memory buildup in this operator.
+
         Returns:
-            List[LocalIterator[T]]: multiple iterators that each have a copy
+            List[LocalIterator[T]]: child iterators that each have a copy
                 of the data of this iterator.
         """
 
@@ -891,9 +918,16 @@ class LocalIterator(Generic[T]):
         def make_next(i):
             def gen(timeout):
                 while True:
-                    if len(queues[i]) == 0:
-                        fill_next(timeout)
-                    yield queues[i].popleft()
+                    my_len = len(queues[i])
+                    max_len = max(len(q) for q in queues)
+                    # Yield to let other iterators that have fallen behind
+                    # process more items.
+                    if my_len < max_len:
+                        yield _NextValueNotReady()
+                    else:
+                        if len(queues[i]) == 0:
+                            fill_next(timeout)
+                        yield queues[i].popleft()
 
             return gen
 
@@ -939,21 +973,13 @@ class LocalIterator(Generic[T]):
         def build_union(timeout=None):
             while True:
                 for it in list(active):
-                    # Yield items from the iterator until _NextValueNotReady is
-                    # found, then switch to the next iterator.
-                    # To avoid starvation, we yield at most max_yield items per
-                    # iterator before switching.
-                    if deterministic:
-                        max_yield = 1  # Forces round robin.
-                    else:
-                        max_yield = 20
                     try:
-                        for _ in range(max_yield):
-                            item = next(it)
-                            if isinstance(item, _NextValueNotReady):
-                                break
-                            else:
+                        item = next(it)
+                        if isinstance(item, _NextValueNotReady):
+                            if timeout is not None:
                                 yield item
+                        else:
+                            yield item
                     except StopIteration:
                         active.remove(it)
                 if not active:

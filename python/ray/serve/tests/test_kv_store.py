@@ -3,7 +3,7 @@ import pytest
 from ray.serve.kv_store import RayInternalKVStore
 
 
-def test_ray_internal_kv(ray_instance):
+def test_ray_internal_kv(serve_instance):
     with pytest.raises(TypeError):
         RayInternalKVStore(namespace=1)
         RayInternalKVStore(namespace=b"")
@@ -26,7 +26,7 @@ def test_ray_internal_kv(ray_instance):
     assert kv.get("2") == b"4"
 
 
-def test_ray_internal_kv_collisions(ray_instance):
+def test_ray_internal_kv_collisions(serve_instance):
     kv1 = RayInternalKVStore()
     kv1.put("1", b"1")
     assert kv1.get("1") == b"1"

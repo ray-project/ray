@@ -148,8 +148,9 @@ message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
   bytes actor_id = 2;
   // The max number of times this actor should be recontructed.
-  // If this number of 0 or negative, the actor won't be reconstructed on failure.
-  uint64 max_actor_reconstructions = 3;
+  // If this number is 0 the actor won't be restarted.
+  // If this number is -1 the actor will be restarted indefinitely.
+  int64 max_actor_restarts = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
@@ -159,8 +160,12 @@ message ActorCreationTaskSpec {
   int32 max_concurrency = 5;
   // Whether the actor is persistent
   bool is_detached = 6;
+  // Globally-unique name of the actor. Should only be populated when is_detached is true.
+  string name = 7;
   // Whether the actor use async actor calls
-  bool is_asyncio = 7;
+  bool is_asyncio = 8;
+  // Field used for storing application-level extensions to the actor definition.
+  string extension_data = 9;
 }
 
 // Task spec of an actor task.

@@ -3,15 +3,15 @@ import asyncio
 import pytest
 import ray
 
-from ray.serve.policy import (
-    RandomPolicyQueue, RandomPolicyQueueActor, RoundRobinPolicyQueueActor,
-    PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
+from ray.serve.policy import (RandomPolicy, RoundRobinPolicy, PowerOfTwoPolicy,
+                              FixedPackingPolicy)
+from ray.serve.router import Router
 from ray.serve.request_params import RequestMetadata
 
 pytestmark = pytest.mark.asyncio
 
 
-def make_task_runner_mock():
+def mock_task_runner():
     @ray.remote(num_cpus=0)
     class TaskRunnerMock:
         def __init__(self):
@@ -35,13 +35,13 @@ def make_task_runner_mock():
     return TaskRunnerMock.remote()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def task_runner_mock_actor():
-    yield make_task_runner_mock()
+    yield mock_task_runner()
 
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RandomPolicy, {})
     q.set_traffic.remote("svc", {"backend-single-prod": 1.0})
     q.add_new_worker.remote("backend-single-prod", "replica-1",
                             task_runner_mock_actor)
@@ -57,7 +57,7 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
 
 async def test_slo(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RandomPolicy, {})
     await q.set_traffic.remote("svc", {"backend-slo": 1.0})
 
     all_request_sent = []
@@ -81,7 +81,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
 
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RandomPolicy, {})
 
     await q.set_traffic.remote("svc", {"backend-alter": 1})
     await q.add_new_worker.remote("backend-alter", "replica-1",
@@ -99,13 +99,13 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
 
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RandomPolicy, {})
 
     await q.set_traffic.remote("svc", {
         "backend-split": 0.5,
         "backend-split-2": 0.5
     })
-    runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
+    runner_1, runner_2 = [mock_task_runner() for _ in range(2)]
     await q.add_new_worker.remote("backend-split", "replica-1", runner_1)
     await q.add_new_worker.remote("backend-split-2", "replica-1", runner_2)
 
@@ -122,10 +122,10 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
 
 
 async def test_round_robin(serve_instance, task_runner_mock_actor):
-    q = RoundRobinPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(RoundRobinPolicy, {})
 
     await q.set_traffic.remote("svc", {"backend-rr": 0.5, "backend-rr-2": 0.5})
-    runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
+    runner_1, runner_2 = [mock_task_runner() for _ in range(2)]
 
     # NOTE: this is the only difference between the
     # test_split_traffic_random and test_round_robin
@@ -144,13 +144,14 @@ async def test_round_robin(serve_instance, task_runner_mock_actor):
 
 async def test_fixed_packing(serve_instance):
     packing_num = 4
-    q = FixedPackingPolicyQueueActor.remote(packing_num=packing_num)
+    q = ray.remote(Router).remote(FixedPackingPolicy,
+                                  {"packing_num": packing_num})
     await q.set_traffic.remote("svc", {
         "backend-fixed": 0.5,
         "backend-fixed-2": 0.5
     })
 
-    runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
+    runner_1, runner_2 = (mock_task_runner() for _ in range(2))
     # both the backends will get equal number of queries
     # as it is packed round robin
     await q.add_new_worker.remote("backend-fixed", "replica-1", runner_1)
@@ -167,7 +168,7 @@ async def test_fixed_packing(serve_instance):
 
 
 async def test_power_of_two_choices(serve_instance):
-    q = PowerOfTwoPolicyQueueActor.remote()
+    q = ray.remote(Router).remote(PowerOfTwoPolicy, {})
     enqueue_futures = []
 
     # First, fill the queue for backend-1 with 3 requests
@@ -185,7 +186,7 @@ async def test_power_of_two_choices(serve_instance):
         future = q.enqueue_request.remote(RequestMetadata("svc", None), "2")
         enqueue_futures.append(future)
 
-    runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
+    runner_1, runner_2 = (mock_task_runner() for _ in range(2))
     await q.add_new_worker.remote("backend-pow2", "replica-1", runner_1)
     await q.add_new_worker.remote("backend-pow2-2", "replica-1", runner_2)
 
@@ -196,13 +197,12 @@ async def test_power_of_two_choices(serve_instance):
 
 
 async def test_queue_remove_replicas(serve_instance):
-    @ray.remote
-    class TestRandomPolicyQueueActor(RandomPolicyQueue):
+    class TestRouter(Router):
         def worker_queue_size(self, backend):
             return self.worker_queues["backend-remove"].qsize()
 
-    temp_actor = make_task_runner_mock()
-    q = TestRandomPolicyQueueActor.remote()
+    temp_actor = mock_task_runner()
+    q = ray.remote(TestRouter).remote(RandomPolicy, {})
     await q.add_new_worker.remote("backend-remove", "replica-1", temp_actor)
     await q.remove_worker.remote("backend-remove", "replica-1")
     assert ray.get(q.worker_queue_size.remote("backend")) == 0

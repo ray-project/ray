@@ -9,7 +9,6 @@ watchdog() {
         sleep 300
         echo "(running, ${i}m total)"
     done
-    echo "Command timed out after 2.5h, dumping logs:"
     echo "TIMED OUT"
     kill -SIGKILL $PID
 }

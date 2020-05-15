@@ -55,7 +55,7 @@ int64_t GetExpectedTaskCounter(
 struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
-  int reconstructing_actors = 0;
+  int restarting_actors = 0;
   int max_num_handles = 0;
 };
 
@@ -66,8 +66,8 @@ ActorStats GetActorStatisticalData(
   for (auto &pair : actor_registry) {
     if (pair.second.GetState() == ray::rpc::ActorTableData::ALIVE) {
       item.live_actors += 1;
-    } else if (pair.second.GetState() == ray::rpc::ActorTableData::RECONSTRUCTING) {
-      item.reconstructing_actors += 1;
+    } else if (pair.second.GetState() == ray::rpc::ActorTableData::RESTARTING) {
+      item.restarting_actors += 1;
     } else {
       item.dead_actors += 1;
     }
@@ -211,33 +211,33 @@ ray::Status NodeManager::RegisterGcs() {
       NodeRemoved(data);
     }
   };
+
+  // If the node resource message is received first and then the node message is received,
+  // ForwardTask will throw exception, because it can't get node info.
+  auto on_done = [this](Status status) {
+    RAY_CHECK_OK(status);
+    // Subscribe to resource changes.
+    const auto &resources_changed =
+        [this](const rpc::NodeResourceChange &resource_notification) {
+          auto id = ClientID::FromBinary(resource_notification.node_id());
+          if (resource_notification.updated_resources_size() != 0) {
+            ResourceSet resource_set(
+                MapFromProtobuf(resource_notification.updated_resources()));
+            ResourceCreateUpdated(id, resource_set);
+          }
+
+          if (resource_notification.deleted_resources_size() != 0) {
+            ResourceDeleted(
+                id, VectorFromProtobuf(resource_notification.deleted_resources()));
+          }
+        };
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+        /*subscribe_callback=*/resources_changed,
+        /*done_callback=*/nullptr));
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
-
-  // Subscribe to resource changes.
-  const auto &resources_changed =
-      [this](const ClientID &id,
-             const gcs::ResourceChangeNotification &resource_notification) {
-        if (resource_notification.IsAdded()) {
-          ResourceSet resource_set;
-          for (auto &entry : resource_notification.GetData()) {
-            resource_set.AddOrUpdateResource(entry.first,
-                                             entry.second->resource_capacity());
-          }
-          ResourceCreateUpdated(id, resource_set);
-        } else {
-          RAY_CHECK(resource_notification.IsRemoved());
-          std::vector<std::string> resource_names;
-          for (auto &entry : resource_notification.GetData()) {
-            resource_names.push_back(entry.first);
-          }
-          ResourceDeleted(id, resource_names);
-        }
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
-      /*subscribe_callback=*/resources_changed,
-      /*done_callback=*/nullptr));
+      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added =
@@ -435,16 +435,11 @@ void NodeManager::WarnResourceDeadlock() {
     return;
   }
 
-  // suppress duplicates warning messages
-  if (resource_deadlock_warned_) {
-    return;
-  }
-
   // The node is full of actors and no progress has been made for some time.
   // If there are any pending tasks, build a warning.
   std::ostringstream error_message;
   ray::Task exemplar;
-  bool should_warn = false;
+  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
 
@@ -456,14 +451,23 @@ void NodeManager::WarnResourceDeadlock() {
     } else {
       pending_tasks += 1;
     }
-    if (!should_warn) {
+    if (!any_pending) {
       exemplar = task;
-      should_warn = true;
+      any_pending = true;
     }
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
-  if (should_warn) {
+  if (any_pending) {
+    // Actor references may be caught in cycles, preventing them from being deleted.
+    // Trigger global GC to hopefully free up resource slots.
+    TriggerGlobalGC();
+
+    // Suppress duplicates warning messages.
+    if (resource_deadlock_warned_) {
+      return;
+    }
+
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
@@ -584,7 +588,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
         actor_entry.second.GetState() == ActorTableData::ALIVE) {
       RAY_LOG(INFO) << "Actor " << actor_entry.first
                     << " is disconnected, because its node " << node_id
-                    << " is removed from cluster. It may be reconstructed.";
+                    << " is removed from cluster. It may be restarted.";
       HandleDisconnectedActor(actor_entry.first, /*was_local=*/false,
                               /*intentional_disconnect=*/false);
     }
@@ -811,13 +815,11 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     } else {
       // Only process the state transition if it is to a later state than ours.
       if (actor_registration.GetState() > it->second.GetState() &&
-          actor_registration.GetRemainingReconstructions() ==
-              it->second.GetRemainingReconstructions()) {
+          actor_registration.GetNumRestarts() == it->second.GetNumRestarts()) {
         // The new state is later than ours if it is about the same lifetime, but
         // a greater state.
         it->second = actor_registration;
-      } else if (actor_registration.GetRemainingReconstructions() <
-                 it->second.GetRemainingReconstructions()) {
+      } else if (actor_registration.GetNumRestarts() > it->second.GetNumRestarts()) {
         // The new state is also later than ours it is about a later lifetime of
         // the actor.
         it->second = actor_registration;
@@ -831,11 +833,11 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << ", node_manager_id = " << actor_registration.GetNodeManagerId()
                  << ", state = "
                  << ActorTableData::ActorState_Name(actor_registration.GetState())
-                 << ", remaining_reconstructions = "
-                 << actor_registration.GetRemainingReconstructions();
+                 << ", remaining_restarts = "
+                 << actor_registration.GetRemainingRestarts();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
-    // The actor is now alive (created for the first time or reconstructed). We can
+    // The actor is now alive (created for the first time or restarted). We can
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
@@ -873,8 +875,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
-  } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
-    RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
+  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
+    RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
     if (!(RayConfig::instance().gcs_service_enabled() &&
           RayConfig::instance().gcs_actor_service_enabled())) {
       // The actor is dead and needs reconstruction. Attempting to reconstruct its
@@ -883,7 +885,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
           actor_registration.GetActorCreationDependency());
     }
 
-    // When an actor fails but can be reconstructed, resubmit all of the queued
+    // When an actor fails but can be restarted, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
@@ -1146,15 +1148,15 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
+  auto remainingRestarts = actor_registration.GetRemainingRestarts();
   RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died "
                  << (intentional_disconnect ? "intentionally" : "unintentionally")
-                 << ", remaining reconstructions = "
-                 << actor_registration.GetRemainingReconstructions();
+                 << ", remaining restarts = " << remainingRestarts;
 
-  // Check if this actor needs to be reconstructed.
+  // Check if this actor needs to be restarted.
   ActorState new_state =
-      actor_registration.GetRemainingReconstructions() > 0 && !intentional_disconnect
-          ? ActorTableData::RECONSTRUCTING
+      (remainingRestarts == -1 || remainingRestarts > 0) && !intentional_disconnect
+          ? ActorTableData::RESTARTING
           : ActorTableData::DEAD;
   if (was_local) {
     // Clean up the dummy objects from this actor.
@@ -1185,7 +1187,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
   RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification, done));
 
-  if (was_local && new_state == ActorTableData::RECONSTRUCTING) {
+  if (was_local && new_state == ActorTableData::RESTARTING) {
     RAY_LOG(INFO) << "A local actor (id = " << actor_id
                   << " ) is dead, reconstructing it.";
     const ObjectID &actor_creation_dummy_object_id =
@@ -1381,7 +1383,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     } else {
       // If reconstruction is also required, then add any requested objects to
       // the list to subscribe to in the task dependency manager. These objects
-      // will be pulled from remote node managers and reconstructed if
+      // will be pulled from remote node managers and restarted if
       // necessary.
       required_object_ids.push_back(object_id);
     }
@@ -1408,7 +1410,7 @@ void NodeManager::ProcessWaitRequestMessage(
     if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
       // Add any missing objects to the list to subscribe to in the task
       // dependency manager. These objects will be pulled from remote node
-      // managers and reconstructed if necessary.
+      // managers and restarted if necessary.
       required_object_ids.push_back(object_id);
     }
   }
@@ -1459,7 +1461,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
     if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
       // Add any missing objects to the list to subscribe to in the task
       // dependency manager. These objects will be pulled from remote node
-      // managers and reconstructed if necessary.
+      // managers and restarted if necessary.
       required_object_ids.push_back(object_id);
     }
   }
@@ -2138,7 +2140,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
-                     << " is already queued and will not be reconstructed. This is most "
+                     << " is already queued and will not be restarted. This is most "
                         "likely due to spurious reconstruction.";
     return;
   }
@@ -2147,10 +2149,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     bool seen = actor_entry != actor_registry_.end();
-    // If we have already seen this actor and this actor is not being reconstructed,
+    // If we have already seen this actor and this actor is not being restarted,
     // its location is known.
     bool location_known =
-        seen && actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING;
+        seen && actor_entry->second.GetState() != ActorTableData::RESTARTING;
     if (location_known) {
       if (actor_entry->second.GetState() == ActorTableData::DEAD) {
         // If this actor is dead, either because the actor process is dead
@@ -2365,7 +2367,7 @@ void NodeManager::AsyncResolveObjects(const std::shared_ptr<ClientConnection> &c
   }
 
   // Subscribe to the objects required by the task. These objects will be
-  // fetched and/or reconstructed as necessary, until the objects become local
+  // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
     // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
@@ -2520,6 +2522,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                                        failed_nodes_cache_.count(owner_node_id) > 0)) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
+      RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
+                    << " died, killing leased worker " << worker->WorkerId();
       KillWorker(worker);
     }
 
@@ -2611,42 +2615,38 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
   std::shared_ptr<ActorTableData> actor_info_ptr;
-  // TODO(swang): If this is an actor that was reconstructed, and previous
+  // TODO(swang): If this is an actor that was restarted, and previous
   // actor notifications were delayed, then this node may not have an entry for
   // the actor in actor_regisry_. Then, the fields for the number of
-  // reconstructions will be wrong.
+  // restarts will be wrong.
   if (actor_entry == actor_registry_.end()) {
     actor_info_ptr.reset(new ActorTableData());
     // Set all of the static fields for the actor. These fields will not
-    // change even if the actor fails or is reconstructed.
+    // change even if the actor fails or is restarted.
     actor_info_ptr->set_actor_id(actor_id.Binary());
     actor_info_ptr->set_actor_creation_dummy_object_id(
         task_spec.ActorDummyObject().Binary());
     actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-    actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
-    // This is the first time that the actor has been created, so the number
-    // of remaining reconstructions is the max.
-    actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
+    actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
+    actor_info_ptr->set_num_restarts(0);
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
   } else {
-    // If we've already seen this actor, it means that this actor was reconstructed.
-    // Thus, its previous state must be RECONSTRUCTING.
+    // If we've already seen this actor, it means that this actor was restarted.
+    // Thus, its previous state must be RESTARTING.
     // TODO: The following is a workaround for the issue described in
     // https://github.com/ray-project/ray/issues/5524, please see the issue
     // description for more information.
-    if (actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
-      RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
+    if (actor_entry->second.GetState() != ActorTableData::RESTARTING) {
+      RAY_LOG(WARNING) << "Actor not in restarting state, most likely it "
                        << "died before creation handler could run. Actor state is "
                        << actor_entry->second.GetState();
     }
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
-    // We are reconstructing the actor, so subtract its
-    // remaining_reconstructions by 1.
-    actor_info_ptr->set_remaining_reconstructions(
-        actor_info_ptr->remaining_reconstructions() - 1);
+    // We are restarting the actor, so increment its num_restarts
+    actor_info_ptr->set_num_restarts(actor_info_ptr->num_restarts() + 1);
   }
 
   // Set the new fields for the actor's state to indicate that the actor is
@@ -2762,7 +2762,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // NOTE(swang): The dummy objects must be marked as local whenever
     // ExtendFrontier is called, and vice versa, so that we can clean up the
     // dummy objects properly in case the actor fails and needs to be
-    // reconstructed.
+    // restarted.
     HandleObjectLocal(task_spec.ActorDummyObject());
   }
 }
@@ -3318,7 +3318,7 @@ std::string NodeManager::DebugString() const {
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   result << "\n- num live actors: " << statistical_data.live_actors;
-  result << "\n- num reconstructing actors: " << statistical_data.reconstructing_actors;
+  result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
   result << "\n- max num handles: " << statistical_data.max_num_handles;
 
@@ -3678,6 +3678,10 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
+  TriggerGlobalGC();
+}
+
+void NodeManager::TriggerGlobalGC() {
   RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
@@ -3715,8 +3719,8 @@ void NodeManager::RecordMetrics() {
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::ActorStats().Record(statistical_data.live_actors,
                              {{stats::ValueTypeKey, "live_actors"}});
-  stats::ActorStats().Record(statistical_data.reconstructing_actors,
-                             {{stats::ValueTypeKey, "reconstructing_actors"}});
+  stats::ActorStats().Record(statistical_data.restarting_actors,
+                             {{stats::ValueTypeKey, "restarting_actors"}});
   stats::ActorStats().Record(statistical_data.dead_actors,
                              {{stats::ValueTypeKey, "dead_actors"}});
   stats::ActorStats().Record(statistical_data.max_num_handles,

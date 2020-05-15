@@ -214,7 +214,7 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/last result for each metric by trial
+        # stores in memory max/min/avg/last result for each metric by trial
         self.metric_analysis = {}
 
         self.export_formats = export_formats
@@ -476,13 +476,18 @@ class Trial:
                     self.metric_analysis[metric] = {
                         "max": value,
                         "min": value,
+                        "avg": value,
                         "last": value
                     }
                 else:
+                    step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
                         value, self.metric_analysis[metric]["max"])
                     self.metric_analysis[metric]["min"] = min(
                         value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["avg"] = 1 / step * (
+                        value +
+                        (step - 1) * self.metric_analysis[metric]["avg"])
                     self.metric_analysis[metric]["last"] = value
 
     def get_trainable_cls(self):
