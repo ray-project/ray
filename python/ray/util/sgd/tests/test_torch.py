@@ -9,7 +9,6 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
-import ray.util.sgd.data.examples.mlp_identity
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
@@ -18,6 +17,7 @@ from ray.util.sgd.torch.constants import SCHEDULER_STEP
 from ray.util.sgd.utils import (check_for_failure, NUM_SAMPLES, BATCH_COUNT,
                                 BATCH_SIZE)
 
+from ray.util.sgd.data.examples import mlp_identity
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
@@ -331,10 +331,9 @@ def test_dataset(ray_start_4_cpus):
     of points for example).
     """
 
-    model_creator = ray.util.sgd.data.examples.mlp_identity.model_creator
-    optimizer_creator = \
-        ray.util.sgd.data.examples.mlp_identity.optimizer_creator
-    dataset_creator = ray.util.sgd.data.examples.mlp_identity.dataset_creator
+    model_creator = mlp_identity.model_creator
+    optimizer_creator = mlp_identity.optimizer_creator
+    dataset_creator = mlp_identity.dataset_creator
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=None,
@@ -347,7 +346,7 @@ def test_dataset(ray_start_4_cpus):
     for i in range(5):
         trainer.train(dataset=dataset, num_steps=100)
 
-    input = ray.util.sgd.data.examples.mlp_identity.to_mat(0.5)
+    input = mlp_identity.to_mat(0.5)
     prediction = float(trainer.get_model()(input)[0][0])
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
