@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Stopper:
     """Base class for implementing a Tune experiment stopper.
 
@@ -61,3 +64,33 @@ class FunctionStopper(Stopper):
                 "Stop object must be ray.tune.Stopper subclass to be detected "
                 "correctly.")
         return is_function
+
+
+class EarlyStopping(Stopper):
+    def __init__(self, metric: str, std: float = 0.001, top: int = 10):
+        """Create the EarlyStopping object.
+
+        Parameters
+        ---------------------
+        metric: str,
+            The metric to be monitored.
+        std: float = 0.001,
+            The minimal standard deviation after which
+            the tuning process has to stop.
+        top: int = 10,
+            The number of best model to consider.
+        """
+        self._metric = metric
+        self._std = std
+        self._top = top
+        self._top_values = []
+
+    def __call__(self, trial_id, result: Dict):
+        """Return a boolean representing if the tuning has to stop."""
+        self._top_values.append(result[self._metric])
+        self._top_values = sorted(self._top_values)[:self._top]
+        return self.stop_all()
+
+    def stop_all(self):
+        """Returns whether to stop trials and prevent new ones from starting."""
+        return len(self._top_values) == self._top and np.std(self._top_values) <= self._std
