@@ -2,8 +2,8 @@ import React from "react";
 import { NodeInfoResponse } from "../../../../api";
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
-type Node = ArrayType<NodeInfoResponse["clients"]>;
-type Worker = ArrayType<Node["workers"]>;
+export type Node = ArrayType<NodeInfoResponse["clients"]>;
+export type Worker = ArrayType<Node["workers"]>;
 
 type ClusterFeatureData = { nodes: Node[] };
 type NodeFeatureData = { node: Node };

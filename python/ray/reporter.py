@@ -127,6 +127,7 @@ class Reporter:
                     'load': float(gpu.load),
                     'memory_util': float(gpu.memoryUtil)
                 }
+            return gpu_utilizations
 
     @staticmethod
     def get_boot_time():
@@ -200,7 +201,7 @@ class Reporter:
             "boot_time": self.get_boot_time(),
             "load_avg": self.get_load_avg(),
             "disk": self.get_disk_usage(),
-            'gpu': self.get_gpu_usage(),
+            "gpus": self.get_gpu_usage(),
             "net": netstats,
         }
 

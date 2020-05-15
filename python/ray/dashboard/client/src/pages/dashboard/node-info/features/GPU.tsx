@@ -1,9 +1,11 @@
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
+import { NodeInfoResponseWorker } from "../../../../api";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
   WorkerFeatureComponent,
+  Node,
 } from "./types";
 
 const getWeightedAverage = (
@@ -25,17 +27,17 @@ const getWeightedAverage = (
   return totalWeightTimesValue / totalWeight;
 };
 
-const clusterUtilization = (nodes) => {
+const clusterUtilization = (nodes: Array<Node>) => {
     return getWeightedAverage(
         nodes.map(node => ({ 
             weight: node.gpus.length, 
-            value: nodeUtilization(node)}));
+            value: nodeUtilization(node)})))
 };
 
-const nodeUtilization = (node) => {
+const nodeUtilization = (node: Node) => {
     const utilizationSum = node.gpus.reduce((acc, gpu) => acc + gpu.load, 0);
     const avgUtilization = utilizationSum / node.gpus.length;
-    return node.gpus.length;
+    return avgUtilization;
 }
 
 export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
@@ -43,8 +45,8 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
-        percent={cpuWeightedAverage}
-        text={`${cpuWeightedAverage.toFixed(1)}%`}
+        percent={clusterAverageUtilization}
+        text={`${clusterAverageUtilization.toFixed(1)}%`}
       />
     </div>
   );
@@ -52,7 +54,7 @@ export const ClusterGPU: ClusterFeatureComponent = ({ nodes }) => {
 
 export const NodeGPU: NodeFeatureComponent = ({ node }) => (
   <div style={{ minWidth: 60 }}>
-    <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
+    <UsageBar percent={nodeUtilization(node)} text={`${node.cpu.toFixed(1)}%`} />
   </div>
 );
 
