@@ -10,8 +10,8 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import (DurableTrainable, Trainable,
-                      TuneError, Stopper, EarlyStopping)
+from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
+                      EarlyStopping)
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.trial import Trial
@@ -492,8 +492,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def train(config, reporter):
             reporter(test=0)
 
-        analysis = tune.run(train, num_samples=10,
-                            stop=EarlyStopping("test", top=3))
+        analysis = tune.run(
+            train, num_samples=10, stop=EarlyStopping("test", top=3))
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) == 3)
