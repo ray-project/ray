@@ -22,8 +22,8 @@ import TotalRow from "./TotalRow";
 const clusterWorkerPids = (
   rayletInfo: RayletInfoResponse,
 ): Map<string, Set<string>> => {
-  // Given a Raylet response, this extracts, per node, all the worker pids registered
-  // with the Raylet. It returns these in a Map from node ip to set of process ids.
+  // Groups PIDs registered with the raylet by node IP address
+  // This is used to filter out processes belonging to other ray clusters.
   const nodeMap = new Map();
   const workerPids = new Set();
   for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
@@ -111,6 +111,11 @@ class NodeInfo extends React.Component<
       };
     } = {};
 
+    // We fetch data about which process IDs are registered with
+    // the cluster's raylet for each node. We use this to filter
+    // the worker data contained in the node info data because
+    // the node info can contain data from more than one cluster
+    // if more than one cluster is running on a machine.
     const clusterWorkerPidsByIp = clusterWorkerPids(rayletInfo);
     const clusterTotalWorkers = Array.from(
       clusterWorkerPidsByIp.values(),
