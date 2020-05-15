@@ -36,11 +36,6 @@ if __name__ == "__main__":
     registry.register_env("LookAndPush", lambda _: OneHot(LookAndPush()))
     registry.register_env("StatelessCartPole", lambda _: StatelessCartPole())
 
-    #possible bugs:
-    #1) memory tau > max seq_len error.
-    #2) GRU unit seems wrong.
-    #3) other math wrong.
-
     config = {
         "env": args.env,
         "env_config": {

@@ -32,12 +32,13 @@ class GRUGate(tf.keras.layers.Layer):
     def call(self, inputs, **kwargs):
         # Pass in internal state first.
         h, X = inputs
+
         r = tf.tensordot(X, self._w_r, axes=1) + \
             tf.tensordot(h, self._u_r, axes=1)
         r = tf.nn.sigmoid(r)
 
         z = tf.tensordot(X, self._w_z, axes=1) + \
-            tf.tensordot(h, self._u_z, axes=1) + self._bias_z
+            tf.tensordot(h, self._u_z, axes=1) - self._bias_z
         z = tf.nn.sigmoid(z)
 
         h_next = tf.tensordot(X, self._w_h, axes=1) + \
