@@ -772,6 +772,12 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex());
+  if (options_.is_local_mode) {
+    *data = std::make_shared<LocalMemoryBuffer>(data_size);
+  } else {
+    RAY_RETURN_NOT_OK(
+        plasma_store_provider_->Create(metadata, data_size, *object_id, data));
+  }
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(
