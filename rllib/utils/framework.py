@@ -37,7 +37,7 @@ def try_import_tf(error=False):
         error (bool): Whether to raise an error if tf cannot be imported.
 
     Returns:
-        The tf module (either from tf2.0.compat.v1 OR as tf1.x.
+        The tf module (either from tf2.0 OR as tf1.x.
     """
     # Make sure, these are reset after each test case
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
@@ -48,37 +48,40 @@ def try_import_tf(error=False):
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+    #TODO: Allow env var to force compat.v1 behavior even if tf2.x installed.
+
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
     # (switching off v2 behavior twice breaks all-framework tests for eager).
     if "tensorflow" in sys.modules:
         tf_module = sys.modules["tensorflow"]
-        # Try "reducing" tf to tf.compat.v1.
-        try:
-            tf_module = tf_module.compat.v1
-        # No compat.v1 -> return tf as is.
-        except AttributeError:
-            pass
-        return tf_module
+        ## Try "reducing" tf to tf.compat.v1.
+        #try:
+        #    tf_module = tf_module.compat.v1
+        ## No compat.v1 -> return tf as is.
+        #except AttributeError:
+        #    pass
+        return tf_module, 2 if "2." in tf_module.__version__ else 1
 
     # Just in case. We should not go through the below twice.
     assert "tensorflow" not in sys.modules
 
     try:
-        # Try "reducing" tf to tf.compat.v1.
-        import tensorflow.compat.v1 as tf
-        tf.logging.set_verbosity(tf.logging.ERROR)
-        # Disable v2 eager mode.
-        tf.disable_v2_behavior()
-        return tf
-    except ImportError:
-        try:
-            import tensorflow as tf
-            return tf
-        except ImportError as e:
-            if error:
-                raise e
-            return None
+        ## Try "reducing" tf to tf.compat.v1.
+        #import tensorflow.compat.v1 as tf
+        import tensorflow as tf
+        #tf.logging.set_verbosity(tf.logging.ERROR)
+        ## Disable v2 eager mode.
+        #tf.disable_v2_behavior()
+        return tf, 2 if "2." in tf.__version__ else 1
+    except ImportError as e:
+        #try:
+        #    import tensorflow as tf
+        #    return tf
+        #except ImportError as e:
+        if error:
+            raise e
+        return None, None
 
 
 def tf_function(tf_module):
@@ -224,7 +227,7 @@ def get_activation_fn(name, framework="tf"):
     else:
         if name == "linear" or name is None:
             return None
-        tf = try_import_tf()
+        tf, tfv = try_import_tf()
         fn = getattr(tf.nn, name, None)
         if fn is not None:
             return fn
@@ -235,5 +238,5 @@ def get_activation_fn(name, framework="tf"):
 
 # This call should never happen inside a module's functions/classes
 # as it would re-disable tf-eager.
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

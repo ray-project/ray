@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 def relative_position_embedding(seq_length, out_dim):

@@ -11,7 +11,7 @@ from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_action
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):

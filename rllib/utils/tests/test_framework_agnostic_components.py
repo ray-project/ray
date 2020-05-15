@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 

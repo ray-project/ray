@@ -5,7 +5,7 @@ import time
 from ray.util.debug import log_once
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 

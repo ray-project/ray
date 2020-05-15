@@ -27,7 +27,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.space_utils import flatten_space
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 tree = try_import_tree()
 
 logger = logging.getLogger(__name__)

@@ -28,7 +28,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

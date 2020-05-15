@@ -7,7 +7,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 # Deprecated: see as an alternative models/tf/recurrent_tf_modelv2.py

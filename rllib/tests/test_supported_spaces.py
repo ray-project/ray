@@ -16,7 +16,7 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),

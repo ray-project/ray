@@ -15,7 +15,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 

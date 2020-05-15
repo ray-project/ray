@@ -18,7 +18,7 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_action
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {

@@ -33,7 +33,7 @@ import collections
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 VTraceFromLogitsReturns = collections.namedtuple("VTraceFromLogitsReturns", [
     "vs", "pg_advantages", "log_rhos", "behaviour_action_log_probs",

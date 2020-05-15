@@ -13,7 +13,7 @@ from ray.rllib.utils import try_import_tf, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

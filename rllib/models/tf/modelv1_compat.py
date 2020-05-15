@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import scope_vars
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

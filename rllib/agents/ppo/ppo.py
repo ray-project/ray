@@ -10,7 +10,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

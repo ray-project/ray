@@ -10,7 +10,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

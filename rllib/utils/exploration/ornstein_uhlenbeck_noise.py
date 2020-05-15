@@ -5,7 +5,7 @@ from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 

@@ -14,7 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.mock_worker import _MockWorker
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 class LRScheduleTest(unittest.TestCase):

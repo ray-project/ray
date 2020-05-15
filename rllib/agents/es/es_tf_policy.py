@@ -14,7 +14,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.space_utils import get_base_struct_from_space
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 tree = try_import_tree()
 
 

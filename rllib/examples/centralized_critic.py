@@ -40,7 +40,7 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 OPPONENT_OBS = "opponent_obs"

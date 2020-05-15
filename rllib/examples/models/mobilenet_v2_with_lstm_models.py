@@ -7,7 +7,7 @@ from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 

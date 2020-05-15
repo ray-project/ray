@@ -3,7 +3,7 @@ import numpy as np
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 if tf:
     eager_mode = None
     try:
@@ -59,7 +59,7 @@ def framework_iterator(config=None,
 
         # Do we need a test session?
         sess = None
-        if fw == "tf" and session is True:
+        if fw == "tf" and tfv == 1 and session is True:
             sess = tf.Session()
             sess.__enter__()
 
@@ -74,7 +74,7 @@ def framework_iterator(config=None,
             eager_ctx.__enter__()
             assert tf.executing_eagerly()
         elif fw == "tf":
-            assert not tf.executing_eagerly()
+            assert tfv == 2 or not tf.executing_eagerly()
 
         yield fw if session is False else (fw, sess)
 

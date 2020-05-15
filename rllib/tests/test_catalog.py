@@ -14,7 +14,7 @@ from ray.rllib.models.tf.visionnet_v2 import VisionNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 class CustomPreprocessor(Preprocessor):

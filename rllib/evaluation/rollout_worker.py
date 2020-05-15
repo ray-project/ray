@@ -35,7 +35,7 @@ from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -859,7 +859,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 else:
                     raise ValueError("This policy does not support eager "
                                      "execution: {}".format(cls))
-            if tf:
+            if tf and tfv == 1:
                 with tf.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             else:

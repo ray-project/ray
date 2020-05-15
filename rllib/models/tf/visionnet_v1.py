@@ -4,7 +4,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 # Deprecated: see as an alternative models/tf/visionnet_v2.py

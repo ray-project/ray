@@ -17,7 +17,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_ops import minimize_and_clip
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)

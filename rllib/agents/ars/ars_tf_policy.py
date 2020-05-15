@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 class ARSTFPolicy:

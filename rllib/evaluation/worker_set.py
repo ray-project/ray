@@ -10,7 +10,7 @@ from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
 from ray.rllib.utils import merge_dicts, try_import_tf
 from ray.rllib.utils.memory import ray_get_and_free
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 from ray.rllib.utils import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 

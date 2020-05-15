@@ -16,7 +16,7 @@ from ray.rllib.models.tf import recurrent_tf_modelv2
 from ray.rllib.examples.custom_keras_rnn_model import RepeatAfterMeEnv
 from ray.rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

@@ -20,7 +20,7 @@ from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 _, nn = try_import_torch()
 
 DICT_SPACE = spaces.Dict({

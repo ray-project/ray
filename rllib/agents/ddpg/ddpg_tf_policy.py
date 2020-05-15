@@ -22,7 +22,7 @@ from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
     make_tf_callable
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 

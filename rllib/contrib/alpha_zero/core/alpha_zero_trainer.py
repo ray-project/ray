@@ -16,7 +16,7 @@ from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
 from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
     import SyncBatchesReplayOptimizer
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)

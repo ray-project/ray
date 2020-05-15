@@ -7,7 +7,7 @@ import numpy as np
 from rllib.models.tf import attention
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 def bit_shift_generator(seq_length, shift, batch_size):

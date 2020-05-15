@@ -9,7 +9,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -96,10 +96,12 @@ class EpsilonGreedy(Exploration):
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
+        tf_func = tf.multinomial if tfv == 1 else tf.random.categorical
         random_actions = tf.squeeze(
-            tf.multinomial(random_valid_action_logits, 1), axis=1)
+            tf_func(random_valid_action_logits, 1), axis=1)
 
-        chose_random = tf.random_uniform(
+        tf_func = tf.random_uniform if tfv == 1 else tf.random.uniform
+        chose_random = tf_func(
             tf.stack([batch_size]),
             minval=0, maxval=1, dtype=tf.float32) \
             < epsilon

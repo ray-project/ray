@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 

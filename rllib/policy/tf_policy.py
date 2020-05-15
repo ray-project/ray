@@ -16,7 +16,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 

@@ -5,7 +5,7 @@ from numpy.testing import assert_allclose
 from ray.rllib.agents.ppo.utils import flatten, concatenate
 from ray.rllib.utils import try_import_tf
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 
 # TODO(sven): Move to utils/tests/.

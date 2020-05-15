@@ -12,7 +12,7 @@ from ray.rllib.agents.dqn.distributional_q_tf_model import \
 from ray.rllib.utils import try_import_tf
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as MyVisionNetwork
 
-tf = try_import_tf()
+tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
