@@ -193,7 +193,8 @@ class MemoryTable:
               sort_by_type: SortingType = SortingType.PID):
         """Setup memory table.
 
-        This will group the table entries firts and then sort them.
+        This will sort entries first and gruop them after.
+        Sort order will be still kept.
         """
         self.sort_by(sort_by_type).group_by(group_by_type)
         for group_memory_table in self.group.values():
