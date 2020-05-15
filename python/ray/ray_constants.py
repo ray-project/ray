@@ -34,7 +34,7 @@ DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
-DEFAULT_PORT = 52600
+DEFAULT_PORT = 6379
 
 # Default resource requirements for actors when no resource requirements are
 # specified.
