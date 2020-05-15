@@ -310,7 +310,11 @@ _lint() {
     linux*) platform=linux;;
   esac
 
-  "${ROOT_DIR}"/check-git-clang-format-output.sh
+  if command -v clang-format > /dev/null; then
+    "${ROOT_DIR}"/check-git-clang-format-output.sh
+  else
+    { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
+  fi
 
   # Run Python linting
   lint_python
