@@ -8,15 +8,17 @@ import ray
 
 
 def decode_object_id_if_needed(object_id: str) -> bytes:
-    """Decode gRPC objectID bytes string.
+    """Decode objectID bytes string.
 
-    gRPC objectID response is encdoed by Base64.
-    Note that not every objectID is encoded by Base64.
+    gRPC reply contains an objectID that is encodded by Base64.
+    This function is used to decode the objectID.
+    Note that there are times that objectID is already decoded as
+    a hex string. In this case, just convert it to a binary number.
     """
     if object_id.endswith("="):
         # If the object id ends with =, that means it is base64 encoded.
         # Object ids will always have = as a padding
-        # when it is base64 encoded.
+        # when it is base64 encoded because objectID is always 20B.
         return base64.standard_b64decode(object_id)
     else:
         return ray.utils.hex_to_binary(object_id)
@@ -24,7 +26,6 @@ def decode_object_id_if_needed(object_id: str) -> bytes:
 
 class SortingType(Enum):
     PID = 1
-    NODE_ADDRESS = 2
     OBJECT_SIZE = 3
     REFERENCE_TYPE = 4
 
@@ -122,28 +123,19 @@ class MemoryTableEntry:
             "object_size": self.object_size,
             "reference_type": self.reference_type,
             "call_site": self.call_site,
+            "local_ref_count": self.local_ref_count,
+            "pinned_in_memory": self.pinned_in_memory,
+            "submittedd_task_ref_count": self.submittedd_task_ref_count,
+            "contained_in_owned": [
+                object_id.hex() for object_id in self.contained_in_owned
+            ]
         }
 
     def __str__(self):
-        return ("{}\n"
-                "\ttype: {}\n"
-                "\tpid: {}\n"
-                "\tnode_ip_address: {}\n"
-                "\tobject_size: {}\n"
-                "\tlocal_ref_count: {}\n"
-                "\tpinned_in_memory: {}\n"
-                "\tsubmittedd_task_ref_count: {}\n"
-                "\tcontained_in_owned: {}\n"
-                "\treference_type: {}\n"
-                "\tcall_site: {}\n".format(
-                    self.object_id, "driver" if self.is_driver else "worker",
-                    self.pid, self.node_address, self.object_size,
-                    self.local_ref_count, self.pinned_in_memory,
-                    self.submittedd_task_ref_count, self.contained_in_owned,
-                    self.reference_type, self.call_site))
+        return self.__repr__()
 
     def __repr__(self):
-        return self.__str__()
+        return str(self.__dict__())
 
 
 class MemoryTableSummary:
@@ -187,20 +179,25 @@ class MemoryTableSummary:
 class MemoryTable:
     def __init__(self):
         self.table: typing.List[MemoryTableEntry] = []
+        # Group is a list of memory tables grouped by a group key.
         self.group: typing.Dict[str, MemoryTable] = self._get_resetted_group()
         self.summary: MemoryTableSummary = MemoryTableSummary()
 
     def insert_entry(self, entry: MemoryTableEntry):
+        """Insert a new memory table entry to the table."""
         self.table.append(entry)
 
-    def setup(self, *, group_by_type: GroupByType, sort_by_type: SortingType):
+    def setup(self,
+              *,
+              group_by_type: GroupByType = GroupByType.NODE_ADDRESS,
+              sort_by_type: SortingType = SortingType.PID):
         """Setup memory table.
 
-        This will group the table entries and sort them based on sort_by_type.
+        This will group the table entries firts and then sort them.
         """
-        self.group_by(group_by_type)
+        self.sort_by(sort_by_type).group_by(group_by_type)
         for group_memory_table in self.group.values():
-            group_memory_table.sort_by(sort_by_type).summarize()
+            group_memory_table.summarize()
         self.summarize()
 
     def summarize(self):
@@ -212,8 +209,6 @@ class MemoryTable:
     def sort_by(self, sorting_type: SortingType):
         if sorting_type == SortingType.PID:
             self.table.sort(key=lambda entry: entry.pid)
-        elif sorting_type == SortingType.NODE_ADDRESS:
-            self.table.sort(key=lambda entry: entry.node_address)
         elif sorting_type == SortingType.OBJECT_SIZE:
             self.table.sort(key=lambda entry: entry.object_size)
         elif sorting_type == SortingType.REFERENCE_TYPE:
@@ -254,19 +249,7 @@ class MemoryTable:
         return defaultdict(MemoryTable)
 
     def __repr__(self):
-        repr_str = ""
-        repr_str += "Total Summary\n"
-        repr_str += "{}\n".format(self.summary)
-
-        # Build tables per group.
-        for group_key, group in self.group.items():
-            group_table: MemoryTable = group.table
-            repr_str += "Group {}'s Summary\n".format(group_key)
-            repr_str += "{}\n".format(group.summary)
-            repr_str += "Table\n"
-            for entry in group_table:
-                repr_str += "\t{}\n".format(entry)
-        return repr_str
+        return str(self.__dict__())
 
     def __str__(self):
         return self.__repr__()
@@ -292,4 +275,5 @@ def construct_memory_table(workers_info_by_node: dict):
                     memory_table.insert_entry(memory_table_entry)
     memory_table.setup(
         group_by_type=GroupByType.NODE_ADDRESS, sort_by_type=SortingType.PID)
+    print(memory_table)
     return memory_table
