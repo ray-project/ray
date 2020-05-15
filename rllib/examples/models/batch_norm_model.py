@@ -174,17 +174,18 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
             activation_fn=None)
 
         self._hidden_layers = nn.Sequential(*layers)
+        self._hidden_out = None
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         # Set the correct train-mode for our hidden module (only important
         # b/c we have some batch-norm layers).
         self._hidden_layers.train(mode=input_dict["is_training"])
-        hidden_out = self._hidden_layers(input_dict["obs"])
-        logits = self._logits(hidden_out)
-        self._value_out = self._value_branch(hidden_out)
+        self._hidden_out = self._hidden_layers(input_dict["obs"])
+        logits = self._logits(self._hidden_out)
         return logits, []
 
     @override(ModelV2)
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        assert self._hidden_out is not None, "must call forward first!"
+        return torch.reshape(self._value_branch(self._hidden_out), [-1])

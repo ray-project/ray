@@ -191,7 +191,7 @@ Object IDs can be created in multiple ways.
 .. autofunction:: ray.put
     :noindex:
 
-.. important::
+.. note::
 
     Remote objects are immutable. That is, their values cannot be changed after
     creation. This allows remote objects to be replicated in multiple object
