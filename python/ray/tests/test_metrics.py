@@ -10,9 +10,10 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.dashboard.memory import ReferenceType
 from ray.test_utils import (RayTestTimeoutException,
                             wait_until_succeeded_without_exception,
-                            wait_until_server_available)
+                            wait_until_server_available, wait_for_condition)
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -375,6 +376,186 @@ def test_profiling_info_endpoint(shutdown_only):
         reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
     profiling_stats = json.loads(reply.profiling_stats)
     assert profiling_stats is not None
+
+
+def test_memory_dashboard(shutdown_only):
+    """Test Memory table.
+
+    These tests are motivated by this document.
+    https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory
+    """
+    addresses = ray.init(num_cpus=2)
+    webui_url = addresses["webui_url"].replace("localhost", "http://127.0.0.1")
+    assert (wait_until_server_available(addresses["webui_url"]) is True)
+
+    def get_memory_table():
+        memory_table = requests.get(webui_url + "/api/memory_table").json()
+        return memory_table["result"]
+
+    def memory_table_ready():
+        memory_table = get_memory_table()
+        return len(memory_table["group"]) > 0
+
+    def stop_memory_table():
+        requests.get(webui_url + "/api/stop_memory_table").json()
+        time.sleep(1.0)
+
+    def test_local_reference():
+        @ray.remote
+        def f(arg):
+            return arg
+
+        # a and b are local references.
+        a = ray.put(None)
+        b = f.remote(None)
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        group = memory_table["group"]
+        assert summary["total_captured_in_objects"] == 0
+        assert summary["total_pinned_in_memory"] == 0
+        assert summary["total_used_by_pending_task"] == 0
+        assert summary["total_local_ref_count"] == 2
+        for table in group.values():
+            for entry in table["entries"]:
+                assert (
+                    entry["reference_type"] == ReferenceType.LOCAL_REFERENCE)
+        stop_memory_table()
+        del a
+        del b
+        return True
+
+    def test_object_pineed_in_memory():
+        import numpy as np
+
+        a = ray.put(np.zeros(1))
+        b = ray.get(a)
+        del a
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        group = memory_table["group"]
+        assert summary["total_captured_in_objects"] == 0
+        assert summary["total_pinned_in_memory"] == 1
+        assert summary["total_used_by_pending_task"] == 0
+        assert summary["total_local_ref_count"] == 0
+        for table in group.values():
+            for entry in table["entries"]:
+                assert (
+                    entry["reference_type"] == ReferenceType.PINNED_IN_MEMORY)
+        stop_memory_table()
+        del b
+        return True
+
+    def test_pending_task_references():
+        @ray.remote
+        def f(arg):
+            time.sleep(2)
+
+        a = ray.put(None)
+        b = f.remote(a)
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        assert summary["total_captured_in_objects"] == 0
+        assert summary["total_pinned_in_memory"] == 1
+        assert summary["total_used_by_pending_task"] == 1
+        assert summary["total_local_ref_count"] == 1
+        stop_memory_table()
+        del a
+        del b
+        return True
+
+    def test_serialized_object_id_reference():
+        @ray.remote
+        def f(arg):
+            time.sleep(2)
+
+        a = ray.put(None)
+        b = f.remote([a])
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        assert summary["total_captured_in_objects"] == 0
+        assert summary["total_pinned_in_memory"] == 0
+        assert summary["total_used_by_pending_task"] == 1
+        assert summary["total_local_ref_count"] == 2
+        stop_memory_table()
+        del a
+        del b
+        return True
+
+    def test_caputed_object_id_reference():
+        a = ray.put(None)
+        b = ray.put([a])
+        del a
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        assert summary["total_captured_in_objects"] == 1
+        assert summary["total_pinned_in_memory"] == 0
+        assert summary["total_used_by_pending_task"] == 0
+        assert summary["total_local_ref_count"] == 1
+        stop_memory_table()
+        del b
+        return True
+
+    def test_actor_handle_reference():
+        @ray.remote
+        class Actor:
+            pass
+
+        a = Actor.remote()
+        b = Actor.remote()
+        c = Actor.remote()
+
+        wait_for_condition(memory_table_ready)
+        memory_table = get_memory_table()
+        summary = memory_table["summary"]
+        group = memory_table["group"]
+        assert summary["total_captured_in_objects"] == 0
+        assert summary["total_pinned_in_memory"] == 0
+        assert summary["total_used_by_pending_task"] == 0
+        assert summary["total_local_ref_count"] == 0
+        assert summary["total_actor_handles"] == 3
+        for table in group.values():
+            for entry in table["entries"]:
+                assert (entry["reference_type"] == ReferenceType.ACTOR_HANDLE)
+        stop_memory_table()
+        del a
+        del b
+        del c
+        return True
+
+    assert (wait_for_condition(
+        test_local_reference, timeout=30000, retry_interval_ms=1000) is True)
+
+    assert (wait_for_condition(
+        test_object_pineed_in_memory, timeout=30000, retry_interval_ms=1000) is
+            True)
+
+    assert (wait_for_condition(
+        test_pending_task_references, timeout=30000, retry_interval_ms=1000) is
+            True)
+
+    assert (wait_for_condition(
+        test_serialized_object_id_reference,
+        timeout=30000,
+        retry_interval_ms=1000) is True)
+
+    assert (wait_for_condition(
+        test_caputed_object_id_reference,
+        timeout=30000,
+        retry_interval_ms=1000) is True)
+
+    assert (wait_for_condition(
+        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000) is
+            True)
 
 
 if __name__ == "__main__":
