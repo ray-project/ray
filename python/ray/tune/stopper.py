@@ -92,5 +92,8 @@ class EarlyStopping(Stopper):
         return self.stop_all()
 
     def stop_all(self):
-        """Returns whether to stop trials and prevent new ones from starting."""
-        return len(self._top_values) == self._top and np.std(self._top_values) <= self._std
+        """Return whether to stop and prevent trials from starting."""
+        return (
+            len(self._top_values) == self._top and
+            np.std(self._top_values) <= self._std
+        )

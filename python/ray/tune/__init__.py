@@ -22,6 +22,7 @@ __all__ = [
     "run",
     "run_experiments",
     "Stopper",
+    "EarlyStopping",
     "Experiment",
     "function",
     "sample_from",
