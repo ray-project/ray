@@ -54,7 +54,7 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
       actor_table_data.task_spec().function_descriptor());
   ray::TaskSpecification task_spec(actor_table_data.task_spec());
-  inner.set_actor_cursor(task_spec.ReturnId(0, ray::TaskTransportType::DIRECT).Binary());
+  inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
   return inner;

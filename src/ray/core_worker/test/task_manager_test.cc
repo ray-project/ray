@@ -197,7 +197,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   manager_.MarkTaskCanceled(spec.TaskId());
