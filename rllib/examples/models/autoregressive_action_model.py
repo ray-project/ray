@@ -148,10 +148,11 @@ class TorchAutoregressiveActionModel(TorchModelV2, nn.Module):
         #     [ctx_input, a1_input])
         self.action_module = _ActionModel()
 
+        self._context = None
+
     def forward(self, input_dict, state, seq_lens):
-        context = self.context_layer(input_dict["obs"])
-        self._value_out = self.value_branch(context)
-        return context, state
+        self._context = self.context_layer(input_dict["obs"])
+        return self._context, state
 
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        return torch.reshape(self.value_branch(self._context), [-1])

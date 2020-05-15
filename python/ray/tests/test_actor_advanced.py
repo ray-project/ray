@@ -119,7 +119,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     }],
     indirect=True)
 def test_deleted_actor_no_restart(ray_start_regular):
-    @ray.remote(resources={"actor": 1}, max_reconstructions=3)
+    @ray.remote(resources={"actor": 1}, max_restarts=3)
     class Actor:
         def method(self):
             return 1
@@ -155,7 +155,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -195,7 +195,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -221,7 +221,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     num_nodes = 5
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
-    @ray.remote(max_reconstructions=1)
+    @ray.remote(max_restarts=1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -247,7 +247,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     results = []
     for _ in range(10):
         results += [inc.remote(actor) for actor in actors]
-    # Make sure that we can get the results from the reconstructed actor.
+    # Make sure that we can get the results from the restarted actor.
     results = ray.get(results)
 
 
@@ -767,7 +767,7 @@ def test_kill(ray_start_regular, deprecated_codepath):
 # hang the caller.
 def test_actor_creation_task_crash(ray_start_regular):
     # Test actor death in constructor.
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Actor:
         def __init__(self):
             print("crash")
@@ -781,10 +781,10 @@ def test_actor_creation_task_crash(ray_start_regular):
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.f.remote())
 
-    # Test an actor can be reconstructed successfully
+    # Test an actor can be restarted successfully
     # afte it dies in its constructor.
-    @ray.remote(max_reconstructions=3)
-    class ReconstructableActor:
+    @ray.remote(max_restarts=3)
+    class RestartableActor:
         def __init__(self):
             count = self.get_count()
             count += 1
@@ -811,7 +811,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             _internal_kv_put("count", count, True)
 
     # Verify we can get the object successfully.
-    ra = ReconstructableActor.remote()
+    ra = RestartableActor.remote()
     ray.get(ra.f.remote())
 
 
