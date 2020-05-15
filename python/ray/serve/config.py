@@ -91,8 +91,8 @@ class ReplicaConfig:
         elif "name" in self.ray_actor_options:
             raise ValueError(
                 "Specifying name in actor_init_args is not allowed.")
-        elif "max_reconstructions" in self.ray_actor_options:
-            raise ValueError("Specifying max_reconstructions in "
+        elif "max_restarts" in self.ray_actor_options:
+            raise ValueError("Specifying max_restarts in "
                              "actor_init_args is not allowed.")
         else:
             num_cpus = self.ray_actor_options.get("num_cpus", 0)

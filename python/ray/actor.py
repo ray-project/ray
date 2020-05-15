@@ -9,7 +9,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -242,9 +242,8 @@ class ActorClassMetadata:
     """
 
     def __init__(self, language, modified_class,
-                 actor_creation_function_descriptor, class_id,
-                 max_reconstructions, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+                 actor_creation_function_descriptor, class_id, max_restarts,
+                 num_cpus, num_gpus, memory, object_store_memory, resources):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -252,7 +251,7 @@ class ActorClassMetadata:
         self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
-        self.max_reconstructions = max_reconstructions
+        self.max_restarts = max_restarts
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -313,9 +312,9 @@ class ActorClass:
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_reconstructions, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources):
+    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
+                                 num_cpus, num_gpus, memory,
+                                 object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
                 "_ray_from_function_descriptor"
@@ -343,22 +342,21 @@ class ActorClass:
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
-            actor_creation_function_descriptor, class_id, max_reconstructions,
+            actor_creation_function_descriptor, class_id, max_restarts,
             num_cpus, num_gpus, memory, object_store_memory, resources)
 
         return self
 
     @classmethod
-    def _ray_from_function_descriptor(cls, language,
-                                      actor_creation_function_descriptor,
-                                      max_reconstructions, num_cpus, num_gpus,
-                                      memory, object_store_memory, resources):
+    def _ray_from_function_descriptor(
+            cls, language, actor_creation_function_descriptor, max_restarts,
+            num_cpus, num_gpus, memory, object_store_memory, resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
-            max_reconstructions, num_cpus, num_gpus, memory,
-            object_store_memory, resources)
+            max_restarts, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
 
         return self
 
@@ -406,7 +404,7 @@ class ActorClass:
                 resources=None,
                 is_direct_call=None,
                 max_concurrency=None,
-                max_reconstructions=None,
+                max_restarts=None,
                 name=None,
                 detached=False):
         """Create an actor.
@@ -471,11 +469,23 @@ class ActorClass:
                              "Please use Actor._remote(name='some_name') "
                              "to associate the name.")
 
+        if name and not detached:
+            raise ValueError("Only detached actors can be named. "
+                             "Please use Actor._remote(detached=True, "
+                             "name='some_name').")
+
+        if name == "":
+            raise ValueError("Actor name cannot be an empty string.")
+
         # Check whether the name is already taken.
+        # TODO(edoakes): this check has a race condition because two drivers
+        # could pass the check and then create the same named actor. We should
+        # instead check this when we create the actor, but that's currently an
+        # async call.
         if name is not None:
             try:
                 ray.util.get_actor(name)
-            except ValueError:  # name is not taken, expected.
+            except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(
@@ -545,11 +555,12 @@ class ActorClass:
             meta.language,
             meta.actor_creation_function_descriptor,
             creation_args,
-            max_reconstructions or meta.max_reconstructions,
+            max_restarts or meta.max_restarts,
             resources,
             actor_placement_resources,
             max_concurrency,
             detached,
+            name if name is not None else "",
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
@@ -565,7 +576,7 @@ class ActorClass:
             worker.current_session_and_job,
             original_handle=True)
 
-        if name is not None:
+        if name is not None and not gcs_actor_service_enabled():
             ray.util.register_actor(name, actor_handle)
 
         return actor_handle
@@ -879,21 +890,25 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions):
+               max_restarts):
     Class = modify_class(cls)
 
-    if max_reconstructions is None:
-        max_reconstructions = 0
+    if max_restarts is None:
+        max_restarts = 0
 
-    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
-            ray_constants.INFINITE_RECONSTRUCTION):
-        raise ValueError("max_reconstructions must be in range [%d, %d]." %
-                         (ray_constants.NO_RECONSTRUCTION,
-                          ray_constants.INFINITE_RECONSTRUCTION))
+    infinite_restart = max_restarts == -1
+    if not infinite_restart:
+        if max_restarts < 0:
+            raise ValueError("max_restarts must be an integer >= -1 "
+                             "-1 indicates infinite restarts")
+        else:
+            # Make sure we don't pass too big of an int to C++, causing
+            # an overflow.
+            max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
 
     return ActorClass._ray_from_modified_class(
-        Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
-        num_gpus, memory, object_store_memory, resources)
+        Class, ActorClassID.from_random(), max_restarts, num_cpus, num_gpus,
+        memory, object_store_memory, resources)
 
 
 def exit_actor():
@@ -991,7 +1006,7 @@ class Checkpointable(metaclass=ABCMeta):
     def load_checkpoint(self, actor_id, available_checkpoints):
         """Load actor's previous checkpoint, and restore actor's state.
 
-        This method will be called when an actor is reconstructed, after
+        This method will be called when an actor is restarted, after
         actor's constructor.
         If the actor needs to restore from previous checkpoint, this function
         should restore actor's state and return the checkpoint ID. Otherwise,

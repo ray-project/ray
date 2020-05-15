@@ -185,13 +185,15 @@ install_node() {
   fi
 }
 
+install_toolchains() {
+  "${ROOT_DIR}"/install-toolchains.sh
+}
+
 install_dependencies() {
 
   install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Not for Travis (keep built-in compilers there)
-    "${ROOT_DIR}"/install-toolchains.sh
-  fi
+  install_toolchains
   install_nvm
   install_pip
 
@@ -252,7 +254,7 @@ install_dependencies() {
 
   # Additional streaming dependencies.
   if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install msgpack>=0.6.2
+    pip install "msgpack>=0.6.2"
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

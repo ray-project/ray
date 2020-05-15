@@ -96,7 +96,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
-            c_bool no_reconstruction)
+            c_bool no_restart)
         CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
@@ -123,6 +123,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         CObjectID *c_actor_handle_id)
         CRayStatus GetActorHandle(const CActorID &actor_id,
                                   CActorHandle **actor_handle) const
+        CRayStatus GetNamedActorHandle(const c_string &name,
+                                       CActorHandle **actor_handle)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
