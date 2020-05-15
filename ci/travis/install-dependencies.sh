@@ -209,9 +209,8 @@ install_dependencies() {
     # We want to install the CPU version only.
     local torch_url="https://download.pytorch.org/whl/torch_stable.html"
     case "${OSTYPE}" in
-      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
       darwin*) pip install torch torchvision;;
-      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
+      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
     local tf_version
