@@ -7,6 +7,7 @@ from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import registry
 
@@ -33,6 +34,12 @@ if __name__ == "__main__":
     registry.register_env("RepeatInitialObsEnv",
                           lambda _: RepeatInitialObsEnv())
     registry.register_env("LookAndPush", lambda _: OneHot(LookAndPush()))
+    registry.register_env("StatelessCartPole", lambda _: StatelessCartPole())
+
+    #possible bugs:
+    #1) memory tau > max seq_len error.
+    #2) GRU unit seems wrong.
+    #3) other math wrong.
 
     config = {
         "env": args.env,
