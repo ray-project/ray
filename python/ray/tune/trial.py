@@ -1,3 +1,5 @@
+from collections import deque
+
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
@@ -214,8 +216,12 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/avg/last result for each metric by trial
+        # stores in memory max/min/avg/avg-n-step/last result for each metric by trial
         self.metric_analysis = {}
+
+        # keep a moving average over these last n steps
+        self.n_steps = [5, 10]
+        self.metric_n_steps = {}
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -470,6 +476,7 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
@@ -479,6 +486,12 @@ class Trial:
                         "avg": value,
                         "last": value
                     }
+                    self.metric_n_steps[metric] = {}
+                    for n in self.n_steps:
+                        key = "avg-{:d}-step".format(n)
+                        self.metric_analysis[metric][key] = value
+                        self.metric_n_steps[metric][n] = deque(
+                            [value], maxlen=n)
                 else:
                     step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
@@ -489,6 +502,13 @@ class Trial:
                         value +
                         (step - 1) * self.metric_analysis[metric]["avg"])
                     self.metric_analysis[metric]["last"] = value
+
+                    for n in self.n_steps:
+                        key = "avg-{:d}-step".format(n)
+                        self.metric_n_steps[metric][n].append(value)
+                        self.metric_analysis[metric][key] = sum(
+                            self.metric_n_steps[metric][n]) / len(
+                                self.metric_n_steps[metric][n])
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
