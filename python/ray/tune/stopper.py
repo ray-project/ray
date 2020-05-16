@@ -70,29 +70,20 @@ class EarlyStopping(Stopper):
     def __init__(self, metric, std=0.001, top=10, mode="min"):
         """Create the EarlyStopping object.
 
-        Parameters
-        ---------------------
-        metric: str,
-            The metric to be monitored.
-        std: float = 0.001,
-            The minimal standard deviation after which
-            the tuning process has to stop.
-        top: int = 10,
-            The number of best model to consider.
-        mode: str = "min",
-            The mode to select the top results.
-            Can either be "min" or "max".
+        Args:
+            metric (str): The metric to be monitored.
+            std (float): The minimal standard deviation after which
+                the tuning process has to stop.
+            top (int): The number of best model to consider.
+            mode (str): The mode to select the top results.
+                Can either be "min" or "max".
 
-        Raises
-        ----------------------
-        ValueError,
-            If the mode parameter is not "min" nor "max".
-        ValueError,
-            If the top parameter is not an integer
-            greater than 1.
-        ValueError,
-            If the standard deviation parameter is not
-            a strictly positive float.
+        Raises:
+            ValueError: If the mode parameter is not "min" nor "max".
+            ValueError: If the top parameter is not an integer
+                greater than 1.
+            ValueError: If the standard deviation parameter is not
+                a strictly positive float.
         """
         if mode not in ("min", "max"):
             raise ValueError("The mode parameter can only be"
