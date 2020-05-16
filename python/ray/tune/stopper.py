@@ -95,17 +95,14 @@ class EarlyStopping(Stopper):
             a strictly positive float.
         """
         if mode not in ("min", "max"):
-            raise ValueError(
-                "The mode parameter can only be"
-                " either min or max.")
+            raise ValueError("The mode parameter can only be"
+                             " either min or max.")
         if not isinstance(top, int) or top <= 1:
-            raise ValueError(
-                "Top results to consider must be"
-                " a positive integer greater than one.")
+            raise ValueError("Top results to consider must be"
+                             " a positive integer greater than one.")
         if not isinstance(std, float) or std <= 0:
-            raise ValueError(
-                "The standard deviation must be"
-                " a strictly positive float number.")
+            raise ValueError("The standard deviation must be"
+                             " a strictly positive float number.")
         self._mode = mode
         self._metric = metric
         self._std = std

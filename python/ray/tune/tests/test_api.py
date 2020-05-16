@@ -507,16 +507,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         stopper = EarlyStopping("test", top=top, mode="min")
 
-        analysis = tune.run(
-            train, num_samples=10, stop=stopper)
+        analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= top)
 
         stopper = EarlyStopping("test", top=top, mode="min")
 
-        analysis = tune.run(
-            train, num_samples=10, stop=stopper)
+        analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= top)
