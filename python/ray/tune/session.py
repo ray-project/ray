@@ -30,7 +30,7 @@ class _ReporterSession:
 
 def get_session():
     global _session
-    if not _session:
+    if _session is None:
         raise ValueError(
             "Session not detected. You should not be calling this function "
             "outside `tune.run` or while using the class API. ")
@@ -45,10 +45,13 @@ def init(reporter, ignore_reinit_error=True):
         # TODO(ng): would be nice to stack crawl at creation time to report
         # where that initial trial was created, and that creation line
         # info is helpful to keep around anyway.
-        reinit_msg = "A session already exists in the current context."
+        reinit_msg = (
+            "A Tune session already exists in the current process. "
+            "If you are using ray.init(local_mode=True), "
+            "you must set ray.init(..., num_cpus=1, num_gpus=1) to limit "
+            "available concurrency.")
         if ignore_reinit_error:
-            if not _session.is_tune_session:
-                logger.warning(reinit_msg)
+            logger.warning(reinit_msg)
             return
         else:
             raise ValueError(reinit_msg)
