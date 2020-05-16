@@ -73,6 +73,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # Streaming cpp test.
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=asan --config=ci --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
         - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
         - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
@@ -171,6 +172,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
@@ -189,6 +191,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with torch (from rllib/tuned_examples/regression_tests/*.yaml).
@@ -206,6 +209,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
@@ -224,10 +228,12 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
         #- ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir rllib/...
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=agents_dir_X rllib/...
 
     # RLlib: Everything in rllib/examples/ directory.
@@ -245,6 +251,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=examples_A,examples_B rllib/...
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=examples_C,examples_D rllib/...
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P rllib/...
@@ -265,6 +272,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L rllib/...
 
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
@@ -282,6 +290,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
         - ./ci/keep_alive bazel test --config=asan --config=ci --build_tests_only --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
 
     # Cpp worker test
@@ -298,6 +307,7 @@ matrix:
 
 script:
   # raylet integration tests
+  - export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 

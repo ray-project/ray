@@ -3,7 +3,6 @@
 echo "FINDING LIBASAN"
 locate libasan
 echo "FINDING LIBASAN"
-export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
 
 # Push caller's shell options (quietly)
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
