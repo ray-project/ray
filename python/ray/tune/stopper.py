@@ -67,7 +67,7 @@ class FunctionStopper(Stopper):
 
 
 class EarlyStopping(Stopper):
-    def __init__(self, metric: str, std: float = 0.001, top: int = 10, mode: str = "min"):
+    def __init__(self, metric, std = 0.001, top = 10, mode = "min"):
         """Create the EarlyStopping object.
 
         Parameters
@@ -82,7 +82,7 @@ class EarlyStopping(Stopper):
         mode: str = "min",
             The mode to select the top results.
             Can either be "min" or "max".
-        
+
         Raises
         ----------------------
         ValueError,
@@ -107,7 +107,7 @@ class EarlyStopping(Stopper):
                 "The standard deviation must be"
                 " a strictly positive float number.")
         self._mode = mode
-        self._monitor = monitor
+        self._metric = metric
         self._std = std
         self._top = top
         self._top_values = []
