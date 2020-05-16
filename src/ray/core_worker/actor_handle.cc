@@ -23,7 +23,7 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
     const ray::rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
     const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data) {
+    const std::string &extension_data, int64_t max_task_retries) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -34,6 +34,7 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
       actor_creation_task_function_descriptor->GetMessage();
   inner.set_actor_cursor(initial_cursor.Binary());
   inner.set_extension_data(extension_data);
+  inner.set_max_task_retries(max_task_retries);
   return inner;
 }
 
@@ -69,10 +70,10 @@ ActorHandle::ActorHandle(
     const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
     const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data)
+    const std::string &extension_data, int64_t max_task_retries)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
-          actor_creation_task_function_descriptor, extension_data)) {}
+          actor_creation_task_function_descriptor, extension_data, max_task_retries)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -94,11 +95,5 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
-
-void ActorHandle::Reset() {
-  absl::MutexLock guard(&mutex_);
-  task_counter_ = 0;
-  actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
-}
 
 }  // namespace ray

@@ -903,6 +903,7 @@ cdef class CoreWorker:
                      FunctionDescriptor function_descriptor,
                      args,
                      int64_t max_restarts,
+                     int64_t max_task_retries,
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
@@ -929,7 +930,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_restarts, max_concurrency,
+                        max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio),
                     extension_data,

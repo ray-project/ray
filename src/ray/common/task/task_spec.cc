@@ -209,6 +209,10 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+WorkerID TaskSpecification::CallerWorkerId() const {
+  return WorkerID::FromBinary(message_->caller_address().worker_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {

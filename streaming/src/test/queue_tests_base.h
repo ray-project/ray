@@ -275,8 +275,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::string name = "";
     ActorCreationOptions actor_options{
         max_restarts,
-        /*max_concurrency=*/1, resources, resources,           {},
-        /*is_detached=*/false, name,      /*is_asyncio=*/false};
+        /*max_task_retries=*/0,
+        /*max_concurrency=*/1,  resources, resources,           {},
+        /*is_detached=*/false,  name,      /*is_asyncio=*/false};
     // Create an actor.
     ActorID actor_id;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(
