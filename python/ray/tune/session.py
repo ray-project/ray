@@ -12,6 +12,9 @@ class _ReporterSession:
     def report(self, **metrics):
         return self.tune_reporter(**metrics)
 
+    def get_checkpoint_dir(self):
+        return self.tune_reporter.get_checkpoint_dir()
+
     @property
     def logdir(self):
         """Trial logdir (subdir of given experiment directory)"""
@@ -89,30 +92,31 @@ def report(**kwargs):
     return _session.report(**kwargs)
 
 
-def report(**kwargs):
-    """Logs all keyword arguments.
+def get_checkpoint_dir():
+    """Gets the next checkpoint dir.
 
     .. code-block:: python
 
         import time
         from ray import tune
 
-        def run_me(config):
-            for iter in range(100):
+        def run_me(config, checkpoint=None):
+            for iter in range(checkpoint, 100):
                 time.sleep(1)
+
+                checkpoint_dir = tune.get_checkpoint_dir()
+                with open(checkpoint_dir + "/checkpoint", "wb") as f:
+                    f.write(iter)
+                tune.save_checkpoint(checkpoint_dir)
+
                 tune.report(hello="world", ray="tune")
-
-        analysis = tune.run(run_me)
-
-    Args:
-        **kwargs: Any key value pair to be logged by Tune. Any of these
-            metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session.report(**kwargs)
+    return _session.get_checkpoint_dir()
 
 
-def track_checkpoint(checkpoint):
+
+def save_checkpoint(checkpoint):
     """Register the given checkpoint.
 
     .. code-block:: python
@@ -123,7 +127,7 @@ def track_checkpoint(checkpoint):
         def run_me(config, checkpoint=0):
             for iter in range(checkpoint, 100):
                 time.sleep(1)
-                tune.track_checkpoint(iter)
+                tune.save_checkpoint(iter)
                 tune.report(hello="world", ray="tune")
 
         analysis = tune.run(run_me)
@@ -137,10 +141,10 @@ def track_checkpoint(checkpoint):
             for iter in range(checkpoint, 100):
                 time.sleep(1)
 
-                checkpoint_dir = tune.get_next_checkpoint_dir()
+                checkpoint_dir = tune.get_checkpoint_dir()
                 with open(checkpoint_dir + "/checkpoint", "wb") as f:
                     f.write(iter)
-                tune.track_checkpoint(checkpoint_dir)
+                tune.save_checkpoint(checkpoint_dir)
 
                 tune.report(hello="world", ray="tune")
 

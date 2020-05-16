@@ -6,7 +6,7 @@ import traceback
 from six.moves import queue
 
 from ray.tune import TuneError, session
-from ray.tune.trainable import Trainable
+from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,13 @@ class StatusReporter:
 
     def __init__(self,
                  result_queue,
+                 checkpoint_queue,
                  continue_semaphore,
                  trial_name=None,
                  trial_id=None,
                  logdir=None):
         self._queue = result_queue
+        self._checkpoint_queue = checkpoint_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._trial_name = trial_name
@@ -76,6 +78,12 @@ class StatusReporter:
         # result has been returned to Tune and that the function is safe to
         # resume training.
         self._continue_semaphore.acquire()
+
+    def get_checkpoint_dir(self, step=None):
+        return TrainableUtil.make_checkpoint_dir(self.logdir, step=step)
+
+    def save_checkpoint(self, checkpoint_path):
+        self._checkpoint_queue.put(checkpoint_path)
 
     def _start(self):
         self._last_report_time = time.time()
@@ -242,6 +250,28 @@ class FunctionRunner(Trainable):
         self._last_result = result
         return result
 
+    def save(self, checkpoint_path=None):
+        if checkpoint_path:
+            raise ValueError(
+                "Checkpoint path should not be used with function API.")
+        if not self._checkpoint_queue.empty():
+            checkpoint =  self._checkpoint_queue.pop()
+            self._last_checkpoint = checkpoint
+        else:
+            checkpoint = self._last_checkpoint
+        checkpoint_path = TrainableUtil.process_checkpoint(checkpoint, self)
+        return checkpoint_path
+
+    def save_to_object(self):
+        checkpoint_path = self.save()
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_dir)
+        out = io.BytesIO()
+        if len(data_dict) > 10e6:  # getting pretty large
+            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
+        out.write(data_dict)
+        return out.getvalue()
+
     def _stop(self):
         # If everything stayed in synch properly, this should never happen.
         if not self._results_queue.empty():
@@ -268,7 +298,7 @@ def wrap_function(train_func):
     class ImplicitFunc(FunctionRunner):
         def _trainable_func(self, config, reporter):
             func_args = inspect.getfullargspec(train_func).args
-            use_track = ("reporter" not in func_args and len(func_args) == 1)
+            use_track = ("reporter" not in func_args)
             if use_track:
                 output = train_func(config)
             else:
