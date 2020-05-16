@@ -492,11 +492,30 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def train(config, reporter):
             reporter(test=0)
 
+        top = 3
+
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", top=0)
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", top="0")
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", std=0)
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", std="0")
+        with self.assertRaises(ValueError):
+            EarlyStopping("test", mode="0")
+
         analysis = tune.run(
-            train, num_samples=10, stop=EarlyStopping("test", top=3))
+            train, num_samples=10, stop=EarlyStopping("test", top=top, mode="min"))
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) == 3)
+        self.assertTrue(len(analysis.dataframe()) <= top)
+
+        analysis = tune.run(
+            train, num_samples=10, stop=EarlyStopping("test", top=top, mode="max"))
+        self.assertTrue(
+            all(t.status == Trial.TERMINATED for t in analysis.trials))
+        self.assertTrue(len(analysis.dataframe()) <= top)
 
     def testBadStoppingFunction(self):
         def train(config, reporter):

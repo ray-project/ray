@@ -67,7 +67,7 @@ class FunctionStopper(Stopper):
 
 
 class EarlyStopping(Stopper):
-    def __init__(self, metric: str, std: float = 0.001, top: int = 10):
+    def __init__(self, metric: str, std: float = 0.001, top: int = 10, mode: str = "min"):
         """Create the EarlyStopping object.
 
         Parameters
@@ -79,8 +79,35 @@ class EarlyStopping(Stopper):
             the tuning process has to stop.
         top: int = 10,
             The number of best model to consider.
+        mode: str = "min",
+            The mode to select the top results.
+            Can either be "min" or "max".
+        
+        Raises
+        ----------------------
+        ValueError,
+            If the mode parameter is not "min" nor "max".
+        ValueError,
+            If the top parameter is not an integer
+            greater than 1.
+        ValueError,
+            If the standard deviation parameter is not
+            a strictly positive float.
         """
-        self._metric = metric
+        if mode not in ("min", "max"):
+            raise ValueError(
+                "The mode parameter can only be"
+                " either min or max.")
+        if not isinstance(top, int) or top <= 1:
+            raise ValueError(
+                "Top results to consider must be"
+                " a positive integer greater than one.")
+        if not isinstance(std, float) or std <= 0:
+            raise ValueError(
+                "The standard deviation must be"
+                " a strictly positive float number.")
+        self._mode = mode
+        self._monitor = monitor
         self._std = std
         self._top = top
         self._top_values = []
@@ -88,7 +115,10 @@ class EarlyStopping(Stopper):
     def __call__(self, trial_id, result):
         """Return a boolean representing if the tuning has to stop."""
         self._top_values.append(result[self._metric])
-        self._top_values = sorted(self._top_values)[:self._top]
+        if self._mode == "min":
+            self._top_values = sorted(self._top_values)[:self._top]
+        else:
+            self._top_values = sorted(self._top_values)[-self._top:]
         return self.stop_all()
 
     def stop_all(self):
