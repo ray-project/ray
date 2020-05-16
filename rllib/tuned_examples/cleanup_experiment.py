@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import yaml
 
 parser = argparse.ArgumentParser()
@@ -59,6 +60,8 @@ def process_single_run(in_dir, out_dir):
     assert "params.json" in exp_dir and "progress.csv" in exp_dir, \
         "params.json or progress.csv not found in {}!".format(in_dir)
 
+    os.makedirs(out_dir, exist_ok=True)
+
     for file in exp_dir:
         absfile = os.path.join(in_dir, file)
         # Config file -> Convert to yaml and move to output dir.
@@ -66,7 +69,6 @@ def process_single_run(in_dir, out_dir):
             assert os.path.isfile(absfile), "{} not a file!".format(file)
             with open(absfile) as fp:
                 contents = json.load(fp)
-            os.makedirs(out_dir, exist_ok=True)
             with open(os.path.join(out_dir, "config.yaml"), "w") as fp:
                 yaml.dump(contents, fp)
         # Progress csv file -> Filter out some columns, cut, and write to
@@ -96,6 +98,7 @@ def process_single_run(in_dir, out_dir):
                         #line_num += 1
                         if not line:
                             break
+                        line = re.sub("(,{2,})", lambda m: ",None" * (len(m.group())-1) + ",", line)
                         cols = re.findall('".+?"|[^,]+', line)
                         if len(cols) != len(col_names_orig):
                             continue
@@ -135,6 +138,11 @@ def process_single_run(in_dir, out_dir):
                 zip_file, os.path.join(out_dir, "progress.csv")))
             os.remove(os.path.join(out_dir, "progress.csv"))
 
+        # TBX events file -> Move as is.
+        elif re.search("^(events\\.out\\.|params\\.pkl)", file):
+            assert os.path.isfile(absfile), "{} not a file!".format(file)
+            shutil.copyfile(absfile, os.path.join(out_dir, file))
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -143,7 +151,8 @@ if __name__ == "__main__":
     for i, sub_run in enumerate(sorted(exp_dir)):
         abspath = os.path.join(args.experiment_dir, sub_run)
         # This is a seed run.
-        if os.path.isdir(abspath):
+        if os.path.isdir(abspath) and \
+                re.search("^(\\w+?)_(\\w+?-v\\d+)(_\\d+)", sub_run):
             # Create meaningful output dir name:
             # [algo]_[env]_[trial #]_[trial-config]_[date YYYY-MM-DD].
             cleaned_up_out = re.sub(
