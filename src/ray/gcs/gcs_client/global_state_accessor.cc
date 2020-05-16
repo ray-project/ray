@@ -36,19 +36,32 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
 
   io_service_.reset(new boost::asio::io_service());
 
-  thread_io_service_.reset(new std::thread([this] {
+  std::promise<bool> promise;
+  thread_io_service_.reset(new std::thread([this, &promise] {
     std::unique_ptr<boost::asio::io_service::work> work(
         new boost::asio::io_service::work(*io_service_));
+    promise.set_value(true);
     io_service_->run();
   }));
+  promise.get_future().get();
 }
 
-bool GlobalStateAccessor::Connect() { return gcs_client_->Connect(*io_service_).ok(); }
-
-void GlobalStateAccessor::Disconnect() {
-  gcs_client_->Disconnect();
+GlobalStateAccessor::~GlobalStateAccessor() {
+  Disconnect();
   io_service_->stop();
   thread_io_service_->join();
+}
+
+bool GlobalStateAccessor::Connect() {
+  is_connected_ = true;
+  return gcs_client_->Connect(*io_service_).ok();
+}
+
+void GlobalStateAccessor::Disconnect() {
+  if (is_connected_) {
+    gcs_client_->Disconnect();
+    is_connected_ = false;
+  }
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {

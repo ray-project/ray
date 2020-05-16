@@ -34,6 +34,8 @@ class GlobalStateAccessor {
   explicit GlobalStateAccessor(const std::string &redis_address,
                                const std::string &redis_password, bool is_test = false);
 
+  ~GlobalStateAccessor();
+
   /// Connect gcs server.
   ///
   /// \return Whether the connection is successful.
@@ -48,6 +50,9 @@ class GlobalStateAccessor {
   std::vector<std::string> GetAllJobInfo();
 
  private:
+  /// Whether this client is connected to gcs server.
+  bool is_connected_{false};
+
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
 
   std::unique_ptr<std::thread> thread_io_service_;
