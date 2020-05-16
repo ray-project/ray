@@ -41,7 +41,7 @@ def init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
 
-    if _session:
+    if _session is not None:
         # TODO(ng): would be nice to stack crawl at creation time to report
         # where that initial trial was created, and that creation line
         # info is helpful to keep around anyway.
