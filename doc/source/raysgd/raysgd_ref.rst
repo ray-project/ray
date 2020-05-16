@@ -37,7 +37,7 @@ TFTrainer
 Dataset
 -------
 
-.. autoclass:: ray.util.sgd.tf.TFTrainer
+.. autoclass:: ray.util.sgd.data.Dataset
     :members:
 
     .. automethod:: __init__

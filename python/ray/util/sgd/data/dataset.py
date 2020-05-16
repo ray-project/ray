@@ -10,32 +10,32 @@ class Dataset():
 
     .. code-block:: python
 
-            def to_mat(x):
-                return torch.tensor([[x]]).float()
+        def to_mat(x):
+            return torch.tensor([[x]]).float()
 
 
-            data = [i * 0.001 for i in range(1000)]
-            p_iter = iter.from_items(data, num_shards=1, repeat=True)
-            dataset = Dataset(
-                p_iter,
-                batch_size=32,
-                max_concurrency=1,
-                download_func=lambda x: (to_mat(x), to_mat(x)))
+        data = [i * 0.001 for i in range(1000)]
+        p_iter = iter.from_items(data, num_shards=1, repeat=True)
+        dataset = Dataset(
+            p_iter,
+            batch_size=32,
+            max_concurrency=1,
+            download_func=lambda x: (to_mat(x), to_mat(x)))
 
-            trainer = TorchTrainer(
-                model_creator=model_creator,
-                data_creator=None,
-                optimizer_creator=optimizer_creator,
-                loss_creator=torch.nn.MSELoss,
-                num_workers=5,
-            )
+        trainer = TorchTrainer(
+            model_creator=model_creator,
+            data_creator=None,
+            optimizer_creator=optimizer_creator,
+            loss_creator=torch.nn.MSELoss,
+            num_workers=5,
+        )
 
-            for i in range(10):
-                # Train for another epoch using the dataset
-                trainer.train(dataset=dataset, num_steps=200)
+        for i in range(10):
+            # Train for another epoch using the dataset
+            trainer.train(dataset=dataset, num_steps=200)
 
-            model = trainer.get_model()
-            print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
+        model = trainer.get_model()
+        print("f(0.5)=", float(model(to_mat(0.5))[0][0]))
 
     Args:
         data (iterable[U] or ParallelIterator[U]): Any existing python

@@ -493,8 +493,7 @@ class TorchTrainer:
 
         success = check_for_failure(remote_worker_stats)
         if success:
-            a, b = success, [local_worker_stats] + ray.get(remote_worker_stats)
-            return a, b
+            return success, [local_worker_stats] + ray.get(remote_worker_stats)
 
         return success, None
 
