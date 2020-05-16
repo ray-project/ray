@@ -8,6 +8,7 @@ git:
   quiet: true
 
 before_install:
+  - unset -f cd  # Travis defines this on Mac for RVM, but it breaks the Mac build
   - |
     git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
     cd -- "${TRAVIS_REPO_SLUG}"
