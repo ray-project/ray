@@ -23,15 +23,15 @@
 namespace ray {
 
 void RedisServiceManagerForTest::SetUpTestCase() {
-  std::vector<int> ACTUAL_REDIS_SERVER_PORTS;
+  std::vector<int> actual_redis_server_ports;
   if (REDIS_SERVER_PORTS.empty()) {
-    ACTUAL_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(0));
+    actual_redis_server_ports.push_back(StartUpRedisServer(0));
   } else {
     for (const auto &port : REDIS_SERVER_PORTS) {
-      ACTUAL_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(port));
+      actual_redis_server_ports.push_back(StartUpRedisServer(port));
     }
   }
-  REDIS_SERVER_PORTS = ACTUAL_REDIS_SERVER_PORTS;
+  REDIS_SERVER_PORTS = actual_redis_server_ports;
 }
 
 // start a redis server with specified port, use random one when 0 given

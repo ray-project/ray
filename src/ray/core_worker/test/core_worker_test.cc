@@ -88,6 +88,7 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
   return std::string(reinterpret_cast<const char *>(metadata->Data()), metadata->Size());
 }
 
+// inherit from RedisServiceManagerForTest for setting up redis server(s)
 class CoreWorkerTest : public RedisServiceManagerForTest {
  public:
   CoreWorkerTest(int num_nodes)
