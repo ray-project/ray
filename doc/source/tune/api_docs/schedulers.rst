@@ -16,19 +16,18 @@ All Trial Schedulers take in a ``metric``, which is a value returned in the resu
 Summary
 -------
 
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://homes.cs.washington.edu/~jamieson/hyperband.html>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
 
-.. note::
+.. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
 
-    * Certain schedulers are only compatible withthe  :ref:`tune-class-api` - refer to the below compatibility matrix.
-    * Unlike :ref:`Tune's Search Algorithms <tune-search-alg>`, Tune TrialSchedulers do not select which hyperparameter configurations to evaluate. However, you can use them together. Please refer to the below compatibility matrix.
+When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix. Certain schedulers cannot be used with Search Algorithms, and certain schedulers are only compatible with the  :ref:`tune-class-api`.
 
-.. list-table::
+.. list-table:: TrialScheduler Feature Compatibility Matrix
    :header-rows: 1
 
    * - Scheduler
      - Class API Required?
-     - SearchAlg Compat?
+     - SearchAlg Compatible?
      - Example
    * - :ref:`ASHA <tune-scheduler-hyperband>`
      - No
@@ -56,7 +55,7 @@ Tune includes distributed implementations of early stopping algorithms such as `
 ASHA (tune.schedulers.ASHAScheduler)
 ------------------------------------
 
-The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by setting the ``scheduler`` parameter of ``tune.run``, e.g.
 
 .. code-block:: python
 
@@ -81,7 +80,7 @@ Compared to the original version of HyperBand, this implementation provides bett
 HyperBand (tune.schedulers.HyperBandScheduler)
 ----------------------------------------------
 
-Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
+Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__. **We recommend using the ASHA Scheduler over the standard HyperBand scheduler.**
 
 .. autoclass:: ray.tune.schedulers.HyperBandScheduler
 
@@ -152,7 +151,7 @@ You can run this `toy PBT example <https://github.com/ray-project/ray/blob/maste
 BOHB (tune.schedulers.HyperBandForBOHB)
 ---------------------------------------
 
-This class is a variant of HyperBand that enables the BOHB Algorithm. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
+This class is a variant of HyperBand that enables the `BOHB Algorithm <https://arxiv.org/abs/1807.01774>`_. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
 
 This is to be used in conjunction with the Tune BOHB search algorithm. See :ref:`TuneBOHB <suggest-TuneBOHB>` for package requirements, examples, and details.
 

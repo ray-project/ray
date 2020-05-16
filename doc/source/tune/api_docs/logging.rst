@@ -5,12 +5,46 @@ Loggers (tune.logger)
 
 Tune has default loggers for Tensorboard, CSV, and JSON formats. By default, Tune only logs the returned result dictionaries from the training function.
 
-If you need to log something lower level like model weights or gradients, see :ref:`Tighter Logging <tighter-logging>`.
+If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 
 Custom Loggers
 --------------
 
-You can pass in your own logging mechanisms to output logs in custom formats as follows:
+You can create a custom logger by inheriting the Logger interface (:ref:`logger-interface`):
+
+.. code-block:: python
+
+    from ray.tune.logger import Logger
+
+    class MLFLowLogger(Logger):
+        """MLFlow logger.
+
+        Requires the experiment configuration to have a MLFlow Experiment ID
+        or manually set the proper environment variables.
+        """
+
+        def _init(self):
+            from mlflow.tracking import MlflowClient
+            client = MlflowClient()
+
+            # self.config is the same config that your Trainable will see.
+            run = client.create_run(self.config.get("mlflow_experiment_id"))
+            self._run_id = run.info.run_id
+            for key, value in self.config.items():
+                client.log_param(self._run_id, key, value)
+            self.client = client
+
+        def on_result(self, result):
+            for key, value in result.items():
+                if not isinstance(value, float):
+                    continue
+                self.client.log_metric(
+                    self._run_id, key, value, step=result.get(TRAINING_ITERATION))
+
+        def close(self):
+            self.client.set_terminated(self._run_id)
+
+You can then pass in your own logger as follows:
 
 .. code-block:: python
 
@@ -22,24 +56,24 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the Logger interface (:ref:`logger-interface`).  You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
+These loggers will be called along with the default Tune loggers. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
 
-An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+An example of creating a custom logger can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-.. _tighter-logging:
+.. _trainable-logging:
 
-Tighter Logging
----------------
+Trainable Logging
+-----------------
 
-By default, Tune only logs the training result dictionaries from your Trainable. You may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. You may want to do this if:
+By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if:
 
  * you're using `Weights and Biases <https://www.wandb.com/>`_
  * you're using `MLFlow <https://github.com/mlflow/mlflow/>`__
  * you're trying to log images to Tensorboard.
 
-Tune's :ref:`Training APIs <trainable-docs>` allows you to setup your logging as if you were doing so in a single process. Use ``self.logdir`` (only for Class API) or ``tune.track.logdir`` (only for Function API) for the trial log directory.
+You can do this in the trainable, as shown below:
 
-.. tip:: Make sure that any logging calls or objects stay within scope of the Trainable.
+.. tip:: Make sure that any logging calls or objects stay within scope of the Trainable. You may see Pickling/serialization errors or inconsistent logs otherwise.
 
 **Function API**:
 
@@ -87,7 +121,9 @@ Tune's :ref:`Training APIs <trainable-docs>` allows you to setup your logging as
             step = result["training_iteration"]
             library.log(res_dict, step=step)
 
-In the distributed case, these logs will be sync'ed back to the driver under your logger path.
+Use ``self.logdir`` (only for Class API) or ``tune.track.logdir`` (only for Function API) for the trial log directory.
+
+In the distributed case, these logs will be sync'ed back to the driver under your logger path. This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
 
 Log Directory

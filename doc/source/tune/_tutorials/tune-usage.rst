@@ -282,7 +282,7 @@ Note that in the above example the currently running trials will not stop immedi
 Logging/Tensorboard
 -------------------
 
-Tune by default will log results for Tensorboard, CSV, and JSON formats. If you need to log something lower level like model weights or gradients, see :ref:`Tighter Logging <tighter-logging>`.
+Tune by default will log results for Tensorboard, CSV, and JSON formats. If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 
 **Learn more about logging and customizations here**: :ref:`loggers-docstring`.
 

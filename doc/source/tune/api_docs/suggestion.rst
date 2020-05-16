@@ -3,7 +3,9 @@
 Search Algorithms (tune.suggest)
 ================================
 
-Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection. These integrations optimize the given trainable over a provided search space. You can utilize these search algorithms as follows:
+Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection. Each library has a specific way of defining the search space - please refer to their documentation for more details.
+
+You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
