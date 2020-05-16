@@ -67,7 +67,7 @@ class FunctionStopper(Stopper):
 
 
 class EarlyStopping(Stopper):
-    def __init__(self, metric, std = 0.001, top = 10, mode = "min"):
+    def __init__(self, metric, std=0.001, top=10, mode="min"):
         """Create the EarlyStopping object.
 
         Parameters
