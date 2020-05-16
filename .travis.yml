@@ -8,8 +8,6 @@ git:
   quiet: true
 
 before_install:
-  - rvm reset && rvm implode --force && gem uninstall rvm || true  # uninstall Ruby RVM
-  - unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
   - |
     git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
     cd -- "${TRAVIS_REPO_SLUG}"
