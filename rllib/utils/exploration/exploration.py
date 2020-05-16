@@ -39,8 +39,11 @@ class Exploration:
         self.framework = check_framework(framework)
         # The device on which the Model has been placed.
         # This Exploration will be on the same device.
-        self.device = None if not isinstance(self.model, nn.Module) else \
-            next(self.model.parameters()).device
+        self.device = None
+        if isinstance(self.model, nn.Module):
+            params = list(self.model.parameters())
+            if params:
+                self.device = params[0].device
 
     @DeveloperAPI
     def before_compute_actions(self,
@@ -137,11 +140,14 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_info(self):
+    def get_info(self, sess=None):
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in
         set_state!), but rather useful (e.g. debugging) information.
+
+        Args:
+            sess (Optional[tf.Session]): An optional tf Session object to use.
 
         Returns:
             dict: A description of the Exploration (not necessarily its state).

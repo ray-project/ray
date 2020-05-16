@@ -44,7 +44,9 @@ MODEL_DEFAULTS = {
     "fcnet_activation": "tanh",
     # Number of hidden layers for fully connected net
     "fcnet_hiddens": [256, 256],
-    # For control envs, documented in ray.rllib.models.Model
+    # For DiagGaussian action distributions, make the second half of the model
+    # outputs floating bias variables instead of state-dependent. This only
+    # has an effect is using the default fully connected net.
     "free_log_std": False,
     # Whether to skip the final linear layer used to resize the hidden layer
     # outputs to size `num_outputs`. If True, then the last hidden layer
@@ -169,13 +171,13 @@ class ModelCatalog:
                 lambda s: ModelCatalog.get_action_dist(
                     s, config, framework=framework), flat_action_space)
             child_dists = [e[0] for e in child_dists_and_in_lens]
-            input_lens = [e[1] for e in child_dists_and_in_lens]
+            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
             return partial(
                 (TorchMultiActionDistribution
                  if framework == "torch" else MultiActionDistribution),
                 action_space=action_space,
                 child_distributions=child_dists,
-                input_lens=input_lens), sum(input_lens)
+                input_lens=input_lens), int(sum(input_lens))
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
@@ -281,14 +283,16 @@ class ModelCatalog:
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
             if issubclass(model_cls, ModelV2):
+
+                logger.info("Wrapping {} as {}".format(model_cls,
+                                                       model_interface))
+                model_cls = ModelCatalog._wrap_if_needed(
+                    model_cls, model_interface)
+
                 if framework == "tf":
-                    logger.info("Wrapping {} as {}".format(
-                        model_cls, model_interface))
-                    model_cls = ModelCatalog._wrap_if_needed(
-                        model_cls, model_interface)
+                    # Track and warn if vars were created but not registered.
                     created = set()
 
-                    # Track and warn if vars were created but not registered
                     def track_var_creation(next_creator, **kw):
                         v = next_creator(**kw)
                         created.add(v)
@@ -312,10 +316,13 @@ class ModelCatalog:
                             "question?".format(not_registered, instance,
                                                registered))
                 else:
-                    # no variable tracking
+                    # PyTorch automatically tracks nn.Modules inside the parent
+                    # nn.Module's constructor.
+                    # TODO(sven): Do this for TF as well.
                     instance = model_cls(obs_space, action_space, num_outputs,
                                          model_config, name, **model_kwargs)
                 return instance
+
             elif tf.executing_eagerly():
                 raise ValueError(
                     "Eager execution requires a TFModelV2 model to be "
@@ -528,9 +535,6 @@ class ModelCatalog:
                                                       FCNet)
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
-            if model_config.get("use_lstm"):
-                raise NotImplementedError(
-                    "LSTM auto-wrapping not implemented for torch")
         else:
             from ray.rllib.models.tf.fcnet_v2 import \
                 FullyConnectedNetwork as FCNet

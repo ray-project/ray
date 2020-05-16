@@ -285,6 +285,10 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
 
+# Visible for testing.
+_local_replay_buffer = None
+
+
 # TODO(ekl) move this class to common
 class LocalReplayBuffer(ParallelIteratorWorker):
     """A replay buffer shard.
@@ -292,14 +296,21 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     Ray actors are single-threaded, so for scalability multiple replay actors
     may be created to increase parallelism."""
 
-    def __init__(self, num_shards, learning_starts, buffer_size,
-                 replay_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps):
+    def __init__(self,
+                 num_shards,
+                 learning_starts,
+                 buffer_size,
+                 replay_batch_size,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 multiagent_sync_replay=False):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+        self.multiagent_sync_replay = multiagent_sync_replay
 
         def gen_replay():
             while True:
@@ -318,6 +329,17 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.replay_timer = TimerStat()
         self.update_priorities_timer = TimerStat()
         self.num_added = 0
+
+        # Make externally accessible for testing.
+        global _local_replay_buffer
+        _local_replay_buffer = self
+        # If set, return this instead of the usual data for testing.
+        self._fake_batch = None
+
+    @staticmethod
+    def get_instance_for_testing():
+        global _local_replay_buffer
+        return _local_replay_buffer
 
     def get_host(self):
         return os.uname()[1]
@@ -338,15 +360,28 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.num_added += batch.count
 
     def replay(self):
+        if self._fake_batch:
+            fake_batch = SampleBatch(self._fake_batch)
+            return MultiAgentBatch({
+                DEFAULT_POLICY_ID: fake_batch
+            }, fake_batch.count)
+
         if self.num_added < self.replay_starts:
             return None
 
         with self.replay_timer:
             samples = {}
+            idxes = None
             for policy_id, replay_buffer in self.replay_buffers.items():
+                if self.multiagent_sync_replay:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(
+                            self.replay_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(self.replay_batch_size)
                 (obses_t, actions, rewards, obses_tp1, dones, weights,
-                 batch_indexes) = replay_buffer.sample(
-                     self.replay_batch_size, beta=self.prioritized_replay_beta)
+                 batch_indexes) = replay_buffer.sample_with_idxes(
+                     idxes, beta=self.prioritized_replay_beta)
                 samples[policy_id] = SampleBatch({
                     "obs": obses_t,
                     "actions": actions,
@@ -392,9 +427,14 @@ class LocalBatchReplayBuffer(LocalReplayBuffer):
     This allows for RNN models, but ignores prioritization params.
     """
 
-    def __init__(self, num_shards, learning_starts, buffer_size,
-                 train_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps):
+    def __init__(self,
+                 num_shards,
+                 learning_starts,
+                 buffer_size,
+                 train_batch_size,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size

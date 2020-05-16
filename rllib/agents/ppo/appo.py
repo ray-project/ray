@@ -1,6 +1,7 @@
+from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
-from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
+from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 
 # yapf: disable
@@ -53,6 +54,9 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+
+    # TODO: impl update target.
+    "use_exec_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -87,11 +91,6 @@ def get_policy_class(config):
         return AsyncPPOTorchPolicy
     else:
         return AsyncPPOTFPolicy
-
-
-def validate_config(config):
-    if config["entropy_coeff"] < 0:
-        raise ValueError("`entropy_coeff` must be >= 0.0!")
 
 
 APPOTrainer = impala.ImpalaTrainer.with_updates(

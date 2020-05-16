@@ -31,7 +31,7 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
 
         @override(ModelV2)
         def get_initial_state(self):
-            # make hidden states on same device as model
+            # Place hidden states on same device as model.
             h = [self.fc1.weight.new(
                 1, self.rnn_hidden_dim).zero_().squeeze(0)]
             return h
