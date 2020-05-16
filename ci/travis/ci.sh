@@ -3,6 +3,9 @@
 # Push caller's shell options (quietly)
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
+echo "FINDING LIBASAN"
+find /
+echo "FINDING LIBASAN"
 locate libasan
 
 set -eo pipefail
