@@ -68,13 +68,17 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         min_avg = ea.get_best_trial("score", "min",
                                     "avg").metric_analysis["score"]["avg"]
         max_avg_5 = ea.get_best_trial(
-            "score", "max", "avg-5-step").metric_analysis["score"]["avg-5-step"]
+            "score", "max",
+            "last-5-avg").metric_analysis["score"]["last-5-avg"]
         min_avg_5 = ea.get_best_trial(
-            "score", "min", "avg-5-step").metric_analysis["score"]["avg-5-step"]
+            "score", "min",
+            "last-5-avg").metric_analysis["score"]["last-5-avg"]
         max_avg_10 = ea.get_best_trial(
-            "score", "max", "avg-10-step").metric_analysis["score"]["avg-10-step"]
+            "score", "max",
+            "last-10-avg").metric_analysis["score"]["last-10-avg"]
         min_avg_10 = ea.get_best_trial(
-            "score", "min", "avg-10-step").metric_analysis["score"]["avg-10-step"]
+            "score", "min",
+            "last-10-avg").metric_analysis["score"]["last-10-avg"]
         self.assertEqual(max_all, max(scores_all))
         self.assertEqual(min_all, min(scores_all))
         self.assertEqual(max_last, max(scores_last))

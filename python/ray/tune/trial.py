@@ -216,7 +216,8 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/avg/avg-n-step/last result for each metric by trial
+        # stores in memory max/min/avg/last-n-avg/last result for each
+        # metric by trial
         self.metric_analysis = {}
 
         # keep a moving average over these last n steps
@@ -488,7 +489,7 @@ class Trial:
                     }
                     self.metric_n_steps[metric] = {}
                     for n in self.n_steps:
-                        key = "avg-{:d}-step".format(n)
+                        key = "last-{:d}-avg".format(n)
                         self.metric_analysis[metric][key] = value
                         self.metric_n_steps[metric][n] = deque(
                             [value], maxlen=n)
@@ -504,7 +505,7 @@ class Trial:
                     self.metric_analysis[metric]["last"] = value
 
                     for n in self.n_steps:
-                        key = "avg-{:d}-step".format(n)
+                        key = "last-{:d}-avg".format(n)
                         self.metric_n_steps[metric][n].append(value)
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][n]) / len(
