@@ -38,11 +38,8 @@ void RedisServiceManagerForTest::SetUpTestCase() {
 int RedisServiceManagerForTest::StartUpRedisServer(int port) {
   int actual_port = port;
   if (port == 0) {
-    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    std::mt19937 gen(seed);
-    std::uniform_int_distribution<int> random_gen{2000, 7000};
-    // Use random port to avoid port conflicts between UTs.
-    actual_port = random_gen(gen);
+    // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
+    actual_port = rand() % 5000 + 2000;
   }
 
   std::string load_module_command;
