@@ -44,18 +44,15 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::GetAll(
-    const SegmentedCallback<std::pair<Key, Data>> &callback) {
-  auto on_done = [callback](
-                     const Status &status, bool has_more,
-                     const std::vector<std::pair<std::string, std::string>> &result) {
-    std::vector<std::pair<Key, Data>> values;
+Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
+  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+    std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       Data data;
       data.ParseFromString(item.second);
-      values.emplace_back(std::move(std::make_pair(Key::FromBinary(item.first), data)));
+      values[Key::FromBinary(item.first)] = data;
     }
-    callback(status, has_more, values);
+    callback(values);
   };
   return store_client_->AsyncGetAll(table_name_, on_done);
 }
@@ -68,19 +65,13 @@ Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callbac
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
                                         const StatusCallback &callback) {
-  // TODO(ffbin): We will use redis store client batch delete interface directly later.
-  auto finished_count = std::make_shared<int>(0);
-  int size = keys.size();
-  for (Key key : keys) {
-    auto done = [finished_count, size, callback](const Status &status) {
-      ++(*finished_count);
-      if (*finished_count == size) {
-        callback(Status::OK());
-      }
-    };
-    RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Binary(), done));
+  std::vector<std::string> keys_to_delete;
+  keys_to_delete.reserve(keys.size());
+  for (auto &key : keys) {
+    keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  return Status::OK();
+  return this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
+                                               callback);
 }
 
 template <typename Key, typename Data>
@@ -92,8 +83,8 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithJobId<Key, Data>::GetByJobId(
-    const JobID &job_id, const SegmentedCallback<std::pair<Key, Data>> &callback) {
+Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
+                                                const MapCallback<Key, Data> &callback) {
   // TODO(ffbin): We will add this function after redis store client support
   // AsyncGetByIndex interface.
   return Status::NotImplemented("GetByJobId not implemented");

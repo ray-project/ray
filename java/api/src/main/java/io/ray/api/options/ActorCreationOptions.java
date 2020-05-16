@@ -7,20 +7,16 @@ import java.util.Map;
  * The options for creating actor.
  */
 public class ActorCreationOptions extends BaseTaskOptions {
-
-  public static final int NO_RECONSTRUCTION = 0;
-  public static final int INFINITE_RECONSTRUCTION = (int) Math.pow(2, 30);
-
-  public final int maxReconstructions;
+  public final int maxRestarts;
 
   public final String jvmOptions;
 
   public final int maxConcurrency;
 
-  private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
+  private ActorCreationOptions(Map<String, Double> resources, int maxRestarts,
                                String jvmOptions, int maxConcurrency) {
     super(resources);
-    this.maxReconstructions = maxReconstructions;
+    this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
   }
@@ -31,7 +27,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public static class Builder {
 
     private Map<String, Double> resources = new HashMap<>();
-    private int maxReconstructions = NO_RECONSTRUCTION;
+    private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
@@ -40,8 +36,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setMaxReconstructions(int maxReconstructions) {
-      this.maxReconstructions = maxReconstructions;
+    public Builder setMaxRestarts(int maxRestarts) {
+      this.maxRestarts = maxRestarts;
       return this;
     }
 
@@ -65,7 +61,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, jvmOptions, maxConcurrency);
+          resources, maxRestarts, jvmOptions, maxConcurrency);
     }
   }
 

@@ -97,8 +97,8 @@ class TorchRNNModel(RecurrentTorchModel):
             self.fc_size, self.lstm_state_size, batch_first=True)
         self.action_branch = nn.Linear(self.lstm_state_size, num_outputs)
         self.value_branch = nn.Linear(self.lstm_state_size, 1)
-        # Store the value output to save an extra forward pass.
-        self._cur_value = None
+        # Holds the current "base" output (before logits layer).
+        self._features = None
 
     @override(ModelV2)
     def get_initial_state(self):
@@ -111,8 +111,8 @@ class TorchRNNModel(RecurrentTorchModel):
 
     @override(ModelV2)
     def value_function(self):
-        assert self._cur_value is not None, "must call forward() first"
-        return self._cur_value
+        assert self._features is not None, "must call forward() first"
+        return torch.reshape(self.value_branch(self._features), [-1])
 
     @override(RecurrentTorchModel)
     def forward_rnn(self, inputs, state, seq_lens):
@@ -127,12 +127,8 @@ class TorchRNNModel(RecurrentTorchModel):
             The state batches as a List of two items (c- and h-states).
         """
         x = nn.functional.relu(self.fc1(inputs))
-        lstm_out = self.lstm(
+        self._features, [h, c] = self.lstm(
             x, [torch.unsqueeze(state[0], 0),
                 torch.unsqueeze(state[1], 0)])
-        action_out = self.action_branch(lstm_out[0])
-        self._cur_value = torch.reshape(self.value_branch(lstm_out[0]), [-1])
-        return action_out, [
-            torch.squeeze(lstm_out[1][0], 0),
-            torch.squeeze(lstm_out[1][1], 0)
-        ]
+        action_out = self.action_branch(self._features)
+        return action_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]

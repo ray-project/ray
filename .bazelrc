@@ -5,9 +5,7 @@ build --enable_platform_specific_config
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
-build:linux   --compilation_mode=opt
-build:macos   --compilation_mode=opt
-build:windows --compilation_mode=fastbuild
+build --compilation_mode=opt
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic

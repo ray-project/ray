@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_actor_manager.h"
+
 #include <ray/common/ray_config.h>
 
 #include <utility>
@@ -236,7 +237,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
     request.set_force_kill(true);
-    request.set_no_reconstruction(true);
+    request.set_no_restart(true);
     RAY_UNUSED(actor_client->KillActor(request, nullptr));
 
     RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
@@ -311,7 +312,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
 
   if (!actor_id.IsNil()) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " failed, reconstructing actor " << actor_id;
+                  << " failed, restarting actor " << actor_id;
     // Reconstruct the actor.
     ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
   }
@@ -360,17 +361,25 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   auto worker_id = actor->GetWorkerID();
   actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  // If the need_reschedule is set to false, then set the `remaining_reconstructions` to 0
+  // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
-  auto remaining_reconstructions =
-      need_reschedule ? mutable_actor_table_data->remaining_reconstructions() : 0;
+  int64_t max_restarts = mutable_actor_table_data->max_restarts();
+  uint64_t num_restarts = mutable_actor_table_data->num_restarts();
+  int64_t remaining_restarts;
+  if (!need_reschedule) {
+    remaining_restarts = 0;
+  } else if (max_restarts == -1) {
+    remaining_restarts = -1;
+  } else {
+    int64_t remaining = max_restarts - num_restarts;
+    remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
+  }
   RAY_LOG(WARNING) << "Actor is failed " << actor_id << " on worker " << worker_id
                    << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                   << ", remaining_reconstructions = " << remaining_reconstructions;
-
-  if (remaining_reconstructions > 0) {
-    mutable_actor_table_data->set_remaining_reconstructions(--remaining_reconstructions);
-    mutable_actor_table_data->set_state(rpc::ActorTableData::RECONSTRUCTING);
+                   << ", remaining_restarts = " << remaining_restarts;
+  if (remaining_restarts != 0) {
+    mutable_actor_table_data->set_num_restarts(++num_restarts);
+    mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
     auto actor_table_data =
         std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
     // The backend storage is reliable in the future, so the status must be ok.

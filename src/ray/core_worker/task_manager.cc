@@ -28,7 +28,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
                                  const TaskSpecification &spec,
                                  const std::string &call_site, int max_retries) {
-  RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
+  RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
+                 << " retries";
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
@@ -90,12 +91,18 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (it == submissible_tasks_.end()) {
       return Status::Invalid("Task spec missing");
     }
+    if (it->second.spec.IsActorTask()) {
+      return Status::Invalid("Cannot reconstruct objects returned by actors");
+    }
 
     if (!it->second.pending) {
       resubmit = true;
       it->second.pending = true;
-      RAY_CHECK(it->second.num_retries_left > 0);
-      it->second.num_retries_left--;
+      if (it->second.num_retries_left > 0) {
+        it->second.num_retries_left--;
+      } else {
+        RAY_CHECK(it->second.num_retries_left == -1);
+      }
       spec = it->second.spec;
     }
   }
@@ -241,8 +248,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // A finished task can be only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
-    bool task_retryable =
-        it->second.num_retries_left > 0 && !it->second.reconstructable_return_ids.empty();
+    bool task_retryable = it->second.num_retries_left != 0 &&
+                          !it->second.reconstructable_return_ids.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
@@ -256,7 +263,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                     Status *status) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
@@ -277,19 +284,25 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
+    } else if (num_retries_left == -1) {
+      release_lineage = false;
     } else {
-      RAY_CHECK(it->second.num_retries_left > 0);
+      RAY_CHECK(num_retries_left > 0);
       it->second.num_retries_left--;
       release_lineage = false;
     }
   }
 
+  bool will_retry = false;
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  if (num_retries_left > 0) {
-    RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
+  if (num_retries_left != 0) {
+    auto retries_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
+    will_retry = true;
   } else {
     // Throttled logging of task failure errors.
     {
@@ -319,6 +332,8 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   }
 
   ShutdownIfNeeded();
+
+  return will_retry;
 }
 
 void TaskManager::ShutdownIfNeeded() {
