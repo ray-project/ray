@@ -9,7 +9,6 @@ import torch.optim as optim
 from torchvision import datasets
 
 from ray import tune
-from ray.tune import track
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 # __tutorial_imports_end__
@@ -26,7 +25,7 @@ def train_mnist(config):
     for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
-        track.log(mean_accuracy=acc)
+        tune.report(mean_accuracy=acc)
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")

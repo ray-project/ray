@@ -117,7 +117,7 @@ You can log arbitrary values and metrics in both training APIs:
             accuracy = model.train()
             metric_1 = f(model)
             metric_2 = model.get_loss()
-            tune.track.log(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
+            tune.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
     class Trainable(tune.Trainable):
         ...
@@ -126,7 +126,7 @@ You can log arbitrary values and metrics in both training APIs:
             accuracy = self.model.train()
             metric_1 = f(self.model)
             metric_2 = self.model.get_loss()
-            # don't call track.log here!
+            # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
@@ -230,7 +230,7 @@ Stopping Trials
 
 You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``tune.track.log`` in the Function API or ``_train()`` (including the results from ``_train`` and auto-filled metrics).
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``_train()`` (including the results from ``_train`` and auto-filled metrics).
 
 In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. These metrics are assumed to be **increasing**.
 

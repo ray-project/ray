@@ -72,9 +72,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status) override {
     num_tasks_failed++;
+    return true;
   }
 
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,

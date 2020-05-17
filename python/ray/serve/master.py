@@ -50,9 +50,9 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, cluster_name, router_policy, router_policy_kwargs,
-                       start_http_proxy, http_node_id, http_proxy_host,
-                       http_proxy_port, metric_exporter_class):
+    async def __init__(self, cluster_name, start_http_proxy, http_node_id,
+                       http_proxy_host, http_proxy_port,
+                       metric_exporter_class):
         # Unique name of the serve cluster managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.cluster_name = cluster_name
@@ -92,7 +92,7 @@ class ServeMaster:
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_router(router_policy, router_policy_kwargs)
+        self._get_or_start_router()
         if start_http_proxy:
             self._get_or_start_http_proxy(http_node_id, http_proxy_host,
                                           http_proxy_port)
@@ -120,7 +120,7 @@ class ServeMaster:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_router(self, policy, policy_kwargs):
+    def _get_or_start_router(self):
         """Get the router belonging to this serve cluster.
 
         If the router does not already exist, it will be started.
@@ -135,8 +135,7 @@ class ServeMaster:
                 name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
-            ).remote(
-                policy, policy_kwargs, cluster_name=self.cluster_name)
+            ).remote(cluster_name=self.cluster_name)
 
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
