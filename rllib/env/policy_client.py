@@ -215,8 +215,8 @@ class PolicyClient:
 
     def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
-        if self.update_interval is None or time.time(
-        ) - self.last_updated > self.update_interval or force:
+        if (self.update_interval and time.time() - self.last_updated >
+                self.update_interval) or force:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,
