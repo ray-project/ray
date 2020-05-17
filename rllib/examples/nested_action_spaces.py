@@ -17,7 +17,6 @@ parser.add_argument("--stop-iters", type=int, default=100)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--num-cpus", type=int, default=0)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)

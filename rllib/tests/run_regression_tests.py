@@ -27,14 +27,14 @@ from ray.tune import run_experiments
 from ray.rllib import _register_all
 
 parser = argparse.ArgumentParser()
-#parser.add_argument("--bazel", action="store_true",
-#    help="Set if running this script within a bazel test suite.")
-parser.add_argument("--torch",
-                    action="store_true",
-                    help="Runs all tests with PyTorch enabled.")
-parser.add_argument("--yaml-dir", type=str,
-                    help="The directory in which to find all yamls to test.")
-
+parser.add_argument(
+    "--torch",
+    action="store_true",
+    help="Runs all tests with PyTorch enabled.")
+parser.add_argument(
+    "--yaml-dir",
+    type=str,
+    help="The directory in which to find all yamls to test.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -49,8 +49,7 @@ if __name__ == "__main__":
 
     yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
     yaml_files = sorted(
-        map(lambda path: str(path.absolute()), yaml_files),
-        reverse=True)
+        map(lambda path: str(path.absolute()), yaml_files), reverse=True)
 
     print("Will run the following regression tests:")
     for yaml_file in yaml_files:
