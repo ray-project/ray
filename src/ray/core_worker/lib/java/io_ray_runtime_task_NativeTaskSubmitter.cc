@@ -110,14 +110,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   std::string name = "";
-  ray::ActorCreationOptions actor_creation_options{max_restarts,
-                                                   static_cast<int>(max_concurrency),
-                                                   resources,
-                                                   resources,
-                                                   dynamic_worker_options,
-                                                   /*is_detached=*/false,
-                                                   name,
-                                                   /*is_asyncio=*/false};
+  ray::ActorCreationOptions actor_creation_options{
+      max_restarts,
+      0,  // TODO: Allow setting max_task_retries from Java.
+      static_cast<int>(max_concurrency),
+      resources,
+      resources,
+      dynamic_worker_options,
+      /*is_detached=*/false,
+      name,
+      /*is_asyncio=*/false};
   return actor_creation_options;
 }
 

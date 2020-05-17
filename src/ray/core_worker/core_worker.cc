@@ -428,7 +428,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
 
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
@@ -604,20 +604,9 @@ const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWork
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
-  bool not_actor_task = false;
   {
     absl::MutexLock lock(&mutex_);
     main_thread_task_id_ = task_id;
-    not_actor_task = actor_id_.IsNil();
-  }
-  if (not_actor_task && task_id.IsNil()) {
-    absl::MutexLock lock(&actor_handles_mutex_);
-    // Reset the seqnos so that for the next task it start off at 0.
-    for (const auto &handle : actor_handles_) {
-      handle.second->Reset();
-    }
-    // TODO(ekl) we can't unsubscribe to actor notifications here due to
-    // https://github.com/ray-project/ray/pull/6885
   }
 }
 
@@ -676,7 +665,12 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
 
   absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
-    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
+    auto &spec = to_resubmit_.front().second;
+    if (spec.IsActorTask()) {
+      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+    } else {
+      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+    }
     to_resubmit_.pop_front();
   }
   internal_timer_.expires_at(internal_timer_.expiry() +
@@ -1156,7 +1150,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // WaitForActorOutOfScopeRequest.
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
-      function.GetLanguage(), function.GetFunctionDescriptor(), extension_data));
+      function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
+      actor_creation_options.max_task_retries));
   RAY_CHECK(AddActorHandle(std::move(actor_handle),
                            /*is_owner_handle=*/!actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
@@ -1215,14 +1210,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  CurrentCallSite());
-    if (actor_handle->IsDead()) {
-      auto status = Status::IOError("sent task to dead actor");
-      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
-                                       &status);
-    } else {
-      status = direct_actor_submitter_->SubmitTask(task_spec);
-    }
+                                  CurrentCallSite(), actor_handle->MaxTaskRetries());
+    status = direct_actor_submitter_->SubmitTask(task_spec);
   }
   return status;
 }
@@ -1299,6 +1288,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
+  direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
 
   bool inserted;
   {
@@ -1313,19 +1303,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
       if (actor_data.state() == gcs::ActorTableData::PENDING) {
         // The actor is being created and not yet ready, just ignore!
       } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-        absl::MutexLock lock(&actor_handles_mutex_);
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        // We have to reset the actor handle since the next instance of the
-        // actor will not have the last sequence number that we sent.
-        it->second->Reset();
         direct_actor_submitter_->DisconnectActor(actor_id, false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
-
-        ActorHandle *actor_handle = nullptr;
-        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-        actor_handle->MarkDead();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
@@ -1369,8 +1349,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           // language frontend receives another ref to the same actor. In this
           // case, we must remember the last task counter that we sent to the
           // actor.
-          // TODO(swang): Unsubscribe from the actor table once all local refs
-          // to the actor have gone out of scope.
+          // TODO(ekl) we can't unsubscribe to actor notifications here due to
+          // https://github.com/ray-project/ray/pull/6885
           auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
           if (callback) {
             callback.mapped()(actor_id);
@@ -1555,16 +1535,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    // For an actor, set the timestamp as the time its creation task starts execution.
-    SetCallerCreationTimestamp();
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
-  } else {
-    // For a non-actor task, set the timestamp as the time it starts execution.
-    SetCallerCreationTimestamp();
   }
 
   // Because we support concurrent actor calls, we need to update the
@@ -2078,11 +2053,6 @@ void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &mess
 void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
-}
-
-void CoreWorker::SetCallerCreationTimestamp() {
-  absl::MutexLock lock(&mutex_);
-  direct_actor_submitter_->SetCallerCreationTimestamp(current_sys_time_ms());
 }
 
 }  // namespace ray
