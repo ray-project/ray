@@ -9,6 +9,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.object.RayObjectImpl;
 import io.ray.runtime.runner.RunManager;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,11 +20,21 @@ public class ClientExceptionTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientExceptionTest.class);
 
+  private static String sleep() {
+    try {
+      Thread.sleep(3 * 1000);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    char[] chars = new char[1024*1024];
+    Arrays.fill(chars, 'x');
+    return new String(chars);
+  }
+
   @Test
   public void testWaitAndCrash() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectId randomId = ObjectId.fromRandom();
-    RayObject<String> notExisting = new RayObjectImpl(randomId, String.class);
+    RayObject<String> obj1 = Ray.call(ClientExceptionTest::sleep);
 
     Thread thread = new Thread(() -> {
       try {
@@ -41,7 +52,7 @@ public class ClientExceptionTest extends BaseTest {
     });
     thread.start();
     try {
-      Ray.wait(ImmutableList.of(notExisting), 1, 2000);
+      Ray.wait(ImmutableList.of(obj1), 1, 10 * 1000);
       Assert.fail("Should not reach here");
     } catch (RayException e) {
       LOGGER.debug("Expected runtime exception: {}", e);
