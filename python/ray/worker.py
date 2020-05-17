@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import redis
-import signal
 from six.moves import queue
 import sys
 import threading
@@ -900,7 +899,7 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
-    sys.exit(signal.SIGTERM)
+    sys.exit(signum)
 
 
 try:
