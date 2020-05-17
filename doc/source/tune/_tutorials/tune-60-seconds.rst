@@ -31,7 +31,7 @@ Here's an example of specifying the objective function using :ref:`the function-
         for x in range(20):
             score = objective(x, config["a"], config["b"])
 
-            tune.track.log(score=score)  # This sends the score to Tune.
+            tune.report(score=score)  # This sends the score to Tune.
 
 Now, there's two Trainable APIs - one being the :ref:`function-based API <tune-function-api>` that we demonstrated above.
 
@@ -53,7 +53,7 @@ The other is a :ref:`class-based API <tune-class-api>` that enables :ref:`checkp
             self.x += 1
             return {"score": score}
 
-.. tip:: Do not use ``tune.track.log`` within a ``Trainable`` class.
+.. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 

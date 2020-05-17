@@ -129,6 +129,32 @@ def test_global_gc_when_full(shutdown_only):
         gc.enable()
 
 
+def test_global_gc_actors(shutdown_only):
+    ray.init(num_cpus=1)
+
+    try:
+        gc.disable()
+
+        @ray.remote(num_cpus=1)
+        class A:
+            def f(self):
+                return "Ok"
+
+        # Try creating 3 actors. Unless python GC is triggered to break
+        # reference cycles, this won't be possible. Note this test takes 20s
+        # to run due to the 10s delay before checking of infeasible tasks.
+        for i in range(3):
+            a = A.remote()
+            cycle = [a]
+            cycle.append(cycle)
+            ray.get(a.f.remote())
+            print("iteration", i)
+            del a
+            del cycle
+    finally:
+        gc.enable()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

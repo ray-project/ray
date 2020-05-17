@@ -6,6 +6,7 @@ from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
 tf = try_import_tf()
@@ -54,6 +55,10 @@ class EpsilonGreedy(Exploration):
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
             0, framework=framework, tf_name="timestep")
+
+        # Build the tf-info-op.
+        if self.framework == "tf":
+            self._tf_info_op = self.get_info()
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -132,9 +137,8 @@ class EpsilonGreedy(Exploration):
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
-                q_values == float("-inf"),
-                torch.ones_like(q_values) * float("-inf"),
-                torch.ones_like(q_values))
+                q_values == -float(LARGE_INTEGER),
+                torch.ones_like(q_values) * 0.0, torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
                 torch.multinomial(random_valid_action_logits, 1), axis=1)
@@ -150,6 +154,8 @@ class EpsilonGreedy(Exploration):
             return exploit_action, action_logp
 
     @override(Exploration)
-    def get_info(self):
+    def get_info(self, sess=None):
+        if sess:
+            return sess.run(self._tf_info_op)
         eps = self.epsilon_schedule(self.last_timestep)
         return {"cur_epsilon": eps}

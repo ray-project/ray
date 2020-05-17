@@ -102,6 +102,14 @@ class ActorInfoGcsServiceHandler {
                                   GetActorInfoReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetNamedActorInfo(const GetNamedActorInfoRequest &request,
+                                       GetNamedActorInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
+                                     GetAllActorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
                                        RegisterActorInfoReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -141,6 +149,8 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);
@@ -283,6 +293,10 @@ class TaskInfoGcsServiceHandler {
                                   AddTaskLeaseReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetTaskLease(const GetTaskLeaseRequest &request,
+                                  GetTaskLeaseReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleAttemptTaskReconstruction(
       const AttemptTaskReconstructionRequest &request,
       AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
@@ -308,6 +322,7 @@ class TaskInfoGrpcService : public GrpcService {
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
     TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);
   }
 

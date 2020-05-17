@@ -5,6 +5,7 @@ import numpy as np
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
+from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
@@ -19,9 +20,6 @@ from ray.rllib.utils.annotations import override
 torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
-
-# if the obs space is Dict type, look for the global state under this key
-ENV_STATE = "state"
 
 
 class QMixLoss(nn.Module):

@@ -1,9 +1,9 @@
 .. _trainable-docs:
 
-Training (tune.Trainable, tune.track)
-=====================================
+Training (tune.Trainable, tune.report)
+======================================
 
-Training can be done with either a **Class API** (``tune.Trainable``) or **function-based API** (``track.log``).
+Training can be done with either a **Class API** (``tune.Trainable``) or **function-based API** (``tune.report``).
 
 You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control for advanced algorithms.
 
@@ -27,7 +27,7 @@ Function-based API
         for x in range(20):
             score = objective(x, config["a"], config["b"])
 
-            tune.track.log(score=score)  # This sends the score to Tune.
+            tune.report(score=score)  # This sends the score to Tune.
 
     analysis = tune.run(
         trainable,

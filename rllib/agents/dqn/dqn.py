@@ -84,6 +84,11 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # In multi-agent mode, whether to replay experiences from the same time
+    # step for all policies. This is required for MADDPG.
+    "multiagent_sync_replay": False,
+    # Callback to run before learning on a multi-agent batch of experiences.
+    "before_learn_on_batch": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -126,9 +131,6 @@ DEFAULT_CONFIG = with_common_config({
     "soft_q": DEPRECATED_VALUE,
     "parameter_noise": DEPRECATED_VALUE,
     "grad_norm_clipping": DEPRECATED_VALUE,
-
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -301,14 +303,22 @@ def update_target_if_needed(trainer, fetches):
 
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
+    if config.get("prioritized_replay"):
+        prio_args = {
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        }
+    else:
+        prio_args = {}
+
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"])
+        multiagent_sync_replay=config.get("multiagent_sync_replay"),
+        **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -320,7 +330,7 @@ def execution_plan(workers, config):
 
     def update_prio(item):
         samples, info_dict = item
-        if config["prioritized_replay"]:
+        if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
                 # TODO(sven): This is currently structured differently for
@@ -337,7 +347,9 @@ def execution_plan(workers, config):
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
     replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
         .for_each(TrainOneStep(workers)) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(

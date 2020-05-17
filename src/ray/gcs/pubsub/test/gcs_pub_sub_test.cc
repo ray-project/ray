@@ -29,8 +29,8 @@ class GcsPubSubTest : public RedisServiceManagerForTest {
       io_service_.run();
     }));
 
-    gcs::RedisClientOptions redis_client_options("127.0.0.1", REDIS_SERVER_PORT, "",
-                                                 true);
+    gcs::RedisClientOptions redis_client_options("127.0.0.1", REDIS_SERVER_PORTS.front(),
+                                                 "", true);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
     pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
@@ -175,6 +175,29 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
     thread->join();
     thread.reset();
   }
+}
+
+TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
+  std::string channel("channel");
+  std::string data("data");
+  std::vector<std::string> result;
+  int size = 1000;
+
+  for (int index = 0; index < size; ++index) {
+    ObjectID object_id = ObjectID::FromRandom();
+    std::promise<bool> promise;
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, channel, &result](const std::string &id,
+                                              const std::string &data) {
+      result.push_back(data);
+      RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
+    };
+    RAY_CHECK_OK((pub_sub_->Subscribe(channel, object_id.Hex(), subscribe, done)));
+    WaitReady(promise.get_future(), timeout_ms_);
+    RAY_CHECK_OK((pub_sub_->Publish(channel, object_id.Hex(), data, nullptr)));
+  }
+
+  WaitPendingDone(result, size);
 }
 
 }  // namespace ray

@@ -10,6 +10,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import GradientType, SampleBatchType, \
     STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
     GRAD_WAIT_TIMER, _check_sample_batch_type
+from ray.rllib.policy.policy import PolicyID
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
@@ -17,10 +18,8 @@ from ray.rllib.utils.sgd import standardized
 logger = logging.getLogger(__name__)
 
 
-def ParallelRollouts(workers: WorkerSet,
-                     *,
-                     mode="bulk_sync",
-                     async_queue_depth=1) -> LocalIterator[SampleBatch]:
+def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
+                     num_async=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -36,7 +35,7 @@ def ParallelRollouts(workers: WorkerSet,
             - In 'raw' mode, the ParallelIterator object is returned directly
               and the caller is responsible for implementing gather and
               updating the timesteps counter.
-        async_queue_depth (int): In async mode, the max number of async
+        num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -83,7 +82,7 @@ def ParallelRollouts(workers: WorkerSet,
             .for_each(report_timesteps)
     elif mode == "async":
         return rollouts.gather_async(
-            async_queue_depth=async_queue_depth).for_each(report_timesteps)
+            num_async=num_async).for_each(report_timesteps)
     elif mode == "raw":
         return rollouts
     else:
@@ -192,7 +191,8 @@ class SelectExperiences:
         {"pol1", "pol2"}
     """
 
-    def __init__(self, policy_ids: List[str]):
+    def __init__(self, policy_ids: List[PolicyID]):
+        assert isinstance(policy_ids, list), policy_ids
         self.policy_ids = policy_ids
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:

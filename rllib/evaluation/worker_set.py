@@ -48,7 +48,6 @@ class WorkerSet:
         self._env_creator = env_creator
         self._policy = policy
         self._remote_config = trainer_config
-        self._num_workers = num_workers
         self._logdir = logdir
 
         if _setup:
@@ -62,7 +61,7 @@ class WorkerSet:
 
             # Create a number of remote workers
             self._remote_workers = []
-            self.add_workers(self._num_workers)
+            self.add_workers(num_workers)
 
     def local_worker(self):
         """Return the local rollout worker."""
@@ -86,7 +85,6 @@ class WorkerSet:
             num_workers (int): The number of remote Workers to add to this
                 WorkerSet.
         """
-        self._num_workers = num_workers
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
@@ -259,6 +257,7 @@ class WorkerSet:
             sample_async=config["sample_async"],
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
+            observation_fn=config["multiagent"]["observation_fn"],
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             clip_actions=config["clip_actions"],
@@ -266,7 +265,7 @@ class WorkerSet:
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            num_workers=self._num_workers,
+            num_workers=config["num_workers"],
             monitor_path=self._logdir if config["monitor"] else None,
             log_dir=self._logdir,
             log_level=config["log_level"],
@@ -280,7 +279,7 @@ class WorkerSet:
             no_done_at_end=config["no_done_at_end"],
             seed=(config["seed"] + worker_index)
             if config["seed"] is not None else None,
-            _fake_sampler=config.get("_fake_sampler", False),
+            fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs)
 
         return worker

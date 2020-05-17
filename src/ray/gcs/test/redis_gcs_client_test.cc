@@ -31,7 +31,7 @@ namespace gcs {
 
 /* Flush redis. */
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORT);
+  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORTS.front());
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
@@ -85,7 +85,7 @@ class TestGcsWithAsio : public TestGcs {
   }
 
   void SetUp() override {
-    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORTS.front(), "", true);
     client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
     RAY_CHECK_OK(client_->Connect(io_service_));
   }

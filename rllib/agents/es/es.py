@@ -295,7 +295,10 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute_actions(observation, update=False)[0]
+        action = self.policy.compute_actions(observation, update=False)[0]
+        if kwargs.get("full_fetch"):
+            return action, [], {}
+        return action
 
     @override(Trainer)
     def _stop(self):

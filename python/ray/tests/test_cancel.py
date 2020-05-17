@@ -228,5 +228,31 @@ def test_fast(shutdown_only, use_force):
             assert isinstance(e, valid_exceptions(use_force))
 
 
+@pytest.mark.parametrize("use_force", [True, False])
+def test_remote_cancel(ray_start_regular, use_force):
+    signaler = SignalActor.remote()
+
+    @ray.remote
+    def wait_for(y):
+        return ray.get(y[0])
+
+    @ray.remote
+    def remote_wait(sg):
+        return [wait_for.remote([sg[0]])]
+
+    sig = signaler.wait.remote()
+
+    outer = remote_wait.remote([sig])
+    inner = ray.get(outer)[0]
+
+    with pytest.raises(RayTimeoutError):
+        ray.get(inner, 1)
+
+    ray.cancel(inner)
+
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(inner, 10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
