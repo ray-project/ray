@@ -246,6 +246,30 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+Running Multiple Serve Clusters on one Ray Cluster
+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+You can run multiple serve clusters on the same Ray cluster by providing a ``cluster_name`` to ``serve.init()``.
+
+.. code-block:: python
+
+  # Create a first cluster whose HTTP server listens on 8000.
+  serve.init(cluster_name="cluster1", http_port=8000)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a second cluster whose HTTP server listens on 8001.
+  serve.init(cluster_name="cluster2", http_port=8001)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a backend that will be served on the second cluster.
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
+  # Switch back the the first cluster and create the same backend on it.
+  serve.init(cluster_name="cluster1")
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
 Other Resources
 ---------------
 
