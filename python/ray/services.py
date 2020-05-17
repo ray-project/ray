@@ -527,9 +527,7 @@ def start_ray_process(command,
         use_tmux=use_tmux)
 
 
-def wait_for_redis_to_start(redis_ip_address,
-                            redis_port,
-                            password=None):
+def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
