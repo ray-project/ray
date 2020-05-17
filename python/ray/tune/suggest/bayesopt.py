@@ -12,10 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class BayesOptSearch(Searcher):
-    """A wrapper around BayesOpt to provide trial suggestions.
+    """Uses fmfn/BayesianOptimization to optimize hyperparameters.
 
-    Requires BayesOpt to be installed. You can install BayesOpt with the
-    command: ``pip install bayesian-optimization``.
+    fmfn/BayesianOptimization is a library for Bayesian Optimization. More
+    info can be found here: https://github.com/fmfn/BayesianOptimization.
+
+    You will need to install fmfn/BayesianOptimization via the following:
+
+    .. code-block:: bash
+
+        pip install bayesian-optimization
+
+    This algorithm requires setting a search space using the
+    `BayesianOptimization search space specification`_.
 
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
