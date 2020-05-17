@@ -244,7 +244,8 @@ class ActorClassMetadata:
 
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
-                 num_cpus, num_gpus, memory, object_store_memory, resources):
+                 max_task_retries, num_cpus, num_gpus, memory,
+                 object_store_memory, resources):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -253,6 +254,7 @@ class ActorClassMetadata:
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
         self.max_restarts = max_restarts
+        self.max_task_retries = max_task_retries
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -314,7 +316,7 @@ class ActorClass:
 
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
-                                 num_cpus, num_gpus, memory,
+                                 max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
@@ -344,20 +346,22 @@ class ActorClass:
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
-            num_cpus, num_gpus, memory, object_store_memory, resources)
+            max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
 
         return self
 
     @classmethod
     def _ray_from_function_descriptor(
             cls, language, actor_creation_function_descriptor, max_restarts,
-            num_cpus, num_gpus, memory, object_store_memory, resources):
+            max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
+            resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
-            max_restarts, num_cpus, num_gpus, memory, object_store_memory,
-            resources)
+            max_restarts, max_task_retries, num_cpus, num_gpus, memory,
+            object_store_memory, resources)
 
         return self
 
@@ -406,6 +410,7 @@ class ActorClass:
                 is_direct_call=None,
                 max_concurrency=None,
                 max_restarts=None,
+                max_task_retries=None,
                 name=None,
                 detached=False):
         """Create an actor.
@@ -557,6 +562,7 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             creation_args,
             max_restarts or meta.max_restarts,
+            max_task_retries or meta.max_task_retries,
             resources,
             actor_placement_resources,
             max_concurrency,
@@ -891,11 +897,13 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_restarts):
+               max_restarts, max_task_retries):
     Class = modify_class(cls)
 
     if max_restarts is None:
         max_restarts = 0
+    if max_task_retries is None:
+        max_task_retries = 0
 
     infinite_restart = max_restarts == -1
     if not infinite_restart:
@@ -907,9 +915,13 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
             # an overflow.
             max_restarts = min(max_restarts, ray_constants.MAX_INT64_VALUE)
 
+    if max_restarts == 0 and max_task_retries != 0:
+        raise ValueError(
+            "max_task_retries cannot be set if max_restarts is 0.")
+
     return ActorClass._ray_from_modified_class(
-        Class, ActorClassID.from_random(), max_restarts, num_cpus, num_gpus,
-        memory, object_store_memory, resources)
+        Class, ActorClassID.from_random(), max_restarts, max_task_retries,
+        num_cpus, num_gpus, memory, object_store_memory, resources)
 
 
 def exit_actor():

@@ -32,7 +32,7 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
   virtual void OnTaskDependenciesInlined(
@@ -116,7 +116,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  /// \return Whether the task will be retried or not.
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status = nullptr) override;
 
   /// A task's dependencies were inlined in the task spec. This will decrement
@@ -166,7 +167,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+        reconstructable_return_ids.insert(spec.ReturnId(i));
       }
     }
     /// The task spec. This is pinned as long as the following are true:

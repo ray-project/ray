@@ -18,6 +18,7 @@ opencv-python-headless
 pandas
 pytest-remotedata>=0.3.1
 pytest-timeout
+scikit-learn==0.22.2
 scikit-optimize
 sigopt
 smart_open

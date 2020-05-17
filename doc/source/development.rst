@@ -280,7 +280,7 @@ invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
 * Raylet integration tests commands:
-    * ``src/ray/test/run_core_worker_tests.sh``
+    * ``bazel test //:core_worker_test``
     * ``src/ray/test/run_object_manager_tests.sh``
 
 * Bazel test command:

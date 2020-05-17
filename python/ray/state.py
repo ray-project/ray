@@ -333,7 +333,6 @@ class GlobalState:
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
-            "IsDirectCall": True,
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
         }

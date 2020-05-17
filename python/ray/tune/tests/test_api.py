@@ -572,7 +572,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testReportInfinity(self):
         def train(config, reporter):
-            for i in range(100):
+            for _ in range(100):
                 reporter(mean_accuracy=float("inf"))
 
         register_trainable("f1", train)
@@ -606,8 +606,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
 
         def track_train(config):
-            tune.track.log(
-                name=tune.track.trial_name(), trial_id=tune.track.trial_id())
+            tune.report(
+                name=tune.get_trial_name(), trial_id=tune.get_trial_id())
 
         analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]

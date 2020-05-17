@@ -214,7 +214,6 @@ class Trainable:
         return ""
 
     def get_current_ip(self):
-        logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
