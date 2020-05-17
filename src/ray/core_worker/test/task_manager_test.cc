@@ -78,7 +78,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   rpc::PushTaskReply reply;
@@ -118,7 +118,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
@@ -154,7 +154,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
@@ -197,7 +197,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   manager_.MarkTaskCanceled(spec.TaskId());
@@ -224,7 +224,7 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
 
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -260,7 +260,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -300,7 +300,7 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -335,7 +335,7 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -376,7 +376,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-    auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+    auto return_id = spec.ReturnId(0);
     reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
@@ -418,7 +418,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
-    auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+    auto return_id = spec.ReturnId(0);
     reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
@@ -470,7 +470,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(num_retries_, 0);
 
   // The task completes.
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   reference_counter_->AddLocalReference(return_id, "");
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();

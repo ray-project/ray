@@ -149,8 +149,8 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   task1.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
@@ -181,8 +181,8 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   task1.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
@@ -216,7 +216,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
 
   // Create two tasks for the actor. One depends on an object that is not yet available.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ObjectID obj = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->add_object_ids(obj.Binary());
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());

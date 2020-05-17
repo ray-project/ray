@@ -425,8 +425,6 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
-      ASSERT_EQ(static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
-                TaskTransportType::DIRECT);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
@@ -801,14 +799,14 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    ids[i] = ObjectID::FromRandom();
     RAY_CHECK(provider.Put(buffers[i], ids[i]));
   }
 
   absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
   absl::flat_hash_set<ObjectID> wait_results;
 
-  ObjectID nonexistent_id = ObjectID::FromRandom().WithDirectTransportType();
+  ObjectID nonexistent_id = ObjectID::FromRandom();
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
   wait_ids.insert(nonexistent_id);
   RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, ctx, &wait_results));
@@ -858,9 +856,9 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
-    ready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    ready_ids[i] = ObjectID::FromRandom();
     RAY_CHECK(provider.Put(buffers[i], ready_ids[i]));
-    unready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    unready_ids[i] = ObjectID::FromRandom();
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {
@@ -936,22 +934,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());
   }
-
-  // Test Get() returns early when it encounters an error.
-  std::vector<ObjectID> ids_with_exception(ids.begin(), ids.end());
-  ids_with_exception.push_back(ObjectID::FromRandom());
-  std::vector<RayObject> buffers_with_exception(buffers.begin(), buffers.end());
-  std::string error_string = std::to_string(ray::rpc::TASK_EXECUTION_EXCEPTION);
-  char error_buffer[error_string.size()];
-  size_t len = error_string.copy(error_buffer, error_string.size(), 0);
-  buffers_with_exception.emplace_back(
-      nullptr,
-      std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(error_buffer), len),
-      std::vector<ObjectID>());
-
-  RAY_CHECK_OK(
-      core_worker.Put(buffers_with_exception.back(), {}, ids_with_exception.back()));
-  RAY_CHECK_OK(core_worker.Get(ids_with_exception, -1, &results));
 
   // Test Wait().
   ObjectID non_existent_id = ObjectID::FromRandom();
