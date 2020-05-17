@@ -530,27 +530,27 @@ cc_binary(
     ],
 )
 
-cc_library(
-    name = "core_worker_test_lib",
+cc_test(
+    name = "core_worker_test",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    hdrs = glob([
-        "src/ray/core_worker/test/*.h",
-    ]),
+    args = ["$(location @plasma//:plasma_store_server) $(location raylet) $(location raylet_monitor) $(location mock_worker) $(location gcs_server) $(location redis-cli) $(location redis-server) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:gcs_server",
+        "//:libray_redis_module.so",
+        "//:mock_worker",
+        "//:raylet",
+        "//:raylet_monitor",
+        "//:redis-cli",
+        "//:redis-server",
+        "@plasma//:plasma_store_server",
+    ],
     deps = [
         ":core_worker_lib",
         ":gcs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "core_worker_test",
-    copts = COPTS,
-    deps = [
-        ":core_worker_test_lib",
     ],
 )
 

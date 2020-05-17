@@ -85,7 +85,6 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
         - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
         - ./java/test.sh
 
@@ -280,8 +279,7 @@ matrix:
         - . ./ci/travis/ci.sh test_cpp
 
 script:
-  # raylet integration tests
-  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+  # raylet integration tests (core_worker_tests included in bazel tests below)
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)

@@ -89,7 +89,8 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
   return std::string(reinterpret_cast<const char *>(metadata->Data()), metadata->Size());
 }
 
-class CoreWorkerTest : public ::testing::Test {
+// inherit from RedisServiceManagerForTest for setting up redis server(s)
+class CoreWorkerTest : public RedisServiceManagerForTest {
  public:
   CoreWorkerTest(int num_nodes)
       : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
@@ -1029,12 +1030,23 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 7);
+  RAY_CHECK(argc == 9);
   store_executable = std::string(argv[1]);
   raylet_executable = std::string(argv[2]);
-  node_manager_port = std::stoi(std::string(argv[3]));
-  raylet_monitor_executable = std::string(argv[4]);
-  mock_worker_executable = std::string(argv[5]);
-  gcs_server_executable = std::string(argv[6]);
+
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  std::mt19937 gen(seed);
+  std::uniform_int_distribution<int> random_gen{2000, 2009};
+  // Use random port to avoid port conflicts between UTs.
+  node_manager_port = random_gen(gen);
+  raylet_monitor_executable = std::string(argv[3]);
+  mock_worker_executable = std::string(argv[4]);
+  gcs_server_executable = std::string(argv[5]);
+
+  ray::REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
+  ray::REDIS_SERVER_EXEC_PATH = std::string(argv[7]);
+  ray::REDIS_MODULE_LIBRARY_PATH = std::string(argv[8]);
+  ray::REDIS_SERVER_PORTS.push_back(6379);
+  ray::REDIS_SERVER_PORTS.push_back(6380);
   return RUN_ALL_TESTS();
 }
