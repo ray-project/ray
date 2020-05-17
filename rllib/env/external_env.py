@@ -148,6 +148,7 @@ class ExternalEnv(threading.Thread):
 
         episode = self._get(episode_id)
         episode.cur_reward += reward
+
         if info:
             episode.cur_info = info or {}
 
@@ -238,6 +239,9 @@ class _ExternalEnvEpisode:
 
     def _send(self):
         if self.multiagent:
+            if not self.training_enabled:
+                for agent_id in self.cur_info_dict:
+                    self.cur_info_dict[agent_id]["training_enabled"] = False
             item = {
                 "obs": self.new_observation_dict,
                 "reward": self.cur_reward_dict,
@@ -261,8 +265,8 @@ class _ExternalEnvEpisode:
             self.new_observation = None
             self.new_action = None
             self.cur_reward = 0.0
-        if not self.training_enabled:
-            item["info"]["training_enabled"] = False
+            if not self.training_enabled:
+                item["info"]["training_enabled"] = False
         with self.results_avail_condition:
             self.data_queue.put_nowait(item)
             self.results_avail_condition.notify()
