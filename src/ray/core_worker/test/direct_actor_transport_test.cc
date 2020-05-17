@@ -216,7 +216,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
 
   // Create two tasks for the actor. One depends on an object that is not yet available.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ObjectID obj = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->add_object_ids(obj.Binary());
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
