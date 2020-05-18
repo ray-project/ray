@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
     analysis = tune.run(
-        LinUCBTrainer,
+        "contrib/LinUCB",
         config=UCB_CONFIG,
         stop={"training_iteration": training_iterations},
         num_samples=5,
