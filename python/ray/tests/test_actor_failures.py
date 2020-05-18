@@ -3,10 +3,6 @@ import json
 import numpy as np
 import os
 import pytest
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 import signal
 import sys
 import time
@@ -88,9 +84,13 @@ def ray_checkpointable_actor_cls(request):
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
-def test_actor_eviction(ray_start_object_store_memory):
-    object_store_memory = ray_start_object_store_memory
+    "ray_start_regular", [{
+        "object_store_memory": 150 * 1024 * 1024,
+        "lru_evict": True,
+    }],
+    indirect=True)
+def test_actor_eviction(ray_start_regular):
+    object_store_memory = 150 * 1024 * 1024
 
     @ray.remote
     class Actor:
@@ -127,10 +127,14 @@ def test_actor_eviction(ray_start_object_store_memory):
     assert num_success > 0
 
 
-def test_actor_restart(ray_start_regular):
-    """Test actor reconstruction when actor process is killed."""
+def test_actor_restart():
+    """Test actor restart when actor process is killed."""
+    ray.init(
+        _internal_config=json.dumps({
+            "task_retry_delay_ms": 100,
+        }), )
 
-    @ray.remote(max_restarts=1)
+    @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be restarted at most once."""
 
@@ -147,20 +151,48 @@ def test_actor_restart(ray_start_regular):
 
     actor = RestartableActor.remote()
     pid = ray.get(actor.get_pid.remote())
-    # Call increase 3 times
-    for _ in range(3):
-        ray.get(actor.increase.remote())
-    # Call increase again with some delay.
-    result = actor.increase.remote(delay=0.5)
-    # Sleep some time to wait for the above task to start execution.
-    time.sleep(0.2)
+    results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, signal.SIGKILL)
-    # Check that the above task didn't fail and the actor is restarted.
-    assert ray.get(result) == 4
+    # Make sure that all tasks were executed in order before the actor's death.
+    res = results.pop(0)
+    i = 1
+    while True:
+        try:
+            r = ray.get(res)
+            if r != i:
+                # Actor restarted without any failed tasks.
+                break
+            res = results.pop(0)
+            i += 1
+        except ray.exceptions.RayActorError:
+            # Actor restarted.
+            break
+    # Find the first task to execute after the actor was restarted.
+    while True:
+        try:
+            r = ray.get(res)
+            break
+        except ray.exceptions.RayActorError:
+            res = results.pop(0)
+            pass
+    # Make sure that all tasks were executed in order after the actor's death.
+    i = 1
+    while True:
+        r = ray.get(res)
+        assert r == i
+        if results:
+            res = results.pop(0)
+            i += 1
+        else:
+            break
+
     # Check that we can still call the actor.
-    assert ray.get(actor.increase.remote()) == 5
+    result = actor.increase.remote()
+    assert ray.get(result) == r + 1
+
     # kill actor process one more time.
+    results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
     # The actor has exceeded max restarts, and this task should fail.
@@ -174,37 +206,154 @@ def test_actor_restart(ray_start_regular):
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
+    ray.shutdown()
+
+
+def test_actor_restart_with_retry():
+    """Test actor restart when actor process is killed."""
+    ray.init(
+        _internal_config=json.dumps({
+            "task_retry_delay_ms": 100,
+        }), )
+
+    @ray.remote(max_restarts=1, max_task_retries=-1)
+    class RestartableActor:
+        """An actor that will be restarted at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self, delay=0):
+            time.sleep(delay)
+            self.value += 1
+            return self.value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    results = [actor.increase.remote() for _ in range(100)]
+    # Kill actor process, while the above task is still being executed.
+    os.kill(pid, signal.SIGKILL)
+    # Check that none of the tasks failed and the actor is restarted.
+    seq = list(range(1, 101))
+    results = ray.get(results)
+    failed_task_index = None
+    # Make sure that all tasks were executed in order before and after the
+    # actor's death.
+    for i, res in enumerate(results):
+        if res != seq[0]:
+            if failed_task_index is None:
+                failed_task_index = i
+            assert res + failed_task_index == seq[0]
+        seq.pop(0)
+    # Check that we can still call the actor.
+    result = actor.increase.remote()
+    assert ray.get(result) == results[-1] + 1
+
+    # kill actor process one more time.
+    results = [actor.increase.remote() for _ in range(100)]
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    # The actor has exceeded max restarts, and this task should fail.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.increase.remote())
+
+    # Create another actor.
+    actor = RestartableActor.remote()
+    # Intentionlly exit the actor
+    actor.__ray_terminate__.remote()
+    # Check that the actor won't be restarted.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.increase.remote())
+    ray.shutdown()
+
+
+def test_actor_restart_on_node_failure(ray_start_cluster):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "initial_reconstruction_timeout_milliseconds": 1000,
+        "task_retry_delay_ms": 100,
+    })
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    # Node to place the actor.
+    cluster.add_node(num_cpus=1, _internal_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
+    class RestartableActor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def ready(self):
+            return
+
+    actor = RestartableActor.remote()
+    ray.get(actor.ready.remote())
+    results = [actor.increase.remote() for _ in range(100)]
+    # Kill actor node, while the above task is still being executed.
+    cluster.remove_node(cluster.list_all_nodes()[-1])
+    cluster.add_node(num_cpus=1, _internal_config=config)
+    cluster.wait_for_nodes()
+    # Check that none of the tasks failed and the actor is restarted.
+    seq = list(range(1, 101))
+    results = ray.get(results)
+    failed_task_index = None
+    # Make sure that all tasks were executed in order before and after the
+    # actor's death.
+    for i, res in enumerate(results):
+        elm = seq.pop(0)
+        if res != elm:
+            if failed_task_index is None:
+                failed_task_index = i
+            assert res + failed_task_index == elm
+    # Check that we can still call the actor.
+    result = ray.get(actor.increase.remote())
+    assert result == 1 or result == results[-1] + 1
 
 
 def test_actor_restart_without_task(ray_start_regular):
     """Test a dead actor can be restarted without sending task to it."""
 
-    @ray.remote(max_restarts=1)
+    @ray.remote(max_restarts=1, resources={"actor": 1})
     class RestartableActor:
-        def __init__(self, obj_ids):
-            for obj_id in obj_ids:
-                # Every time the actor gets constructed,
-                # put a new object in plasma store.
-                global_worker = ray.worker.global_worker
-                if not global_worker.core_worker.object_exists(obj_id):
-                    global_worker.put_object(1, obj_id)
-                    break
+        def __init__(self):
+            pass
 
         def get_pid(self):
             return os.getpid()
 
-    obj_ids = [ray.ObjectID.from_random() for _ in range(2)]
-    actor = RestartableActor.remote(obj_ids)
+    @ray.remote(resources={"actor": 1})
+    def probe():
+        return
+
+    # Returns whether the "actor" resource is available.
+    def actor_resource_available():
+        p = probe.remote()
+        ready, _ = ray.wait([p], timeout=1)
+        return len(ready) > 0
+
+    ray.experimental.set_resource("actor", 1)
+    actor = RestartableActor.remote()
+    assert wait_for_condition(lambda: not actor_resource_available())
     # Kill the actor.
     pid = ray.get(actor.get_pid.remote())
+
+    p = probe.remote()
     os.kill(pid, signal.SIGKILL)
-
-    # Wait until the actor is reconstructed.
-    def check_restarted():
-        worker = ray.worker.global_worker
-        return worker.core_worker.object_exists(obj_ids[1])
-
-    assert wait_for_condition(check_restarted)
+    ray.get(p)
+    assert wait_for_condition(lambda: not actor_resource_available())
 
 
 def test_caller_actor_restart(ray_start_regular):
@@ -277,66 +426,6 @@ def test_caller_task_reconstruction(ray_start_regular):
     assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
-def test_actor_restart_on_node_failure(ray_start_cluster_head):
-    """Test actor reconstruction when node dies unexpectedly."""
-    cluster = ray_start_cluster_head
-    max_restarts = 3
-    # Add a few nodes to the cluster.
-    # Use custom resource to make sure the actor is only created on worker
-    # nodes, not on the head node.
-    for _ in range(max_restarts + 2):
-        cluster.add_node(
-            resources={"a": 1},
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            }),
-        )
-
-    def kill_node(node_id):
-        node_to_remove = None
-        for node in cluster.worker_nodes:
-            if node_id == node.unique_id:
-                node_to_remove = node
-        cluster.remove_node(node_to_remove)
-
-    @ray.remote(max_restarts=max_restarts, resources={"a": 1})
-    class MyActor:
-        def __init__(self):
-            self.value = 0
-
-        def increase(self):
-            self.value += 1
-            return self.value
-
-        def get_object_store_socket(self):
-            return ray.worker.global_worker.node.unique_id
-
-    actor = MyActor.remote()
-    # Call increase 3 times.
-    for _ in range(3):
-        ray.get(actor.increase.remote())
-
-    for i in range(max_restarts):
-        object_store_socket = ray.get(actor.get_object_store_socket.remote())
-        # Kill actor's node and the actor should be restarted
-        # on a different node.
-        kill_node(object_store_socket)
-        # Call increase again.
-        # Check that the actor is restarted and value is correct.
-        assert ray.get(actor.increase.remote()) == 4 + i
-        # Check that the actor is now on a different node.
-        assert object_store_socket != ray.get(
-            actor.get_object_store_socket.remote())
-
-    # kill the node again.
-    object_store_socket = ray.get(actor.get_object_store_socket.remote())
-    kill_node(object_store_socket)
-    # The actor has exceeded max restarts, and this task should fail.
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.increase.remote())
-
-
 # NOTE(hchen): we set initial_reconstruction_timeout_milliseconds to 1s for
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
@@ -365,7 +454,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
             })) for _ in range(num_nodes)
     ]
 
-    @ray.remote(max_restarts=-1)
+    @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
         def __init__(self):
             self.x = 0
@@ -407,8 +496,12 @@ def test_multiple_actor_restart(ray_start_cluster_head):
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():
-        results = list(range(1, len(result_id_list) + 1))
-        assert ray.get(result_id_list) == results
+        results = ray.get(result_id_list)
+        for i, result in enumerate(results):
+            if i == 0:
+                assert result == 1
+            else:
+                assert result == results[i - 1] + 1 or result == 1
 
 
 def kill_actor(actor):
@@ -418,6 +511,7 @@ def kill_actor(actor):
     wait_for_pid_to_exit(pid)
 
 
+@pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(max_restarts=2)(ray_checkpointable_actor_cls).remote()
@@ -440,13 +534,14 @@ def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Kill actor again and check that reconstruction still works after the
+    # Kill actor again and check that restart still works after the
     # actor resuming from a checkpoint.
     kill_actor(actor)
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test checkpointing of a remote actor through method invocation."""
 
@@ -487,13 +582,14 @@ def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Kill actor again and check that reconstruction still works after the
+    # Kill actor again and check that restart still works after the
     # actor resuming from a checkpoint.
     kill_actor(actor)
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
                                        ray_checkpointable_actor_cls):
     """Test actor checkpointing on a remote node."""
@@ -520,6 +616,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
@@ -549,7 +646,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Kill actor again, and check that reconstruction still works and the actor
+    # Kill actor again, and check that restart still works and the actor
     # wasn't resumed from a checkpoint.
     kill_actor(actor)
     assert ray.get(actor.get.remote()) == expected
@@ -559,6 +656,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
+@pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
@@ -589,7 +687,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Kill actor again, and check that reconstruction still works and the actor
+    # Kill actor again, and check that restart still works and the actor
     # wasn't resumed from a checkpoint.
     kill_actor(actor)
     assert ray.get(actor.get.remote()) == expected
@@ -718,10 +816,6 @@ def test_decorated_method(ray_start_regular):
     assert ray.get(object_id) == 7  # 2 * 3 + 1
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -747,53 +841,45 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     actors = [Actor.remote() for _ in range(num_nodes)]
     ray.get([actor.ping.remote() for actor in actors])
 
-    # Ping the actors and make sure the tasks complete.
-    ping_ids = [actor.ping.remote() for actor in actors]
-    ray.get(ping_ids)
-    # Evict the result from the node that we're about to kill.
-    remote_node = cluster.list_all_nodes()[-1]
-    remote_ping_id = None
-    for i, actor in enumerate(actors):
-        if ray.get(actor.node_id.remote()) == remote_node.unique_id:
-            remote_ping_id = ping_ids[i]
-    ray.internal.free([remote_ping_id], local_only=True)
-    cluster.remove_node(remote_node)
+    def actor_dead():
+        # Ping the actors and make sure the tasks complete.
+        ping_ids = [actor.ping.remote() for actor in actors]
+        unready = ping_ids[:]
+        while unready:
+            _, unready = ray.wait(unready, timeout=0)
+            time.sleep(1)
 
-    # Repeatedly call ray.wait until the exception for the dead actor is
-    # received.
-    unready = ping_ids[:]
-    while unready:
-        _, unready = ray.wait(unready, timeout=0)
-        time.sleep(1)
+        try:
+            ray.get(ping_ids)
+            return False
+        except ray.exceptions.RayActorError:
+            return True
 
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(ping_ids)
+    # Kill a node.
+    cluster.remove_node(cluster.list_all_nodes()[-1])
+    # Repeatedly submit tasks and call ray.wait until the exception for the
+    # dead actor is received.
+    assert wait_for_condition(actor_dead)
 
-    # Evict the result from the dead node.
-    ray.internal.free([remote_ping_id], local_only=True)
     # Create an actor on the local node that will call ray.wait in a loop.
     head_node_resource = "HEAD_NODE"
     ray.experimental.set_resource(head_node_resource, 1)
 
     @ray.remote(num_cpus=0, resources={head_node_resource: 1})
     class ParentActor:
-        def __init__(self, ping_ids):
-            self.unready = ping_ids
+        def __init__(self):
+            pass
 
         def wait(self):
-            _, self.unready = ray.wait(self.unready, timeout=0)
-            return len(self.unready) == 0
+            return actor_dead()
 
         def ping(self):
             return
 
     # Repeatedly call ray.wait through the local actor until the exception for
     # the dead actor is received.
-    parent_actor = ParentActor.remote(ping_ids)
-    ray.get(parent_actor.ping.remote())
-    failure_detected = False
-    while not failure_detected:
-        failure_detected = ray.get(parent_actor.wait.remote())
+    parent_actor = ParentActor.remote()
+    assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
 
 
 if __name__ == "__main__":

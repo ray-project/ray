@@ -113,7 +113,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal1.send.remote())
 
     signal2 = SignalActor.remote()
-    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    actor = Actor.options(max_concurrency=2).remote()
     expect_exception(
         [actor.bad_func2.remote(),
          actor.slow_func.remote(signal2)], ray.exceptions.RayActorError)

@@ -20,6 +20,7 @@
 #include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 
 namespace ray {
 namespace gcs {
@@ -148,6 +149,8 @@ class GcsServer {
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// The gcs table storage.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;

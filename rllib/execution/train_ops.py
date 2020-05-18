@@ -206,9 +206,10 @@ class TrainTFMultiGPU:
                             self.per_device_batch_size)
                         for k, v in batch_fetches[LEARNER_STATS_KEY].items():
                             iter_extra_fetches[k].append(v)
-                    logger.debug("{} {}".format(i,
-                                                averaged(iter_extra_fetches)))
-                fetches[policy_id] = averaged(iter_extra_fetches)
+                    if logger.getEffectiveLevel() <= logging.DEBUG:
+                        avg = averaged(iter_extra_fetches)
+                        logger.debug("{} {}".format(i, avg))
+                fetches[policy_id] = averaged(iter_extra_fetches, axis=0)
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)

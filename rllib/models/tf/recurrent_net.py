@@ -8,14 +8,14 @@ tf = try_import_tf()
 
 
 @DeveloperAPI
-class RecurrentTFModelV2(TFModelV2):
+class RecurrentNetwork(TFModelV2):
     """Helper class to simplify implementing RNN models with TFModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.
 
     Here is an example implementation for a subclass
-    ``MyRNNClass(RecurrentTFModelV2)``::
+    ``MyRNNClass(RecurrentNetwork)``::
 
         def __init__(self, *args, **kwargs):
             super(MyModelClass, self).__init__(*args, **kwargs)
@@ -50,6 +50,8 @@ class RecurrentTFModelV2(TFModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        assert seq_lens is not None
+
         output, new_state = self.forward_rnn(
             add_time_dimension(
                 input_dict["obs_flat"], seq_lens, framework="tf"), state,

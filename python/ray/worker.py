@@ -1730,6 +1730,7 @@ def make_decorator(num_return_vals=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
+                   max_task_retries=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1737,6 +1738,9 @@ def make_decorator(num_return_vals=None,
             # Set the remote function default resources.
             if max_restarts is not None:
                 raise ValueError("The keyword 'max_restarts' is not "
+                                 "allowed for remote functions.")
+            if max_task_retries is not None:
+                raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -1754,7 +1758,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts)
+                                        max_restarts, max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1801,6 +1805,14 @@ def remote(*args, **kwargs):
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be restarted. A value of -1
       indicates that an actor should be restarted indefinitely.
+    * **max_task_retries**: Only for *actors*. How many times to retry an actor
+      task if the task fails due to a system error, e.g., the actor has died.
+      If set to -1, the system will retry the failed task until the task
+      succeeds, or the actor has reached its max_restarts limit. If set to n >
+      0, the system will retry the failed task up to n times, after which the
+      task will throw a `RayActorError` exception upon `ray.get`. Note that
+      Python exceptions are not considered system errors and will not trigger
+      retries.
     * **max_retries**: Only for *remote functions*. This specifies the maximum
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
@@ -1867,6 +1879,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_restarts",
+            "max_task_retries",
             "max_retries",
         ], error_string
 
@@ -1885,6 +1898,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_restarts = kwargs.get("max_restarts")
+    max_task_retries = kwargs.get("max_task_retries")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
@@ -1898,5 +1912,6 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_restarts=max_restarts,
+        max_task_retries=max_task_retries,
         max_retries=max_retries,
         worker=worker)

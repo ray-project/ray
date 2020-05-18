@@ -40,12 +40,22 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
+message GetAllJobInfoRequest {
+}
+
+message GetAllJobInfoReply {
+  GcsStatus status = 1;
+  repeated JobTableData job_info_list = 2;
+}
+
 // Service for job info access.
 service JobInfoGcsService {
   // Add job to GCS Service.
   rpc AddJob(AddJobRequest) returns (AddJobReply);
   // Mark job as finished to GCS Service.
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
+  // Get information of all jobs from GCS Service.
+  rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
 }
 
 message GetActorInfoRequest {
