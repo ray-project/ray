@@ -17,12 +17,12 @@ RayServe is a scalable model-serving library built on Ray.
 
 For users RayServe is:
 
-- **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models 
+- **Framework Agnostic**:Use the same toolkit to serve everything from deep learning models
   built with frameworks like PyTorch or TensorFlow to scikit-learn models or arbitrary business logic.
-- **Python First**: Configure your model serving with pure Python code - no more YAMLs or 
+- **Python First**: Configure your model serving with pure Python code - no more YAMLs or
   JSON configs.
 
-RayServe enables: 
+RayServe enables:
 
 -  **A/B test models** with zero downtime by decoupling routing logic from response handling logic.
 - **Batching** built-in to help you meet your performance objectives.
@@ -30,8 +30,8 @@ RayServe enables:
 Since Ray is built on Ray, RayServe also allows you to **scale to many machines**
 and allows you to leverage all of the other Ray frameworks so you can deploy and scale on any cloud.
 
-.. note:: 
-  If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ 
+.. note::
+  If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_
   and discuss in the #serve channel.
 
 
@@ -77,7 +77,7 @@ For more on the motivation behind RayServe, check out these `meetup slides <http
 When should I use Ray Serve?
 ++++++++++++++++++++++++++++
 
-RayServe should be used when you need to deploy at least one model, preferrably many models.  
+RayServe should be used when you need to deploy at least one model, preferrably many models.
 RayServe **won't work well** when you need to run batch prediction over a dataset. Given this use case, we recommend looking into `multiprocessing with Ray </multiprocessing.html>`_.
 
 .. _serve-key-concepts:
@@ -99,9 +99,9 @@ To follow along, you'll need to make the necessary imports.
 Endpoints
 ~~~~~~~~~
 
-Endpoints allow you to name the "entity" that you'll be exposing, 
-the HTTP path that your application will expose. 
-Endpoints are "logical" and decoupled from the business logic or 
+Endpoints allow you to name the "entity" that you'll be exposing,
+the HTTP path that your application will expose.
+Endpoints are "logical" and decoupled from the business logic or
 model that you'll be serving. To create one, we'll simply specify the name, route, and methods.
 
 .. code-block:: python
@@ -120,20 +120,20 @@ Note that this will not delete any associated backends, which can be reused for 
 Backends
 ~~~~~~~~
 
-Backends are the logical structures for your business logic or models and 
+Backends are the logical structures for your business logic or models and
 how you specify what should happen when an endpoint is queried.
-To define a backend, first you must define the "handler" or the business logic you'd like to respond with. 
+To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
 The input to this request will be a `Flask Request object <https://flask.palletsprojects.com/en/1.1.x/api/?highlight=request#flask.Request>`_.
-Once you define the function (or class) that will handle a request. 
+Once you define the function (or class) that will handle a request.
 You'd use a function when your response is stateless and a class when you
-might need to maintain some state (like a model). 
-For both functions and classes (that take as input Flask Requests), you'll need to 
+might need to maintain some state (like a model).
+For both functions and classes (that take as input Flask Requests), you'll need to
 define them as backends to RayServe.
 
 It's important to note that RayServe places these backends in individual workers, which are replicas of the model.
 
 .. code-block:: python
-  
+
   def handle_request(flask_request):
     return "hello world"
 
@@ -147,9 +147,9 @@ It's important to note that RayServe places these backends in individual workers
   serve.create_backend("simple_backend", handle_request)
   serve.create_backend("simple_backend_class", RequestHandler)
 
-Lastly, we need to link the particular backend to the server endpoint. 
+Lastly, we need to link the particular backend to the server endpoint.
 To do that we'll use the ``link`` capability.
-A link is essentially a load-balancer and allow you to define queuing policies 
+A link is essentially a load-balancer and allow you to define queuing policies
 for how you would like backends to be served via an endpoint.
 For instance, you can route 50% of traffic to Model A and 50% of traffic to Model B.
 
@@ -160,7 +160,7 @@ For instance, you can route 50% of traffic to Model A and 50% of traffic to Mode
 Once we've done that, we can now query our endpoint via HTTP (we use `requests` to make HTTP calls here).
 
 .. code-block:: python
-  
+
   import requests
   print(requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).text)
 
@@ -177,7 +177,7 @@ Configuring Backends
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better response performance. To do all of this,
-you will create a ``BackendConfig``, a configuration object that you'll use to set 
+you will create a ``BackendConfig``, a configuration object that you'll use to set
 the properties of a particular backend.
 
 Scaling Out
@@ -198,7 +198,7 @@ Splitting Traffic
 It's trivial to also split traffic, simply specify the endpoint and the backends that you want to split.
 
 .. code-block:: python
-  
+
   serve.create_endpoint("endpoint_identifier_split", "/split", methods=["GET", "POST"])
 
   # splitting traffic 70/30
@@ -269,6 +269,81 @@ You can run multiple serve clusters on the same Ray cluster by providing a ``clu
   serve.init(cluster_name="cluster1")
   serve.create_backend("counter1", function)
   serve.set_traffic("counter1", {"counter1": 1.0})
+
+Deploying RayServe
+------------------
+RayServe can be deployed in two modes:
+
+- *Standalone mode*: RayServe is started by a Python script. It will
+  be running on the same machine where the script is invoked. When the script
+  terminates, RayServe will shutdown. This mode is for development, experimentation,
+  and deploy services that doesn't need to be updated.
+
+.. code-block:: python
+
+    from ray import serve
+    import time
+
+    serve.init() # Start in standalone mode
+
+    ...
+
+    # Keep the script running so it won't terminate.
+    while True:
+        time.sleep(60)
+
+.. note::
+    It's important to use the while-True loop to keep the Python process running.
+    Without the loop, the script will exit and RayServe cluster will be teared down.
+
+- *Cluster mode*: RayServe can also be started with the cluster mode. In this mode,
+  you can deploy RayServe on a cluster of machines. You can also update the running
+  cluster by executing Python scripts.
+
+You can use the :ref:`Ray Autoscaler<ref-automatic-cluster>` to start a cluster
+on any public cloud, Kubernetes, or on-prem machines. For simplicity, let's
+assume we start a single node cluster manually:
+
+.. code-block:: bash
+
+    ray start --head # Start a ray cluster in the background
+
+Once the cluster is started, you can execute scripts to create a RayServe deployment:
+
+.. code-block:: python
+
+    import ray
+    from ray import serve
+
+    # Automatically connect the the background cluster we just started
+    ray.init(address="auto")
+    serve.init()
+
+    def hello_world(flask_request):
+        return "Hello World"
+
+    serve.create_backend("hello:v0", hello_world)
+    serve.create_endpoint("hello")
+    serve.set_traffic("hello", {"hello:v0": 1})
+
+And sometimes later, you can execute another script to reconfigure and update
+the services.
+
+.. code-block::python
+
+    import ray
+    from ray import serve
+    ray.init(address="auto")
+    serve.init()
+
+    # Sometimes later, you can update the configuration.
+    serve.update_backend_config("hello:v0", {"num_replicas": 10})
+
+.. note::
+    Compare to the previous script in standalone mode. These scripts *do* terminate.
+    Because we are connecting to existing cluster and making updates,
+    RayServe will not shutdown on script exit.
+
 
 Other Resources
 ---------------
