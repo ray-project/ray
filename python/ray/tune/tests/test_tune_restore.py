@@ -225,6 +225,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         analysis = self.run_exp_3()
         self.set_basic_conf(analysis)
 
+
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         optimizer = skopt.Optimizer([(0, 20), (-100, 100)])

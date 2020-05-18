@@ -69,13 +69,14 @@ class BayesOptSearch(Searcher):
         """Instantiate new BayesOptSearch object.
 
         Parameters:
-            space (dict): Continuous search space. Parameters will be sampled from
+            space (dict): Continuous search space.
+                Parameters will be sampled from
                 this space which will be used to run trials.
             metric (str): The training result objective value attribute.
             mode (str): One of {min, max}. Determines whether objective is
                 minimizing or maximizing the metric attribute.
-            utility_kwargs (dict): Parameters to define the utility function. Must
-                provide values for the keys `kind`, `kappa`, and `xi`.
+            utility_kwargs (dict): Parameters to define the utility function.
+                Must provide values for the keys `kind`, `kappa`, and `xi`.
             random_state (int): Used to initialize BayesOpt.
             analysis (ExperimentAnalysis): Optionally, the previous analysis
                 to integrate.
