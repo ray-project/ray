@@ -161,4 +161,5 @@ MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="MADDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=MADDPGTFPolicy,
+    get_policy_class=None,
     validate_config=add_maddpg_postprocessing)
