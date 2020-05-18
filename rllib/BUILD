@@ -134,7 +134,7 @@ py_test(
     name = "run_regression_tests_pendulum_ddpg_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_pendulum", "TEST_ddpg_tf"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
     args = ["--yaml-dir=tuned_examples/ddpg"]
@@ -144,7 +144,7 @@ py_test(
     name = "run_regression_tests_pendulum_ddpg_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
     args = ["--torch", "--yaml-dir=tuned_examples/ddpg"]
@@ -267,7 +267,7 @@ py_test(
     name = "run_regression_tests_pendulum_ppo_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -277,7 +277,7 @@ py_test(
     name = "run_regression_tests_pendulum_ppo_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
     args = ["--torch", "--yaml-dir=tuned_examples/ppo"]
@@ -308,7 +308,7 @@ py_test(
     name = "run_regression_tests_pendulum_sac_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
@@ -318,7 +318,7 @@ py_test(
     name = "run_regression_tests_pendulum_sac_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
@@ -329,7 +329,7 @@ py_test(
     name = "run_regression_tests_pendulum_td3_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
     args = ["--yaml-dir=tuned_examples/ddpg"]
@@ -339,7 +339,7 @@ py_test(
     name = "run_regression_tests_pendulum_td3_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_pendulum"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
     args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
