@@ -202,7 +202,7 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
+    def set_basic_conf(self, analysis=None):
         space = {"width": (0, 20), "height": (-100, 100)}
 
         def cost(space, reporter):
@@ -212,6 +212,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             space,
             metric="loss",
             mode="min",
+            analysis=analysis,
             utility_kwargs={
                 "kind": "ucb",
                 "kappa": 2.5,
@@ -219,6 +220,10 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             })
         return search_alg, cost
 
+    def testWarmStart(self):
+        super().testWarmStart()
+        analysis = self.run_exp_3()
+        self.set_basic_conf(analysis)
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
