@@ -70,6 +70,10 @@ class EarlyStopping(Stopper):
     def __init__(self, metric, std=0.001, top=10, mode="min", patience=0):
         """Create the EarlyStopping object.
 
+        Stops the entire experiment when the metric has plateaued
+        for more than the given amount of iterations specified in
+        the patience parameter.
+
         Args:
             metric (str): The metric to be monitored.
             std (float): The minimal standard deviation after which
@@ -118,7 +122,7 @@ class EarlyStopping(Stopper):
             self._top_values = sorted(self._top_values)[-self._top:]
 
         # If the current iteration has to stop
-        if self._stop():
+        if self.has_plateaued():
             # we increment the total counter of iterations
             self._iterations += 1
         else:
@@ -129,10 +133,10 @@ class EarlyStopping(Stopper):
         # the checks, including the iterations.
         return self.stop_all()
 
-    def _stop(self):
+    def has_plateaued(self):
         return (len(self._top_values) == self._top
                 and np.std(self._top_values) <= self._std)
 
     def stop_all(self):
         """Return whether to stop and prevent trials from starting."""
-        return self._stop() and self._iterations >= self._patience
+        return self.has_plateaued() and self._iterations >= self._patience
