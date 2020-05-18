@@ -16,27 +16,26 @@ logger = logging.getLogger(__name__)
 
 
 class DragonflySearch(Searcher):
-    """A wrapper around Dragonfly to provide trial suggestions.
+    """Uses Dragonfly to optimize hyperparameters.
 
-    Requires Dragonfly to be installed via ``pip install dragonfly-opt``.
+    Dragonfly provides an array of tools to scale up Bayesian optimisation to
+    expensive large scale problems, including high dimensional optimisation.
+    parallel evaluations in synchronous or asynchronous settings,
+    multi-fidelity optimisation (using cheap approximations to speed up the
+    optimisation process), and multi-objective optimisation. For more info:
 
-    Parameters:
-        optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided
-            from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
-        metric (str): The training result objective value attribute.
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-        points_to_evaluate (list of lists): A list of points you'd like to run
-            first before sampling from the optimiser, e.g. these could be
-            parameter configurations you already know work well to help
-            the optimiser select good values. Each point is a list of the
-            parameters using the order definition given by parameter_names.
-        evaluated_rewards (list): If you have previously evaluated the
-            parameters passed in as points_to_evaluate you can avoid
-            re-running those trials by passing in the reward attributes
-            as a list so the optimiser can be told the results without
-            needing to re-compute the trial. Must be the same length as
-            points_to_evaluate.
+    * Dragonfly Website: https://github.com/dragonfly/dragonfly
+    * Dragonfly Documentation: https://dragonfly-opt.readthedocs.io/
+
+    To use this search algorithm, install Dragonfly:
+
+    .. code-block:: bash
+
+        $ pip install dragonfly-opt
+
+
+    This interface requires using FunctionCallers and optimizers provided by
+    Dragonfly.
 
     .. code-block:: python
 
@@ -70,6 +69,25 @@ class DragonflySearch(Searcher):
         algo = DragonflySearch(optimizer, metric="objective", mode="max")
 
         tune.run(my_func, algo=algo)
+
+    Parameters:
+        optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided
+            from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+        points_to_evaluate (list of lists): A list of points you'd like to run
+            first before sampling from the optimiser, e.g. these could be
+            parameter configurations you already know work well to help
+            the optimiser select good values. Each point is a list of the
+            parameters using the order definition given by parameter_names.
+        evaluated_rewards (list): If you have previously evaluated the
+            parameters passed in as points_to_evaluate you can avoid
+            re-running those trials by passing in the reward attributes
+            as a list so the optimiser can be told the results without
+            needing to re-compute the trial. Must be the same length as
+            points_to_evaluate.
+
     """
 
     def __init__(self,

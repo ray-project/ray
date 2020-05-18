@@ -18,7 +18,7 @@ from ray.tune.utils import flatten_dict
 logger = logging.getLogger(__name__)
 
 tf = None
-VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
+VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
 class Logger:

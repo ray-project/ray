@@ -228,6 +228,48 @@ You can also have RayServe batch requests for performance. You'll configure this
   serve.create_backend("counter1", BatchingExample, config=config)
   serve.set_traffic("counter1", {"counter1": 1.0})
 
+Session Affinity
+++++++++++++++++
+
+In some cases, you may want to ensure that requests from the same client, user, etc. get mapped to the same backend.
+To do this, you can specify a "shard key" that will deterministically map requests to a backend.
+The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or ``handle.options(shard_key="key")``.
+
+.. note:: The mapping from shard key to backend may change when you update the traffic policy for an endpoint.
+
+.. code-block:: python
+
+  # Specifying the shard key via an HTTP header.
+  requests.get("127.0.0.1:8000/api", headers={"X-SERVE-SHARD-KEY": session_id})
+
+  # Specifying the shard key in a call made via serve handle.
+  handle = serve.get_handle("api_endpoint")
+  handler.options(shard_key=session_id).remote(args)
+
+Running Multiple Serve Clusters on one Ray Cluster
+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+You can run multiple serve clusters on the same Ray cluster by providing a ``cluster_name`` to ``serve.init()``.
+
+.. code-block:: python
+
+  # Create a first cluster whose HTTP server listens on 8000.
+  serve.init(cluster_name="cluster1", http_port=8000)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a second cluster whose HTTP server listens on 8001.
+  serve.init(cluster_name="cluster2", http_port=8001)
+  serve.create_endpoint("counter1", "/increment")
+
+  # Create a backend that will be served on the second cluster.
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
+  # Switch back the the first cluster and create the same backend on it.
+  serve.init(cluster_name="cluster1")
+  serve.create_backend("counter1", function)
+  serve.set_traffic("counter1", {"counter1": 1.0})
+
 Other Resources
 ---------------
 

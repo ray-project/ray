@@ -62,6 +62,8 @@ build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 build:asan --linkopt -fno-sanitize=vptr
+test:asan --action_env=ASAN_OPTIONS=detect_leaks=0
+test:asan --action_env=/usr/lib/x86_64-linux-gnu/libasan.so.2
 
 test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
