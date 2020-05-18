@@ -329,7 +329,7 @@ Once the cluster is started, you can execute scripts to create a RayServe deploy
 And sometimes later, you can execute another script to reconfigure and update
 the services.
 
-.. code-block::python
+.. code-block:: python
 
     import ray
     from ray import serve
