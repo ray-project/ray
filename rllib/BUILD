@@ -133,7 +133,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_ddpg_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "TEST_ddpg_tf"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
