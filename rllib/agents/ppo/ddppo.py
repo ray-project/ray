@@ -101,14 +101,6 @@ def make_distributed_allreduce_optimizer(workers, config):
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="raw")
 
-    # Sync up the weights. In principle we don't need this, but it doesn't
-    # add too much overhead and handles the case where the user manually
-    # updates the local weights.
-    if config["keep_local_weights_in_sync"]:
-        weights = ray.put(workers.local_worker().get_weights())
-        for e in workers.remote_workers():
-            e.set_weights.remote(weights)
-
     # Setup the distributed processes.
     if not workers.remote_workers():
         raise ValueError("This optimizer requires >0 remote workers.")

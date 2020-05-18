@@ -108,7 +108,7 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                gcs::NodeInfoAccessor &node_info_accessor,
                                gcs::ErrorInfoAccessor &error_info_accessor,
-                               std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
     : node_info_accessor_(node_info_accessor),
       error_info_accessor_(error_info_accessor),
       node_failure_detector_(new NodeFailureDetector(

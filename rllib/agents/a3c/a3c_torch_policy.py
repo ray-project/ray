@@ -59,8 +59,13 @@ def apply_grad_clipping(policy, optimizer, loss):
     info = {}
     if policy.config["grad_clip"]:
         for param_group in optimizer.param_groups:
-            info["grad_gnorm"] = nn.utils.clip_grad_norm_(
-                param_group["params"], policy.config["grad_clip"])
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                info["grad_gnorm"] = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
     return info
 
 

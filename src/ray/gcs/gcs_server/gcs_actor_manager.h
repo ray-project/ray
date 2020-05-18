@@ -24,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "gcs_actor_scheduler.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 namespace gcs {
@@ -47,10 +48,8 @@ class GcsActor {
     const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(request.task_spec().job_id());
-    actor_table_data_.set_max_reconstructions(
-        actor_creation_task_spec.max_actor_reconstructions());
-    actor_table_data_.set_remaining_reconstructions(
-        actor_creation_task_spec.max_actor_reconstructions());
+    actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
+    actor_table_data_.set_num_restarts(0);
 
     auto dummy_object =
         TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
@@ -118,8 +117,10 @@ class GcsActorManager {
   ///
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param actor_info_accessor Used to flush actor data to storage.
+  /// \param gcs_pub_sub Used to publish gcs message.
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                   gcs::ActorInfoAccessor &actor_info_accessor,
+                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                   const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -234,6 +235,8 @@ class GcsActorManager {
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Actor table. Used to update actor information upon creation, deletion, etc.
   gcs::ActorInfoAccessor &actor_info_accessor_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;

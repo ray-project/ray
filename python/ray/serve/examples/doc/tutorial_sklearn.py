@@ -15,8 +15,9 @@ from sklearn.metrics import mean_squared_error
 
 # __doc_train_model_begin__
 # Load data
-data, target, target_names, description, feature_names, _ = load_iris().values(
-)
+iris_dataset = load_iris()
+data, target, target_names = iris_dataset["data"], iris_dataset[
+    "target"], iris_dataset["target_names"]
 
 # Instantiate model
 model = GradientBoostingClassifier()

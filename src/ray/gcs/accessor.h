@@ -47,6 +47,12 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
+  /// Get all actor specification from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) = 0;
+
   /// Get actor specification for a named actor from GCS asynchronously.
   ///
   /// \param name The name of the detached actor to look up in the GCS.
@@ -110,10 +116,8 @@ class ActorInfoAccessor {
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
-  /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id,
-                                  const StatusCallback &done) = 0;
+  virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
 
   /// Add actor checkpoint data to GCS asynchronously.
   ///
@@ -184,6 +188,12 @@ class JobInfoAccessor {
   virtual Status AsyncSubscribeToFinishedJobs(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
+
+  /// Get all job info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) = 0;
 
  protected:
   JobInfoAccessor() = default;

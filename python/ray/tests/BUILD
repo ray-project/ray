@@ -51,7 +51,15 @@ py_test(
     size = "medium",
     srcs = ["test_actor_failures.py"],
     # TODO(ekl) enable this once we support actor reconstruction again
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_serialization",
+    size = "small",
+    srcs = ["test_serialization.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -59,6 +67,14 @@ py_test(
     name = "test_basic",
     size = "medium",
     srcs = ["test_basic.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_basic_2",
+    size = "medium",
+    srcs = ["test_basic_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
