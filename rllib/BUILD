@@ -1574,7 +1574,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1890,7 +1890,7 @@ py_test(
     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
     main = "examples/multi_agent_two_trainers.py",
     tags = ["examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
 )

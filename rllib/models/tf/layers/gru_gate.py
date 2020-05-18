@@ -14,7 +14,7 @@ class GRUGate(tf.keras.layers.Layer):
             raise ValueError(
                 "Both inputs to GRUGate must have equal size in last axis!")
 
-        dim = h_shape[-1]
+        dim = int(h_shape[-1])
         self._w_r = self.add_weight(shape=(dim, dim))
         self._w_z = self.add_weight(shape=(dim, dim))
         self._w_h = self.add_weight(shape=(dim, dim))

@@ -21,7 +21,7 @@ parser.add_argument("--torch", action="store_true")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=500000)
-parser.add_argument("--stop-reward", type=float, default=90)
+parser.add_argument("--stop-reward", type=float, default=80)
 
 if __name__ == "__main__":
     args = parser.parse_args()
