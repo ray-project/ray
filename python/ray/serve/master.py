@@ -458,6 +458,10 @@ class ServeMaster:
                               dict), "Traffic policy must be dictionary"
             prob = 0
             for backend, weight in traffic_policy_dictionary.items():
+                if weight < 0:
+                    raise ValueError(
+                        "Attempted to assign a weight of {} to backend '{}'. "
+                        "Weights cannot be negative.".format(weight, backend))
                 prob += weight
                 if backend not in self.backends:
                     raise ValueError(
