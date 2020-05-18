@@ -12,7 +12,7 @@ their results to be ready.
 .. image:: ../images/hyperparameter.png
     :align: center
 
-.. important:: For a production-grade implementation of distributed
+.. tip:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
 

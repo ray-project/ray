@@ -259,7 +259,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   ActorID CreateActorHelper(const std::unordered_map<std::string, double> &resources,
-                            bool is_direct_call, uint64_t max_reconstructions) {
+                            bool is_direct_call, int64_t max_restarts) {
     std::unique_ptr<ActorHandle> actor_handle;
 
     // Test creating actor.
@@ -274,10 +274,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     std::string name = "";
     ActorCreationOptions actor_options{
-        max_reconstructions,
+        max_restarts,
         /*max_concurrency=*/1, resources, resources,           {},
         /*is_detached=*/false, name,      /*is_asyncio=*/false};
-
     // Create an actor.
     ActorID actor_id;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(

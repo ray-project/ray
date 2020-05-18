@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+
 #include <jni.h>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -87,13 +89,13 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
-  uint64_t max_reconstructions = 0;
+  int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
-    max_reconstructions = static_cast<uint64_t>(env->GetIntField(
-        actorCreationOptions, java_actor_creation_options_max_reconstructions));
+    max_restarts =
+        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -108,15 +110,14 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   std::string name = "";
-  ray::ActorCreationOptions actor_creation_options{
-      static_cast<uint64_t>(max_reconstructions),
-      static_cast<int>(max_concurrency),
-      resources,
-      resources,
-      dynamic_worker_options,
-      /*is_detached=*/false,
-      name,
-      /*is_asyncio=*/false};
+  ray::ActorCreationOptions actor_creation_options{max_restarts,
+                                                   static_cast<int>(max_concurrency),
+                                                   resources,
+                                                   resources,
+                                                   dynamic_worker_options,
+                                                   /*is_detached=*/false,
+                                                   name,
+                                                   /*is_asyncio=*/false};
   return actor_creation_options;
 }
 

@@ -1,22 +1,20 @@
 import argparse
 from gym.spaces import Dict, Tuple, Box, Discrete
-import sys
 
 import ray
+import ray.tune as tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import \
     NestedSpaceRepeatAfterMeEnv
-from ray.rllib.utils import try_import_tree
-from ray.rllib.utils.framework import try_import_tf
-
-tf = try_import_tf()
-tree = try_import_tree()
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--torch", action="store_true")
-parser.add_argument("--stop", type=int, default=90)
-parser.add_argument("--max-trainstop", type=int, default=90)
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-reward", type=float, default=0.0)
+parser.add_argument("--stop-iters", type=int, default=100)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 if __name__ == "__main__":
@@ -40,19 +38,23 @@ if __name__ == "__main__":
         },
         "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
         "gamma": 0.0,  # No history in Env (bandit problem).
-        "lr": 0.0003,
+        "lr": 0.0005,
         "num_envs_per_worker": 20,
-        "num_sgd_iter": 20,
+        "num_sgd_iter": 4,
         "num_workers": 0,
-        "use_pytorch": args.torch,
         "vf_loss_coeff": 0.01,
+        "use_pytorch": args.torch,
     }
 
-    import ray.rllib.agents.ppo as ppo
-    trainer = ppo.PPOTrainer(config=config)
-    for _ in range(100):
-        results = trainer.train()
-        print(results)
-        if results["episode_reward_mean"] > args.stop:
-            sys.exit(0)  # Learnt, exit gracefully.
-    sys.exit(1)  # Done, but did not learn, exit with error.
+    stop = {
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    results = tune.run(args.run, config=config, stop=stop)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

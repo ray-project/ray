@@ -379,7 +379,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Actor:
         def getpid(self):
             return os.getpid()
@@ -401,7 +401,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
-    @ray.remote(max_reconstructions=0)
+    @ray.remote(max_restarts=0)
     class Actor:
         def getpid(self):
             return os.getpid()
@@ -1077,7 +1077,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     def probe():
         return
 
-    # TODO(swang): This test does not pass if max_reconstructions > 0 for the
+    # TODO(swang): This test does not pass if max_restarts > 0 for the
     # raylet codepath. Add this parameter once the GCS actor service is enabled
     # by default.
     @ray.remote
