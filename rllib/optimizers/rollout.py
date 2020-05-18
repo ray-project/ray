@@ -2,7 +2,6 @@ import logging
 
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ def collect_samples(agents, rollout_fragment_length, num_envs_per_worker,
     while agent_dict:
         [fut_sample], _ = ray.wait(list(agent_dict))
         agent = agent_dict.pop(fut_sample)
-        next_sample = ray_get_and_free(fut_sample)
+        next_sample = ray.get(fut_sample)
         num_timesteps_so_far += next_sample.count
         trajectories.append(next_sample)
 
