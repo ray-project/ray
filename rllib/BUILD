@@ -2048,15 +2048,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/twostep_game_apex_qmix",
-    main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=APEX_QMIX", "--num-cpus=4"]
-)
-
-py_test(
     name = "contrib/bandits/examples/lin_ts",
     main = "contrib/bandits/examples/simple_context_bandit.py",
     tags = ["examples", "examples_T"],

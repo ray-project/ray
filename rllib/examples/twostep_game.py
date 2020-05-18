@@ -4,7 +4,6 @@ Configurations you can try:
     - normal policy gradients (PG)
     - contrib/MADDPG
     - QMIX
-    - APEX_QMIX
 
 See also: centralized_critic.py for centralized critic PPO on this game.
 """
@@ -88,27 +87,6 @@ if __name__ == "__main__":
             "exploration_final_eps": 0.0,
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
-            "env_config": {
-                "separate_state_space": True,
-                "one_hot_state_encoding": True
-            },
-            "use_pytorch": args.torch,
-        }
-        group = True
-    elif args.run == "APEX_QMIX":
-        config = {
-            "num_gpus": 0,
-            "num_workers": 2,
-            "optimizer": {
-                "num_replay_buffer_shards": 1,
-            },
-            "min_iter_time_s": 3,
-            "buffer_size": 1000,
-            "learning_starts": 1000,
-            "train_batch_size": 128,
-            "rollout_fragment_length": 32,
-            "target_network_update_freq": 500,
-            "timesteps_per_iteration": 1000,
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True

@@ -5,7 +5,6 @@ from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
-from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__

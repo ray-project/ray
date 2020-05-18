@@ -15,7 +15,6 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
-from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
