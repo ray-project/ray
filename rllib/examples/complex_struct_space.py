@@ -31,6 +31,7 @@ parser.add_argument("--eager", action="store_true")
 # Constraints on the Repeated space.
 MAX_PLAYERS = 4
 MAX_ITEMS = 7
+MAX_EFFECTS = 2
 
 
 class SimpleRPG(gym.Env):
@@ -50,11 +51,15 @@ class SimpleRPG(gym.Env):
         # Represents an item.
         self.item_space = Discrete(5)
 
+        # Represents an effect on the player.
+        self.effect_space = Box(9000, 9999, shape=(4, ))
+
         # Represents a player.
         self.player_space = Dict({
             "location": Box(-100, 100, shape=(2, )),
             "status": Box(-1, 1, shape=(10, )),
             "items": Repeated(self.item_space, max_len=MAX_ITEMS),
+            "effects": Repeated(self.effect_space, max_len=MAX_EFFECTS),
         })
 
         # Observation is a list of players.

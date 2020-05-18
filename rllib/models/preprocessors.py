@@ -264,6 +264,8 @@ class RepeatedValuesPreprocessor(Preprocessor):
         if isinstance(observation, list):
             for elem in observation:
                 self.child_preprocessor.check_shape(elem)
+        else:
+            pass  # ValueError will be raised in write() below.
         self.write(observation, array, 0)
         return array
 
@@ -278,8 +280,8 @@ class RepeatedValuesPreprocessor(Preprocessor):
         # The first slot encodes the list length.
         array[offset] = len(observation)
         for i, elem in enumerate(observation):
-            offset = 1 + i * self.child_preprocessor.size
-            self.child_preprocessor.write(elem, array, offset)
+            offset_i = offset + 1 + i * self.child_preprocessor.size
+            self.child_preprocessor.write(elem, array, offset_i)
 
 
 @PublicAPI
