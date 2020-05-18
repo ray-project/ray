@@ -15,6 +15,8 @@ import blist
 import ray
 import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
+
+from ray import serve
 from ray.serve.metric import MetricClient
 from ray.serve.policy import RandomEndpointPolicy
 from ray.serve.utils import logger, retry_actor_failures
@@ -106,7 +108,7 @@ class Router:
     3. When there is only 1 backend ready, we will only use that backend.
     """
 
-    async def __init__(self):
+    async def __init__(self, cluster_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -152,8 +154,8 @@ class Router:
         # the master actor. We use a "pull-based" approach instead of pushing
         # them from the master so that the router can transparently recover
         # from failure.
-        ray.serve.init()
-        master_actor = ray.serve.api._get_master_actor()
+        serve.init(cluster_name=cluster_name)
+        master_actor = serve.api._get_master_actor()
 
         traffic_policies = retry_actor_failures(
             master_actor.get_traffic_policies)
@@ -171,7 +173,9 @@ class Router:
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
-        self.metric_client = MetricClient.connect_from_serve()
+        [metric_exporter] = retry_actor_failures(
+            master_actor.get_metric_exporter)
+        self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
             description="Number of requests processed by the router.",

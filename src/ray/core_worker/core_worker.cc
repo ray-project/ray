@@ -53,21 +53,7 @@ void BuildCommonTaskSpec(
   // Compute return IDs.
   return_ids->resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] = ObjectID::ForTaskReturn(
-        task_id, i + 1, static_cast<int>(ray::TaskTransportType::DIRECT));
-  }
-}
-
-// Group object ids according the the corresponding store providers.
-void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
-                                   absl::flat_hash_set<ObjectID> *plasma_object_ids,
-                                   absl::flat_hash_set<ObjectID> *memory_object_ids) {
-  for (const auto &object_id : object_ids) {
-    if (object_id.IsDirectCallType()) {
-      memory_object_ids->insert(object_id);
-    } else {
-      plasma_object_ids->insert(object_id);
-    }
+    (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
 }
 
@@ -695,7 +681,6 @@ CoreWorker::GetAllReferenceCounts() const {
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
-  RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
@@ -737,8 +722,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::DIRECT));
+                                worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_, CurrentCallSite(), object.GetSize(),
                                      /*is_reconstructable=*/false,
@@ -781,16 +765,13 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           const std::vector<ObjectID> &contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::DIRECT));
-
+                                worker_context_.GetNextPutIndex());
   if (options_.is_local_mode) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     RAY_RETURN_NOT_OK(
         plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   }
-
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(
@@ -839,8 +820,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+  absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
@@ -952,21 +932,11 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+  absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
-  if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
+  if (memory_object_ids.size() != ids.size()) {
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
-
-  // TODO(edoakes): this logic is not ideal, and will have to be addressed
-  // before we enable direct actor calls in the Python code. If we are waiting
-  // on a list of objects mixed between multiple store providers, we could
-  // easily end up in the situation where we're blocked waiting on one store
-  // provider while another actually has enough objects ready to fulfill
-  // 'num_objects'. This is partially addressed by trying them all once with
-  // a timeout of 0, but that does not address the situation where objects
-  // become available on the second store provider while waiting on the first.
 
   absl::flat_hash_set<ObjectID> ready;
   // Wait from both store providers with timeout set to 0. This is to avoid the case
@@ -1525,7 +1495,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i, TaskTransportType::DIRECT));
+    return_ids.push_back(task_spec.ReturnId(i));
   }
 
   Status status;
@@ -1618,7 +1588,7 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
   if (!task_spec.IsActorCreationTask()) {
     for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-      reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
+      reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
                                          /*inner_ids=*/{}, GetCallerId(), rpc_address_,
                                          CurrentCallSite(), -1,
                                          /*is_reconstructable=*/false);
@@ -1645,10 +1615,10 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
     if (task.ArgByRef(i)) {
       // pass by reference.
       RAY_CHECK(task.ArgIdCount(i) == 1);
-      // Direct call type objects that weren't inlined have been promoted to plasma.
+      // Objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
-      if (task.ArgId(i, 0).IsDirectCallType() && !options_.is_local_mode) {
+      if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                       task.ArgId(i, 0)));
       }
@@ -2005,7 +1975,6 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                           SetResultCallback fallback_callback, void *python_future) {
-  RAY_CHECK(object_id.IsDirectCallType());
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {

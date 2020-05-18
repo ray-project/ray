@@ -13,7 +13,8 @@ from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.router import Router
-from ray.serve.utils import async_retryable, get_random_letters, logger
+from ray.serve.utils import (async_retryable, format_actor_name,
+                             get_random_letters, logger)
 
 import numpy as np
 
@@ -49,10 +50,13 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, start_http_proxy, http_node_id, http_proxy_host,
-                       http_proxy_port, metric_exporter_class):
+    async def __init__(self, cluster_name, start_http_proxy, http_node_id,
+                       http_proxy_host, http_proxy_port,
+                       metric_exporter_class):
+        # Unique name of the serve cluster managed by this actor. Used to
+        # namespace child actors and checkpoints.
+        self.cluster_name = cluster_name
         # Used to read/write checkpoints.
-        # TODO(edoakes): namespace the master actor and its checkpoints.
         self.kv_store = RayInternalKVStore()
         # path -> (endpoint, methods).
         self.routes = {}
@@ -105,7 +109,10 @@ class ServeMaster:
         # a checkpoint to the event loop. Other state-changing calls acquire
         # this lock and will be blocked until recovering from the checkpoint
         # finishes.
-        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
+        checkpoint_key = CHECKPOINT_KEY
+        if self.cluster_name is not None:
+            checkpoint_key = "{}:{}".format(self.cluster_name, checkpoint_key)
+        checkpoint = self.kv_store.get(checkpoint_key)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
@@ -118,16 +125,17 @@ class ServeMaster:
 
         If the router does not already exist, it will be started.
         """
+        router_name = format_actor_name(SERVE_ROUTER_NAME, self.cluster_name)
         try:
-            self.router = ray.util.get_actor(SERVE_ROUTER_NAME)
+            self.router = ray.util.get_actor(router_name)
         except ValueError:
-            logger.info(
-                "Starting router with name '{}'".format(SERVE_ROUTER_NAME))
+            logger.info("Starting router with name '{}'".format(router_name))
             self.router = async_retryable(ray.remote(Router)).options(
                 detached=True,
-                name=SERVE_ROUTER_NAME,
+                name=router_name,
                 max_concurrency=ASYNC_CONCURRENCY,
-                max_restarts=-1).remote()
+                max_restarts=-1,
+            ).remote(cluster_name=self.cluster_name)
 
     def get_router(self):
         """Returns a handle to the router managed by this actor."""
@@ -138,21 +146,23 @@ class ServeMaster:
 
         If the HTTP proxy does not already exist, it will be started.
         """
+        proxy_name = format_actor_name(SERVE_PROXY_NAME, self.cluster_name)
         try:
-            self.http_proxy = ray.util.get_actor(SERVE_PROXY_NAME)
+            self.http_proxy = ray.util.get_actor(proxy_name)
         except ValueError:
             logger.info(
                 "Starting HTTP proxy with name '{}' on node '{}'".format(
-                    SERVE_PROXY_NAME, node_id))
+                    proxy_name, node_id))
             self.http_proxy = async_retryable(HTTPProxyActor).options(
                 detached=True,
-                name=SERVE_PROXY_NAME,
+                name=proxy_name,
                 max_concurrency=ASYNC_CONCURRENCY,
                 max_restarts=-1,
                 resources={
                     node_id: 0.01
                 },
-            ).remote(host, port)
+            ).remote(
+                host, port, cluster_name=self.cluster_name)
 
     def get_http_proxy(self):
         """Returns a handle to the HTTP proxy managed by this actor."""
@@ -167,14 +177,16 @@ class ServeMaster:
 
         If the metric exporter does not already exist, it will be started.
         """
+        metric_sink_name = format_actor_name(SERVE_METRIC_SINK_NAME,
+                                             self.cluster_name)
         try:
-            self.metric_exporter = ray.util.get_actor(SERVE_METRIC_SINK_NAME)
+            self.metric_exporter = ray.util.get_actor(metric_sink_name)
         except ValueError:
             logger.info("Starting metric exporter with name '{}'".format(
-                SERVE_METRIC_SINK_NAME))
+                metric_sink_name))
             self.metric_exporter = MetricExporterActor.options(
                 detached=True,
-                name=SERVE_METRIC_SINK_NAME).remote(metric_exporter_class)
+                name=metric_sink_name).remote(metric_exporter_class)
 
     def get_metric_exporter(self):
         """Returns a handle to the metric exporter managed by this actor."""
@@ -232,8 +244,10 @@ class ServeMaster:
         # were created.
         for backend_tag, replica_tags in self.replicas.items():
             for replica_tag in replica_tags:
+                replica_name = format_actor_name(replica_tag,
+                                                 self.cluster_name)
                 self.workers[backend_tag][replica_tag] = ray.util.get_actor(
-                    replica_tag)
+                    replica_name)
 
         # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
@@ -295,12 +309,16 @@ class ServeMaster:
         (backend_worker, backend_config,
          replica_config) = self.backends[backend_tag]
 
+        replica_name = format_actor_name(replica_tag, self.cluster_name)
         worker_handle = async_retryable(ray.remote(backend_worker)).options(
             detached=True,
-            name=replica_tag,
+            name=replica_name,
             max_restarts=-1,
             **replica_config.ray_actor_options).remote(
-                backend_tag, replica_tag, replica_config.actor_init_args)
+                backend_tag,
+                replica_tag,
+                replica_config.actor_init_args,
+                cluster_name=self.cluster_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle

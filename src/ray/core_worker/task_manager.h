@@ -167,7 +167,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+        reconstructable_return_ids.insert(spec.ReturnId(i));
       }
     }
     /// The task spec. This is pinned as long as the following are true:

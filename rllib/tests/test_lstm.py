@@ -1,20 +1,14 @@
-import gym
 import numpy as np
 import pickle
 import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
+from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.misc import normc_initializer
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.tune.registry import register_env
-from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.annotations import override
-
-tf = try_import_tf()
 
 
 class TestLSTMUtils(unittest.TestCase):
@@ -90,125 +84,6 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual([f.tolist() for f in f_pad], [[1, 0, 1, 1]])
         self.assertEqual([s.tolist() for s in s_init], [[1, 1]])
         self.assertEqual(seq_lens.tolist(), [1, 2])
-
-
-class RNNSpyModel(RecurrentTFModelV2):
-    capture_index = 0
-    cell_size = 3
-
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
-        self.cell_size = RNNSpyModel.cell_size
-
-        def spy(inputs, seq_lens, h_in, c_in, h_out, c_out):
-            if len(inputs) == 1:
-                return 0  # don't capture inference inputs
-            # TF runs this function in an isolated context, so we have to use
-            # redis to communicate back to our suite
-            ray.experimental.internal_kv._internal_kv_put(
-                "rnn_spy_in_{}".format(RNNSpyModel.capture_index),
-                pickle.dumps({
-                    "sequences": inputs,
-                    "seq_lens": seq_lens,
-                    "state_in": [h_in, c_in],
-                    "state_out": [h_out, c_out]
-                }),
-                overwrite=True)
-            RNNSpyModel.capture_index += 1
-            return 0
-
-        # Create a keras LSTM model.
-        inputs = tf.keras.layers.Input(
-            shape=(None, ) + obs_space.shape, name="input")
-        state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
-        state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
-        seq_lens = tf.keras.layers.Input(
-            shape=(), name="seq_lens", dtype=tf.int32)
-
-        lstm_out, state_out_h, state_out_c = tf.keras.layers.LSTM(
-            self.cell_size,
-            return_sequences=True,
-            return_state=True,
-            name="lstm")(
-                inputs=inputs,
-                mask=tf.sequence_mask(seq_lens),
-                initial_state=[state_in_h, state_in_c])
-        self.dense = tf.keras.layers.Dense(
-            units=self.num_outputs, kernel_initializer=normc_initializer(0.01))
-
-        def lambda_(inputs):
-            spy_fn = tf.py_func(
-                spy,
-                [
-                    inputs[0],  # observations
-                    inputs[2],  # seq_lens
-                    inputs[3],  # h_in
-                    inputs[4],  # c_in
-                    inputs[5],  # h_out
-                    inputs[6],  # c_out
-                ],
-                tf.int64,
-                stateful=True)
-
-            # Compute outputs
-            with tf.control_dependencies([spy_fn]):
-                return self.dense(inputs[1])  # lstm_out
-
-        logits = tf.keras.layers.Lambda(lambda_)([
-            inputs, lstm_out, seq_lens, state_in_h, state_in_c, state_out_h,
-            state_out_c
-        ])
-
-        # Value branch.
-        value_out = tf.keras.layers.Dense(
-            units=1, kernel_initializer=normc_initializer(1.0))(lstm_out)
-
-        self.base_model = tf.keras.Model(
-            [inputs, seq_lens, state_in_h, state_in_c],
-            [logits, value_out, state_out_h, state_out_c])
-        self.base_model.summary()
-        self.register_variables(self.base_model.variables)
-
-    @override(RecurrentTFModelV2)
-    def forward_rnn(self, inputs, state, seq_lens):
-        # Previously, a new class object was created during
-        # deserialization and this `capture_index`
-        # variable would be refreshed between class instantiations.
-        # This behavior is no longer the case, so we manually refresh
-        # the variable.
-        RNNSpyModel.capture_index = 0
-        model_out, value_out, h, c = self.base_model(
-            [inputs, seq_lens, state[0], state[1]])
-        self._value_out = value_out
-        return model_out, [h, c]
-
-    @override(ModelV2)
-    def value_function(self):
-        return tf.reshape(self._value_out, [-1])
-
-    @override(ModelV2)
-    def get_initial_state(self):
-        return [
-            np.zeros(self.cell_size, np.float32),
-            np.zeros(self.cell_size, np.float32)
-        ]
-
-
-class DebugCounterEnv(gym.Env):
-    def __init__(self):
-        self.action_space = gym.spaces.Discrete(2)
-        self.observation_space = gym.spaces.Box(0, 100, (1, ))
-        self.i = 0
-
-    def reset(self):
-        self.i = 0
-        return [self.i]
-
-    def step(self, action):
-        self.i += 1
-        return [self.i], self.i % 3, self.i >= 15, {}
 
 
 class TestRNNSequencing(unittest.TestCase):
