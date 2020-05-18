@@ -128,15 +128,12 @@ class BayesOptSearch(Searcher):
         analysis (ExperimentAnalysis): Optionally, the previous analysis
             to integrate.
         """
-        for (_, report), params in zip(
-            analysis.dataframe().iterrows(),
-            analysis.get_all_configs().values()
-        ):
+        for (_, report), params in zip(analysis.dataframe().iterrows(),
+                                       analysis.get_all_configs().values()):
             # We add the obtained results to the
             # gaussian process optimizer
             self.optimizer.register(
-                params=params,
-                target=self._metric_op * report[self._metric])
+                params=params, target=self._metric_op * report[self._metric])
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
