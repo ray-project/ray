@@ -585,10 +585,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] no_reconstruction If set to true, the killed actor will not be
-  /// reconstructed anymore.
+  /// \param[in] no_restart If set to true, the killed actor will not be
+  /// restarted anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Stops the task associated with the given Object ID.
   ///
@@ -754,7 +754,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Perform async get from in-memory store.
   ///
-  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback

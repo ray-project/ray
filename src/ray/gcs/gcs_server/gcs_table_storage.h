@@ -74,9 +74,8 @@ class GcsTable {
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
-  /// If the callback return `has_more == true` mean there's more data to be received.
   /// \return Status
-  Status GetAll(const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status GetAll(const MapCallback<Key, Data> &callback);
 
   /// Delete data from the table asynchronously.
   ///
@@ -122,8 +121,7 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id,
-                    const SegmentedCallback<std::pair<Key, Data>> &callback);
+  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///

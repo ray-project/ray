@@ -19,12 +19,42 @@ logger = logging.getLogger(__name__)
 class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
-    Requires HyperOpt to be installed from source.
-    Uses the Tree-structured Parzen Estimators algorithm, although can be
-    trivially extended to support any algorithm HyperOpt uses. Externally
-    added trials will not be tracked by HyperOpt. Trials of the current run
-    can be saved using save method, trials of a previous run can be loaded
-    using restore method, thus enabling a warm start feature.
+    HyperOpt a Python library for serial and parallel optimization
+    over awkward search spaces, which may include real-valued, discrete,
+    and conditional dimensions. More info can be found at
+    http://hyperopt.github.io/hyperopt.
+
+    HyperOptSearch uses the Tree-structured Parzen Estimators algorithm,
+    though it can be trivially extended to support any algorithm HyperOpt
+    supports.
+
+    To use this search algorithm, you will need to install HyperOpt:
+
+    .. code-block:: bash
+
+        pip install -U hyperopt
+
+    You will not be able to leverage Tune's default ``grid_search``
+    and random search primitives when using HyperOptSearch. You need to
+    use the `HyperOpt search space specification
+    <https://github.com/hyperopt/hyperopt/wiki/FMin>`_.
+
+    .. code-block:: python
+
+        space = {
+            'width': hp.uniform('width', 0, 20),
+            'height': hp.uniform('height', -100, 100),
+            'activation': hp.choice("activation", ["relu", "tanh"])
+        }
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+        algo = HyperOptSearch(
+            space, metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
@@ -49,22 +79,6 @@ class HyperOptSearch(Searcher):
             estimators suggestion algorithm. Defaults to 0.25.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
-
-    .. code-block:: python
-
-        space = {
-            'width': hp.uniform('width', 0, 20),
-            'height': hp.uniform('height', -100, 100),
-            'activation': hp.choice("activation", ["relu", "tanh"])
-        }
-        current_best_params = [{
-            'width': 10,
-            'height': 0,
-            'activation': 0, # The index of "relu"
-        }]
-        algo = HyperOptSearch(
-            space, metric="mean_loss", mode="min",
-            points_to_evaluate=current_best_params)
 
     """
 

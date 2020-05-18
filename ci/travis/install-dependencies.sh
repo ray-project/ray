@@ -185,13 +185,15 @@ install_node() {
   fi
 }
 
+install_toolchains() {
+  "${ROOT_DIR}"/install-toolchains.sh
+}
+
 install_dependencies() {
 
   install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Not for Travis (keep built-in compilers there)
-    "${ROOT_DIR}"/install-toolchains.sh
-  fi
+  install_toolchains
   install_nvm
   install_pip
 
@@ -207,10 +209,10 @@ install_dependencies() {
       msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.0.0b1}" cython==0.29.0 gym \
+    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.1.0}" cython==0.29.0 gym \
       opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
-      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn numba \
+      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
       Pillow prometheus_client)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
@@ -252,7 +254,7 @@ install_dependencies() {
 
   # Additional streaming dependencies.
   if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install msgpack>=0.6.2
+    pip install "msgpack>=0.6.2"
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

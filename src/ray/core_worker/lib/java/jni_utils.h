@@ -16,6 +16,7 @@
 #define RAY_COMMON_JAVA_JNI_UTILS_H
 
 #include <jni.h>
+
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
@@ -111,8 +112,8 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// maxReconstructions field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_max_reconstructions;
+/// maxRestarts field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class

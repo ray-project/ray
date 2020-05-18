@@ -149,7 +149,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  no_done_at_end=False,
                  seed=None,
                  extra_python_environs=None,
-                 _fake_sampler=False):
+                 fake_sampler=False):
         """Initialize a rollout worker.
 
         Arguments:
@@ -245,7 +245,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 to ensure each remote worker has unique exploration behavior.
             extra_python_environs (dict): Extra python environments need to
                 be set.
-            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
+            fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
         self._original_kwargs = locals().copy()
         del self._original_kwargs["self"]
@@ -301,7 +301,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.preprocessing_enabled = True
         self.last_batch = None
         self.global_vars = None
-        self._fake_sampler = _fake_sampler
+        self.fake_sampler = fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
@@ -505,7 +505,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
-        if self._fake_sampler and self.last_batch is not None:
+        if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
 
         if log_once("sample_start"):
@@ -550,7 +550,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         elif self.compress_observations:
             batch.compress()
 
-        if self._fake_sampler:
+        if self.fake_sampler:
             self.last_batch = batch
         return batch
 
