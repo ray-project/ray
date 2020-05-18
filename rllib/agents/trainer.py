@@ -13,6 +13,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf
@@ -422,6 +423,9 @@ class Trainer(Trainable):
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
                         "TensorFlow eager execution")
 
+        # Vars to synchronize to workers on each train call
+        self.global_vars = {"timestep": 0}
+
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
@@ -468,6 +472,14 @@ class Trainer(Trainable):
     def train(self):
         """Overrides super.train to synchronize global vars."""
 
+        if self._has_policy_optimizer():
+            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
+            self.optimizer.workers.local_worker().set_global_vars(
+                self.global_vars)
+            for w in self.optimizer.workers.remote_workers():
+                w.set_global_vars.remote(self.global_vars)
+            logger.debug("updated global vars: {}".format(self.global_vars))
+
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
@@ -493,7 +505,10 @@ class Trainer(Trainable):
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
-            result["num_healthy_workers"] = len(self.workers.remote_workers())
+
+        if self._has_policy_optimizer():
+            result["num_healthy_workers"] = len(
+                self.optimizer.workers.remote_workers())
 
         if self.config["evaluation_interval"] == 1 or (
                 self._iteration > 0 and self.config["evaluation_interval"]
@@ -603,6 +618,8 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
+        if hasattr(self, "optimizer") and self.optimizer:
+            self.optimizer.stop()
 
     @override(Trainable)
     def _save(self, checkpoint_dir):
@@ -748,6 +765,9 @@ class Trainer(Trainable):
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
+        # Figure out the current (sample) time step and pass it into Policy.
+        self.global_vars["timestep"] += 1
+
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
@@ -755,7 +775,8 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore)
+            explore=explore,
+            timestep=self.global_vars["timestep"])
 
         if state or full_fetch:
             return result
@@ -936,10 +957,15 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        if not hasattr(self, "execution_plan"):
+        if (not self._has_policy_optimizer()
+                and not hasattr(self, "execution_plan")):
             raise NotImplementedError(
                 "Recovery is not supported for this algorithm")
-        workers = self.workers
+        if self._has_policy_optimizer():
+            workers = self.optimizer.workers
+        else:
+            assert hasattr(self, "execution_plan")
+            workers = self.workers
 
         logger.info("Health checking all workers...")
         checks = []
@@ -965,9 +991,23 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        logger.warning("Recreating execution plan after failure")
-        workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(workers, self.config)
+        if self._has_policy_optimizer():
+            self.optimizer.reset(healthy_workers)
+        else:
+            assert hasattr(self, "execution_plan")
+            logger.warning("Recreating execution plan after failure")
+            workers.reset(healthy_workers)
+            self.train_exec_impl = self.execution_plan(workers, self.config)
+
+    def _has_policy_optimizer(self):
+        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
+
+        Returns:
+            bool: True if this Trainer holds a PolicyOptimizer object in
+                property `self.optimizer`.
+        """
+        return hasattr(self, "optimizer") and isinstance(
+            self.optimizer, PolicyOptimizer)
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
@@ -1012,6 +1052,8 @@ class Trainer(Trainable):
         state = {}
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
+        if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
+            state["optimizer"] = self.optimizer.save()
         return state
 
     def __setstate__(self, state):
@@ -1020,6 +1062,8 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+        if "optimizer" in state:
+            self.optimizer.restore(state["optimizer"])
 
     def _register_if_needed(self, env_object):
         if isinstance(env_object, str):
