@@ -1456,7 +1456,7 @@ py_test(
     name = "examples/attention_net_tf",
     main = "examples/attention_net.py",
     tags = ["examples", "examples_A"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
@@ -1466,7 +1466,7 @@ py_test(
 #    name = "examples/attention_net_torch",
 #    main = "examples/attention_net.py",
 #    tags = ["examples", "examples_A"],
-#    size = "medium",
+#    size = "large",
 #    srcs = ["examples/attention_net.py"],
 #    args = ["--as-test", "--torch", "--stop-reward=90"]
 # )
@@ -1511,7 +1511,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
@@ -1520,7 +1520,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--torch", "--run=DQN", "--stop-reward=70"]
 )
