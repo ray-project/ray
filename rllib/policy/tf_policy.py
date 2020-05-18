@@ -228,7 +228,7 @@ class TFPolicy(Policy):
         # TODO(sven/ekl): Deprecate support for v1 models.
         if hasattr(self, "model") and isinstance(self.model, ModelV2):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                [], self._sess, self.variables())
+                self._loss, self._sess, self.variables())
         else:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 self._loss, self._sess)
