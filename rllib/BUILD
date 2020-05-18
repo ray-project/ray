@@ -37,7 +37,7 @@
 # Tag: learning_tests
 #
 # This will test all yaml files (via `rllib train`)
-# inside rllib/tuned_examples/regression_tests for actual learning success.
+# inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
 # A2C/A3C
@@ -158,9 +158,9 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/regression_tests/cartpole-simpleq.yaml",
-        "tuned_examples/regression_tests/cartpole-dqn.yaml",
-        "tuned_examples/regression_tests/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-simpleq.yaml",
+        "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
@@ -172,9 +172,9 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/regression_tests/cartpole-simpleq.yaml",
-        "tuned_examples/regression_tests/cartpole-dqn.yaml",
-        "tuned_examples/regression_tests/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-simpleq.yaml",
+        "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--torch"]
 )
@@ -325,26 +325,6 @@ py_test(
 )
 
 # TD3
-py_test(
-    name = "run_regression_tests_cartpole_td3_tf",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ddpg/cartpole-td3.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg"]
-)
-
-py_test(
-    name = "run_regression_tests_cartpole_td3_torch",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ddpg/cartpole-td3.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
-)
-
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
     main = "tests/run_regression_tests.py",

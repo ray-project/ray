@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(config=None,
-                       frameworks=("tf", "tfe", "torch"),
+                       frameworks=("tf", "eager", "torch"),
                        session=False):
     """An generator that allows for looping through n frameworks for testing.
 
-    Provides the correct `framework` config entry as well
+    Provides the correct config entries ("use_pytorch" and "eager") as well
     as the correct eager/non-eager contexts for tf.
 
     Args:
@@ -51,11 +51,11 @@ def framework_iterator(config=None,
             logger.warning("framework_iterator skipping {} (tf not "
                            "installed)!".format(fw))
             continue
-        elif fw == "tfe" and not eager_mode:
+        elif fw == "eager" and not eager_mode:
             logger.warning("framework_iterator skipping eager (could not "
                            "import `eager_mode` from tensorflow.python)!")
             continue
-        assert fw in ["tf", "tfe", "torch", None]
+        assert fw in ["tf", "eager", "torch", None]
 
         # Do we need a test session?
         sess = None
@@ -64,7 +64,9 @@ def framework_iterator(config=None,
             sess.__enter__()
 
         print("framework={}".format(fw))
-        config["framework"] = fw
+
+        config["eager"] = fw == "eager"
+        config["use_pytorch"] = fw == "torch"
 
         eager_ctx = None
         if fw == "eager":
