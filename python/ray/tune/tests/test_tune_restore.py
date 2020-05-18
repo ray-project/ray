@@ -212,12 +212,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             space,
             metric="loss",
             mode="min",
-            analysis=analysis,
-            utility_kwargs={
-                "kind": "ucb",
-                "kappa": 2.5,
-                "xi": 0.0
-            }
+            analysis=analysis
         )
         return search_alg, cost
 
