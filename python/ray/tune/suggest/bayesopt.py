@@ -80,8 +80,6 @@ class BayesOptSearch(Searcher):
             utility_kwargs = dict(
                 acq='ucb',
                 kappa=2.576,
-                kappa_decay=1,
-                kappa_decay_delay=0,
                 xi=0.0,
             )
 
