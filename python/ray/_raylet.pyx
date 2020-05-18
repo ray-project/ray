@@ -79,6 +79,7 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 from ray.includes.ray_config cimport RayConfig
+from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray.async_compat import (sync_to_async,
@@ -107,6 +108,7 @@ include "includes/buffer.pxi"
 include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
+include "includes/global_state_accessor.pxi"
 
 
 logger = logging.getLogger(__name__)

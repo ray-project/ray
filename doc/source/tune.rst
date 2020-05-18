@@ -14,6 +14,9 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
   * Natively :ref:`integrates with optimization libraries <tune-search-alg>` such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
   * Choose among :ref:`scalable algorithms <tune-schedulers>` such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`Vizier's Median Stopping Rule <tune-scheduler-msr>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+  * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
+
+.. _`Ray Serve`: rayserve/overview.html
 
 **Want to get started?** Head over to the :ref:`60 second Tune tutorial <tune-60-seconds>`.
 
