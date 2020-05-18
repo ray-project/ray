@@ -177,6 +177,10 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
       const SubscribeCallback<JobID, JobTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAll not implemented");
+  }
+
  private:
   /// Append job information to GCS asynchronously.
   ///

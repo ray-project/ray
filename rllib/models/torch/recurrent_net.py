@@ -10,14 +10,14 @@ torch, nn = try_import_torch()
 
 
 @DeveloperAPI
-class RecurrentTorchModel(TorchModelV2, nn.Module):
+class RecurrentNetwork(TorchModelV2, nn.Module):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
     takes batches with the time dimension added already.
 
     Here is an example implementation for a subclass
-    ``MyRNNClass(nn.Module, RecurrentTorchModel)``::
+    ``MyRNNClass(nn.Module, RecurrentNetwork)``::
 
         def __init__(self, obs_space, num_outputs):
             self.obs_size = _get_size(obs_space)
@@ -41,7 +41,7 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
             assert self._cur_value is not None, "must call forward() first"
             return self._cur_value
 
-        @override(RecurrentTorchModel)
+        @override(RecurrentNetwork)
         def forward_rnn(self, input_dict, state, seq_lens):
             x = nn.functional.relu(self.fc1(input_dict["obs_flat"].float()))
             h_in = state[0].reshape(-1, self.rnn_hidden_dim)

@@ -6,8 +6,7 @@ from ray.serve.metric.types import (
     convert_event_type_to_class,
     MetricMetadata,
 )
-from ray.serve.utils import (retry_actor_failures, retry_actor_failures_async,
-                             _get_logger)
+from ray.serve.utils import retry_actor_failures_async, _get_logger
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
 logger = _get_logger()
@@ -37,18 +36,6 @@ class MetricClient:
         self.push_task = asyncio.get_event_loop().create_task(
             self.push_to_exporter_forever(push_interval))
         logger.debug("Initialized client")
-
-    @staticmethod
-    def connect_from_serve(default_labels: Optional[Dict[str, str]] = None):
-        """Create the metric client automatically when running inside serve."""
-        from ray.serve.api import _get_master_actor
-
-        master_actor = _get_master_actor()
-        [metric_exporter] = retry_actor_failures(
-            master_actor.get_metric_exporter)
-        return MetricClient(
-            metric_exporter_actor=metric_exporter,
-            default_labels=default_labels)
 
     def new_counter(self,
                     name: str,

@@ -63,14 +63,15 @@ class TorchFastModel(TorchModelV2, nn.Module):
         # Only needed to give some params to the optimizer (even though,
         # they are never used anywhere).
         self.dummy_layer = SlimFC(1, 1)
+        self._output = None
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        output = self.bias + \
+        self._output = self.bias + \
             torch.zeros(size=(input_dict["obs"].shape[0], self.num_outputs))
-        self._value_out = torch.mean(output, -1)  # fake value
-        return output, []
+        return self._output, []
 
     @override(ModelV2)
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        assert self._output is not None, "must call forward first!"
+        return torch.reshape(torch.mean(self._output, -1), [-1])

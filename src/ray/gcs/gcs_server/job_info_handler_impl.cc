@@ -17,14 +17,13 @@
 
 namespace ray {
 namespace rpc {
+
 void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
                                          rpc::AddJobReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << request.data().driver_pid();
-  auto job_table_data = std::make_shared<JobTableData>();
-  job_table_data->CopyFrom(request.data());
   auto on_done = [job_id, request, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
@@ -36,7 +35,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Jobs().AsyncAdd(job_table_data, on_done);
+  Status status = gcs_table_storage_->JobTable().Put(job_id, request.data(), on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -61,10 +60,29 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Jobs().AsyncMarkFinished(job_id, on_done);
+  Status status = gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
 }
+
+void DefaultJobInfoHandler::HandleGetAllJobInfo(
+    const rpc::GetAllJobInfoRequest &request, rpc::GetAllJobInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Getting all job info.";
+  auto on_done = [reply, send_reply_callback](
+                     const std::unordered_map<JobID, JobTableData> &result) {
+    for (auto &data : result) {
+      reply->add_job_info_list()->CopyFrom(data.second);
+    }
+    RAY_LOG(INFO) << "Finished getting all job info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+  Status status = gcs_table_storage_->JobTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<JobID, JobTableData>());
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray

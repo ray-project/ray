@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib
+import urllib.parse
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -566,6 +568,16 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
+    if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
+        try:
+            response = urllib.request.urlopen(cluster_config_file, timeout=5)
+            content = response.read()
+            file_name = cluster_config_file.split("/")[-1]
+            with open(file_name, "wb") as f:
+                f.write(content)
+            cluster_config_file = file_name
+        except urllib.error.HTTPError as e:
+            logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name)
 
