@@ -104,6 +104,21 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    train_op = rollouts \
+        .for_each(MixInReplay(config["buffer_size"])) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 QMixTrainer = GenericOffPolicyTrainer.with_updates(
     name="QMIX",
     default_config=DEFAULT_CONFIG,

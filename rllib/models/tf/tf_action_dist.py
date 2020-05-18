@@ -326,6 +326,11 @@ class SquashedGaussian(TFActionDistribution):
         unsquashed = tf.math.atanh(save_normed_values)
         return unsquashed
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class Beta(TFActionDistribution):
     """
@@ -370,6 +375,11 @@ class Beta(TFActionDistribution):
 
     def _unsquash(self, values):
         return (values - self.low) / (self.high - self.low)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
 
 
 class Deterministic(TFActionDistribution):

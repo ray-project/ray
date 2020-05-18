@@ -4,7 +4,7 @@ from typing import List
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    SampleBatchType, _get_global_vars
+    SampleBatchType
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
@@ -27,6 +27,7 @@ class Aggregator(ParallelIteratorWorker):
     def __init__(self, config: dict,
                  rollout_group: "ParallelIterator[SampleBatchType]"):
         self.weights = None
+        self.global_vars = None
 
         def generator():
             it = rollout_group.gather_async(
@@ -36,7 +37,7 @@ class Aggregator(ParallelIteratorWorker):
             def update_worker(item):
                 worker, batch = item
                 if self.weights:
-                    worker.set_weights.remote(self.weights, _get_global_vars())
+                    worker.set_weights.remote(self.weights, self.global_vars)
                 return batch
 
             # Augment with replay and concat to desired train batch size.
@@ -59,8 +60,9 @@ class Aggregator(ParallelIteratorWorker):
     def get_host(self):
         return os.uname()[1]
 
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars):
         self.weights = weights
+        self.global_vars = global_vars
 
 
 def gather_experiences_tree_aggregation(workers, config):

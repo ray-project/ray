@@ -41,7 +41,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           gcs::NodeInfoAccessor &node_info_accessor,
                           gcs::ErrorInfoAccessor &error_info_accessor,
-                          std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub);
+                          std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -132,6 +132,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param node_info_accessor The node info accessor.
     explicit NodeFailureDetector(
         boost::asio::io_service &io_service, gcs::NodeInfoAccessor &node_info_accessor,
+        std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
 
     /// Register node to this detector.
@@ -177,6 +178,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     absl::flat_hash_map<ClientID, int64_t> heartbeats_;
     /// A buffer containing heartbeats received from node managers in the last tick.
     absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+    /// A publisher for publishing gcs messages.
+    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   };
 
  private:

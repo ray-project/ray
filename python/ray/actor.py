@@ -10,7 +10,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -472,11 +472,23 @@ class ActorClass:
                              "Please use Actor._remote(name='some_name') "
                              "to associate the name.")
 
+        if name and not detached:
+            raise ValueError("Only detached actors can be named. "
+                             "Please use Actor._remote(detached=True, "
+                             "name='some_name').")
+
+        if name == "":
+            raise ValueError("Actor name cannot be an empty string.")
+
         # Check whether the name is already taken.
+        # TODO(edoakes): this check has a race condition because two drivers
+        # could pass the check and then create the same named actor. We should
+        # instead check this when we create the actor, but that's currently an
+        # async call.
         if name is not None:
             try:
                 ray.util.get_actor(name)
-            except ValueError:  # name is not taken, expected.
+            except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(
@@ -551,6 +563,7 @@ class ActorClass:
             actor_placement_resources,
             max_concurrency,
             detached,
+            name if name is not None else "",
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
@@ -566,7 +579,7 @@ class ActorClass:
             worker.current_session_and_job,
             original_handle=True)
 
-        if name is not None:
+        if name is not None and not gcs_actor_service_enabled():
             ray.util.register_actor(name, actor_handle)
 
         return actor_handle

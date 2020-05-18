@@ -10,7 +10,8 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator, \
+    check_compute_action
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf = try_import_tf()
@@ -22,15 +23,17 @@ class TestDDPG(unittest.TestCase):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        config["num_envs_per_worker"] = 2  # Run locally.
 
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, ("torch", "tf")):
+        for _ in framework_iterator(config, ("tf", "torch")):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+            check_compute_action(trainer)
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
@@ -365,6 +368,8 @@ class TestDDPG(unittest.TestCase):
                             check(tf_var, np.transpose(torch_var), rtol=0.07)
                         else:
                             check(tf_var, torch_var, rtol=0.07)
+
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {

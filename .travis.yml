@@ -137,8 +137,7 @@ matrix:
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -149,14 +148,13 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/regression_tests/*.yaml).
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS_TF1X=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
         - TORCH_VERSION=1.4
@@ -167,13 +165,12 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
+        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
 
     # RLlib: Learning tests with torch (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_REGRESSION_TESTS_TORCH=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -184,14 +181,13 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 90 bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
+        - ./ci/keep_alive bazel test --config=ci --test_output=errors --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
     # Agent single tests (compilation, loss-funcs, etc..).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -202,16 +198,16 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - travis_wait 60 bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=quick_train rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir rllib/...
+        #- ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir rllib/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=agents_dir_X rllib/...
 
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_EXAMPLE_DIR_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -230,8 +226,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (A-I).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_TESTS_DIR_TESTS_A_TO_I=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_I=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -247,8 +242,7 @@ matrix:
     # RLlib: tests_dir: Everything in rllib/tests/ directory (J-Z).
     - os: linux
       env:
-        - RLLIB_TESTING=1
-        - RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_J_TO_Z=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8

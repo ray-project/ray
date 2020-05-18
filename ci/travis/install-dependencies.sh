@@ -185,13 +185,15 @@ install_node() {
   fi
 }
 
+install_toolchains() {
+  "${ROOT_DIR}"/install-toolchains.sh
+}
+
 install_dependencies() {
 
   install_bazel
   install_base
-  if [ -n "${GITHUB_WORKFLOW-}" ]; then  # Not for Travis (keep built-in compilers there)
-    "${ROOT_DIR}"/install-toolchains.sh
-  fi
+  install_toolchains
   install_nvm
   install_pip
 
@@ -211,12 +213,25 @@ install_dependencies() {
       opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn numba \
-      Pillow)
+      Pillow prometheus_client)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
-    CC=gcc pip install "${pip_packages[@]}"
+
+    # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
+    # that break the entire CI job: Simply retry installation in this case
+    # after n seconds.
+    local status="0";
+    local errmsg="";
+    for i in {1..3};
+    do
+      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    done
+    if [ "$status" != "0" ]; then
+      echo "${status}" && return 1
+    fi
   fi
 
   if [ "${LINT-}" = 1 ]; then

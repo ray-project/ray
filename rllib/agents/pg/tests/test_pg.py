@@ -7,7 +7,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import check, fc, framework_iterator
+from ray.rllib.utils import check, fc, framework_iterator, check_compute_action
 
 
 class TestPG(unittest.TestCase):
@@ -27,6 +27,7 @@ class TestPG(unittest.TestCase):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+            check_compute_action(trainer, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
