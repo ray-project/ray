@@ -49,8 +49,6 @@ class TensorFlowVariables:
         """
         self.sess = sess
         output = force_list(output)
-        #if not isinstance(output, (list, tuple)):
-        #    output = [output]
         queue = deque(output)
         variable_names = []
         explored_inputs = set(output)
