@@ -8,8 +8,7 @@ git:
   quiet: true
 
 before_install:
-  - rvm reset && rvm implode --force && gem uninstall rvm || true  # uninstall Ruby RVM
-  - unset -f cd  # Travis defines this on Mac for RVM, but it floods the trace log and isn't relevant for us
+  - unset -f cd  # Travis defines this on Mac for RVM, but it breaks the Mac build
   - |
     git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
     cd -- "${TRAVIS_REPO_SLUG}"
@@ -86,7 +85,6 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
         - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
         - ./java/test.sh
 
@@ -151,7 +149,7 @@ matrix:
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHON=3.6
@@ -184,7 +182,7 @@ matrix:
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHON=3.6
@@ -202,7 +200,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -222,7 +220,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -241,7 +239,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -257,7 +255,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -281,8 +279,7 @@ matrix:
         - . ./ci/travis/ci.sh test_cpp
 
 script:
-  # raylet integration tests
-  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+  # raylet integration tests (core_worker_tests included in bazel tests below)
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)

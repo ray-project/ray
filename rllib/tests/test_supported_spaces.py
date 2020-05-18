@@ -9,8 +9,8 @@ from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     MultiAgentMountainCar
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNetV2
+from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNetV2
 from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNetV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -253,11 +253,12 @@ class ModelSupportedSpaces(unittest.TestCase):
             })
 
     def test_ddpg_multiagent(self):
-        check_support_multiagent("DDPG", {
-            "timesteps_per_iteration": 1,
-            "use_state_preprocessor": True,
-            "learning_starts": 500,
-        })
+        check_support_multiagent(
+            "DDPG", {
+                "timesteps_per_iteration": 1,
+                "use_state_preprocessor": True,
+                "learning_starts": 500,
+            })
 
     def test_dqn_multiagent(self):
         check_support_multiagent("DQN", {"timesteps_per_iteration": 1})

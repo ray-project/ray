@@ -50,6 +50,9 @@ message ActorHandle {
 
   // An extension field that is used for storing app-language-specific data.
   bytes extension_data = 8;
+
+  // How many times tasks may be retried on this actor if the actor fails.
+  int64 max_task_retries = 9;
 }
 
 message AssignTaskRequest {
@@ -89,30 +92,21 @@ message ReturnObject {
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
-  // Address of the caller.
-  Address caller_address = 2;
   // The task to be pushed.
-  TaskSpec task_spec = 3;
+  TaskSpec task_spec = 2;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
-  int64 sequence_number = 4;
+  int64 sequence_number = 3;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
   // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 5;
+  int64 client_processed_up_to = 4;
   // Resource mapping ids assigned to the worker executing the task.
-  repeated ResourceMapEntry resource_mapping = 6;
-  // The version of the caller. This is used to distinguish on-the-fly
-  // requests from a caller before it die, and requests from the restarted
-  // caller, which might happen theoretically when network has issues.
-  // - For an actor, this is set to the timestamp when the actor is created,
-  //   so it can be used to differentiate which is the newly restarted actor.
-  // - For a non-actor task, it's set to the timestamp the task starts execution.
-  int64 caller_version = 7;
+  repeated ResourceMapEntry resource_mapping = 5;
 }
 
 message PushTaskReply {

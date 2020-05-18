@@ -126,7 +126,6 @@ export type RayletInfoResponse = {
           children: RayletInfoResponse["actors"];
           // currentTaskFuncDesc: string[];
           ipAddress: string;
-          isDirectCall: boolean;
           jobId: string;
           nodeId: string;
           numExecutedTasks: number;

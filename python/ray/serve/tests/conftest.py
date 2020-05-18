@@ -17,6 +17,7 @@ def _shared_serve_instance():
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
+    serve.init()
     yield
     master = serve.api._get_master_actor()
     # Clear all state between tests to avoid naming collisions.

@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Stopper:
     """Base class for implementing a Tune experiment stopper.
 
@@ -61,3 +64,52 @@ class FunctionStopper(Stopper):
                 "Stop object must be ray.tune.Stopper subclass to be detected "
                 "correctly.")
         return is_function
+
+
+class EarlyStopping(Stopper):
+    def __init__(self, metric, std=0.001, top=10, mode="min"):
+        """Create the EarlyStopping object.
+
+        Args:
+            metric (str): The metric to be monitored.
+            std (float): The minimal standard deviation after which
+                the tuning process has to stop.
+            top (int): The number of best model to consider.
+            mode (str): The mode to select the top results.
+                Can either be "min" or "max".
+
+        Raises:
+            ValueError: If the mode parameter is not "min" nor "max".
+            ValueError: If the top parameter is not an integer
+                greater than 1.
+            ValueError: If the standard deviation parameter is not
+                a strictly positive float.
+        """
+        if mode not in ("min", "max"):
+            raise ValueError("The mode parameter can only be"
+                             " either min or max.")
+        if not isinstance(top, int) or top <= 1:
+            raise ValueError("Top results to consider must be"
+                             " a positive integer greater than one.")
+        if not isinstance(std, float) or std <= 0:
+            raise ValueError("The standard deviation must be"
+                             " a strictly positive float number.")
+        self._mode = mode
+        self._metric = metric
+        self._std = std
+        self._top = top
+        self._top_values = []
+
+    def __call__(self, trial_id, result):
+        """Return a boolean representing if the tuning has to stop."""
+        self._top_values.append(result[self._metric])
+        if self._mode == "min":
+            self._top_values = sorted(self._top_values)[:self._top]
+        else:
+            self._top_values = sorted(self._top_values)[-self._top:]
+        return self.stop_all()
+
+    def stop_all(self):
+        """Return whether to stop and prevent trials from starting."""
+        return (len(self._top_values) == self._top
+                and np.std(self._top_values) <= self._std)

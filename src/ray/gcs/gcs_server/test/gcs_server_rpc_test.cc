@@ -29,7 +29,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
-    config.redis_port = REDIS_SERVER_PORT;
+    config.redis_port = REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config));
 
     thread_io_service_.reset(new std::thread([this] {
