@@ -670,15 +670,8 @@ class LocalIterator(Generic[T]):
 
     @contextmanager
     def _metrics_context(self):
-        if hasattr(self.thread_local, "metrics"):
-            prev_metrics = self.thread_local.metrics
-        else:
-            prev_metrics = None
-        try:
-            self.thread_local.metrics = self.shared_metrics.get()
-            yield
-        finally:
-            self.thread_local.metrics = prev_metrics
+        self.thread_local.metrics = self.shared_metrics.get()
+        yield
 
     def __iter__(self):
         self._build_once()

@@ -1,6 +1,7 @@
 from typing import Any, List
 import time
 
+from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     _get_shared_metrics
