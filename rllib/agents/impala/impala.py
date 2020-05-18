@@ -8,7 +8,8 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, _get_global_vars
+from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
+    _get_global_vars, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -16,7 +17,6 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -191,14 +191,14 @@ class BroadcastUpdateLearnerWeights:
             self.steps_since_broadcast = 0
             self.learner_thread.weights_updated = False
             # Update metrics.
-            metrics = LocalIterator.get_metrics()
+            metrics = _get_shared_metrics()
             metrics.counters["num_weight_broadcasts"] += 1
         actor.set_weights.remote(self.weights, _get_global_vars())
 
 
 def record_steps_trained(item):
     count, fetches = item
-    metrics = LocalIterator.get_metrics()
+    metrics = _get_shared_metrics()
     # Manually update the steps trained counter since the learner thread
     # is executing outside the pipeline.
     metrics.counters[STEPS_TRAINED_COUNTER] += count

@@ -1,8 +1,10 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.replay_ops import MixInReplay
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
@@ -51,12 +53,18 @@ def get_policy_class(config):
 
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["replay_buffer_size"])
 
-    train_op = rollouts \
-        .for_each(MixInReplay(config["replay_buffer_size"])) \
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    replay_op = Replay(local_buffer=replay_buffer) \
         .combine(
             ConcatBatches(min_batch_size=config["train_batch_size"])) \
         .for_each(TrainOneStep(workers))
+
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 

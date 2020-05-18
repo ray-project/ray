@@ -68,7 +68,7 @@ class UpdateWorkerWeights:
             actor.set_weights.remote(self.weights, _get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
-            metrics = LocalIterator.get_metrics()
+            metrics = _get_shared_metrics()
             metrics.counters["num_weight_syncs"] += 1
 
 

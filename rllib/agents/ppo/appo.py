@@ -4,7 +4,7 @@ from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
+    LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
 from ray.util.iter import LocalIterator
 
 # yapf: disable
@@ -76,7 +76,7 @@ class UpdateTargetAndKL:
             * config["minibatch_buffer_size"]
 
     def __call__(self, fetches):
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:

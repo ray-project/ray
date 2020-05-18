@@ -3,7 +3,10 @@ import logging
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer, WaitUntilTimestepsElapsed
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
@@ -15,8 +18,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
 from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
-from ray.rllib.execution.replay_ops import MixInReplay, \
-    WaitUntilTimestepsElapsed
 
 tf = try_import_tf()
 torch, nn = try_import_torch()
@@ -169,13 +170,20 @@ def execution_plan(workers, config):
             .for_each(TrainOneStep(
                 workers, num_sgd_iter=config["num_sgd_iter"]))
     else:
-        train_op = rollouts \
-            .for_each(MixInReplay(config["buffer_size"])) \
+        replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+
+        store_op = rollouts \
+            .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+        replay_op = Replay(local_buffer=replay_buffer) \
             .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
             .combine(
                 ConcatBatches(min_batch_size=config["train_batch_size"])) \
             .for_each(TrainOneStep(
                 workers, num_sgd_iter=config["num_sgd_iter"]))
+
+        train_op = Concurrently(
+            [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 

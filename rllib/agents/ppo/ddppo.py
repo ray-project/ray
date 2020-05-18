@@ -18,13 +18,13 @@ import logging
 import time
 
 import ray
-from ray.util.iter import LocalIterator
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER
+    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    _get_shared_metrics
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -129,7 +129,7 @@ def execution_plan(workers, config):
         def __call__(self, items):
             for item in items:
                 info, count = item
-                metrics = LocalIterator.get_metrics()
+                metrics = _get_shared_metrics()
                 metrics.counters[STEPS_SAMPLED_COUNTER] += count
                 metrics.counters[STEPS_TRAINED_COUNTER] += count
                 metrics.info[LEARNER_INFO] = info
