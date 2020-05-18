@@ -49,7 +49,7 @@ if __name__ == "__main__":
         "vf_loss_coeff": 1e-5,
         "model": {
             "custom_model": GTrXLNet,
-            "max_seq_len": 100,
+            "max_seq_len": 50,
             "custom_options": {
                 "num_transformer_units": 1,
                 "attn_dim": 64,
