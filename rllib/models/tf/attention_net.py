@@ -134,7 +134,26 @@ class TrXLNet(RecurrentNetwork):
 
 
 class GTrXLNet(RecurrentNetwork):
-    """A GTrXL net Model described in [2]."""
+    """A GTrXL net Model described in [2].
+
+    This is still in an experimental phase.
+    Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
+    For an example script, see: `ray/rllib/examples/attention_net.py`.
+
+    To use this network as a replacement for an RNN, configure your Trainer
+    as follows:
+
+    Examples:
+        >> config["model"]["custom_model"] = GTrXLNet
+        >> config["model"]["max_seq_len"] = 10
+        >> config["model"]["custom_options"] = {
+        >>     num_transformer_units=1,
+        >>     attn_dim=32,
+        >>     num_heads=2,
+        >>     memory_tau=50,
+        >>     etc..
+        >> }
+    """
 
     def __init__(self,
                  observation_space,
