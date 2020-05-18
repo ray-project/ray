@@ -20,7 +20,7 @@ pendulum-ddpg:
         exploration_config:
             type: "OrnsteinUhlenbeckNoise"
             scale_timesteps: 10000
-            initial_scale: 1.0,
+            initial_scale: 1.0
             final_scale: 0.02
             ou_base_scale: 0.1
             ou_theta: 0.15
