@@ -219,10 +219,12 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             })
         return search_alg, cost
 
-    def testWarmStart(self):
-        super().testWarmStart()
+    def testBootStrapAnalysis(self):
         analysis = self.run_exp_3()
-        self.set_basic_conf(analysis)
+        search_alg3, cost = self.set_basic_conf(analysis)
+        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
+        tune.run(
+            cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
