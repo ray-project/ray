@@ -19,28 +19,25 @@
 
 namespace ray {
 
-void TestReturnObjectId(const TaskID &task_id, int64_t return_index,
-                        uint8_t transport_type) {
+void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
-  ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index, transport_type);
+  ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index);
   ASSERT_TRUE(return_id.CreatedByTask());
   ASSERT_TRUE(return_id.IsReturnObject());
   ASSERT_FALSE(return_id.IsPutObject());
   ASSERT_EQ(return_id.TaskId(), task_id);
-  ASSERT_TRUE(transport_type == return_id.GetTransportType());
   ASSERT_EQ(return_id.ObjectIndex(), return_index);
 }
 
 void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
   // Round trip test for computing the object ID for a task's put value, then
   // computing the task ID that created the object.
-  ObjectID put_id = ObjectID::ForPut(task_id, put_index, 1);
+  ObjectID put_id = ObjectID::ForPut(task_id, put_index);
   ASSERT_TRUE(put_id.CreatedByTask());
   ASSERT_FALSE(put_id.IsReturnObject());
   ASSERT_TRUE(put_id.IsPutObject());
   ASSERT_EQ(put_id.TaskId(), task_id);
-  ASSERT_TRUE(1 == put_id.GetTransportType());
   ASSERT_EQ(put_id.ObjectIndex(), put_index);
 }
 
@@ -95,9 +92,9 @@ TEST(ObjectIDTest, TestObjectID) {
 
   {
     // test for return
-    TestReturnObjectId(default_task_id, 1, 2);
-    TestReturnObjectId(default_task_id, 2, 3);
-    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex, 4);
+    TestReturnObjectId(default_task_id, 1);
+    TestReturnObjectId(default_task_id, 2);
+    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex);
   }
 
   {

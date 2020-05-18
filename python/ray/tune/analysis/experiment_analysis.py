@@ -220,8 +220,10 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
+            scope (str): One of [all, last, avg]. If `scope=last`, only look at
                 each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=avg`, consider the
+                simple average over all steps for `metric` and compare across
                 trials based on `mode=[min,max]`. If `scope=all`, find each
                 trial's min/max score for `metric` based on `mode`, and
                 compare trials based on `mode=[min,max]`.
@@ -231,11 +233,11 @@ class ExperimentAnalysis(Analysis):
                 "ExperimentAnalysis: attempting to get best trial for "
                 "metric {} for mode {} not in [\"max\", \"min\"]".format(
                     metric, mode))
-        if scope not in ["all", "last"]:
+        if scope not in ["all", "last", "avg"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for scope {} not in [\"all\", \"last\"]".format(
-                    metric, scope))
+                "metric {} for scope {} not in [\"all\", \"last\", \"avg\"]".
+                format(metric, scope))
         best_trial = None
         best_metric_score = None
         for trial in self.trials:
@@ -244,6 +246,8 @@ class ExperimentAnalysis(Analysis):
 
             if scope == "last":
                 metric_score = trial.metric_analysis[metric]["last"]
+            elif scope == "avg":
+                metric_score = trial.metric_analysis[metric]["avg"]
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
@@ -269,8 +273,10 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
+            scope (str): One of [all, last, avg]. If `scope=last`, only look at
                 each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=avg`, consider the
+                simple average over all steps for `metric` and compare across
                 trials based on `mode=[min,max]`. If `scope=all`, find each
                 trial's min/max score for `metric` based on `mode`, and
                 compare trials based on `mode=[min,max]`.
@@ -286,8 +292,10 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
+            scope (str): One of [all, last, avg]. If `scope=last`, only look at
                 each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=avg`, consider the
+                simple average over all steps for `metric` and compare across
                 trials based on `mode=[min,max]`. If `scope=all`, find each
                 trial's min/max score for `metric` based on `mode`, and
                 compare trials based on `mode=[min,max]`.

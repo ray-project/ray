@@ -10,7 +10,7 @@ from ray.rllib.utils.framework import try_import_tf
 tf = try_import_tf()
 
 
-# Deprecated: see as an alternative models/tf/recurrent_tf_modelv2.py
+# Deprecated: see as an alternative models/tf/recurrent_net.py
 class LSTM(Model):
     """Adds a LSTM cell on top of some other model output.
 
@@ -24,7 +24,7 @@ class LSTM(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         # Hard deprecate this class. All Models should use the ModelV2
         # API from here on.
-        deprecation_warning("Model->LSTM", "RecurrentTFModelV2", error=False)
+        deprecation_warning("Model->LSTM", "RecurrentNetwork", error=False)
 
         cell_size = options.get("lstm_cell_size")
         if options.get("lstm_use_prev_action_reward"):

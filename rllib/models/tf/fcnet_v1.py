@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 tf = try_import_tf()
 
 
-# Deprecated: see as an alternative models/tf/fcnet_v2.py
+# Deprecated: see as an alternative models/tf.fcnet.py
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 

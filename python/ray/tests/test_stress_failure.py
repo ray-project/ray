@@ -274,7 +274,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
     def error_check(errors):
         if num_nodes == 1:
             # In a single-node setting, each object is evicted and
-            # reconstructed exactly once, so exactly half the objects will
+            # restarted exactly once, so exactly half the objects will
             # produce an error during reconstruction.
             min_errors = num_objects // 2
         else:

@@ -103,10 +103,10 @@ message ActorTableData {
     PENDING = 0;
     // Actor is alive.
     ALIVE = 1;
-    // Actor is dead, now being reconstructed.
+    // Actor is dead, now being restarted.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 2;
-    // Actor is already dead and won't be reconstructed.
+    RESTARTING = 2;
+    // Actor is already dead and won't be restarted.
     DEAD = 3;
   }
   // The ID of the actor that was created.
@@ -114,17 +114,18 @@ message ActorTableData {
   // The ID of the caller of the actor creation task.
   bytes parent_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
-  // dies, then this is the object that should be reconstructed for the actor
+  // dies, then this is the object that should be restarted for the actor
   // to be recreated.
   bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
   ActorState state = 6;
-  // Max number of times this actor should be reconstructed.
-  uint64 max_reconstructions = 7;
-  // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 8;
+  // Max number of times this actor should be restarted,
+  // a value of -1 indicates an infinite number of reconstruction attempts.
+  int64 max_restarts = 7;
+  // Number of restarts that have already been performed on this actor.
+  uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
   // The address of the the actor's owner (parent).
@@ -344,7 +345,7 @@ enum ErrorType {
   WORKER_DIED = 0;
   // Indicates that a task failed because the actor died unexpectedly before finishing it.
   ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be reconstructed.
+  // Indicates that an object is lost and cannot be restarted.
   // Note, this currently only happens to actor objects. When the actor's state is already
   // after the object's creating task, the actor cannot re-run the task.
   // TODO(hchen): we may want to reuse this error type for more cases. E.g.,

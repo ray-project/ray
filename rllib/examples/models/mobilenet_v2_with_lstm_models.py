@@ -1,9 +1,9 @@
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
+from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.models.torch.recurrent_torch_model import RecurrentTorchModel
+from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -11,7 +11,7 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 
-class MobileV2PlusRNNModel(RecurrentTFModelV2):
+class MobileV2PlusRNNModel(RecurrentNetwork):
     """A conv. + recurrent keras net example using a pre-trained MobileNet."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -71,7 +71,7 @@ class MobileV2PlusRNNModel(RecurrentTFModelV2):
         self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
-    @override(RecurrentTFModelV2)
+    @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
                                                           state)
@@ -89,7 +89,7 @@ class MobileV2PlusRNNModel(RecurrentTFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
+class TorchMobileV2PlusRNNModel(TorchRNN):
     """A conv. + recurrent torch net example using a pre-trained MobileNet."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -114,8 +114,10 @@ class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
         # Postprocess LSTM output with another hidden layer and compute values.
         self.logits = SlimFC(self.lstm_state_size, self.num_outputs)
         self.value_branch = SlimFC(self.lstm_state_size, 1)
+        # Holds the current "base" output (before logits layer).
+        self._features = None
 
-    @override(RecurrentTFModelV2)
+    @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
         # Create image dims.
         vision_in = torch.reshape(inputs, [-1] + self.cnn_shape)
@@ -128,10 +130,9 @@ class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
             state[0] = state[0].unsqueeze(0)
             state[1] = state[1].unsqueeze(0)
         # Forward through LSTM.
-        lstm_out, [h, c] = self.lstm(vision_out_time_ranked, state)
+        self._features, [h, c] = self.lstm(vision_out_time_ranked, state)
         # Forward LSTM out through logits layer and value layer.
-        logits = self.logits(lstm_out)
-        self._value_out = self.value_branch(lstm_out)
+        logits = self.logits(self._features)
         return logits, [h.squeeze(0), c.squeeze(0)]
 
     @override(ModelV2)
@@ -147,4 +148,5 @@ class TorchMobileV2PlusRNNModel(RecurrentTorchModel):
 
     @override(ModelV2)
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        assert self._features is not None, "must call forward() first"
+        return torch.reshape(self.value_branch(self._features), [-1])

@@ -39,8 +39,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with: " << status.ToString();
-              task_finisher_->PendingTaskFailed(
-                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+              RAY_UNUSED(task_finisher_->PendingTaskFailed(
+                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
           }));
       return;
@@ -70,8 +70,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
     }
     if (!keep_executing) {
-      task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                        rpc::ErrorType::TASK_CANCELLED, nullptr);
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
   return Status::OK();
@@ -256,7 +256,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
-  request->mutable_caller_address()->CopyFrom(rpc_address_);
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
@@ -284,10 +283,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(
+          RAY_UNUSED(task_finisher_->PendingTaskFailed(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status);
+              &status));
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
@@ -321,8 +320,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             task_queues_.erase(scheduling_key);
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                            rpc::ErrorType::TASK_CANCELLED);
+          RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                                       rpc::ErrorType::TASK_CANCELLED));
           return Status::OK();
         }
       }

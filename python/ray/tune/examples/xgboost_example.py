@@ -8,7 +8,7 @@ from ray import tune
 
 
 def XGBCallback(env):
-    tune.track.log(**dict(env.evaluation_result_list))
+    tune.report(**dict(env.evaluation_result_list))
 
 
 def train_breast_cancer(config):
@@ -21,7 +21,7 @@ def train_breast_cancer(config):
         config, train_set, evals=[(test_set, "eval")], callbacks=[XGBCallback])
     preds = bst.predict(test_set)
     pred_labels = np.rint(preds)
-    tune.track.log(
+    tune.report(
         mean_accuracy=sklearn.metrics.accuracy_score(test_y, pred_labels),
         done=True)
 
