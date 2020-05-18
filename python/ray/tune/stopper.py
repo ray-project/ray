@@ -95,7 +95,7 @@ class EarlyStopping(Stopper):
         if not isinstance(top, int) or top <= 1:
             raise ValueError("Top results to consider must be"
                              " a positive integer greater than one.")
-        if not isinstance(patience, int) or patience >= 1:
+        if not isinstance(patience, int) or patience < 0:
             raise ValueError("Patience must be"
                              " a strictly positive integer.")
         if not isinstance(std, float) or std <= 0:
