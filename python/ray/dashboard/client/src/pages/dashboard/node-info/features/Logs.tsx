@@ -57,13 +57,13 @@ export const makeWorkerLogs = (
   },
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeatureComponent => ({ node, worker }) =>
-  logCounts.perWorker[worker.pid] === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No logs
-    </Typography>
-  ) : (
+  logCounts.perWorker[worker.pid] ? (
     <SpanButton onClick={() => setLogDialog(node.hostname, worker.pid)}>
       View log ({logCounts.perWorker[worker.pid].toLocaleString()}{" "}
       {logCounts.perWorker[worker.pid] === 1 ? "line" : "lines"})
     </SpanButton>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No logs
+    </Typography>
   );

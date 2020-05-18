@@ -217,7 +217,8 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
                 "kind": "ucb",
                 "kappa": 2.5,
                 "xi": 0.0
-            })
+            }
+        )
         return search_alg, cost
 
     def testBootStrapAnalysis(self):
