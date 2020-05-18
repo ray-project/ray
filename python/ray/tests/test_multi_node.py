@@ -398,10 +398,9 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
         # Test starting Ray with all arguments specified.
         subprocess.check_output([
-            "ray", "start", "--head",
-            "--redis-shard-ports", "6380,6381,6382", "--object-manager-port",
-            "12345", "--num-cpus", "2", "--num-gpus", "0",
-            "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
+            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382",
+            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
+            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
         subprocess.check_output(["ray", "stop"])
 
@@ -438,10 +437,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --num-cpus=1 " +
-        "--node-ip-address=localhost"
-    ],
+    "call_ray_start",
+    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
     ray.init(node_ip_address="localhost", address="localhost:6379")
