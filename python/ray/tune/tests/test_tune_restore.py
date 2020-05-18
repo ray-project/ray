@@ -209,11 +209,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
         search_alg = BayesOptSearch(
-            space,
-            metric="loss",
-            mode="min",
-            analysis=analysis
-        )
+            space, metric="loss", mode="min", analysis=analysis)
         return search_alg, cost
 
     def testBootStrapAnalysis(self):
