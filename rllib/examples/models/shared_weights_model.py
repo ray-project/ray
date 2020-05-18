@@ -110,15 +110,16 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
         # Non-shared final layer.
         self.last_layer = SlimFC(32, self.num_outputs, activation_fn=nn.ReLU)
         self.vf = SlimFC(32, 1, activation_fn=None)
+        self._output = None
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         out = self.first_layer(input_dict["obs"])
-        out = TORCH_GLOBAL_SHARED_LAYER(out)
-        model_out = self.last_layer(out)
-        self._value_out = self.vf(out)
+        self._output = TORCH_GLOBAL_SHARED_LAYER(out)
+        model_out = self.last_layer(self._output)
         return model_out, []
 
     @override(ModelV2)
     def value_function(self):
-        return torch.reshape(self._value_out, [-1])
+        assert self._output is not None, "must call forward first!"
+        return torch.reshape(self.vf(self._output), [-1])
