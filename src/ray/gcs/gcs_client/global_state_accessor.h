@@ -46,7 +46,9 @@ class GlobalStateAccessor {
 
   /// Get information of all jobs from GCS Service.
   ///
-  /// \return All job info.
+  /// \return All job info. To support multi-language, we serialized each JobTableData and
+  /// returned the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
  private:
