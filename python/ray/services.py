@@ -527,10 +527,7 @@ def start_ray_process(command,
         use_tmux=use_tmux)
 
 
-def wait_for_redis_to_start(redis_ip_address,
-                            redis_port,
-                            password=None,
-                            num_retries=5):
+def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -540,8 +537,6 @@ def wait_for_redis_to_start(redis_ip_address,
         redis_ip_address (str): The IP address of the redis server.
         redis_port (int): The port of the redis server.
         password (str): The password of the redis server.
-        num_retries (int): The number of times to try connecting with redis.
-            The client will sleep for one second between attempts.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -549,8 +544,9 @@ def wait_for_redis_to_start(redis_ip_address,
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    counter = 0
-    while counter < num_retries:
+    num_retries = 12
+    delay = 0.001
+    for _ in range(num_retries):
         try:
             # Run some random command and see if it worked.
             logger.debug(
@@ -559,12 +555,11 @@ def wait_for_redis_to_start(redis_ip_address,
             redis_client.client_list()
         except redis.ConnectionError:
             # Wait a little bit.
-            time.sleep(1)
-            logger.info("Failed to connect to the redis server, retrying.")
-            counter += 1
+            time.sleep(delay)
+            delay *= 2
         else:
             break
-    if counter == num_retries:
+    else:
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
