@@ -149,7 +149,7 @@ matrix:
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHON=3.6
@@ -182,7 +182,7 @@ matrix:
     - os: linux
       env:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHON=3.6
@@ -200,7 +200,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -220,7 +220,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -239,7 +239,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
@@ -255,7 +255,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         - PYTHON=3.6
-        - TF_VERSION=2.0.0b1
+        - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
