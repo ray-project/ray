@@ -6,11 +6,11 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 
 

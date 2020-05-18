@@ -46,7 +46,33 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
-def apex_execution_plan(workers, config):
+# Update worker weights as they finish generating experiences.
+class UpdateWorkerWeights:
+    def __init__(self, learner_thread, workers, max_weight_sync_delay):
+        self.learner_thread = learner_thread
+        self.workers = workers
+        self.steps_since_update = collections.defaultdict(int)
+        self.max_weight_sync_delay = max_weight_sync_delay
+        self.weights = None
+
+    def __call__(self, item: ("ActorHandle", SampleBatchType)):
+        actor, batch = item
+        self.steps_since_update[actor] += batch.count
+        if self.steps_since_update[actor] >= self.max_weight_sync_delay:
+            # Note that it's important to pull new weights once
+            # updated to avoid excessive correlation between actors.
+            if self.weights is None or self.learner_thread.weights_updated:
+                self.learner_thread.weights_updated = False
+                self.weights = ray.put(
+                    self.workers.local_worker().get_weights())
+            actor.set_weights.remote(self.weights, _get_global_vars())
+            self.steps_since_update[actor] = 0
+            # Update metrics.
+            metrics = LocalIterator.get_metrics()
+            metrics.counters["num_weight_syncs"] += 1
+
+
+def apex_execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
