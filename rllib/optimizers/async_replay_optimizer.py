@@ -165,8 +165,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def stats(self):
-        replay_stats = ray.get(self.replay_actors[0].stats.remote(
-            self.debug))
+        replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
