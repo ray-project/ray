@@ -66,9 +66,8 @@ class TrainOneStep:
                 # TODO(ekl) shouldn't be returning learner stats directly here
                 metrics.info[LEARNER_INFO] = info
             else:
-                info = get_learner_stats(
-                    self.workers.local_worker().learn_on_batch(batch))
-                metrics.info[LEARNER_INFO] = info
+                info = self.workers.local_worker().learn_on_batch(batch)
+                metrics.info[LEARNER_INFO] = get_learner_stats(info)
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if self.workers.remote_workers():

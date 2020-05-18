@@ -23,8 +23,8 @@ def get_learner_stats(grad_info):
         {"vf_loss": ..., "policy_loss": ...}
     """
 
-    assert LEARNER_STATS_KEY not in grad_info, (
-        "learner stats should be nested under policy id", grad_info)
+    if LEARNER_STATS_KEY not in grad_info:
+        return grad_info[LEARNER_STATS_KEY]
 
     multiagent_stats = {}
     for k, v in grad_info.items():
