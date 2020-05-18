@@ -165,7 +165,8 @@ class AbstractWarmStartTest:
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
-        return tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
+        return tune.run(
+            cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
     def testWarmStart(self):
         results_exp_1 = self.run_exp_1()
