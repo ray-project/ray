@@ -158,7 +158,8 @@ def test_train_one_step(ray_start_regular_shared):
     b = a.for_each(TrainOneStep(workers))
     batch, stats = next(b)
     assert isinstance(batch, SampleBatch)
-    assert "learner_stats" in stats
+    assert "default_policy" in stats
+    assert "learner_stats" in stats["default_policy"]
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters
