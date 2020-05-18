@@ -326,6 +326,11 @@ Once the cluster is started, you can execute scripts to create a RayServe deploy
     serve.create_endpoint("hello")
     serve.set_traffic("hello", {"hello:v0": 1})
 
+.. note::
+    The first invocation of ``serve.init`` will start the HTTP server on the same
+    node. We recommend you to start it on the head node of the Ray cluster so it
+    colocate with other critical components.
+
 And sometimes later, you can execute another script to reconfigure and update
 the services.
 
