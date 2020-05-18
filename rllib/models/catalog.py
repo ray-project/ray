@@ -306,10 +306,9 @@ class ModelCatalog:
                         # accept these as kwargs, not get them from
                         # config["custom_options"] anymore)
                         try:
-                            instance = model_cls(
-                                obs_space, action_space,
-                                num_outputs, model_config, name,
-                                **model_kwargs)
+                            instance = model_cls(obs_space, action_space,
+                                                 num_outputs, model_config,
+                                                 name, **model_kwargs)
                         except TypeError as e:
                             # Keyword error: Try old way w/o kwargs.
                             if "__init__() got an unexpected " in e.args[0]:
@@ -317,9 +316,9 @@ class ModelCatalog:
                                     "Custom ModelV2 should accept all custom "
                                     "options as **kwargs, instead of expecting"
                                     " them in config['custom_options']!")
-                                instance = model_cls(
-                                    obs_space, action_space, num_outputs,
-                                    model_config, name)
+                                instance = model_cls(obs_space, action_space,
+                                                     num_outputs, model_config,
+                                                     name)
                             # Other error -> re-raise.
                             else:
                                 raise e
