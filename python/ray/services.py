@@ -544,7 +544,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    num_retries = 5000
+    num_retries = 12
+    delay = 0.001
     for _ in range(num_retries):
         try:
             # Run some random command and see if it worked.
@@ -554,7 +555,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             redis_client.client_list()
         except redis.ConnectionError:
             # Wait a little bit.
-            time.sleep(0.001)
+            time.sleep(delay)
+            delay *= 2
         else:
             break
     else:
