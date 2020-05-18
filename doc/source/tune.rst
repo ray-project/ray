@@ -11,14 +11,11 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 
   * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
   * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras<tune-guides-overview>`.
-  * Natively `integrates with optimization libraries <tune-searchalg.html>`_ such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
-  * Choose among `scalable algorithms <tune-schedulers.html>`_ such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+  * Natively :ref:`integrates with optimization libraries <tune-search-alg>` such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
+  * Choose among :ref:`scalable algorithms <tune-schedulers>` such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`Vizier's Median Stopping Rule <tune-scheduler-msr>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
   * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
-.. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 .. _`Ray Serve`: rayserve/overview.html
 
 **Want to get started?** Head over to the :ref:`60 second Tune tutorial <tune-60-seconds>`.
