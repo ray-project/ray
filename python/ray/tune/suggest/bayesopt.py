@@ -78,7 +78,7 @@ class BayesOptSearch(Searcher):
             # The defaults arguments are the same
             # as in the package BayesianOptimization
             utility_kwargs = dict(
-                acq='ucb',
+                acq="ucb",
                 kappa=2.576,
                 xi=0.0,
             )
