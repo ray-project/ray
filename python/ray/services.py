@@ -873,8 +873,9 @@ def _start_redis_instance(executable,
 
     Notes:
         If "port" is not None, then we will only use this port and try
-        only once. Otherwise, random ports will be used and the maximum
-        retries count is "num_retries".
+        only once. Otherwise, we will first try the default redis port,
+        and if it is unavailable, we will try random ports with
+        maximum retries of "num_retries".
 
     Args:
         executable (str): Full path of the redis-server executable.
@@ -912,7 +913,7 @@ def _start_redis_instance(executable,
         # This ensures that we will use the given port.
         num_retries = 1
     else:
-        port = new_port()
+        port = ray_constants.DEFAULT_PORT
 
     load_module_args = []
     for module in modules:

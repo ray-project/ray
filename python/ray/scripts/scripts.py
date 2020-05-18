@@ -127,7 +127,15 @@ def dashboard(cluster_config_file, cluster_name, port):
     "--redis-port",
     required=False,
     type=str,
-    help="the port to use for starting Redis")
+    help="(DEPRECATED) the port to use for starting redis. "
+    "Please use --port instead now.")
+@click.option(
+    "--port",
+    required=False,
+    type=str,
+    help="the port of the head ray process. If not provided, tries to use "
+    "{0}, falling back to a random port if {0} is "
+    "not available".format(ray_constants.DEFAULT_PORT))
 @click.option(
     "--num-redis-shards",
     required=False,
@@ -279,7 +287,7 @@ def dashboard(cluster_config_file, cluster_name, port):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-def start(node_ip_address, redis_address, address, redis_port,
+def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
@@ -291,6 +299,12 @@ def start(node_ip_address, redis_address, address, redis_port,
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
+    if redis_port is not None:
+        logger.warn("The --redis-port argument will be deprecated soon. "
+                    "Please use --port instead.")
+        if port is not None and port != redis_port:
+            raise ValueError("Cannot specify both --port and --redis-port "
+                             "as port is a rename of deprecated redis-port")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -361,7 +375,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         logger.info("Using IP address {} for this node.".format(
             ray_params.node_ip_address))
         ray_params.update_if_absent(
-            redis_port=redis_port,
+            redis_port=port or redis_port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
@@ -392,9 +406,10 @@ def start(node_ip_address, redis_address, address, redis_port,
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
-        if redis_port is not None:
-            raise Exception("If --head is not passed in, --redis-port is not "
-                            "allowed.")
+        if not (redis_port is None and port is None):
+            raise Exception(
+                "If --head is not passed in, --port and --redis-port are not "
+                "allowed.")
         if redis_shard_ports is not None:
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
