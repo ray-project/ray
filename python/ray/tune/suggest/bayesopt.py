@@ -32,8 +32,11 @@ class BayesOptSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        utility_kwargs (dict): Parameters to define the utility function. Must
-            provide values for the keys `kind`, `kappa`, and `xi`.
+        utility_kwargs (dict): Parameters to define the utility function.
+            The default value is a dictionary with three keys:
+            - kind: ucb (Upper Confidence Bound)
+            - kappa: 2.576
+            - xi: 0.0
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
         max_concurrent: Deprecated.
