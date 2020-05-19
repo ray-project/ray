@@ -376,6 +376,7 @@ class ServeMaster:
                 # replica is being restarted and there's no way to tell if it
                 # successfully killed the worker or not.
                 worker = ray.worker.global_worker
+                # Kill the actor with no_restart=True.
                 worker.core_worker.kill_actor(replica._ray_actor_id, True)
 
         self.replicas_to_stop.clear()
