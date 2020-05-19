@@ -18,13 +18,13 @@ import argparse
 
 import ray
 from ray import tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.parametric_actions_cartpole import \
     ParametricActionsCartPole
 from ray.rllib.examples.models.parametric_actions_model import \
     ParametricActionsModel, TorchParametricActionsModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

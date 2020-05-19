@@ -32,8 +32,11 @@ class BayesOptSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        utility_kwargs (dict): Parameters to define the utility function. Must
-            provide values for the keys `kind`, `kappa`, and `xi`.
+        utility_kwargs (dict): Parameters to define the utility function.
+            The default value is a dictionary with three keys:
+            - kind: ucb (Upper Confidence Bound)
+            - kappa: 2.576
+            - xi: 0.0
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
         max_concurrent: Deprecated.
@@ -66,8 +69,6 @@ class BayesOptSearch(Searcher):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
-        assert utility_kwargs is not None, (
-            "Must define arguments for the utility function!")
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self.max_concurrent = max_concurrent
         super(BayesOptSearch, self).__init__(
@@ -75,6 +76,15 @@ class BayesOptSearch(Searcher):
             mode=mode,
             max_concurrent=max_concurrent,
             use_early_stopped_trials=use_early_stopped_trials)
+
+        if utility_kwargs is None:
+            # The defaults arguments are the same
+            # as in the package BayesianOptimization
+            utility_kwargs = dict(
+                kind="ucb",
+                kappa=2.576,
+                xi=0.0,
+            )
 
         if mode == "max":
             self._metric_op = 1.

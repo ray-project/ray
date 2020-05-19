@@ -55,6 +55,25 @@ export type RayConfigResponse = {
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
+export type NodeInfoResponseWorker = {
+  pid: number;
+  create_time: number;
+  cmdline: string[];
+  cpu_percent: number;
+  cpu_times: {
+    system: number;
+    children_system: number;
+    user: number;
+    children_user: number;
+  };
+  memory_info: {
+    pageins: number;
+    pfaults: number;
+    vms: number;
+    rss: number;
+  };
+};
+
 export type NodeInfoResponse = {
   clients: Array<{
     now: number;
@@ -74,24 +93,7 @@ export type NodeInfoResponse = {
     };
     load_avg: [[number, number, number], [number, number, number]];
     net: [number, number]; // Sent and received network traffic in bytes / second
-    workers: Array<{
-      pid: number;
-      create_time: number;
-      cmdline: string[];
-      cpu_percent: number;
-      cpu_times: {
-        system: number;
-        children_system: number;
-        user: number;
-        children_user: number;
-      };
-      memory_info: {
-        pageins: number;
-        pfaults: number;
-        vms: number;
-        rss: number;
-      };
-    }>;
+    workers: Array<NodeInfoResponseWorker>;
   }>;
   log_counts: {
     [ip: string]: {
