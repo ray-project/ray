@@ -34,10 +34,11 @@ class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
 
     def __init__(self, num):
+        num = num.get("num_agents", 1) if isinstance(num, dict) else num
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Tuple([gym.spaces.Discrete(2), gym.spaces.Discrete(2), gym.spaces.Box(0.0, 1.0, (4,))])
         self.resetted = False
 
     def reset(self):

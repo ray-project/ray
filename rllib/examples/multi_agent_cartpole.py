@@ -15,7 +15,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.models.shared_weights_model import \
     SharedWeightsModel1, SharedWeightsModel2, TorchSharedWeightsModel
 from ray.rllib.models import ModelCatalog
@@ -39,7 +39,7 @@ parser.add_argument("--torch", action="store_true")
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     # Register the models to use.
     mod1 = TorchSharedWeightsModel if args.torch else SharedWeightsModel1
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("model2", mod2)
 
     # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v0")
+    single_env = BasicMultiAgent(1)  #gym.make("CartPole-v0")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     policy_ids = list(policies.keys())
 
     config = {
-        "env": MultiAgentCartPole,
+        "env": BasicMultiAgent,
         "env_config": {
             "num_agents": args.num_agents,
         },
