@@ -67,15 +67,8 @@ void GlobalStateAccessor::Disconnect() {
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
-  auto on_done = [&job_table_data, &promise](
-                     const Status &status, const std::vector<rpc::JobTableData> &result) {
-    RAY_CHECK_OK(status);
-    for (auto &data : result) {
-      job_table_data.push_back(data.SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(on_done));
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
+      TransformForAccessorCallback<rpc::JobTableData>(job_table_data, promise)));
   promise.get_future().get();
   return job_table_data;
 }
@@ -83,14 +76,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
-  auto on_done = [&node_table_data, &promise](
-                     const Status &status, const std::vector<rpc::GcsNodeInfo> &result) {
-    RAY_CHECK_OK(status);
-    std::transform(result.begin(), result.end(), std::back_inserter(node_table_data),
-                   [](const rpc::GcsNodeInfo &data) { return data.SerializeAsString(); });
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(on_done));
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+      TransformForAccessorCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
   promise.get_future().get();
   return node_table_data;
 }
