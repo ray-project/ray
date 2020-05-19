@@ -382,8 +382,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test starting Ray with the worker port range specified.
     subprocess.check_output([
-        "ray", "start", "--head", "--min-worker-port", "12345",
-        "--max-worker-port", "12346"
+        "ray", "start", "--head", "--min-worker-port", "50000",
+        "--max-worker-port", "51000"
     ])
     subprocess.check_output(["ray", "stop"])
 
@@ -430,7 +430,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode is None
 
     kill_process_by_name("raylet")
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
@@ -442,7 +442,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
     blocked.terminate()
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
