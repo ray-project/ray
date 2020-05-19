@@ -397,8 +397,8 @@ class GlobalState:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
             node_info = {
                 "NodeID": item.node_id,
-                "Alive": item.state == \
-                        gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
+                "Alive": item.state ==
+                gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
                 "NodeManagerAddress": item.node_manager_address,
                 "NodeManagerHostname": item.node_manager_hostname,
                 "NodeManagerPort": item.node_manager_port,
