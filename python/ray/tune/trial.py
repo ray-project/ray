@@ -1,5 +1,3 @@
-from collections import deque
-
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
@@ -477,7 +475,6 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
