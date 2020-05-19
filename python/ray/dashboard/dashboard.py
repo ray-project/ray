@@ -945,7 +945,6 @@ class RayletStats(threading.Thread):
         while True:
             time.sleep(1.0)
             replies = {}
-
             try:
                 for node in self.nodes:
                     node_id = node["NodeID"]

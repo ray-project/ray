@@ -135,14 +135,15 @@ if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
   pickle5_available=0
   pickle5_path="$ROOT_DIR/python/ray/pickle5_files"
   # Check if the current Python alrady has pickle5 (either comes with newer Python versions, or has been installed by us before).
-  if PYTHONPATH="$pickle5_path:$PYTHONPATH" "$PYTHON_EXECUTABLE" -s -c "import pickle5" 2>/dev/null; then
+  check_pickle5_command="import sys\nif sys.version_info < (3, 8, 2): import pickle5;"
+  if PYTHONPATH="$pickle5_path:$PYTHONPATH" "$PYTHON_EXECUTABLE" -s -c "exec(\"$check_pickle5_command\")" 2>/dev/null; then
     pickle5_available=1
   fi
   if [ 1 -ne "${pickle5_available}" ]; then
     # Install pickle5-backport.
     TEMP_DIR="$(mktemp -d)"
     pushd "$TEMP_DIR"
-    wget --quiet -O pickle5-backport.zip https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip
+    curl -f -s -L -R -o "pickle5-backport.zip" "https://github.com/suquark/pickle5-backport/archive/8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72.zip"
     unzip pickle5-backport.zip
     pushd pickle5-backport-8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
       CC=gcc "$PYTHON_EXECUTABLE" setup.py --quiet bdist_wheel
