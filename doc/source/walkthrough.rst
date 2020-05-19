@@ -173,11 +173,12 @@ Remote functions can be canceled by calling ``ray.cancel`` on the returned Objec
 .. code-block:: python
 
   @ray.remote
-  def return_forever():
-      blocking_operation()
-
-obj_id = return_multiple.remote()
-ray.cancel(obj_id)
+  def blocking_operation():
+      time.sleep(10e6)
+      return 100
+  
+  obj_id = blocking_operation.remote()
+  ray.cancel(obj_id)
 
 .. autofunction:: ray.cancel
     :noindex:
