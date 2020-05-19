@@ -108,6 +108,7 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
 TEST_F(GlobalStateAccessorTest, TestNodeTable) {
   int node_count = 100;
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
+  // It's useful to check if index value will be marked as address suffix.
   for (int index = 0; index < node_count; ++index) {
     auto node_table_data =
         Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));

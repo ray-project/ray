@@ -397,8 +397,8 @@ class GlobalState:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
             node_info = {
                 "NodeID": item.node_id,
-                "Alive": True if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE") \
-                        else False,
+                "Alive": item.state == \
+                        gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
                 "NodeManagerAddress": item.node_manager_address,
                 "NodeManagerHostname": item.node_manager_hostname,
                 "NodeManagerPort": item.node_manager_port,
@@ -408,7 +408,6 @@ class GlobalState:
             }
             results.append(node_info)
         return results
-
 
     def client_table(self):
         """ Deprecated interface to fetch and parse the Redis DB client table.
