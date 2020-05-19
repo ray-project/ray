@@ -7,6 +7,7 @@ import uuid
 import time
 import tempfile
 import os
+from collections import deque
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
