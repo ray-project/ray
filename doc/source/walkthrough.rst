@@ -170,6 +170,15 @@ Further, remote functions can return multiple object IDs.
 
 Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ID. 
 
+.. code-block:: python
+
+  @ray.remote
+  def return_forever():
+      blocking_operation()
+
+obj_id = return_multiple.remote()
+ray.cancel(obj_id)
+
 .. autofunction:: ray.cancel
     :noindex:
 
