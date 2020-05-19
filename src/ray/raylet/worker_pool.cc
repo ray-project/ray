@@ -494,24 +494,28 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllWorkers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredWorkers() const {
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      workers.push_back(worker);
+      if (worker->IsRegistered()) {
+        workers.push_back(worker);
+      }
     }
   }
 
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllDrivers() const {
+const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredDrivers() const {
   std::vector<std::shared_ptr<Worker>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {
-      drivers.push_back(driver);
+      if (driver->IsRegistered()) {
+        drivers.push_back(driver);
+      }
     }
   }
 
