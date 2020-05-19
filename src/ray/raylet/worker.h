@@ -129,7 +129,10 @@ class Worker {
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
+  rpc::CoreWorkerClient *rpc_client() {
+    RAY_CHECK(IsRegistered());
+    return rpc_client_.get();
+  }
 
  private:
   /// The worker's ID.
