@@ -25,11 +25,12 @@ Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On the head node (just choose some node to be the head node), run the following.
-If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
+If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
+random port.
 
 .. code-block:: bash
 
-  ray start --head --redis-port=6379
+  ray start --head --port=6379
 
 The command will print out the address of the Redis server that was started
 (and some other address information).

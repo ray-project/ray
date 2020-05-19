@@ -43,6 +43,8 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
       const SubscribeCallback<JobID, JobTableData> &subscribe,
       const StatusCallback &done) override;
 
+  Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 };

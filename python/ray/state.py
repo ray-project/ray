@@ -13,6 +13,8 @@ from ray import (
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
+from ray._raylet import GlobalStateAccessor
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,6 +127,8 @@ class GlobalState:
     Attributes:
         redis_client: The Redis client used to query the primary redis server.
         redis_clients: Redis clients for each of the Redis shards.
+        global_state_accessor: The client used to query gcs table from gcs
+            server.
     """
 
     def __init__(self):
@@ -134,6 +138,7 @@ class GlobalState:
         self.redis_client = None
         # Clients for the redis shards, storing the object table & task table.
         self.redis_clients = None
+        self.global_state_accessor = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -150,10 +155,17 @@ class GlobalState:
             raise RuntimeError("The ray global state API cannot be used "
                                "before ray.init has been called.")
 
+        if self.global_state_accessor is None:
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
+
     def disconnect(self):
         """Disconnect global state from GCS."""
         self.redis_client = None
         self.redis_clients = None
+        if self.global_state_accessor is not None:
+            self.global_state_accessor.disconnect()
+            self.global_state_accessor = None
 
     def _initialize_global_state(self,
                                  redis_address,
@@ -171,6 +183,9 @@ class GlobalState:
         """
         self.redis_client = services.create_redis_client(
             redis_address, redis_password)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
+        self.global_state_accessor.connect()
         start_time = time.time()
 
         num_redis_shards = None
@@ -382,47 +397,6 @@ class GlobalState:
             client["alive"] = client["Alive"]
         return client_table
 
-    def _job_table(self, job_id):
-        """Fetch and parse the job table information for a single job ID.
-
-        Args:
-            job_id: A job ID or hex string to get information about.
-
-        Returns:
-            A dictionary with information about the job ID in question.
-        """
-        # Allow the argument to be either a JobID or a hex string.
-        if not isinstance(job_id, ray.JobID):
-            assert isinstance(job_id, str)
-            job_id = ray.JobID(hex_to_binary(job_id))
-
-        # Return information about a single job ID.
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("JOB"), "",
-            job_id.binary())
-
-        if message is None:
-            return {}
-
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-
-        assert len(gcs_entry.entries) > 0
-
-        job_info = {}
-
-        for i in range(len(gcs_entry.entries)):
-            entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
-            assert entry.job_id == job_id.binary()
-            job_info["JobID"] = job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
-            job_info["DriverPid"] = entry.driver_pid
-            if entry.is_dead:
-                job_info["StopTime"] = entry.timestamp
-            else:
-                job_info["StartTime"] = entry.timestamp
-
-        return job_info
-
     def job_table(self):
         """Fetch and parse the Redis job table.
 
@@ -437,18 +411,20 @@ class GlobalState:
         """
         self._check_connected()
 
-        job_keys = self.redis_client.keys(gcs_utils.TablePrefix_JOB_string +
-                                          "*")
-
-        job_ids_binary = {
-            key[len(gcs_utils.TablePrefix_JOB_string):]
-            for key in job_keys
-        }
+        job_table = self.global_state_accessor.get_job_table()
 
         results = []
-
-        for job_id_binary in job_ids_binary:
-            results.append(self._job_table(binary_to_hex(job_id_binary)))
+        for i in range(len(job_table)):
+            entry = gcs_utils.JobTableData.FromString(job_table[i])
+            job_info = {}
+            job_info["JobID"] = entry.job_id.hex()
+            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverPid"] = entry.driver_pid
+            if entry.is_dead:
+                job_info["StopTime"] = entry.timestamp
+            else:
+                job_info["StartTime"] = entry.timestamp
+            results.append(job_info)
 
         return results
 
