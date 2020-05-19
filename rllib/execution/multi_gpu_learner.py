@@ -131,7 +131,7 @@ class TFMultiGPULearner(LearnerThread):
         if released:
             self.idle_optimizers.put(opt)
 
-        self.outqueue.put(opt.num_tuples_loaded)
+        self.outqueue.put((opt.num_tuples_loaded, self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
