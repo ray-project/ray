@@ -67,11 +67,7 @@ class Dashboard extends React.Component<
     let shouldObtainMemoryTable = this.props.shouldObtainMemoryTable;
     try {
       if (!shouldObtainMemoryTable) {
-        // Stop collecting memory table because it adds high load to the systems.
-        if (this.props.shouldObtainMemoryTable) {
-          await Promise.all([stopMemoryTable()]);
-        }
-        shouldObtainMemoryTable = false;
+        await Promise.all([stopMemoryTable()]);
       }
       const [
         nodeInfo,
