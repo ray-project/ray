@@ -34,7 +34,7 @@ class Repeated(gym.Space):
 
     def contains(self, x):
         return (isinstance(x, list) and len(x) <= self.max_len
-                and all([self.child_space.contains(c) for c in x]))
+                and all(self.child_space.contains(c) for c in x))
 
 
 @PublicAPI
