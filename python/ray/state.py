@@ -302,7 +302,7 @@ class GlobalState:
         }
         return object_info
 
-    def _actor_table(self, actor_id):
+    def actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
 
         Args:
@@ -320,14 +320,17 @@ class GlobalState:
             if actor_info is None:
                 return {}
             else:
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_info)
+                actor_table_data = gcs_utils.ActorTableData.FromString(
+                    actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
             actor_table = self.global_state_accessor.get_actor_table()
             results = {}
             for i in range(len(actor_table)):
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_table[i])
-                results[binary_to_hex(actor_table_data.actor_id)] = self._gen_actor_info(actor_table_data)
+                actor_table_data = gcs_utils.ActorTableData.FromString(
+                    actor_table[i])
+                results[binary_to_hex(actor_table_data.actor_id)] = \
+                    self._gen_actor_info(actor_table_data)
 
             return results
 
@@ -353,9 +356,9 @@ class GlobalState:
         }
         return actor_info
 
-
     def node_table(self):
         """Fetch and parse the Gcs node info table.
+
         Returns:
             Information about the node in the cluster.
         """
