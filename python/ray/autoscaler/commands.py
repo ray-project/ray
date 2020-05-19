@@ -422,10 +422,8 @@ def exec_cluster(config_file,
             if override_cluster_name is not None:
                 attach_command_parts.append(
                     "--cluster-name={}".format(override_cluster_name))
-            if tmux:
-                attach_command_parts.append("--tmux")
-            elif screen:
-                attach_command_parts.append("--screen")
+            v = "--tmux" if tmux else "--screen"
+            attach_command_parts.append(v)
 
             attach_command = " ".join(attach_command_parts)
             attach_info = "Use `{}` to check on command status.".format(
