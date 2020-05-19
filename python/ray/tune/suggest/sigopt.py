@@ -15,8 +15,16 @@ logger = logging.getLogger(__name__)
 class SigOptSearch(Searcher):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. Requires user to store their SigOpt
-    API key locally as an environment variable at `SIGOPT_KEY`.
+    You must install SigOpt and have a SigOpt API key to use this module.
+    Store the API token as an environment variable ``SIGOPT_KEY`` as follows:
+
+    .. code-block:: bash
+
+        pip install -U sigopt
+        export SIGOPT_KEY= ...
+
+    You will need to use the `SigOpt experiment and space specification
+    <https://app.sigopt.com/docs/overview/create>`_.
 
     This module manages its own concurrency.
 

@@ -8,16 +8,16 @@ This example shows:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 import argparse
-import numpy as np
 import gym
 from gym.spaces import Discrete, Box
+import numpy as np
 
 import ray
 from ray import tune
 from ray.tune import grid_search
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

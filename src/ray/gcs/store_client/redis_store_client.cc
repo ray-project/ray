@@ -350,7 +350,7 @@ void RedisStoreClient::RedisScanner::MGetValues(
   auto finished_count = std::make_shared<int>(0);
   int size = mget_commands_by_shards.size();
   for (auto &item : mget_commands_by_shards) {
-    auto mget_keys = item.second;
+    auto mget_keys = std::move(item.second);
     auto mget_callback = [this, finished_count, size, mget_keys,
                           callback](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
@@ -370,7 +370,7 @@ void RedisStoreClient::RedisScanner::MGetValues(
         callback(key_value_map_);
       }
     };
-    RAY_CHECK_OK(item.first->RunArgvAsync(item.second, mget_callback));
+    RAY_CHECK_OK(item.first->RunArgvAsync(mget_keys, mget_callback));
   }
 }
 
