@@ -168,6 +168,10 @@ Further, remote functions can return multiple object IDs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
+Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ID. 
+
+.. autofunction:: ray.cancel
+    :noindex:
 
 Objects in Ray
 --------------
