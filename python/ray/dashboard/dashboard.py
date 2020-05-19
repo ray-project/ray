@@ -241,7 +241,6 @@ class DashboardController(BaseDashboardController):
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
-        assert self.raylet_stats.include_memory_info is True
         self.memory_table = MemoryTable()
         self.raylet_stats.include_memory_info = False
 

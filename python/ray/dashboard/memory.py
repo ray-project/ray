@@ -128,7 +128,8 @@ class MemoryTableEntry:
             "submittedd_task_ref_count": self.submittedd_task_ref_count,
             "contained_in_owned": [
                 object_id.hex() for object_id in self.contained_in_owned
-            ]
+            ],
+            "type": "Driver" if self.is_driver else "Worker"
         }
 
     def __str__(self):
@@ -276,5 +277,4 @@ def construct_memory_table(workers_info_by_node: dict):
                     memory_table.insert_entry(memory_table_entry)
     memory_table.setup(
         group_by_type=GroupByType.NODE_ADDRESS, sort_by_type=SortingType.PID)
-    print(memory_table)
     return memory_table
