@@ -32,6 +32,9 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# If a user does not specify a port for the primary Ray service,
+# we attempt to start the service running at this port.
+DEFAULT_PORT = 6379
 
 # Default resource requirements for actors when no resource requirements are
 # specified.

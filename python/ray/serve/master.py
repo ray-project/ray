@@ -458,14 +458,20 @@ class ServeMaster:
                               dict), "Traffic policy must be dictionary"
             prob = 0
             for backend, weight in traffic_policy_dictionary.items():
+                if weight < 0:
+                    raise ValueError(
+                        "Attempted to assign a weight of {} to backend '{}'. "
+                        "Weights cannot be negative.".format(weight, backend))
                 prob += weight
                 if backend not in self.backends:
                     raise ValueError(
                         "Attempted to assign traffic to a backend '{}' that "
                         "is not registered.".format(backend))
 
+            # These weights will later be plugged into np.random.choice, which
+            # uses a tolerance of 1e-8.
             assert np.isclose(
-                prob, 1, atol=0.02
+                prob, 1, atol=1e-8
             ), "weights must sum to 1, currently they sum to {}".format(prob)
 
             self.traffic_policies[endpoint_name] = traffic_policy_dictionary
