@@ -22,14 +22,14 @@ namespace ray {
 namespace gcs {
 
 GcsActorScheduler::GcsActorScheduler(
-    boost::asio::io_context &io_context, gcs::ActorInfoAccessor &actor_info_accessor,
+    boost::asio::io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
     LeaseClientFactoryFn lease_client_factory, rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
-      actor_info_accessor_(actor_info_accessor),
+      gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
@@ -71,15 +71,12 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   rpc::Address address;
   address.set_raylet_id(node->node_id());
   actor->UpdateAddress(address);
-  auto actor_table_data =
-      std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
   // The backend storage is reliable in the future, so the status must be ok.
-  RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
-      actor->GetActorID(), actor_table_data,
-      [this, actor, actor_table_data](Status status) {
+  RAY_CHECK_OK(gcs_actor_table_.Put(
+      actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
         RAY_CHECK_OK(status);
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                           actor_table_data->SerializeAsString(),
+                                           actor->GetActorTableData().SerializeAsString(),
                                            nullptr));
         // There is no promise that the node the
         // actor tied to is still alive as the
@@ -229,16 +226,13 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     actor->UpdateAddress(retry_at_raylet_address);
-    auto actor_table_data =
-        std::make_shared<rpc::ActorTableData>(actor->GetActorTableData());
     // The backend storage is reliable in the future, so the status must be ok.
-    RAY_CHECK_OK(actor_info_accessor_.AsyncUpdate(
-        actor->GetActorID(), actor_table_data,
-        [this, actor, actor_table_data](Status status) {
+    RAY_CHECK_OK(gcs_actor_table_.Put(
+        actor->GetActorID(), actor->GetActorTableData(), [this, actor](Status status) {
           RAY_CHECK_OK(status);
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                             actor_table_data->SerializeAsString(),
-                                             nullptr));
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(
+              ACTOR_CHANNEL, actor->GetActorID().Hex(),
+              actor->GetActorTableData().SerializeAsString(), nullptr));
           Schedule(actor);
         }));
   } else {

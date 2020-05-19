@@ -3,8 +3,9 @@ from libcpp cimport bool as c_bool
 from libcpp.vector cimport vector as c_vector
 from libcpp.memory cimport unique_ptr
 from ray.includes.unique_ids cimport (
-    CObjectID
-)
+    CActorID,
+    CObjectID,
+}
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
@@ -18,3 +19,5 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllProfileInfo()
         c_vector[c_string] GetAllObjectInfo()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
+        c_vector[c_string] GetAllActorInfo()
+        c_string GetActorInfo(const CActorID &actor_id)

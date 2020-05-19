@@ -136,5 +136,39 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
+  std::vector<std::string> actor_table_data;
+  std::promise<bool> promise;
+  auto on_done = [&actor_table_data, &promise](
+                     const Status &status,
+                     const std::vector<rpc::ActorTableData> &result) {
+    RAY_CHECK_OK(status);
+    for (auto &data : result) {
+      actor_table_data.push_back(data.SerializeAsString());
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(on_done));
+  promise.get_future().get();
+  return actor_table_data;
+}
+
+std::string GlobalStateAccessor::GetActorInfo(const ActorID &actor_id) {
+  std::string actor_table_data;
+  std::promise<bool> promise;
+  auto on_done = [&actor_table_data, &promise](
+                     const Status &status,
+                     const boost::optional<rpc::ActorTableData> &result) {
+    RAY_CHECK_OK(status);
+    if (result) {
+      actor_table_data = result->SerializeAsString();
+    }
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, on_done));
+  promise.get_future().get();
+  return actor_table_data;
+}
+
 }  // namespace gcs
 }  // namespace ray
