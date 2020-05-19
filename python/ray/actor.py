@@ -4,7 +4,6 @@ import weakref
 
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature

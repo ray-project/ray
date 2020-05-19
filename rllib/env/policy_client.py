@@ -49,8 +49,9 @@ class PolicyClient:
             address (str): Server to connect to (e.g., "localhost:9090").
             inference_mode (str): Whether to use 'local' or 'remote' policy
                 inference for computing actions.
-            update_interval (float): If using 'local' inference mode, the
-                policy is refreshed after this many seconds have passed.
+            update_interval (float or None): If using 'local' inference mode,
+                the policy is refreshed after this many seconds have passed,
+                or None for manual control via client.
         """
         self.address = address
         if inference_mode == "local":
@@ -130,7 +131,11 @@ class PolicyClient:
         })
 
     @PublicAPI
-    def log_returns(self, episode_id, reward, info=None):
+    def log_returns(self,
+                    episode_id,
+                    reward,
+                    info=None,
+                    multiagent_done_dict=None):
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -140,17 +145,24 @@ class PolicyClient:
         Arguments:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
+            info (dict): Extra info dict.
+            multiagent_done_dict (dict): Multi-agent done information.
         """
 
         if self.local:
             self._update_local_policy()
-            return self.env.log_returns(episode_id, reward, info)
+            if multiagent_done_dict:
+                return self.env.log_returns(episode_id, reward, info,
+                                            multiagent_done_dict)
+            else:
+                return self.env.log_returns(episode_id, reward, info)
 
         self._send({
             "command": PolicyClient.LOG_RETURNS,
             "reward": reward,
             "info": info,
             "episode_id": episode_id,
+            "done": multiagent_done_dict,
         })
 
     @PublicAPI
@@ -171,6 +183,12 @@ class PolicyClient:
             "observation": observation,
             "episode_id": episode_id,
         })
+
+    @PublicAPI
+    def update_policy_weights(self):
+        """Query the server for new policy weights, if local inference is enabled.
+        """
+        self._update_local_policy(force=True)
 
     def _send(self, data):
         payload = pickle.dumps(data)
@@ -195,9 +213,10 @@ class PolicyClient:
              kwargs, self._send)
         self.env = self.rollout_worker.env
 
-    def _update_local_policy(self):
+    def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
-        if time.time() - self.last_updated > self.update_interval:
+        if (self.update_interval and time.time() - self.last_updated >
+                self.update_interval) or force:
             logger.info("Querying server for new policy weights.")
             resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,
@@ -253,7 +272,7 @@ def auto_wrap_external(real_env_creator):
                 "Attempting to convert it automatically to ExternalEnv.")
 
             if isinstance(real_env, MultiAgentEnv):
-                external_cls = MultiAgentEnv
+                external_cls = ExternalMultiAgentEnv
             else:
                 external_cls = ExternalEnv
 
@@ -268,6 +287,7 @@ def auto_wrap_external(real_env_creator):
                     time.sleep(999999)
 
             return ExternalEnvWrapper(real_env)
+        return real_env
 
     return wrapped_creator
 
