@@ -3557,6 +3557,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     driver_ids.insert(driver->WorkerId());
   }
   for (const auto &worker : all_workers) {
+    if (!worker->rpc_client) {
+      // The worker may not have registered yet.
+      continue;
+    }
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
