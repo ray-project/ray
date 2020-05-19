@@ -169,7 +169,8 @@ struct GcsServerMocker {
 
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
-    MockedGcsActorTable() : GcsActorTable(store_client_) {}
+    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+        : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key, const rpc::ActorTableData &value,
                const gcs::StatusCallback &callback) override {
