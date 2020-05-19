@@ -46,7 +46,7 @@ Ray Serve supports Python versions 3.5 and higher. To install Ray Serve:
 
 
 Ray Serve in 90 Seconds
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~-
 
 Serve a stateless function:
 
@@ -59,7 +59,7 @@ Serve a stateful class:
 See :ref:`serve-key-concepts` for more information about working with Ray Serve.
 
 Why Ray Serve?
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~-
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
 you can build using a **traditional webserver** - your own Flask app or you can use a cloud hosted solution.
