@@ -491,7 +491,8 @@ class Trial:
                     for n in self.n_steps:
                         key = "last-{:d}-avg".format(n)
                         self.metric_analysis[metric][key] = value
-                        self.metric_n_steps[metric][n] = deque(
+                        # Store n as string for correct restore.
+                        self.metric_n_steps[metric][str(n)] = deque(
                             [value], maxlen=n)
                 else:
                     step = result["training_iteration"] or 1
@@ -506,10 +507,10 @@ class Trial:
 
                     for n in self.n_steps:
                         key = "last-{:d}-avg".format(n)
-                        self.metric_n_steps[metric][n].append(value)
+                        self.metric_n_steps[metric][str(n)].append(value)
                         self.metric_analysis[metric][key] = sum(
-                            self.metric_n_steps[metric][n]) / len(
-                                self.metric_n_steps[metric][n])
+                            self.metric_n_steps[metric][str(n)]) / len(
+                                self.metric_n_steps[metric][str(n)])
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
