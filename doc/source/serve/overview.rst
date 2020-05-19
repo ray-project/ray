@@ -1,7 +1,7 @@
 .. _rayserve:
 
 Ray Serve: Scalable and Programmable Serving
-===========================================
+============================================
 
 .. image:: logo.svg
     :align: center
