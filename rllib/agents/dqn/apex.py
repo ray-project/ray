@@ -188,7 +188,6 @@ def execution_plan(workers: WorkerSet, config: dict):
             output_indexes=[2],
             round_robin_weights=rr_weights)
     else:
-        assert False
         # Execute (1), (2), (3) asynchronously as fast as possible. Only output
         # items from (3) since metrics aren't available before then.
         merged_op = Concurrently(
