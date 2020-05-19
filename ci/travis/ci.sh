@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-echo "FINDING LIBASAN"
-locate libasan
-echo "FINDING LIBASAN"
-
 # Push caller's shell options (quietly)
 { SHELLOPTS_STACK="${SHELLOPTS_STACK-}|$(set +o); set -$-"; } 2> /dev/null
 
@@ -119,7 +115,7 @@ test_python() {
 }
 
 test_cpp() {
-  bazel test --config=asan //cpp:all --build_tests_only --test_output=streamed
+  bazel test $ENABLE_ASAN //cpp:all --build_tests_only --test_output=streamed
 }
 
 test_wheels() {
@@ -407,7 +403,7 @@ init() {
 
 build() {
   if ! need_wheels; then
-    bazel build --config=asan -k "//:*"   # Do a full build first to ensure everything passes
+    bazel build $ENABLE_ASAN -k "//:*"   # Do a full build first to ensure everything passes
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
