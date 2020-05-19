@@ -112,13 +112,14 @@ class Dashboard extends React.Component<
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;
+    let tabs = this.tabs.slice()
 
     // if Tune information is not available, remove Tune tab from the dashboard
     if (tuneAvailability === null || !tuneAvailability.available) {
-      this.tabs.splice(4);
+      tabs.splice(4);
     }
 
-    const SelectedComponent = this.tabs[tab].component;
+    const SelectedComponent = tabs[tab].component;
     return (
       <div className={classes.root}>
         <Typography variant="h5">Ray Dashboard</Typography>
@@ -129,7 +130,7 @@ class Dashboard extends React.Component<
           textColor="primary"
           value={tab}
         >
-          {this.tabs.map(({ label }) => (
+          {tabs.map(({ label }) => (
             <Tab key={label} label={label} />
           ))}
         </Tabs>
