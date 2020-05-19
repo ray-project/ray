@@ -198,6 +198,9 @@ To assign hardware resource per worker, you can pass resource requirements to
 ``ray_actor_options``. To learn about options to pass in, take a look at
 :ref:`Resources with Actor<actor-resource-guide>` guide.
 
+For example, to create a backend where each replica uses a single GPU, you can do the
+following:
+
 .. code-block:: python
 
   options = {"num_gpus": 1}
