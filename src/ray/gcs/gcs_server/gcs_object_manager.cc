@@ -44,13 +44,33 @@ void GcsObjectManager::HandleAddObjectLocation(
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
   AddObjectLocation(object_id, node_id);
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(
-      OBJECT_CHANNEL, object_id.Hex(),
-      gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
-  RAY_LOG(DEBUG) << "Finished adding object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
+    if (status.ok()) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
+          OBJECT_CHANNEL, object_id.Hex(),
+          gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished adding object location, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id
+                     << ", node id = " << node_id << ", task id = " << object_id.TaskId();
+    } else {
+      RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
+                     << ", job id = " << object_id.TaskId().JobId()
+                     << ", object id = " << object_id << ", node id = " << node_id;
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  absl::MutexLock lock(&mutex_);
+  auto object_location_set =
+      GetObjectLocationSet(object_id, /* create_if_not_exist */ false);
+  auto object_table_data_list = GenObjectTableDataList(*object_location_set);
+  Status status =
+      gcs_table_storage_->ObjectTable().Put(object_id, *object_table_data_list, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
 }
 
 void GcsObjectManager::HandleRemoveObjectLocation(
@@ -61,13 +81,39 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
   RemoveObjectLocation(object_id, node_id);
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(
-      OBJECT_CHANNEL, object_id.Hex(),
-      gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
-  RAY_LOG(DEBUG) << "Finished removing object location, job id = "
-                 << object_id.TaskId().JobId() << ", object id = " << object_id
-                 << ", node id = " << node_id;
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+
+  auto on_done = [this, object_id, node_id, reply,
+                  send_reply_callback](const Status &status) {
+    if (status.ok()) {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(
+          OBJECT_CHANNEL, object_id.Hex(),
+          gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
+      RAY_LOG(DEBUG) << "Finished removing object location, job id = "
+                     << object_id.TaskId().JobId() << ", object id = " << object_id
+                     << ", node id = " << node_id;
+    } else {
+      RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
+                     << ", job id = " << object_id.TaskId().JobId()
+                     << ", object id = " << object_id << ", node id = " << node_id;
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  absl::MutexLock lock(&mutex_);
+  auto object_location_set =
+      GetObjectLocationSet(object_id, /* create_if_not_exist */ false);
+  Status status;
+  if (object_location_set != nullptr) {
+    auto object_table_data_list = GenObjectTableDataList(*object_location_set);
+    status = gcs_table_storage_->ObjectTable().Put(object_id, *object_table_data_list,
+                                                   on_done);
+  } else {
+    status = gcs_table_storage_->ObjectTable().Delete(object_id, on_done);
+  }
+
+  if (!status.ok()) {
+    on_done(status);
+  }
 }
 
 void GcsObjectManager::AddObjectsLocation(
@@ -184,6 +230,15 @@ GcsObjectManager::ObjectSet *GcsObjectManager::GetNodeHoldObjectSet(
     node_hold_objects = &(ret.first->second);
   }
   return node_hold_objects;
+}
+
+std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
+    const GcsObjectManager::LocationSet &location_set) const {
+  auto object_table_data_list = std::make_shared<ObjectTableDataList>();
+  for (auto &node_id : location_set) {
+    object_table_data_list->add_items()->set_manager(node_id.Binary());
+  }
+  return object_table_data_list;
 }
 
 }  // namespace gcs

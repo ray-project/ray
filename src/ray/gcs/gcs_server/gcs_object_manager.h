@@ -16,6 +16,7 @@
 #define RAY_GCS_OBJECT_MANAGER_H
 
 #include "gcs_node_manager.h"
+#include "gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 
@@ -25,10 +26,10 @@ namespace gcs {
 
 class GcsObjectManager : public rpc::ObjectInfoHandler {
  public:
-  explicit GcsObjectManager(gcs::RedisGcsClient &gcs_client,
+  explicit GcsObjectManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                             std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
                             gcs::GcsNodeManager &gcs_node_manager)
-      : gcs_pub_sub_(gcs_pub_sub) {
+      : gcs_table_storage_(std::move(gcs_table_storage)), gcs_pub_sub_(gcs_pub_sub) {
     gcs_node_manager.AddNodeRemovedListener(
         [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
           // All of the related actors should be reconstructed when a node is removed from
@@ -88,6 +89,9 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   typedef absl::flat_hash_set<ClientID> LocationSet;
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
+  std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
+      const GcsObjectManager::LocationSet &location_set) const;
+
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
   ///
@@ -116,6 +120,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// Mapping from node id to objects that held by the node.
   absl::flat_hash_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 };
 

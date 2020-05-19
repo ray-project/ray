@@ -206,7 +206,7 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
   return std::unique_ptr<GcsObjectManager>(
-      new GcsObjectManager(*redis_gcs_client_, gcs_pub_sub_, *gcs_node_manager_));
+      new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
