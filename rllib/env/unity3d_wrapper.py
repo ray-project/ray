@@ -1,43 +1,58 @@
 from gym.spaces import Box, Dict, Tuple
 import numpy as np
-from mlagents.envs.environment import UnityEnvironment
+from mlagents_envs.environment import UnityEnvironment
 
-from ray.rllib.env.remote_vector_env import RemoteVectorEnv
+from ray.rllib.env.remote_vector_env import RemoteVectorEnv, \
+    _RemoteMultiAgentEnv, _RemoteSingleAgentEnv
 
 
-class MLAgentsEnv(RemoteVectorEnv):
-    """
-    An Environment sitting behind a tcp connection and communicating through this adapter.
-    Note: Communication between Unity and Python takes place over an open socket without authentication.
+class Unity3DWrapper(RemoteVectorEnv):
+    """A Unity3D single instance acting as a RemoteVectorEnv.
+
+    Note: Communication between Unity and Python takes place over an open
+    socket without authentication.
     Ensure that the network where training takes place is secure.
     """
-    def __init__(self, num_envs, remote_env_batch_wait_ms, file_name=None,
-                 worker_id=0, base_port=5005, seed=0,
-                 docker_training=False, no_graphics=False, **kwargs):
-        """
+    def __init__(self, remote_env_batch_wait_ms, multiagent=False,
+                 file_name=None, worker_id=0, base_port=5004, seed=0,
+                 no_graphics=False, timeout_wait=60, **kwargs):
+        """Initializes a Unity3DWrapper object.
+
         Args:
             file_name (Optional[str]): Name of Unity environment binary.
+            worker_id (int): Number to add to `base_port`. Used for
+                asynchronous agent scenarios.
             base_port (int): Port number to connect to Unity environment.
-            #`worker_id` increments on top of this.
-            worker_id (int): Number to add to `base_port`. Used for asynchronous agent scenarios.
-            docker_training (bool): Informs this class, whether the process is being run within a container.
-                Default: False.
-            no_graphics (bool): Whether to run the Unity simulator in no-graphics mode. Default: False.
+                `worker_id` increments on top of this.
+            seed (int): A random seed value to use.
+            no_graphics (bool): Whether to run the Unity simulator in
+                no-graphics mode. Default: False.
             timeout_wait (int): Time (in seconds) to wait for connection from environment.
-            train_mode (bool): Whether to run in training mode, speeding up the simulation. Default: True.
+            #train_mode (bool): Whether to run in training mode, speeding up the simulation. Default: True.
         """
-        # Factory function to create one UnityMLAgentsEnvironment.
-        make_env = lambda: UnityEnvironment(
-            file_name, worker_id, base_port, seed, docker_training, no_graphics
+        assert multiagent is False,\
+            "Multiagent for Unity3D Envs not supported yet!"
+
+        # Factory function to create one UnityEnvironment (with possibly
+        # many parallel sub-envs within the same scene (vectorized)).
+        make_env = lambda _: UnityEnvironment(
+            file_name=file_name,
+            worker_id=worker_id,
+            base_port=base_port,
+            seed=seed,
+            no_graphics=no_graphics,
+            timeout_wait=timeout_wait,
         )
 
         super().__init__(
-            make_env=make_env, num_envs=num_envs,
+            make_env=make_env, num_envs=1, multiagent=multiagent,
             remote_env_batch_wait_ms=remote_env_batch_wait_ms,
             **kwargs
         )
 
-        #self.mlagents_env =
+        self.actors = [
+            _RemoteSingleAgentEnv.remote(self.make_local_env, 0)]
+
         all_brain_info = self.mlagents_env.reset()
         # Get all possible information from AllBrainInfo.
         # TODO: Which scene do we pick?
@@ -80,54 +95,85 @@ class MLAgentsEnv(RemoteVectorEnv):
         if action_space.dtype == np.float64:
             action_space.dtype = np.float32
 
-        #super(MLAgentsEnv, self).__init__(
-        #    num_environments=num_environments, state_space=state_space, action_space=action_space, **kwargs
-        #)
-
         # Caches the last observation we made (after stepping or resetting).
         self.last_state = None
 
-    def get_env(self):
-        return self
+    def poll(self):
+        if self.pending is None:
+            self.pending = {a.reset.remote(): a for a in self.actors}
+    
+        # Each keyed by env_id in [0, num_remote_envs).
+        obs, rewards, dones, infos = {}, {}, {}, {}
+        ready = []
+    
+        # Wait for at least 1 env to be ready here
+        while not ready:
+            ready, _ = ray.wait(
+                list(self.pending),
+                num_returns=len(self.pending),
+                timeout=self.poll_timeout)
+    
+        # Get and return observations for each of the ready envs
+        env_ids = set()
+        for obj_id in ready:
+            actor = self.pending.pop(obj_id)
+            env_id = self.actors.index(actor)
+            env_ids.add(env_id)
+            ob, rew, done, info = ray_get_and_free(obj_id)
+            obs[env_id] = ob
+            rewards[env_id] = rew
+            dones[env_id] = done
+            infos[env_id] = info
+    
+        logger.debug("Got obs batch for actors {}".format(env_ids))
+        return obs, rewards, dones, infos, {}
 
-    def reset(self, index=0):
-        # Reset entire MLAgentsEnv iff global_done is True.
-        if self.mlagents_env.global_done is True or self.last_state is None:
-            self.reset_all()
-        return self.last_state[index]
+    def send_actions(self, action_dict):
+        for env_id, actions in action_dict.items():
+            actor = self.actors[env_id]
+            obj_id = actor.step.remote(actions)
+            self.pending[obj_id] = actor
 
-    def reset_all(self):
-        all_brain_info = self.mlagents_env.reset()
-        self.last_state = self._get_state_from_brain_info(all_brain_info)
-        return self.last_state
+    #def step(self, actions, text_actions=None, **kwargs):
+    #    # MLAgents Envs don't like tuple-actions.
+    #    if isinstance(actions[0], tuple):
+    #        actions = [list(a) for a in actions]
+    #    all_brain_info = self.mlagents_env.step(
+    #        # TODO: Only support vector actions for now.
+    #        vector_action=actions, memory=None, text_action=text_actions, value=None
+    #    )
+    #    self.last_state = self._get_state_from_brain_info(all_brain_info)
+    #    r = self._get_reward_from_brain_info(all_brain_info)
+    #    t = self._get_terminal_from_brain_info(all_brain_info)
+    #    return self.last_state, r, t, None
 
-    def step(self, actions, text_actions=None, **kwargs):
-        # MLAgents Envs don't like tuple-actions.
-        if isinstance(actions[0], tuple):
-            actions = [list(a) for a in actions]
-        all_brain_info = self.mlagents_env.step(
-            # TODO: Only support vector actions for now.
-            vector_action=actions, memory=None, text_action=text_actions, value=None
-        )
-        self.last_state = self._get_state_from_brain_info(all_brain_info)
-        r = self._get_reward_from_brain_info(all_brain_info)
-        t = self._get_terminal_from_brain_info(all_brain_info)
-        return self.last_state, r, t, None
+    def try_reset(self, env_id):
+        actor = self.actors[env_id]
+        obj_id = actor.reset.remote()
+        self.pending[obj_id] = actor
+        return ASYNC_RESET_RETURN
 
-    def render(self):
-        # TODO: If no_graphics is True, maybe user can render through this method manually?
-        pass
+    #def reset(self, index=0):
+    #    # Reset entire MLAgentsEnv iff global_done is True.
+    #    if self.mlagents_env.global_done is True or self.last_state is None:
+    #        self.reset_all()
+    #    return self.last_state[index]
 
-    def terminate(self):
-        self.mlagents_env.close()
+    #def reset_all(self):
+    #    all_brain_info = self.mlagents_env.reset()
+    #    self.last_state = self._get_state_from_brain_info(all_brain_info)
+    #    return self.last_state
 
-    def terminate_all(self):
-        return self.terminate()
+    def stop(self):
+        if self.actors is not None:
+            for actor in self.actors:
+                actor.__ray_terminate__.remote()
 
-    def __str__(self):
-        return "MLAgentsEnv(port={}{})".format(
-            self.mlagents_env.port, " [loaded]" if self.mlagents_env._loaded else ""
-        )
+    #def terminate(self):
+    #    self.mlagents_env.close()
+
+    #def terminate_all(self):
+    #    return self.terminate()
 
     def _get_state_from_brain_info(self, all_brain_info):
         brain_info = all_brain_info[self.scene_key]

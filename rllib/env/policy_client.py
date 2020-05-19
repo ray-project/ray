@@ -54,6 +54,7 @@ class PolicyClient:
                 or None for manual control via client.
         """
         self.address = address
+        self.env = None
         if inference_mode == "local":
             self.local = True
             self._setup_local_rollout_worker(update_interval)
@@ -207,7 +208,7 @@ class PolicyClient:
         kwargs = self._send({
             "command": PolicyClient.GET_WORKER_ARGS,
         })["worker_args"]
-
+        print("kwargs={}".format(kwargs))
         (self.rollout_worker,
          self.inference_thread) = create_embedded_rollout_worker(
              kwargs, self._send)

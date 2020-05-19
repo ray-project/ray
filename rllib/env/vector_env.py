@@ -23,9 +23,10 @@ class VectorEnv:
              existing_envs=None,
              num_envs=1,
              action_space=None,
-             observation_space=None):
+             observation_space=None,
+             env_config=None):
         return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
-                                 action_space, observation_space)
+                                 action_space, observation_space, env_config)
 
     @PublicAPI
     def vector_reset(self):
@@ -81,12 +82,15 @@ class _VectorizedGymEnv(VectorEnv):
                  existing_envs,
                  num_envs,
                  action_space=None,
-                 observation_space=None):
+                 observation_space=None,
+                 env_config=None):
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env(len(self.envs)))
+            to_create = self.num_envs - len(self.envs)
+            for _ in range(to_create):
+                self.envs.append(self.make_env(env_config))
         self.action_space = action_space or self.envs[0].action_space
         self.observation_space = observation_space or \
             self.envs[0].observation_space

@@ -14,11 +14,11 @@ fi
 pid=$!
 
 echo "Waiting for server to start"
-while ! curl localhost:9900; do   
+while ! curl localhost:9900; do
   sleep 1
 done
 
 sleep 2
-python $basedir/cartpole_client.py --stop-at-reward=100 --inference-mode=remote
+python $basedir/cartpole_client.py --stop-reward=100 --inference-mode=remote
 kill $pid
 

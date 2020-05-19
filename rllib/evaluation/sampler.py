@@ -278,6 +278,8 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             terminal condition, and other fields as dictated by `policy`.
     """
 
+    print("base_env={}".format(base_env))
+
     # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
     # error and continue.
     max_episode_steps = None
@@ -340,7 +342,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
     while True:
         perf_stats.iters += 1
         t0 = time.time()
-        # Get observations from all ready agents
+        # Get observations from all ready agents.
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
@@ -622,7 +624,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep)
         else:
-            # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
                 np.stack([row[i] for row in rnn_in])
                 for i in range(len(rnn_in[0]))
