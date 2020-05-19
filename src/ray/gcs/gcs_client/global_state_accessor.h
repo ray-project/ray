@@ -51,6 +51,12 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
+  /// Get all job information from GCS.
+  ///
+  /// \return All node information and every node info will be stored in
+  /// protobuf protocol bytes.
+  std::vector<std::string> GetAllNodeInfo();
+
  private:
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};

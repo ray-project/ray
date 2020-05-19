@@ -80,5 +80,20 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   return job_table_data;
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  std::vector<std::string> node_table_data;
+  std::promise<bool> promise;
+  auto on_done = [&node_table_data, &promise](
+                     const Status &status, const std::vector<rpc::GcsNodeInfo> &result) {
+    RAY_CHECK_OK(status);
+    std::transform(result.begin(), result.end(), std::back_inserter(node_table_data),
+                   [](const rpc::GcsNodeInfo &data) { return data.SerializeAsString(); });
+    promise.set_value(true);
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(on_done));
+  promise.get_future().get();
+  return node_table_data;
+}
+
 }  // namespace gcs
 }  // namespace ray

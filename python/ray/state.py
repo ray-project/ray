@@ -383,9 +383,35 @@ class GlobalState:
                     ray.ActorID(actor_id_binary))
             return results
 
-    def client_table(self):
-        """Fetch and parse the Redis DB client table.
+    def node_table(self):
+        """Fetch and parse the Gcs node info table.
+        Returns:
+            Information about the node in the cluster.
+        """
+        self._check_connected()
 
+        node_table = self.global_state_accessor.get_node_table()
+
+        results = []
+        for node_info_item in node_table:
+            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
+            node_info = {
+                "NodeID": item.node_id,
+                "Alive": True if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE") \
+                        else False,
+                "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerHostname": item.node_manager_hostname,
+                "NodeManagerPort": item.node_manager_port,
+                "ObjectManagerPort": item.object_manager_port,
+                "ObjectStoreSocketName": item.object_store_socket_name,
+                "RayletSocketName": item.raylet_socket_name
+            }
+            results.append(node_info)
+        return results
+
+
+    def client_table(self):
+        """ Deprecated interface to fetch and parse the Redis DB client table.
         Returns:
             Information about the Ray clients in the cluster.
         """
