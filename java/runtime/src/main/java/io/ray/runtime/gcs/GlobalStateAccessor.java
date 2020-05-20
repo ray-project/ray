@@ -2,7 +2,6 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import java.util.stream.Collectors;
 
 
 public class GlobalStateAccessor {
