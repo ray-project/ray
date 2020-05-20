@@ -354,24 +354,30 @@ class ServeMaster:
     async def _stop_pending_replicas(self):
         """Stops the pending backend replicas in self.replicas_to_stop.
 
-        Stops workers by telling the router to remove them.
-
-        Clears self.replicas_to_stop.
+        Removes workers from the router, kills them, and clears
+        self.replicas_to_stop.
         """
         for backend_tag, replicas_to_stop in self.replicas_to_stop.items():
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
                 try:
-                    # Remove the replica from router.
-                    # This will also submit __ray_terminate__ on the worker.
-                    # NOTE(edoakes): we currently need to kill the worker from
-                    # the router to guarantee that the router won't submit any
-                    # more requests to it.
-                    await self.router.remove_worker.remote(
-                        backend_tag, replica_tag)
+                    replica = ray.util.get_actor(replica_tag)
                 except ValueError:
-                    pass
+                    continue
+
+                # Remove the replica from router. This call is idempotent.
+                await self.router.remove_worker.remote(backend_tag,
+                                                       replica_tag)
+
+                # TODO(edoakes): this logic isn't ideal because there may be
+                # pending tasks still executing on the replica. However, if we
+                # use replica.__ray_terminate__, we may send it while the
+                # replica is being restarted and there's no way to tell if it
+                # successfully killed the worker or not.
+                worker = ray.worker.global_worker
+                # Kill the actor with no_restart=True.
+                worker.core_worker.kill_actor(replica._ray_actor_id, True)
 
         self.replicas_to_stop.clear()
 
