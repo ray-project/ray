@@ -416,30 +416,10 @@ class Trainer(Trainable):
                 object. If unspecified, a default logger is created.
         """
 
+        # User provided config (this is w/o the default Trainer's
+        # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
+        # in self._setup().
         config = config or {}
-
-        # Check and resolve DL framework settings.
-        if config["use_pytorch"] != DEPRECATED_VALUE or \
-                config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "use_pytorch/eager", "framework=torch|tfe", error=False)
-            if config["use_pytorch"]:
-                config["framework"] = "torch"
-            elif config["eager"]:
-                config["framework"] = "tfe"
-        # Resolve "auto" framework.
-        elif config["framework"] == "auto":
-            config["framework"] = get_auto_framework()
-        # Notify about eager/tracing support.
-        if tf and config["framework"] == "tfe":
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
-            logger.info("Executing eagerly, with eager_tracing={}".format(
-                config["eager_tracing"]))
-        if tf and not tf.executing_eagerly() and \
-                config["framework"] != "torch":
-            logger.info("Tip: set framework=tfe or the --eager flag to enable "
-                        "TensorFlow eager execution")
 
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
@@ -572,6 +552,29 @@ class Trainer(Trainable):
         self.raw_user_config = config
         self.config = Trainer.merge_trainer_configs(self._default_config,
                                                     config)
+
+        # Check and resolve DL framework settings.
+        if self.config["use_pytorch"] != DEPRECATED_VALUE or \
+                self.config["eager"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                "use_pytorch/eager", "framework=torch|tfe", error=False)
+            if self.config["use_pytorch"]:
+                self.config["framework"] = "torch"
+            elif self.config["eager"]:
+                self.config["framework"] = "tfe"
+        # Resolve "auto" framework.
+        elif self.config["framework"] == "auto":
+            self.config["framework"] = get_auto_framework()
+        # Notify about eager/tracing support.
+        if tf and self.config["framework"] == "tfe":
+            if not tf.executing_eagerly():
+                tf.enable_eager_execution()
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                self.config["eager_tracing"]))
+        if tf and not tf.executing_eagerly() and \
+                self.config["framework"] != "torch":
+            logger.info("Tip: set framework=tfe or the --eager flag to enable "
+                        "TensorFlow eager execution")
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
