@@ -17,6 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.docker import with_docker_exec
 
 logger = logging.getLogger(__name__)
 
@@ -362,7 +363,7 @@ class NodeUpdater:
 
         self.exitcode = 0
 
-    def sync_file_mounts(self, sync_cmd):
+    def sync_file_mounts(self, sync_cmd, container=None):
         # Rsync file mounts
         for remote_path, local_path in self.file_mounts.items():
             assert os.path.exists(local_path), local_path
@@ -376,7 +377,7 @@ class NodeUpdater:
                           "Synced {} to {}".format(local_path, remote_path)):
                 self.cmd_runner.run("mkdir -p {}".format(
                     os.path.dirname(remote_path)))
-                sync_cmd(local_path, remote_path)
+                sync_cmd(local_path, remote_path, docker=container)
 
     def wait_ready(self, deadline):
         with LogTimer(self.log_prefix + "Got remote shell"):
@@ -436,14 +437,30 @@ class NodeUpdater:
             for cmd in self.ray_start_commands:
                 self.cmd_runner.run(cmd)
 
-    def rsync_up(self, source, target):
+    def rsync_up(self, source, target, container=None):
         logger.info(self.log_prefix +
                     "Syncing {} to {}...".format(source, target))
         self.cmd_runner.run_rsync_up(source, target)
 
-    def rsync_down(self, source, target):
+        if container:
+            # Copy file into docker
+            docker_cp = "docker cp {} {}:{}".format(target, container, target.strip("~"))
+            # Move to desired location
+            docker_relocate = with_docker_exec(["mv {} {}".format(target.strip("~"), target)], container)[0]
+            self.cmd_runner.run("{} && {}".format(docker_cp, docker_relocate))
+
+    def rsync_down(self, source, target, container=None):
         logger.info(self.log_prefix +
                     "Syncing {} from {}...".format(source, target))
+        if container:
+            # Move file to non-relative path
+            docker_prepare = with_docker_exec(["mv {} {}".format(source, source.strip("~"))], container)[0]
+            # Copy file out of container
+            docker_cp = "docker cp {}:{} {}".format(container, source.strip("~"), source)
+            # Move file back to original location
+            docker_cleanup = with_docker_exec(["mv {} {}".format(source.strip("~"), source)], container)[0]
+            self.cmd_runner.run("{} && {} && {} ".format(docker_prepare, docker_cp, docker_cleanup))
+
         self.cmd_runner.run_rsync_down(source, target)
 
 

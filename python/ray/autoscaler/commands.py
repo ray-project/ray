@@ -464,7 +464,8 @@ def rsync(config_file,
           target,
           override_cluster_name,
           down,
-          all_nodes=False):
+          all_nodes=False,
+          docker=False):
     """Rsyncs files.
 
     Arguments:
@@ -474,6 +475,7 @@ def rsync(config_file,
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
         all_nodes: whether to sync worker nodes in addition to the head node
+        docker: whether to sync to a docker containr inside the node
     """
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
@@ -500,6 +502,9 @@ def rsync(config_file,
                 create_if_needed=False)
         ]
 
+        if docker and config["docker"]["container_name"] == None:
+            raise ValueError("Docker container not specified in config.")
+
         for node_id in nodes:
             updater = NodeUpdaterThread(
                 node_id=node_id,
@@ -518,10 +523,12 @@ def rsync(config_file,
             else:
                 rsync = updater.rsync_up
 
+            container_name = config["docker"]["container_name"] if docker else None
+
             if source and target:
-                rsync(source, target)
+                rsync(source, target, container=container_name)
             else:
-                updater.sync_file_mounts(rsync)
+                updater.sync_file_mounts(rsync, container=container_name)
 
     finally:
         provider.cleanup()

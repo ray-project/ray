@@ -702,9 +702,14 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def rsync_down(cluster_config_file, source, target, cluster_name):
+@click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in the docker container specified in cluster_config.")
+def rsync_down(cluster_config_file, source, target, cluster_name, docker):
     """Download specific files from a Ray cluster."""
-    rsync(cluster_config_file, source, target, cluster_name, down=True)
+    rsync(cluster_config_file, source, target, cluster_name, down=True, docker=docker)
 
 
 @cli.command()
@@ -723,7 +728,12 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     is_flag=True,
     required=False,
     help="Upload to all nodes (workers and head).")
-def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
+@click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in the docker container specified in cluster_config.")
+def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes, docker):
     """Upload specific files to a Ray cluster."""
     rsync(
         cluster_config_file,
@@ -731,7 +741,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
         target,
         cluster_name,
         down=False,
-        all_nodes=all_nodes)
+        all_nodes=all_nodes,
+        docker=docker)
 
 
 @cli.command(context_settings={"ignore_unknown_options": True})
@@ -803,8 +814,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
                                  True, cluster_name)
 
     target = os.path.join("~", os.path.basename(script))
-    rsync(cluster_config_file, script, target, cluster_name, down=False)
-
+    rsync(cluster_config_file, script, target, cluster_name, down=False,docker=docker)
     command_parts = ["python", target]
     if script_args:
         command_parts += list(script_args)
