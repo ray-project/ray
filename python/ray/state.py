@@ -1005,7 +1005,7 @@ def nodes():
     Returns:
         Information about the Ray clients in the cluster.
     """
-    return state.client_table()
+    return state.node_table()
 
 
 def current_node_id():
