@@ -64,6 +64,7 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
     assert ray.get(obj_id1) == 1
     assert ray.get(obj_id2) == 2
 
+.. _actor-resource-guide:
 
 Resources with Actors
 ---------------------
