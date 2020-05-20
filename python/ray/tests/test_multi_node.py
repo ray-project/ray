@@ -285,7 +285,10 @@ ray.get([a.log.remote(), f.remote()])
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 --num-gpus=1 " +
+        "--min-worker-port=0 --max-worker-port=0"
+    ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
     address = call_ray_start
@@ -334,6 +337,7 @@ print("success")
             print(output_line)
             if output_line == "success":
                 return
+            time.sleep(1)
         raise RayTestTimeoutException(
             "Timed out waiting for process to print success.")
 
@@ -373,6 +377,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
     subprocess.check_output([
         "ray", "start", "--head", "--object-manager-port", "12345",
         "--node-manager-port", "54321"
+    ])
+    subprocess.check_output(["ray", "stop"])
+
+    # Test starting Ray with the worker port range specified.
+    subprocess.check_output([
+        "ray", "start", "--head", "--min-worker-port", "50000",
+        "--max-worker-port", "51000"
     ])
     subprocess.check_output(["ray", "stop"])
 
@@ -419,7 +430,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode is None
 
     kill_process_by_name("raylet")
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
@@ -431,7 +442,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
     blocked.terminate()
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
