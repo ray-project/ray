@@ -192,6 +192,27 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 
 This will scale out the number of workers that can accept requests.
 
+Using Resources (CPUs, GPUs)
+++++++++++++++++++++++++++++
+To assign hardware resource per worker, you can pass resource requirements to
+``ray_actor_options``. To learn about options to pass in, take a look at
+:ref:`Resources with Actor<actor-resource-guide>` guide.
+
+For example, to create a backend where each replica uses a single GPU, you can do the
+following:
+
+.. code-block:: python
+
+  options = {"num_gpus": 1}
+  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=options)
+
+.. note::
+
+  Deep learning models like PyTorch and Tensorflow often use all the CPUs when
+  performing inference. Ray sets the environment variable ``OMP_NUM_THREADS=1`` to
+  :ref:`avoid contention<omp-num-thread-note>`. This means each worker will only
+  use one CPU instead of all of them.
+
 Splitting Traffic
 +++++++++++++++++
 
