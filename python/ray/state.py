@@ -407,7 +407,8 @@ class GlobalState:
                 "RayletSocketName": item.raylet_socket_name
             }
             node_info["Resources"] = _parse_resource_table(
-                self.redis_client, node_id) if node_info["Alive"] else {}
+                self.redis_client,
+                node_info["NodeID"]) if node_info["Alive"] else {}
             results.append(node_info)
         return results
 
