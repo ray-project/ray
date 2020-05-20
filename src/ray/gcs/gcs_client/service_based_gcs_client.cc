@@ -62,6 +62,8 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
 
   is_connected_ = true;
+
+  RAY_LOG(INFO) << "ServiceBasedGcsClient Connected.";
   return Status::OK();
 }
 

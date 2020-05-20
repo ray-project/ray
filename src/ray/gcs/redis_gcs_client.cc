@@ -85,6 +85,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   is_connected_ = true;
 
+  RAY_LOG(INFO) << "RedisGcsClient Connected.";
+
   return Status::OK();
 }
 
