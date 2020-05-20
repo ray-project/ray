@@ -6,16 +6,16 @@ A Gentle Introduction to Ray
 
 .. include:: basics.rst
 
-This tutorial will provide a whirlwind tour of all that Ray has to offer.
+This tutorial will provide a tour of the core features of Ray.
 
-First, install Ray with: ``pip install ray``, now we can execute some Python in parallel.
+First, install Ray with: ``pip install ray``, and now we can execute some Python in parallel.
 
 Parallelizing Python Functions with Ray Tasks
 =============================================
 
 First, import ray and ``init`` the Ray service.
 Then decorate your function with ``@ray.remote`` to declare that you want to run this function 
-remotely. Lastly, call that function with the ``.remote`` method call, this yields futures that you can then 
+remotely. Lastly, call that function with ``.remote()`` instead of calling it normally. This remote call yields a future, or ``ObjectID`` that you can then
 fetch with ``ray.get``.
 
 .. code-block:: python
@@ -30,21 +30,21 @@ fetch with ``ray.get``.
     futures = [f.remote(i) for i in range(4)]
     print(ray.get(futures)) # [0, 1, 4, 9]
 
-In the above code block we defined some Ray Tasks. While these are great for stateless operations sometimes you
+In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-Parallelizing Python Functions with Ray Actors
+Parallelizing Python Classes with Ray Actors
 ==============================================
 
-Ray provides Actors to allow you to parallelize an instance of a class in Python.
-When you instantiate a class that is a Ray Actor, Ray will automatically distribute
+Ray provides actors to allow you to parallelize an instance of a class in Python.
+When you instantiate a class that is a Ray actor, Ray will automatically distribute
 that actor onto the Ray cluster and manage that state on your behalf. All you as a 
 user need to do is call the class using the ``remote`` method call.
 
 .. code-block:: python
 
     import ray
-    ray.init() # only call this one
+    ray.init() # Only call this once.
  
     @ray.remote
     class Counter(object):
@@ -66,7 +66,7 @@ user need to do is call the class using the ``remote`` method call.
 An Overview of the Ray Libraries
 ================================
 
-Ray has a vast ecosystem of libraries and frameworks built on top of it. The main ones being:
+Ray has a rich ecosystem of libraries and frameworks built on top of it. The main ones being:
 
 - :ref:`tune-index`
 - :ref:`rllib-index`
