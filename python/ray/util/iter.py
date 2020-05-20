@@ -320,7 +320,7 @@ class ParallelIterator(Generic[T]):
                 str(seed) if seed is not None else "None"))
 
     def repartition(self, num_partitions: int,
-                    batch_ms: int = 10) -> "ParallelIterator[T]":
+                    batch_ms: int = 0) -> "ParallelIterator[T]":
         """Returns a new ParallelIterator instance with num_partitions shards.
 
         The new iterator contains the same data in this instance except with
@@ -464,7 +464,7 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
-    def gather_async(self, batch_ms=10, num_async=1) -> "LocalIterator[T]":
+    def gather_async(self, batch_ms=0, num_async=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
@@ -594,7 +594,7 @@ class ParallelIterator(Generic[T]):
 
     def get_shard(self,
                   shard_index: int,
-                  batch_ms: int = 10,
+                  batch_ms: int = 0,
                   num_async: int = 1) -> "LocalIterator[T]":
         """Return a local iterator for the given shard.
 
