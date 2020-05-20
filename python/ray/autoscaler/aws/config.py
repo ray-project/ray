@@ -1,5 +1,6 @@
 from distutils.version import StrictVersion
 from functools import partial
+import itertools
 import json
 import os
 import time
@@ -403,32 +404,41 @@ def _update_inbound_rules(target_security_group, sgids, config):
     target_security_group.authorize_ingress(IpPermissions=ip_permissions)
 
 
-def _create_default_inbound_rules(trusted_sgids, extended_rules=[]):
-    ip_permissions = [{
+def _create_default_inbound_rules(sgids, extended_rules=[]):
+    intracluster_rules = _create_default_instracluster_inbound_rules(sgids)
+    ssh_rules = _create_default_ssh_inbound_rules()
+    merged_rules = itertools.chain(
+        intracluster_rules,
+        ssh_rules,
+        extended_rules,
+    )
+    return list(merged_rules)
+
+
+def _create_default_instracluster_inbound_rules(intracluster_sgids):
+    return [{
         "FromPort": -1,
         "ToPort": -1,
         "IpProtocol": "-1",
         "UserIdGroupPairs": [
             {
                 "GroupId": security_group_id
-            } for security_group_id in sorted(trusted_sgids)
+            } for security_group_id in sorted(intracluster_sgids)
             # sort security group IDs for deterministic IpPermission models
             # (mainly supports more precise stub-based boto3 unit testing)
         ]
     }]
 
-    ip_permissions.extend([{
+
+def _create_default_ssh_inbound_rules():
+    return [{
         "FromPort": 22,
         "ToPort": 22,
         "IpProtocol": "tcp",
         "IpRanges": [{
             "CidrIp": "0.0.0.0/0"
         }]
-    }])
-
-    ip_permissions.extend(extended_rules)
-
-    return ip_permissions
+    }]
 
 
 def _get_role(role_name, config):

@@ -2,8 +2,6 @@ import copy
 import ray
 from datetime import datetime
 
-from ray.autoscaler.aws.config import _create_default_inbound_rules
-
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
 ray.autoscaler.aws.config.RAY = \
@@ -48,8 +46,8 @@ DEFAULT_SUBNET = {
     "DefaultForAz": False,
     "MapPublicIpOnLaunch": True,
     "State": "available",
-    "SubnetId": "subnet-fa7c47",
-    "VpcId": "vpc-ba71007",
+    "SubnetId": "subnet-0000000",
+    "VpcId": "vpc-0000000",
 }
 
 # Secondary EC2 subnet to expose to tests as required.
@@ -60,15 +58,18 @@ AUX_SUBNET = {
     "DefaultForAz": False,
     "MapPublicIpOnLaunch": True,
     "State": "available",
-    "SubnetId": "subnet-c47fe37",
-    "VpcId": "vpc-70017ab",
+    "SubnetId": "subnet-fffffff",
+    "VpcId": "vpc-fffffff",
 }
+
+# Default cluster name to expose to tests.
+DEFAULT_CLUSTER_NAME = "test-cluster-name"
 
 # Default security group settings immediately after creation
 # (prior to inbound rule configuration).
 DEFAULT_SG = {
     "Description": "Auto-created security group for Ray workers",
-    "GroupName": ray.autoscaler.aws.config.RAY + "-security-groups",
+    "GroupName": ray.autoscaler.aws.config.RAY + "-" + DEFAULT_CLUSTER_NAME,
     "OwnerId": "test-owner",
     "GroupId": "sg-1234abcd",
     "VpcId": DEFAULT_SUBNET["VpcId"],
@@ -99,8 +100,21 @@ DEFAULT_SG_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 # Default security group settings once default inbound rules are applied
 # (if used by both head and worker nodes)
 DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
-DEFAULT_SG_WITH_RULES["IpPermissions"] = _create_default_inbound_rules(
-    [DEFAULT_SG["GroupId"]])
+DEFAULT_SG_WITH_RULES["IpPermissions"] = [{
+    "FromPort": -1,
+    "ToPort": -1,
+    "IpProtocol": "-1",
+    "UserIdGroupPairs": [{
+        "GroupId": DEFAULT_SG["GroupId"]
+    }]
+}, {
+    "FromPort": 22,
+    "ToPort": 22,
+    "IpProtocol": "tcp",
+    "IpRanges": [{
+        "CidrIp": "0.0.0.0/0"
+    }]
+}]
 
 # Default security group once default inbound rules are applied
 # (if using separate security groups for head and worker nodes).
@@ -113,23 +127,3 @@ DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].append({
 DEFAULT_SG_WITH_RULES_AUX_SUBNET = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
-
-CONFIG_DEFAULT_RULES_DIFFERENT_VPC = {
-    "cluster_name": "security-groups",
-    "min_workers": 1,
-    "max_workers": 1,
-    "provider": {
-        "type": "aws",
-        "region": "us-west-2",
-        "availability_zone": "us-west-2a",
-    },
-    "auth": {
-        "ssh_user": "ubuntu",
-    },
-    "head_node": {
-        "SubnetIds": [DEFAULT_SUBNET["SubnetId"]]
-    },
-    "worker_nodes": {
-        "SubnetIds": [AUX_SUBNET["SubnetId"]]
-    }
-}

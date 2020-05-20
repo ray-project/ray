@@ -1,12 +1,11 @@
 import pytest
-import copy
 
-import ray.autoscaler.aws.config
 import ray.tests.aws.utils.stubs as stubs
+import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
-    DEFAULT_SG_AUX_SUBNET, CONFIG_DEFAULT_RULES_DIFFERENT_VPC, DEFAULT_SG, \
-    DEFAULT_SG_DUAL_GROUP_RULES, DEFAULT_SG_WITH_RULES_AUX_SUBNET, \
-    DEFAULT_SG_WITH_RULES, AUX_SG
+    DEFAULT_SG_AUX_SUBNET, DEFAULT_SG, DEFAULT_SG_DUAL_GROUP_RULES, \
+    DEFAULT_SG_WITH_RULES_AUX_SUBNET, DEFAULT_SG_WITH_RULES, AUX_SG, \
+    DEFAULT_CLUSTER_NAME
 
 
 def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
@@ -23,27 +22,44 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # expect to first create a security group on the worker node VPC
     stubs.create_sg_echo(ec2_client_stub, DEFAULT_SG_AUX_SUBNET)
     # expect new worker security group details to be retrieved after creation
-    stubs.describe_sgs_on_vpc(ec2_client_stub, [AUX_SUBNET["VpcId"]],
-                              [DEFAULT_SG_AUX_SUBNET])
+    stubs.describe_sgs_on_vpc(
+        ec2_client_stub,
+        [AUX_SUBNET["VpcId"]],
+        [DEFAULT_SG_AUX_SUBNET],
+    )
     # expect to tag the worker security group after creating it
-    stubs.create_sg_tags(ec2_client_stub, DEFAULT_SG_AUX_SUBNET["GroupId"],
-                         CONFIG_DEFAULT_RULES_DIFFERENT_VPC["cluster_name"])
+    stubs.create_sg_tags(
+        ec2_client_stub,
+        DEFAULT_SG_AUX_SUBNET["GroupId"],
+        DEFAULT_CLUSTER_NAME,
+    )
     # expect to second create a security group on the head node VPC
     stubs.create_sg_echo(ec2_client_stub, DEFAULT_SG)
     # expect new head security group details to be retrieved after creation
-    stubs.describe_sgs_on_vpc(ec2_client_stub, [DEFAULT_SUBNET["VpcId"]],
-                              [DEFAULT_SG])
+    stubs.describe_sgs_on_vpc(
+        ec2_client_stub,
+        [DEFAULT_SUBNET["VpcId"]],
+        [DEFAULT_SG],
+    )
     # expect to tag the head security group after creating it
-    stubs.create_sg_tags(ec2_client_stub, DEFAULT_SG["GroupId"],
-                         CONFIG_DEFAULT_RULES_DIFFERENT_VPC["cluster_name"])
+    stubs.create_sg_tags(
+        ec2_client_stub,
+        DEFAULT_SG["GroupId"],
+        DEFAULT_CLUSTER_NAME,
+    )
 
     # given no existing default head security group inbound rules...
     # expect to authorize all default head inbound rules
-    stubs.authorize_sg_ingress(ec2_client_stub, DEFAULT_SG_DUAL_GROUP_RULES)
+    stubs.authorize_sg_ingress(
+        ec2_client_stub,
+        DEFAULT_SG_DUAL_GROUP_RULES,
+    )
     # given no existing default worker security group inbound rules...
     # expect to authorize all default worker inbound rules
-    stubs.authorize_sg_ingress(ec2_client_stub,
-                               DEFAULT_SG_WITH_RULES_AUX_SUBNET)
+    stubs.authorize_sg_ingress(
+        ec2_client_stub,
+        DEFAULT_SG_WITH_RULES_AUX_SUBNET,
+    )
 
     # given the prior modification to the head security group...
     # expect the next read of a head security group property to reload it
@@ -52,10 +68,9 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # expect the next read of a worker security group property to reload it
     stubs.describe_sg_echo(ec2_client_stub, DEFAULT_SG_WITH_RULES_AUX_SUBNET)
 
-    # given our mocks and test config as input...
-    # expect the test config to be bootstrapped successfully
-    config = ray.autoscaler.aws.config.bootstrap_aws(
-        copy.deepcopy(CONFIG_DEFAULT_RULES_DIFFERENT_VPC))
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file("example-subnets.yaml")
 
     # expect the bootstrapped config to show different head and worker security
     # groups residing on different subnets
