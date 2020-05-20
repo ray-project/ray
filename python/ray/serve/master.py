@@ -323,7 +323,7 @@ class ServeMaster:
         await worker_handle.ready.remote()
         return worker_handle
 
-    async def _start_a_pending_replica(self, backend_tag, replica_tag):
+    async def _start_replica(self, backend_tag, replica_tag):
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
@@ -349,14 +349,14 @@ class ServeMaster:
 
         Clears self.replicas_to_start.
         """
-        create_futures = []
+        replica_started_futures = []
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
-                create_futures.append(
-                    self._start_a_pending_replica(backend_tag, replica_tag))
+                replica_started_futures.append(
+                    self._start_replica(backend_tag, replica_tag))
 
         # Wait on all creation task futures together.
-        await asyncio.gather(*create_futures)
+        await asyncio.gather(*replica_started_futures)
 
         self.replicas_to_start.clear()
 
