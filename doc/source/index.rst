@@ -6,15 +6,14 @@ What is Ray?
 Getting Started with Ray
 ------------------------
 
-Checkout :ref:`gentle-intro` to learn more about Ray to learn
-more about the ecosystem of libraries built on top of Ray to enable things like distributed hyperparameter tuning,
-Reinforcement Learning, and distributed training.
+Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
+reinforcement learning, and distributed training.
 
 The Ray Community
 -----------------
 
 Ray is more than a framework for distributed applications but also an active community of developers, 
-research scientists, and folks that love machine learning. 
+researchers, and folks that love machine learning. 
 
 You can join (and Star!) us on `on GitHub`_. 
 You can also join `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
