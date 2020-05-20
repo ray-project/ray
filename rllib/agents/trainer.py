@@ -352,6 +352,10 @@ COMMON_CONFIG = {
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
     },
+
+    # === Logger ===
+    # Define logger-specific configuration to be used inside Logger
+    "logger_config": {}
 }
 # __sphinx_doc_end__
 # yapf: enable
