@@ -349,6 +349,10 @@ COMMON_CONFIG = {
         # See rllib/evaluation/observation_function.py for more info.
         "observation_fn": None,
     },
+
+    # Deprecated keys:
+    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
+    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -414,15 +418,24 @@ class Trainer(Trainable):
 
         config = config or {}
 
-        # Deep learning framework settings.
-        if config["framework"] == "auto":
+        # Check and resolve DL framework settings.
+        if config["use_pytorch"] != DEPRECATED_VALUE or \
+                config["eager"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                "use_pytorch/eager", "framework=torch|tfe", error=False)
+            if config["use_pytorch"]:
+                config["framework"] = "torch"
+            elif config["eager"]:
+                config["framework"] = "tfe"
+        # Resolve "auto" framework.
+        elif config["framework"] == "auto":
             config["framework"] = get_auto_framework()
+        # Notify about eager/tracing support.
         if tf and config["framework"] == "tfe":
             if not tf.executing_eagerly():
                 tf.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
                 config["eager_tracing"]))
-
         if tf and not tf.executing_eagerly() and \
                 config["framework"] != "torch":
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
