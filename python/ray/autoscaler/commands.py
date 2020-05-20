@@ -502,7 +502,7 @@ def rsync(config_file,
                 create_if_needed=False)
         ]
 
-        if docker and config["docker"]["container_name"] == None:
+        if docker and config["docker"]["container_name"] is None:
             raise ValueError("Docker container not specified in config.")
 
         for node_id in nodes:
@@ -523,7 +523,8 @@ def rsync(config_file,
             else:
                 rsync = updater.rsync_up
 
-            container_name = config["docker"]["container_name"] if docker else None
+            container_name = config["docker"][
+                "container_name"] if docker else None
 
             if source and target:
                 rsync(source, target, container=container_name)

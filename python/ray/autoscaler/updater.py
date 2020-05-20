@@ -444,9 +444,11 @@ class NodeUpdater:
 
         if container:
             # Copy file into docker
-            docker_cp = "docker cp {} {}:{}".format(target, container, target.strip("~"))
+            docker_cp = "docker cp {} {}:{}".format(target, container,
+                                                    target.strip("~"))
             # Move to desired location
-            docker_relocate = with_docker_exec(["mv {} {}".format(target.strip("~"), target)], container)[0]
+            docker_relocate = with_docker_exec(
+                ["mv {} {}".format(target.strip("~"), target)], container)[0]
             self.cmd_runner.run("{} && {}".format(docker_cp, docker_relocate))
 
     def rsync_down(self, source, target, container=None):
@@ -454,12 +456,16 @@ class NodeUpdater:
                     "Syncing {} from {}...".format(source, target))
         if container:
             # Move file to non-relative path
-            docker_prepare = with_docker_exec(["mv {} {}".format(source, source.strip("~"))], container)[0]
+            docker_prepare = with_docker_exec(
+                ["mv {} {}".format(source, source.strip("~"))], container)[0]
             # Copy file out of container
-            docker_cp = "docker cp {}:{} {}".format(container, source.strip("~"), source)
+            docker_cp = "docker cp {}:{} {}".format(container,
+                                                    source.strip("~"), source)
             # Move file back to original location
-            docker_cleanup = with_docker_exec(["mv {} {}".format(source.strip("~"), source)], container)[0]
-            self.cmd_runner.run("{} && {} && {} ".format(docker_prepare, docker_cp, docker_cleanup))
+            docker_cleanup = with_docker_exec(
+                ["mv {} {}".format(source.strip("~"), source)], container)[0]
+            self.cmd_runner.run("{} && {} && {} ".format(
+                docker_prepare, docker_cp, docker_cleanup))
 
         self.cmd_runner.run_rsync_down(source, target)
 
