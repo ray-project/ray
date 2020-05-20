@@ -89,6 +89,10 @@ DEFAULT_CONFIG = with_common_config({
     "multiagent_sync_replay": False,
     # Callback to run before learning on a multi-agent batch of experiences.
     "before_learn_on_batch": None,
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed at the native ratio determined by
+    # (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -358,9 +362,24 @@ def execution_plan(workers, config):
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
-        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+        [store_op, replay_op],
+        mode="round_robin",
+        output_indexes=[1],
+        round_robin_weights=calculate_rr_weights(config))
 
     return StandardMetricsReporting(train_op, workers, config)
+
+
+def calculate_rr_weights(config):
+    if not config["training_intensity"]:
+        return [1, 1]
+    # e.g., 32 / 4 -> native ratio of 8.0
+    native_ratio = (
+        config["train_batch_size"] / config["rollout_fragment_length"])
+    # Training intensity is specified in terms of
+    # (steps_replayed / steps_sampled), so adjust for the native ratio.
+    weights = [1, config["training_intensity"] / native_ratio]
+    return weights
 
 
 def get_policy_class(config):
