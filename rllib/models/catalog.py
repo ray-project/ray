@@ -155,10 +155,11 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
+                dist = TorchDiagGaussian if framework == "torch" \
+                    else DiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic if framework == "tf" else \
-                    TorchDeterministic
+                dist = TorchDeterministic if framework == "torch" \
+                    else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical

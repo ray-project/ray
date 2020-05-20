@@ -164,7 +164,7 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
         policy_cls = ARSTorchPolicy
     else:

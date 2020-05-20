@@ -406,7 +406,7 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested",
             config={
                 "num_workers": 0,
-                "use_pytorch": True,
+                "framework": "torch",
                 "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {

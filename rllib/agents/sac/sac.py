@@ -119,7 +119,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["framework"] == "torch":
         from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
         return SACTorchPolicy
     else:

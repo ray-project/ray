@@ -59,7 +59,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_o = set()
     config["log_level"] = "ERROR"
     first_error = None
-    torch = config.get("use_pytorch", False)
+    torch = config["framework"] == "torch"
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing {} (torch={}) A={} S={} ===".format(
@@ -148,7 +148,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def test_a3c(self):
         config = {"num_workers": 1, "optimizer": {"grads_per_step": 1}}
         check_support("A3C", config, self.stats, check_bounds=True)
-        config["use_pytorch"] = True
+        config["framework"] = "torch"
         check_support("A3C", config, self.stats, check_bounds=True)
 
     def test_appo(self):
@@ -185,7 +185,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def test_dqn(self):
         config = {"timesteps_per_iteration": 1}
         check_support("DQN", config, self.stats)
-        config["use_pytorch"] = True
+        config["framework"] = "torch"
         check_support("DQN", config, self.stats)
 
     def test_es(self):
@@ -209,13 +209,13 @@ class ModelSupportedSpaces(unittest.TestCase):
             "sgd_minibatch_size": 1,
         }
         check_support("PPO", config, self.stats, check_bounds=True)
-        config["use_pytorch"] = True
+        config["framework"] = "torch"
         check_support("PPO", config, self.stats, check_bounds=True)
 
     def test_pg(self):
         config = {"num_workers": 1, "optimizer": {}}
         check_support("PG", config, self.stats, check_bounds=True)
-        config["use_pytorch"] = True
+        config["framework"] = "torch"
         check_support("PG", config, self.stats, check_bounds=True)
 
     def test_sac(self):

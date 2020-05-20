@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 TS_CONFIG = with_common_config({
     # No remote workers by default.
     "num_workers": 0,
-    "use_pytorch": True,
+    "framework": "torch",  # Only PyTorch supported so far.
 
     # Do online learning one step at a time.
     "rollout_fragment_length": 1,

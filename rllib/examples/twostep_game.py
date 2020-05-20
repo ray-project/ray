@@ -77,7 +77,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         }
         group = False
     elif args.run == "QMIX":
@@ -92,7 +92,7 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         }
         group = True
     elif args.run == "APEX_QMIX":
@@ -113,7 +113,7 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         }
         group = True
     else:

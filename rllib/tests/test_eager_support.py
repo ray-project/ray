@@ -6,7 +6,7 @@ from ray.rllib.agents.registry import get_agent_class
 
 
 def check_support(alg, config, test_trace=True):
-    config["eager"] = True
+    config["framework"] = "tfe"
 
     # Test both continuous and discrete actions.
     for cont in [True, False]:

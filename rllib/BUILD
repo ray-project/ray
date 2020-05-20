@@ -558,7 +558,7 @@ py_test(
         "--env", "PongDeterministic-v0",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"use_pytorch\": true, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'",
+        "--config", "'{\"num_workers\": 2, \"framework\": \"torch\", \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'",
         "--ray-num-cpus", "4"
         ]
 )
@@ -885,7 +885,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"use_pytorch\": true, \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        "--config", "'{\"framework\": \"torch\", \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
 

@@ -364,7 +364,7 @@ def execution_plan(workers, config):
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
     else:
@@ -372,7 +372,7 @@ def get_policy_class(config):
 
 
 def get_simple_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy
         return SimpleQTorchPolicy

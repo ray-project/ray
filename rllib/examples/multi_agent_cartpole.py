@@ -81,7 +81,7 @@ if __name__ == "__main__":
             "policies": policies,
             "policy_mapping_fn": (lambda agent_id: random.choice(policy_ids)),
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
     stop = {
         "episode_reward_mean": args.stop_reward,

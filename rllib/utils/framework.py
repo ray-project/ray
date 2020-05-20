@@ -9,6 +9,17 @@ logger = logging.getLogger(__name__)
 TensorType = Any
 
 
+def get_auto_framework():
+    """Returns a framework (str) to use automatically.
+
+    If only PyTorch is installed, returns "torch", otherwise "tf".
+    """
+    # PyTorch is installed.
+    if torch is not None and tf is None:
+        return "torch"
+    return "tf"
+
+
 def check_framework(framework="tf"):
     """
     Checks, whether the given framework is "valid", meaning, whether all
