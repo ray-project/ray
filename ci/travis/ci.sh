@@ -115,7 +115,7 @@ test_python() {
 }
 
 test_cpp() {
-  bazel test $ENABLE_ASAN //cpp:all --build_tests_only --test_output=streamed
+  bazel test //cpp:all --build_tests_only --test_output=streamed
 }
 
 test_wheels() {
