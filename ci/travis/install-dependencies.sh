@@ -197,19 +197,28 @@ install_dependencies() {
   install_nvm
   install_pip
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+  fi
 
+  # Install modules needed in all jobs.
+  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+
+  if [ -n "${PYTHON-}" ]; then
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
     local torch_url="https://download.pytorch.org/whl/torch_stable.html"
     case "${OSTYPE}" in
-      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
       darwin*) pip install torch torchvision;;
-      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
+      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.1.0}" cython==0.29.0 gym \
+    local tf_version
+    case "${OSTYPE}" in
+      msys) tf_version="${TF_VERSION:-2.2.0}";;
+      *) tf_version="${TF_VERSION:-2.1.0}";;
+    esac
+    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
       opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
@@ -235,16 +244,18 @@ install_dependencies() {
   fi
 
   if [ "${LINT-}" = 1 ]; then
-    install_miniconda
     install_linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    local python_version
+    python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+    if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
+      { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
+    else
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    fi
   fi
-
-  # Install modules needed in all jobs.
-  pip install dm-tree
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then

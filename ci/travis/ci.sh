@@ -237,7 +237,7 @@ build_wheels() {
         for pyversion in "${pyversions[@]}"; do
           if [ -z "${pyversion}" ]; then continue; fi
           "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
+          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
           git checkout -q -f -- .
           cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
           local existing_version
